@@ -1,11 +1,8 @@
 {
-  "transaction_ids": [
-    "20251028_1761690780571_www.amtrak.com_services_MapDataService_AutoCompleterArcgis_getResponseList",
-    "20251028_1761690776756_www.amtrak.com_services_data.stations.json"
-  ],
-  "description": "Amtrak's station autocomplete uses a dynamic suggestion endpoint and a supporting static station list. The dynamic endpoint returns suggestions based on a searchTerm, while the static list provides the full station catalog used for client-side filtering.",
-  "url": "https://www.amtrak.com/services/MapDataService/AutoCompleterArcgis/getResponseList",
+  "transaction_id": "20251028_1761690780571_www.amtrak.com_services_MapDataService_AutoCompleterArcgis_getResponseList",
+  "description": "ArcGIS-backed station autocomplete API used by Amtrak; returns station suggestions for a given searchTerm.",
+  "url": "https://www.amtrak.com/services/MapDataService/AutoCompleterArcgis/getResponseList?searchTerm=bos",
   "method": "GET",
-  "explanation": "The dynamic autocomplete request to MapDataService/AutoCompleterArcgis/getResponseList includes a searchTerm query (e.g., searchTerm=bos) and returns an autoCompleterResponse with autoCompleteList items such as \"Boston, MA - South Station (BOS)\". In addition, the application loads a static station directory from https://www.amtrak.com/services/data.stations.json, which contains station entries with fields like autoFillName and code, supporting local autocomplete behavior.",
+  "explanation": "This request is issued while typing into the station field and queries the AutoCompleterArcgis service with a searchTerm parameter (example shows searchTerm=bos). The captured transaction confirms the exact endpoint and method for the station autocomplete flow. For context, the site also pulls a full station catalog used to power suggestions from https://www.amtrak.com/services/data.stations.json, which complements the live autocomplete behavior.",
   "confidence_level": "high"
 }

@@ -12,7 +12,7 @@ class TransactionIdentificationResponse(BaseModel):
     Response from the LLM for identifying the network transaction that directly corresponds to
     the user's requested task. 
     """
-    transaction_ids: list[str]
+    transaction_id: str
     description: str
     url: str
     method: Method
@@ -26,7 +26,7 @@ class TransactionConfirmationResponse(BaseModel):
     the user's requested task.
     """
     is_correct: bool
-    confirmed_transaction_ids: list[str]
+    confirmed_transaction_id: str
     explanation: str
     confidence_level: ConfidenceLevel
 
@@ -45,9 +45,8 @@ class Variable(BaseModel):
     """
     type: VariableType
     name: str
-    value: str
-    explanation: str
-    example: str
+    observed_value: str
+    description: str
 
     
 class ExtractedVariableResponse(BaseModel):

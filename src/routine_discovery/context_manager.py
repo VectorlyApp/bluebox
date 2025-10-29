@@ -90,8 +90,16 @@ class ContextManager(BaseModel):
             result["request"] = json.load(f)
         with open(os.path.join(self.transactions_dir, transaction_id, "response.json"), "r") as f:
             result["response"] = json.load(f)
-        with open(os.path.join(self.transactions_dir, transaction_id, "response_body.json"), "r") as f:
-            result["response_body"] = json.load(f)
+        
+        # Handle response body - try JSON first, fallback to text
+        response_body_path = os.path.join(self.transactions_dir, transaction_id, "response_body.json")
+        try:
+            with open(response_body_path, "r") as f:
+                result["response_body"] = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            # If it's not valid JSON or file doesn't exist, read as text
+            with open(response_body_path, "r", encoding='utf-8', errors='replace') as f:
+                result["response_body"] = f.read()
             
         return result
     
@@ -168,3 +176,25 @@ class ContextManager(BaseModel):
                 **metadata
             }
         )
+        
+        
+    def get_transaction_ids_by_request_url(self, request_url: str) -> list[str]:
+        """
+        Get all transaction ids by request url.
+        Efficiently reads only the request.json file instead of the entire transaction.
+        """
+        all_transaction_ids = self.get_all_transaction_ids()
+        transaction_ids = []
+        for transaction_id in all_transaction_ids:
+            try:
+                # Only read the request.json file to check the URL
+                request_path = os.path.join(self.transactions_dir, transaction_id, "request.json")
+                with open(request_path, "r") as f:
+                    request_data = json.load(f)
+                    if request_data.get("url") == request_url:
+                        transaction_ids.append(transaction_id)
+            except (FileNotFoundError, json.JSONDecodeError, KeyError):
+                # Skip transactions with missing or malformed request files
+                continue
+        return transaction_ids
+        

@@ -26,9 +26,9 @@ def main() -> None:
         raise ValueError("OPENAI_API_KEY is not set")
     
     
-    print("\n", f"-" * 100)
-    print(f"Starting routine discovery for task:\n {args.task_description}")
-    print(f"-" * 100, "\n")
+    print(f"\n{'-' * 100}")
+    print(f"Starting routine discovery for task:\n{args.task_description}")
+    print(f"{'-' * 100}\n")
     
     # initialize OpenAI client
     openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -60,9 +60,9 @@ def main() -> None:
     )
     print(f"Routine discovery agent initialized.")
     
-    print("\n", f"-" * 100)
+    print(f"\n{'-' * 100}")
     print(f"Running routine discovery agent.")
-    print(f"-" * 100, "\n")
+    print(f"{'-' * 100}\n")
     
     # run the routine discovery agent
     routine_discovery_agent.run()

@@ -66,35 +66,35 @@ class RoutineDiscoveryAgent(BaseModel):
         self.add_to_message_history("user", f"These are the possible network transaction ids you can choose from: {self.context_manager.get_all_transaction_ids()}")
 
         # Step 1: Identify the network transactions that directly correspond to the user's requested task
-        identified_transactions = None
+        identified_transaction = None
         
-        while identified_transactions is None:
-            # identify the transactions
-            identified_transactions = self.identify_transactions()
+        while identified_transaction is None:
+            # identify the transaction
+            identified_transaction = self.identify_transaction()
             
-            # confirm the identified transactions
-            confirmation_response = self.confirm_indetified_transactions(identified_transactions)
+            # confirm the identified transaction
+            confirmation_response = self.confirm_indetified_transaction(identified_transaction)
             
-            # if the identified transactions are not correct, try again
+            # if the identified transaction is not correct, try again
             if not confirmation_response.is_correct:
-                identified_transactions = None
+                identified_transaction = None
                 self.current_transaction_identification_attempt += 1
                 
-        if identified_transactions is None:
+        if identified_transaction is None:
             raise Exception("Failed to identify the network transactions that directly correspond to the user's requested task.")
         
         # save the indentified transactions
         with open(os.path.join(self.debug_dir, "identified_transactions.json"), "w") as f:
-            json.dump(identified_transactions.model_dump(), f, ensure_ascii=False, indent=2)
+            json.dump(identified_transaction.model_dump(), f, ensure_ascii=False, indent=2)
         
         # Step 2: Extract the variables from the identified transactions
-        extracted_variables = self.extract_variables(identified_transactions)
+        extracted_variables = self.extract_variables(identified_transaction)
         
         with open(os.path.join(self.debug_dir, "extracted_variables.json"), "w") as f:
             json.dump(extracted_variables.model_dump(), f, ensure_ascii=False, indent=2)
         
         
-    def identify_transactions(self) -> TransactionIdentificationResponse:
+    def identify_transaction(self) -> TransactionIdentificationResponse:
         """
         Identify the network transactions that directly correspond to the user's requested task.
         """
@@ -154,18 +154,19 @@ class RoutineDiscoveryAgent(BaseModel):
         return parsed_response
 
 
-    def confirm_indetified_transactions(
+    def confirm_indetified_transaction(
         self,
-        identified_transactions: TransactionIdentificationResponse,
+        identified_transaction: TransactionIdentificationResponse,
     ) -> TransactionConfirmationResponse:
         """
-        Confirm the identified network transactions that directly correspond to the user's requested task.
+        Confirm the identified network transaction that directly corresponds to the user's requested task.
         """
         
-        # add the transactions to the vectorstore
+        # add the transaction to the vectorstore
         metadata = {"uuid": str(uuid4())}
-        for transaction_id in identified_transactions.transaction_ids:
-            self.context_manager.add_transaction_to_vectorstore(transaction_id=transaction_id, metadata=metadata)
+        self.context_manager.add_transaction_to_vectorstore(
+            transaction_id=identified_transaction.transaction_id, metadata=metadata
+        )
         
         # temporarily update the tools to specifically search through these transactions
         tools = [
@@ -180,16 +181,16 @@ class RoutineDiscoveryAgent(BaseModel):
             }
         ]
         
-        # update the message history with request to confirm the identified transactions
+        # update the message history with request to confirm the identified transaction
         message = (
-            f"{identified_transactions} have been added to the vectorstore in full (including response bodies)."
-            "Please confirm that the identified transactions are correct and that they directly correspond to the user's requested task:"
+            f"{identified_transaction.transaction_id} have been added to the vectorstore in full (including response bodies)."
+            "Please confirm that the identified transaction is correct and that it directly corresponds to the user's requested task:"
             f"{self.task_description}"
             f"Please respond in the following format: {TransactionConfirmationResponse.model_json_schema()}"
         )
-        self.add_to_message_history("user", f"Please confirm that the identified transactions are correct. {identified_transactions.model_dump_json()}")
+        self.add_to_message_history("user", message)
         
-        # call to the LLM API for confirmation that the identified transactions are correct
+        # call to the LLM API for confirmation that the identified transaction is correct
         response = self.client.responses.create(
             model=self.llm_model,
             input=[self.message_history[-1]],
@@ -222,19 +223,41 @@ class RoutineDiscoveryAgent(BaseModel):
         identified_transactions: TransactionIdentificationResponse,
     ) -> ExtractedVariableResponse:
         """
-        Extract the variables from the identified transactions.
+        Extract the variables from the identified transaction.
         """
         
+        # get all transaction ids by request url
+        transaction_ids = self.context_manager.get_transaction_ids_by_request_url(identified_transactions.url)
+        
         # get the requests of the identified transactions
-        requests = []
-        for transaction_id in identified_transactions.transaction_ids:
-            request = self.context_manager.get_transaction_by_id(transaction_id)
-            requests.append(request)
+        transactions = []
+        for transaction_id in transaction_ids:
+            transaction = self.context_manager.get_transaction_by_id(transaction_id)
+            
+            # Handle response_body - truncate if it's a string
+            response_body = transaction["response_body"]
+            if isinstance(response_body, str) and len(response_body) > 300:
+                response_body = response_body[:300] + "..."
+            elif isinstance(response_body, (dict, list)):
+                # If it's JSON data, convert to string and truncate
+                response_body_str = json.dumps(response_body, ensure_ascii=False)
+                if len(response_body_str) > 300:
+                    response_body = response_body_str[:300] + "..."
+                else:
+                    response_body = response_body_str
+            
+            transactions.append(
+                {
+                    "request": transaction["request"],
+                    "response": transaction["response"],
+                    "response_body": response_body
+                }
+            )
         
         # add message to the message history
         message = (
             f"Please extract the variables from the requests of identified network transactions:"
-            f"{requests}"
+            f"{transactions}"
             f"Please respond in the following format: {ExtractedVariableResponse.model_json_schema()}"
         )
         self.add_to_message_history("user", message)

@@ -1,0 +1,48 @@
+{
+  "transaction_id": "20251028_1761690780571_www.amtrak.com_services_MapDataService_AutoCompleterArcgis_getResponseList",
+  "variables": [
+    {
+      "type": "argument",
+      "name": "searchTerm",
+      "observed_value": "bos",
+      "description": "Query string parameter controlling the station autocomplete search term."
+    },
+    {
+      "type": "system_variable",
+      "name": "Referer",
+      "observed_value": "https://www.amtrak.com/home.html",
+      "description": "HTTP request header indicating the referring page."
+    },
+    {
+      "type": "system_variable",
+      "name": "Accept",
+      "observed_value": "application/json, text/plain, */*",
+      "description": "HTTP request header listing acceptable response media types."
+    },
+    {
+      "type": "system_variable",
+      "name": "User-Agent",
+      "observed_value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      "description": "HTTP request header identifying the client software."
+    },
+    {
+      "type": "system_variable",
+      "name": "sec-ch-ua",
+      "observed_value": "\"Google Chrome\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"",
+      "description": "Client Hints header indicating browser brand/version."
+    },
+    {
+      "type": "system_variable",
+      "name": "sec-ch-ua-platform",
+      "observed_value": "\"macOS\"",
+      "description": "Client Hints header indicating the client platform."
+    },
+    {
+      "type": "system_variable",
+      "name": "sec-ch-ua-mobile",
+      "observed_value": "?0",
+      "description": "Client Hints header indicating whether the client is on a mobile device."
+    }
+  ],
+  "explanation": "Variables were extracted from the captured GET request to the AutoCompleterArcgis endpoint, including the query parameter (searchTerm) and relevant request headers as observed in the transaction record ."
+}
