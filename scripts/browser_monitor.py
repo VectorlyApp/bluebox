@@ -366,7 +366,6 @@ def main():
             print(f"Cookies tracked: {summary['storage']['cookies_count']}")
             print(f"LocalStorage origins: {len(summary['storage']['local_storage_origins'])}")
             print(f"SessionStorage origins: {len(summary['storage']['session_storage_origins'])}")
-            print(f"User interactions tracked: {summary['interactions']['total_interactions']}")
             print(f"Mouse events: {summary['interactions']['mouse_events']}")
             print(f"Keyboard events: {summary['interactions']['keyboard_events']}")
             print()

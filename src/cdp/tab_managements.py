@@ -117,7 +117,7 @@ def dispose_context(
     ws = websocket.create_connection(ws_url, timeout=10)
     try:
         ws.send(json.dumps({"id": 1, "method": "Target.disposeBrowserContext",
-                        "params": {"browserContextId": browser_context_ id}}))
+                        "params": {"browserContextId": browser_context_id}}))
         json.loads(ws.recv())
     finally:
         try: ws.close()
