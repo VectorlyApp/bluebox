@@ -167,15 +167,15 @@ class RoutineDiscoveryAgent(BaseModel):
             json.dump(routine.model_dump(), f, ensure_ascii=False, indent=2) 
         print(f"Routine saved to: {save_path}")
     
-    
         # get the test parameters
         print(f"Getting test parameters...")
         test_parameters = self.get_test_parameters(routine)
+        test_parameters_dict = {value.name: value.value for value in test_parameters.parameters}
         
         # save the test parameters
         save_path = os.path.join(self.output_dir, f"test_parameters.json")
         with open(save_path, "w") as f:
-            json.dump(test_parameters.model_dump(), f, ensure_ascii=False, indent=2)
+            json.dump(test_parameters_dict, f, ensure_ascii=False, indent=2)
         print(f"Test parameters saved to: {save_path}")
         
     
@@ -595,7 +595,7 @@ class RoutineDiscoveryAgent(BaseModel):
         return production_routine
         
     
-    def get_test_parameters(self, routine: Routine) -> dict:
+    def get_test_parameters(self, routine: Routine) -> TestParametersResponse:
         """
         Get the test parameters for the routine.
         """

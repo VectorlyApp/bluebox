@@ -5,12 +5,12 @@ Example commands:
 
     # Execute routine with parameters from a file
     python scripts/execute_routine.py \
-        --routine-path example_data/amtrak_one_way_train_search_routine.json \
-        --parameters-path example_data/amtrak_one_way_train_search_input.json
+        --routine-path example_routines/amtrak_one_way_train_search_routine.json \
+        --parameters-path example_routines/amtrak_one_way_train_search_input.json
 
     # Execute routine with parameters from a dictionary
     python scripts/execute_routine.py \
-        --routine-path example_data/amtrak_one_way_train_search_routine.json \
+        --routine-path example_routines/amtrak_one_way_train_search_routine.json \
         --parameters-dict "{'origin': 'boston', 'destination': 'new york', 'departureDate': '2026-03-22'}"
 """
 

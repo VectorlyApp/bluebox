@@ -48,6 +48,8 @@ Placeholders inside operation fields are resolved at runtime:
   - `{{localStorage:myKey}}`
   - `{{cookie:CookieName}}`
 
+**Important:** Currently, `sessionStorage`, `localStorage`, and `cookie` placeholder resolution is supported only inside fetch `headers` and `body`. Future versions will support interpolation anywhere in operations.
+
 Interpolation occurs before an operation executes. For example, a fetch endpoint might be:
 
 ```
