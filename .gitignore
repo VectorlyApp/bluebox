@@ -206,9 +206,9 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# MACOS
+.DS_Store
 
 # output directories
 cdp_captures/
-
-# MACOS
-.DS_Store
+routine_discovery_output/
