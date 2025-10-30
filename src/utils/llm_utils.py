@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from openai import OpenAI
 from typing import Type
-
+import json
 
 
 def llm_parse_text_to_model(
@@ -88,7 +88,7 @@ def manual_llm_parse_text_to_model(
             messages.append({"role": "assistant", "content": response.choices[0].message.content})
             text = response.choices[0].message.content
             
-            parsed_model = pydantic_model(json.loads(text))
+            parsed_model = pydantic_model(**json.loads(text))
             
             return parsed_model
         

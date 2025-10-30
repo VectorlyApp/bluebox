@@ -1,14 +1,71 @@
 # web-hacker
 
-REVERSE ENGINEER ANY WEB APP!
+REVERSE ENGINEER ANY WEB APP! ⚡️
+
+## Resources
+
+- Company website: [vectorly.app](https://www.vectorly.app/)
+- YouTube tutorials: [youtube.com/@VectorlyAI](https://www.youtube.com/@VectorlyAI)
 
 ## Overview of Our Process
 
-1. Launch Chrome in debug mode (enable DevTools protocol on 127.0.0.1:9222).
-2. Run the browser monitor and manually perform the target actions to capture browser state.
-3. Specify your task and run the routine discovery script; the agent reverse‑engineers the API flow.
-4. Review and test the generated routine JSON to automate the workflow.
-5. Go to [console.vectorly.app](https://console.vectorly.app) and productionize your routines!
+1) Launch Chrome in debug mode (enable DevTools protocol on `127.0.0.1:9222`).
+2) Run the browser monitor and manually perform the target actions to capture browser state.
+3) Specify your task and run the routine discovery script; the agent reverse‑engineers the API flow.
+4) Review and run/test the generated routine JSON (locally).
+5) Go to [console.vectorly.app](https://console.vectorly.app) and productionize your routines!
+
+## What is a *Routine*?
+
+> A Routine is a portable recipe for automating a web flow. It has:
+
+- name, description
+- parameters: input values the routine needs
+- operations: ordered steps the browser executes
+
+### Parameters
+
+- Defined as typed inputs (see `src/data_models/production_routine.py:Parameter`).
+- Each parameter has a `name`, `type`, `required`, and optional `default`/`examples`.
+- Parameters are referenced inside operations using placeholder tokens like `{{argument_1}}`, `{{argument_2}}`.
+
+### Operations
+
+Operations are a typed list (see `RoutineOperationUnion`) executed in order:
+
+- navigate: `{ "type": "navigate", "url": "https://example.com" }`
+- sleep: `{ "type": "sleep", "timeout_seconds": 1.5 }`
+- fetch: performs an HTTP request described by an `endpoint` object (method, url, headers, body, credentials) and can store results under a `session_storage_key`.
+- return: returns the value previously stored under a `session_storage_key`.
+
+### Placeholder Interpolation `{{...}}`
+
+Placeholders inside operation fields are resolved at runtime:
+
+- Parameter placeholders: `{{paramName}}` → substituted from routine parameters
+- Storage placeholders (read values from the current session):
+  - `{{sessionStorage:myKey.path.to.value}}`
+  - `{{localStorage:myKey}}`
+  - `{{cookie:CookieName}}`
+
+Interpolation occurs before an operation executes. For example, a fetch endpoint might be:
+
+```
+{
+  "type": "fetch",
+  "endpoint": {
+    "method": "GET",
+    "url": "https://api.example.com/search?arg1={{argument_1}}&arg2={{argument_2}}",
+    "headers": {
+      "Authorization": "Bearer {{cookie:auth_token}}"
+    },
+    "body": {}
+  },
+  "session_storage_key": "result_key"
+}
+```
+
+This substitutes parameter values and injects `auth_token` from cookies. The JSON response is stored under `sessionStorage['result_key']` and can be returned by a final `return` operation using the matching `session_storage_key`.
 
 ## Prerequisits
 
@@ -213,3 +270,26 @@ routine_discovery_output/
 ├── resolved_variables.json         # Resolution hints for cookies/tokens (if any)
 └── routine.json                    # Final Routine model (name, parameters, operations)
 ```
+
+## Common Issues
+
+- Chrome not detected / cannot connect to DevTools
+
+  - Ensure Chrome is launched in debug mode and `http://127.0.0.1:9222/json/version` returns JSON.
+  - Check `--host`/`--port` flags match your Chrome launch args.
+- `OPENAI_API_KEY` not set
+
+  - Export the key in your shell or create a `.env` file and run via `uv run` (dotenv is loaded).
+
+## Coming Soon
+
+- Integration of routine testing into the agentic pipeline
+  - The agent will execute discovered routines, detect failures, and automatically suggest/fix issues to make routines more robust and efficient.
+
+- Checkpointing progress and resumability
+  - Avoid re-running the entire discovery pipeline after exceptions; the agent will checkpoint progress and resume from the last successful stage.
+
+- Context overflow management
+  - On detection of context overflow, the agent will checkpoint state, summarize findings, and spawn a continuation agent to proceed with discovery without losing context.
+
+ 

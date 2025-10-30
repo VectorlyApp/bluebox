@@ -1,4 +1,5 @@
 import re
+import json
 import uuid
 from abc import ABC
 from datetime import datetime
@@ -277,7 +278,6 @@ class Endpoint(BaseModel):
     )
 
 
-
 class RoutineOperationTypes(StrEnum):
     """
     Browser operation types for running routines.
@@ -435,8 +435,8 @@ class Routine(ResourceBase):
             # if the parameter name starts with a colon, it is a storage parameter
             if ":" in match:
                 kind, path = [p.strip() for p in match.split(":", 1)]
-                assert kind in ["sessionStorage", "localStorage", "cookie", "meta"], f"Invalid prefix in parameter name: {kind}"
-                assert path, f"Path is required for sessionStorage, localStorage, cookie, and meta: {kind}:{path}"
+                assert kind in ["sessionStorage", "localStorage", "cookie"], f"Invalid prefix in parameter name: {kind}"
+                assert path, f"Path is required for sessionStorage, localStorage, and cookie: {kind}:{path}"
                 continue
             # if the parameter name is a builtin parameter, add it to the used parameters
             elif match in builtin_parameter_names:

@@ -2,7 +2,7 @@ import json
 from pydantic import BaseModel, Field, field_validator
 from openai import OpenAI
 from src.routine_discovery.context_manager import ContextManager
-from src.utils.llm_utils import llm_parse_text_to_model, collect_text_from_response
+from src.utils.llm_utils import llm_parse_text_to_model, collect_text_from_response, manual_llm_parse_text_to_model
 from src.data_models.llm_responses import (
     TransactionIdentificationResponse,
     ExtractedVariableResponse,
@@ -560,14 +560,47 @@ class RoutineDiscoveryAgent(BaseModel):
     
     def productionize_routine(self, routine: Routine) -> Routine:
         
+        message = (
+            f"Please productionize the routine (from previosu step): {routine.model_dump_json()}"
+            f"You need to clean up this routine to follow the following format: {ProductionRoutine.model_json_schema()}"
+            f"Please respond in the following format: {ProductionRoutine.model_json_schema()}"
+            f"You immediate output needs to be a valid JSON object that conforms to the production routine schema."
+        )
+        self._add_to_message_history("user", message)
     
+        
+        # call to the LLM API for productionization of the routine
+        response = self.client.responses.create(
+            model=self.llm_model,
+            input=[self.message_history[-1]],
+            previous_response_id=self.last_response_id,
+        )
+        
+        # save the response id
+        self.last_response_id = response.id
+        
+        # collect the text from the response
+        response_text = collect_text_from_response(response)
+        self._add_to_message_history("assistant", response_text)
+        
+        # parse the response to the pydantic model
+        production_routine = manual_llm_parse_text_to_model(
+            text=response_text,
+            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+            pydantic_model=ProductionRoutine,
+            client=self.client,
+            llm_model=self.llm_model
+        )
+        
+        return production_routine
+        
     
     def get_test_parameters(self, routine: Routine) -> dict:
         """
         Get the test parameters for the routine.
         """
         message = (
-            f"Write a dictionary of parameters to test this routine: {routine.model_dump_json()}"
+            f"Write a dictionary of parameters to test this routine (from previous step): {routine.model_dump_json()}"
             f"Please respond in the following format: {TestParametersResponse.model_json_schema()}"
             f"Ensure all parameters are present and have valid values."
         )
@@ -604,7 +637,3 @@ class RoutineDiscoveryAgent(BaseModel):
         self.message_history.append({"role": role, "content": content})
         with open(os.path.join(self.output_dir, "message_history.json"), "w") as f:
             json.dump(self.message_history, f, ensure_ascii=False, indent=2)
-            
-            
-            
-    

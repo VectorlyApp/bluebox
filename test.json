@@ -1,0 +1,130 @@
+{
+    "autoCompleterResponse": {
+        "autoCompleteList": [
+            {
+                "address1": "2 South Station",
+                "address2": "",
+                "autoFillName": "Boston, MA - South Station (BOS)",
+                "city": "Boston",
+                "displayName": "Boston, MA - South Station (BOS)",
+                "geometry": {
+                    "lat": 42.35231967202346,
+                    "lng": -71.05530458910653
+                },
+                "matchType": "code",
+                "name": "South Station",
+                "postalCode": "02110",
+                "resultType": "Station",
+                "state": "MA",
+                "stationAliases": "South Station",
+                "stationCode": "BOS",
+                "stationFacilityName": "South Station",
+                "stationName": "Boston, MA",
+                "stationRank": "1"
+            },
+            {
+                "address1": "145 Dartmouth Street",
+                "address2": "",
+                "autoFillName": "Boston, MA - Back Bay Station (BBY)",
+                "city": "Boston",
+                "displayName": "Boston, MA - Back Bay Station (BBY)",
+                "geometry": {
+                    "lat": 42.34732567041914,
+                    "lng": -71.0758285955559
+                },
+                "matchType": "name",
+                "name": "Back Bay Station",
+                "postalCode": "02116",
+                "resultType": "Station",
+                "state": "MA",
+                "stationAliases": "Boston,Back Bay,westwood",
+                "stationCode": "BBY",
+                "stationFacilityName": "Back Bay Station",
+                "stationName": "Boston, MA",
+                "stationRank": "2"
+            },
+            {
+                "address1": "135 Causeway Street",
+                "address2": "",
+                "autoFillName": "Boston, MA - North Station (BON)",
+                "city": "Boston",
+                "displayName": "Boston, MA - North Station (BON)",
+                "geometry": {
+                    "lat": 42.36624367448386,
+                    "lng": -71.06112259182491
+                },
+                "matchType": "name",
+                "name": "North Station",
+                "postalCode": "02114",
+                "resultType": "Station",
+                "state": "MA",
+                "stationAliases": "North Station",
+                "stationCode": "BON",
+                "stationFacilityName": "North Station",
+                "stationName": "Boston, MA",
+                "stationRank": "3"
+            },
+            {
+                "address1": "50 University Avenue",
+                "address2": "",
+                "autoFillName": "Route 128, MA (RTE)",
+                "city": "Westwood",
+                "displayName": "Route 128, MA (RTE)",
+                "geometry": {
+                    "lat": 42.21025064201732,
+                    "lng": -71.14789461126004
+                },
+                "matchType": "alias",
+                "postalCode": "02090",
+                "resultType": "Station",
+                "state": "MA",
+                "stationAliases": "Boston,128",
+                "stationCode": "RTE",
+                "stationFacilityName": "",
+                "stationName": "Route 128, MA",
+                "stationRank": ""
+            },
+            {
+                "displayName": "Boston College-Main Campus, 140 Commonwealth Ave, Chestnut Hill, MA, 02467",
+                "fullAddress": "Boston College-Main Campus, 140 Commonwealth Ave, Chestnut Hill, MA, 02467",
+                "magicKey": "dHA9MCN0dj0xZWJkOWY4YiNsb2M9MTAxMjI2MTQjbG5nPTQxI3BsPTg3MjAzODgjZmE9NjU1MzYjbGJzPTE0OjE0MzIxNzE0I2xuPVdvcmxk",
+                "matchType": "",
+                "name": "Boston College-Main Campus, 140 Commonwealth Ave, Chestnut Hill, MA, 02467",
+                "resultType": "Locations"
+            },
+            {
+                "displayName": "Boston, MA",
+                "fullAddress": "Boston, MA",
+                "magicKey": "dHA9NCN0dj0xZWJkOWY4YiNubT1Cb3N0b24sIE1BLCBVU0Ejc2M9VVNBOkNBI2xuZz00MSNsbj1Xb3JsZA==",
+                "matchType": "",
+                "name": "Boston, MA",
+                "resultType": "Locations"
+            },
+            {
+                "displayName": "Boston Logan International Airport, 1 Harborside Dr, East Boston, MA, 02128",
+                "fullAddress": "Boston Logan International Airport, 1 Harborside Dr, East Boston, MA, 02128",
+                "magicKey": "dHA9MCN0dj0xZWJkOWY4YiNsb2M9MTAxNzMyMzUjbG5nPTQxI3BsPTg3NDM0MTUjZmE9NjU1MzYjbGJzPTE0OjE0MzIyODkxI2xuPVdvcmxk",
+                "matchType": "",
+                "name": "Boston Logan International Airport, 1 Harborside Dr, East Boston, MA, 02128",
+                "resultType": "Locations"
+            },
+            {
+                "displayName": "Bosotl'odi, AK",
+                "fullAddress": "Bosotl'odi, AK",
+                "magicKey": "dHA9MCN0dj0xZWJkOWY4YiNsb2M9NjA4MTE1I2xuZz00MSNwbD0zODQ4NjYjbGJzPTE0OjE0MzEwMDQxI2xuPVdvcmxk",
+                "matchType": "",
+                "name": "Bosotl'odi, AK",
+                "resultType": "Locations"
+            },
+            {
+                "displayName": "Bossier City, LA",
+                "fullAddress": "Bossier City, LA",
+                "magicKey": "dHA9MCN0dj0xZWJkOWY4YiNsb2M9OTA4OTYzMCNsbmc9NDEjcGw9NzkwMTkyMSNsYnM9MTQ6MTQzMTgxMjMjbG49V29ybGQ=",
+                "matchType": "",
+                "name": "Bossier City, LA",
+                "resultType": "Locations"
+            }
+        ]
+    },
+    "responseCode": 0
+}
