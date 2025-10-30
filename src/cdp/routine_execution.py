@@ -341,19 +341,9 @@ def _execute_fetch_in_session(
 
     body = None
     if endpoint.body:
-        
-        with open("body_original.json", "w") as f:
-            json.dump(endpoint.body, f)
-            
         body_str = json.dumps(endpoint.body)  # convert body from dict to str
-        with open("body_str.json", "w") as f:
-            json.dump(body_str, f)
         body_str_interpolated = _apply_params(body_str, parameters_dict)
-        with open("body_str_interpolated.json", "w") as f:
-            json.dump(body_str_interpolated, f)
         body = json.loads(body_str_interpolated)  # convert body from str to dict
-        with open("body.json", "w") as f:
-            json.dump(body, f)
 
     # Prepare headers and body for injection
     hdrs = headers or {}

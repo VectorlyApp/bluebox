@@ -163,7 +163,7 @@ Prereq: Chrome running in debug mode (see above). Get a `TAB_ID` from `chrome://
 Basic usage:
 
 ```
-uv run python scripts/browser_monitor.py \
+python scripts/browser_monitor.py \
   --host 127.0.0.1 \
   --port 9222 \
   --output-dir ./cdp_captures \
@@ -173,50 +173,50 @@ uv run python scripts/browser_monitor.py \
 Attach to existing tab:
 
 ```
-uv run python scripts/browser_monitor.py <TAB_ID>
+python scripts/browser_monitor.py <TAB_ID>
 # or
-uv run python scripts/browser_monitor.py --tab-id <TAB_ID>
+python scripts/browser_monitor.py --tab-id <TAB_ID>
 ```
 
 Create a new tab automatically:
 
 ```
-uv run python scripts/browser_monitor.py --url https://example.com
+python scripts/browser_monitor.py --url https://example.com
 ```
 
 Incognito new tab (only when not supplying TAB_ID):
 
 ```
-uv run python scripts/browser_monitor.py --incognito --url https://example.com
+python scripts/browser_monitor.py --incognito --url https://example.com
 ```
 
 Attach without navigating (keep current page):
 
 ```
-uv run python scripts/browser_monitor.py --tab-id <TAB_ID> --no-navigate
+python scripts/browser_monitor.py --tab-id <TAB_ID> --no-navigate
 ```
 
 Control output directory behavior:
 
 ```
 # default is to clear; to keep previous outputs
-uv run python scripts/browser_monitor.py --keep-output
+python scripts/browser_monitor.py --keep-output
 ```
 
 Select which resource types to capture (default: XHR, Fetch):
 
 ```
-uv run python scripts/browser_monitor.py --tab-id <TAB_ID> \
+python scripts/browser_monitor.py --tab-id <TAB_ID> \
   --capture-resources XHR Fetch
 ```
 
 Disable clearing cookies/storage (cleared by default):
 
 ```
-uv run python scripts/browser_monitor.py --tab-id <TAB_ID> --no-clear-all
+python scripts/browser_monitor.py --tab-id <TAB_ID> --no-clear-all
 # or granular
-uv run python scripts/browser_monitor.py --tab-id <TAB_ID> --no-clear-cookies
-uv run python scripts/browser_monitor.py --tab-id <TAB_ID> --no-clear-storage
+python scripts/browser_monitor.py --tab-id <TAB_ID> --no-clear-cookies
+python scripts/browser_monitor.py --tab-id <TAB_ID> --no-clear-storage
 ```
 
 Output structure (under `--output-dir`, default `./cdp_captures`):
@@ -247,7 +247,7 @@ Prereq: You have already captured data with the browser monitor (see above) and 
 Basic usage:
 
 ```
-uv run python scripts/discover_routines.py \
+python scripts/discover_routines.py \
   --task-description "recover the api endpoints for searching for trains and their prices" \
   --cdp-captures-dir ./cdp_captures \
   --output-dir ./routine_discovery_output \
@@ -271,6 +271,26 @@ routine_discovery_output/
 └── routine.json                    # Final Routine model (name, parameters, operations)
 ```
 
+## Execute the Discovered Routines
+
+Once you have a routine JSON, run it in a real browser session (same Chrome debug session):
+
+Using a parameters file (see examples in `scripts/execute_routine.py`):
+
+```
+python scripts/execute_routine.py \
+  --routine-path example_data/amtrak_one_way_train_search_routine.json \
+  --parameters-path example_data/amtrak_one_way_train_search_input.json
+```
+
+Or pass parameters inline (JSON string) — matches the script’s examples:
+
+```
+python scripts/execute_routine.py \
+  --routine-path example_data/amtrak_one_way_train_search_routine.json \
+  --parameters-dict '{"origin": "boston", "destination": "new york", "departureDate": "2026-03-22"}'
+```
+
 ## Common Issues
 
 - Chrome not detected / cannot connect to DevTools
@@ -284,12 +304,14 @@ routine_discovery_output/
 ## Coming Soon
 
 - Integration of routine testing into the agentic pipeline
+
   - The agent will execute discovered routines, detect failures, and automatically suggest/fix issues to make routines more robust and efficient.
-
 - Checkpointing progress and resumability
+
   - Avoid re-running the entire discovery pipeline after exceptions; the agent will checkpoint progress and resume from the last successful stage.
-
 - Context overflow management
-  - On detection of context overflow, the agent will checkpoint state, summarize findings, and spawn a continuation agent to proceed with discovery without losing context.
 
- 
+  - On detection of context overflow, the agent will checkpoint state, summarize findings, and spawn a continuation agent to proceed with discovery without losing context.
+- Parameter resolution visibility
+
+  - During execution, show which placeholders (e.g., `{{sessionStorage:...}}`, `{{cookie:...}}`, `{{localStorage:...}}` resolved successfully and which failed
