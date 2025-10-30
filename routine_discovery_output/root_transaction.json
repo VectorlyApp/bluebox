@@ -1,8 +1,0 @@
-{
-  "transaction_id": "20251028_1761690784879_www.amtrak.com_dotcom_journey-solution-option",
-  "description": "Searches one-way journey options and returns schedules with pricing.",
-  "url": "https://www.amtrak.com/dotcom/journey-solution-option",
-  "method": "POST",
-  "explanation": "This POST request carries a JSON body with journeyRequest.type set to 'OW' (one-way) along with origin, destination, departureDateTime, and passenger details; the headers indicate JSON content, and the response returns success with journey solution data and fares. The captured payload shows type:'OW', origin:'NYP', destination:'BOS', pricingUnit:'DOLLARS', and singleAdultFare:true, matching a one-way price search . The response is application/json with success:true and data for the requested journey, confirming it provides schedules and pricing .",
-  "confidence_level": "high"
-}
