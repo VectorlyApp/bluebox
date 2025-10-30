@@ -285,22 +285,31 @@ routine_discovery_output/
 
 ### Execute the Discovered Routines 🏃
 
-Once you have a routine JSON, run it in a real browser session (same Chrome debug session):
+Run the example routine: 
 
-Using a parameters file (see examples in `scripts/execute_routine.py`):
+
 
 ```
+# Using a parameters file (see examples in `scripts/execute_routine.py`):
+
 python scripts/execute_routine.py \
   --routine-path example_data/amtrak_one_way_train_search_routine.json \
   --parameters-path example_data/amtrak_one_way_train_search_input.json
-```
 
-Or pass parameters inline (JSON string) — matches the script’s examples:
 
-```
+# Or pass parameters inline (JSON string) — matches the script’s examples:
+
 python scripts/execute_routine.py \
   --routine-path example_data/amtrak_one_way_train_search_routine.json \
   --parameters-dict '{"origin": "boston", "destination": "new york", "departureDate": "2026-03-22"}'
+```
+
+Once you have a routine JSON, run it in a real browser session (same Chrome debug session):
+
+```
+python scripts/execute_routine.py \
+        --routine-path routine_discovery_output/routine.json \
+        --parameters-path routine_discovery_output/test_parameters.json
 ```
 
 ## Common Issues ⚠️

@@ -5,8 +5,8 @@ Example commands:
 
     # Execute routine with parameters from a file
     python scripts/execute_routine.py \
-        --routine-path example_routines/amtrak_one_way_train_search_routine.json \
-        --parameters-path example_routines/amtrak_one_way_train_search_input.json
+        --routine-path routine_discovery_output/routine.json \
+        --parameters-path routine_discovery_output/test_parameters.json
 
     # Execute routine with parameters from a dictionary
     python scripts/execute_routine.py \
@@ -62,5 +62,3 @@ if __name__ == "__main__":
     parser.add_argument("--parameters-dict", type=str, required=False, help="Dictionary of parameters")
     args = parser.parse_args()
     main(args.routine_path, args.parameters_path, args.parameters_dict)
-
-
