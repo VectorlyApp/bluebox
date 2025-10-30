@@ -44,7 +44,8 @@ export OPENAI_API_KEY="sk-..."
 ### Instructions for MacOS
 
 ```
-# Create temporary chrome user directory
+# You should see JSON containing a webSocketDebuggerUrl like:
+# ws://127.0.0.1:9222/devtools/browser/*************************************# Create temporary chrome user directory
 mkdir $HOME/tmp
 mkdir $HOME/tmp/chrome
 
@@ -61,15 +62,8 @@ mkdir $HOME/tmp/chrome
 # Verify chrome is running in debug mode
 curl http://127.0.0.1:9222/json/version
 
-# You should see something like this:
-{
-   "Browser": "Chrome/141.0.7390.123",
-   "Protocol-Version": "1.3",
-   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-   "V8-Version": "14.1.146.11",
-   "WebKit-Version": "537.36 (@**********************************)",
-   "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/browser/*************************************"
-}
+# You should see JSON containing a webSocketDebuggerUrl like:
+# ws://127.0.0.1:9222/devtools/browser/*************************************
 ```
 
 ### Instructions for Windows
