@@ -237,7 +237,7 @@ class ContextManager(BaseModel):
                 and 
                 (
                     max_timestamp is None 
-                    or self.get_transaction_timestamp(transaction_id) <= max_timestamp
+                    or self.get_transaction_timestamp(transaction_id) < max_timestamp
                 )
             ):
                 results.append(transaction_id)

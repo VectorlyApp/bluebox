@@ -4,7 +4,7 @@ import uuid
 from abc import ABC
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any, Annotated, ClassVar, Literal, Union
+from typing import Any, Annotated, ClassVar, Literal, Union, Callable
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -66,6 +66,35 @@ class ParameterType(str, Enum):
     URL = "url"
     ENUM = "enum"
 
+class BuiltinParameter(BaseModel):
+    """
+    Builtin parameter model.
+    """
+    name: str = Field(
+        ...,
+        description="Builtin parameter name"
+    )
+    description: str = Field(
+        ...,
+        description="Human-readable builtin parameter description"
+    )
+    value_generator: Callable[[], Any] = Field(
+        ...,
+        description="Function to generate the builtin parameter value"
+    )
+
+BUILTIN_PARAMETERS = [
+    BuiltinParameter(
+        name="uuid",
+        description="UUID parameter",
+        value_generator=lambda: str(uuid.uuid4())
+    ),
+    BuiltinParameter(
+        name="epoch_milliseconds",
+        description="Epoch milliseconds parameter",
+        value_generator=lambda: str(int(time.time() * 1000))
+    ),
+]
 
 class Parameter(BaseModel):
     """
@@ -411,7 +440,7 @@ class Routine(ResourceBase):
         Raises ValueError if unused parameters are found or undefined parameters are used.
         """
         # list of builtin parameter names
-        builtin_parameter_names = []
+        builtin_parameter_names = [builtin_parameter.name for builtin_parameter in BUILTIN_PARAMETERS]
         
         # Convert the entire routine to JSON string for searching
         routine_json = self.model_dump_json()
