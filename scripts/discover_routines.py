@@ -12,7 +12,7 @@ def main() -> None:
     
     # parse arguments
     parser = ArgumentParser(description="Discover routines from the network transactions.")
-    parser.add_argument("--task-description", type=str, required=True, help="The description of the task to discover routines for.")
+    parser.add_argument("--task", type=str, required=True, help="The description of the task to discover routines for.")
     parser.add_argument("--cdp-captures-dir", type=str, default="./cdp_captures", help="The directory containing the CDP captures.")
     parser.add_argument("--output-dir", type=str, default="./routine_discovery_output", help="The directory to save the output to.")
     parser.add_argument("--llm-model", type=str, default="gpt-5", help="The LLM model to use.")
@@ -27,7 +27,7 @@ def main() -> None:
     
     
     print(f"\n{'-' * 100}")
-    print(f"Starting routine discovery for task:\n{args.task_description}")
+    print(f"Starting routine discovery for task:\n{args.task}")
     print(f"{'-' * 100}\n")
     
     # initialize OpenAI client
@@ -55,7 +55,7 @@ def main() -> None:
     routine_discovery_agent = RoutineDiscoveryAgent(
         client=openai_client,
         context_manager=context_manager,
-        task_description=args.task_description,
+        task=args.task,
         llm_model=args.llm_model,
         output_dir=args.output_dir,
     )

@@ -47,6 +47,7 @@ class Variable(BaseModel):
     requires_resolution: bool = Field(description="Whether the variable requires resolution.")
     name: str
     observed_value: str
+    values_to_scan_for: list[str]
     description: str
 
     

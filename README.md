@@ -260,7 +260,7 @@ Basic usage:
 
 ```
 python scripts/discover_routines.py \
-  --task-description "recover the api endpoints for searching for trains and their prices" \
+  --task "recover the api endpoints for searching for trains and their prices" \
   --cdp-captures-dir ./cdp_captures \
   --output-dir ./routine_discovery_output \
   --llm-model gpt-5
@@ -268,7 +268,7 @@ python scripts/discover_routines.py \
 
 Arguments:
 
-- **--task-description**: What you want to achieve? What API endpoint should it discover?
+- **--task**: What you want to achieve? What API endpoint should it discover?
 - **--cdp-captures-dir**: Root of prior CDP capture output (default: `./cdp_captures`)
 - **--output-dir**: Directory to write results (default: `./routine_discovery_output`)
 - **--llm-model**: LLM to use for reasoning/parsing (default: `gpt-5`)

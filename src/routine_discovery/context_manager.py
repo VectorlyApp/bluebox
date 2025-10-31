@@ -220,20 +220,27 @@ class ContextManager(BaseModel):
         
     def scan_transaction_responses(self, value: str, max_timestamp: str | None = None) -> list[str]:
         """
-        Scan the requests and responses for a value.
+        Scan the network transaction responses for a value.
         
         Args:
-            value: The value to scan for in the requests and responses.
+            value: The value to scan for in the network transaction responses.
             max_timestamp: latest timestamp to scan for.
         Returns:
-            A list of transactions that contain the value in the response body.
+            A list of transaction ids that contain the value in the response body.
         """
         all_transaction_ids = self.get_all_transaction_ids()
         results = []
         for transaction_id in all_transaction_ids:
             transaction = self.get_transaction_by_id(transaction_id)
-            if value in transaction["response_body"] and (max_timestamp is None or self.get_transaction_timestamp(transaction_id) <= max_timestamp):
-                results.append(transaction)
+            if (
+                value in str(transaction["response_body"]) 
+                and 
+                (
+                    max_timestamp is None 
+                    or self.get_transaction_timestamp(transaction_id) <= max_timestamp
+                )
+            ):
+                results.append(transaction_id)
         return results
     
 

@@ -23,7 +23,7 @@ class RoutineDiscoveryAgent(BaseModel):
     """
     client: OpenAI
     context_manager: ContextManager
-    task_description: str
+    task: str
     llm_model: str = "gpt-5-mini"
     message_history: list[dict] = Field(default_factory=list)
     output_dir: str
@@ -66,7 +66,7 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("system", self.SYSTEM_PROMPT_IDENTIFY_TRANSACTIONS)
         
         # add the user prompt to the message history
-        self._add_to_message_history("user", f"Task description: {self.task_description}")
+        self._add_to_message_history("user", f"Task description: {self.task}")
         self._add_to_message_history("user", f"These are the possible network transaction ids you can choose from: {self.context_manager.get_all_transaction_ids()}")
 
         print("Identifying the network transaction that directly corresponds to the user's requested task...")
@@ -192,7 +192,7 @@ class RoutineDiscoveryAgent(BaseModel):
                 },
                 {
                     "role": "user",
-                    "content": f"Task description: {self.task_description}"
+                    "content": f"Task description: {self.task}"
                 },
                 {
                     "role": "user",
@@ -272,7 +272,7 @@ class RoutineDiscoveryAgent(BaseModel):
         message = (
             f"{identified_transaction.transaction_id} have been added to the vectorstore in full (including response bodies)."
             "Please confirm that the identified transaction is correct and that it directly corresponds to the user's requested task:"
-            f"{self.task_description}"
+            f"{self.task}"
             f"Please respond in the following format: {TransactionConfirmationResponse.model_json_schema()}"
         )
         self._add_to_message_history("user", message)
@@ -351,6 +351,10 @@ class RoutineDiscoveryAgent(BaseModel):
             "If we can most likely hardcode this value, mark requires_resolution=False."
             "system variables are related to the device or browser environment, and are not used to identify the user."
             "token and cookie values are not used to identify the user: these may need to be resolved at runtime."
+            "Only the actual values of the variables (token/cookies, etc.) should be placed into the observed_value field."
+            "The values of values_to_scan_for will then be used to scan the storage and transactions for the source of the variable so only include the actual values of the variables."
+            "values_to_scan_for should be possible substrings that will likely be present in the response body of a network transaction or a storage entry value."
+            "This is necessary to figure out where the variable is coming from."
         )
         
         self._add_to_message_history("user", message)
@@ -406,15 +410,23 @@ class RoutineDiscoveryAgent(BaseModel):
         for variable in variables_to_resolve:
             
             # get the storage objects that contain the value and are before the latest timestamp
-            storage_sources = self.context_manager.scan_storage_for_value(
-                value=variable.observed_value
-            )
+            storage_objects = []
+            for value in variable.values_to_scan_for:
+                storage_sources = self.context_manager.scan_storage_for_value(
+                    value=value
+                )
+                storage_sources.extend(storage_sources)
             
             # get the transaction ids that contain the value and are before the latest timestamp
-            transaction_ids = self.context_manager.scan_transaction_responses(
-                value=variable.observed_value, max_timestamp=max_timestamp
-            )
-            
+            transaction_ids = []
+            for value in variable.values_to_scan_for:
+                transaction_ids.extend(self.context_manager.scan_transaction_responses(
+                    value=value, max_timestamp=max_timestamp
+                ))
+                
+            # deduplicate transaction ids
+            transaction_ids = list(set(transaction_ids))
+
             # add the transactions to the vectorstore
             uuid = str(uuid4())
             for transaction_id in transaction_ids:
@@ -427,7 +439,7 @@ class RoutineDiscoveryAgent(BaseModel):
             message = (
                 f"Please resolve the variable: {variable.observed_value}"
                 f"The variable was found in the following storage sources: {storage_sources}"
-                f"The variable was found in the following transaction sources: {transaction_ids}"
+                f"The variable was found in the following transactions ids: {transaction_ids}"
                 f"These transactions are added to the vectorstore in full (including response bodies)."
                 f"Please respond in the following format: {ResolvedVariableResponse.model_json_schema()}"
                 f"Dot paths should be like this: 'key.data.items[0].id', 'path.to.valiable.0.value', etc."
