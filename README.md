@@ -39,7 +39,7 @@ Each Routine includes:
 - **operations** — the ordered browser actions that perform the automation
 
 Example:
-> Log in to a website, navigate to a dashboard, and export a report — all as a reusable Routine.
+> Navigate to a dashboard, search based on keywords, and return results — all as a reusable Routine.
 
 ### Parameters
 
