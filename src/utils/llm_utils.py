@@ -24,19 +24,17 @@ def llm_parse_text_to_model(
     Returns:
         BaseModel: The parsed pydantic model.
     """
-    
-    
     SYSTEM_PROMPT = f"""
     You are a helpful assistant that parses text to a pydantic model.
     You must conform to the provided pydantic model schema.
     """
-    
+
     message = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"Context: {context}"},
         {"role": "user", "content": f"Text to parse: {text}"}
     ]
-    
+
     for current_try in range(n_tries):
         try:
             completion = client.chat.completions.parse(
@@ -45,12 +43,13 @@ def llm_parse_text_to_model(
                 response_format=pydantic_model,
             )
             return completion.choices[0].message.parsed
-        
+
         except Exception as e:
             print(f"Try {current_try + 1} failed with error: {e}")
-            message.append({"role": "user", "content": f"Previous attempt failed with error: {e}. Please try again."})
-                
-            
+            message.append({
+                "role": "user", "content": f"Previous attempt failed with error: {e}. Please try again."
+            })
+ 
     raise Exception(f"Failed to parse text to model after {n_tries} tries")
 
 
@@ -65,12 +64,12 @@ def manual_llm_parse_text_to_model(
     """
     Manual LLM parse text to model. (without using structured output)
     """
-    
+
     SYSTEM_PROMPT = f"""
     You are a helpful assistant that parses text to a pydantic model.
     You must conform to the provided pydantic model schema.
     """
-    
+
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"Context: {context}"},
@@ -78,7 +77,7 @@ def manual_llm_parse_text_to_model(
         {"role": "user", "content": f"Model JSON schema: {pydantic_model.model_json_schema()}"},
         {"role": "user", "content": f"Please respond in the following format above. Your response must be a valid JSON object."}
     ]
-    
+
     for current_try in range(n_tries):
         try:
             response = client.chat.completions.create(
@@ -87,18 +86,19 @@ def manual_llm_parse_text_to_model(
             )
             messages.append({"role": "assistant", "content": response.choices[0].message.content})
             text = response.choices[0].message.content
-            
+
             parsed_model = pydantic_model(**json.loads(text))
-            
+
             return parsed_model
-        
+
         except Exception as e:
             print(f"Try {current_try + 1} failed with error: {e}")
-            messages.append({"role": "user", "content": f"Previous attempt failed with error: {e}. Please try again."})
-            
+            messages.append(
+                {"role": "user", "content": f"Previous attempt failed with error: {e}. Please try again."}
+            )
+
     raise Exception(f"Failed to parse text to model after {n_tries} tries")
 
-    
 
 def collect_text_from_response(resp) -> str:
     """

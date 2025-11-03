@@ -1,6 +1,10 @@
 import json
-from pydantic import BaseModel, Field, field_validator
+from uuid import uuid4
+import os
+
 from openai import OpenAI
+from pydantic import BaseModel, Field, field_validator
+
 from src.routine_discovery.context_manager import ContextManager
 from src.utils.llm_utils import llm_parse_text_to_model, collect_text_from_response, manual_llm_parse_text_to_model
 from src.data_models.llm_responses import (
@@ -13,8 +17,6 @@ from src.data_models.llm_responses import (
 )
 from src.data_models.production_routine import Routine as ProductionRoutine
 from src.data_models.dev_routine import Routine, RoutineFetchOperation
-from uuid import uuid4
-import os
 
 
 class RoutineDiscoveryAgent(BaseModel):
@@ -31,18 +33,17 @@ class RoutineDiscoveryAgent(BaseModel):
     tools: list[dict] = Field(default_factory=list)
     n_transaction_identification_attempts: int = 3
     current_transaction_identification_attempt: int = 0
-    
+
     class Config:
         arbitrary_types_allowed = True
-        
+
     SYSTEM_PROMPT_IDENTIFY_TRANSACTIONS: str = f"""
     You are a helpful assistant that is an expert in parsing network traffic.
     You need to identify one or more network transactions that directly correspond to the user's requested task.
     You have access to vectorstore that contains network transactions and storage data
     (cookies, localStorage, sessionStorage, etc.).
     """
-        
-        
+
     def run(self) -> None:
         """
         Run the routine discovery agent.
@@ -61,7 +62,7 @@ class RoutineDiscoveryAgent(BaseModel):
                 "vector_store_ids": [self.context_manager.vectorstore_id],
             }
         ]
-        
+
         # add the system prompt to the message history
         self._add_to_message_history("system", self.SYSTEM_PROMPT_IDENTIFY_TRANSACTIONS)
         
@@ -90,7 +91,7 @@ class RoutineDiscoveryAgent(BaseModel):
                 
         if identified_transaction is None:
             raise Exception("Failed to identify the network transactions that directly correspond to the user's requested task.")
-        
+
         # save the indentified transactions
         save_path = os.path.join(self.output_dir, "root_transaction.json")
         with open(save_path, mode="w", encoding="utf-8") as f:
@@ -178,9 +179,7 @@ class RoutineDiscoveryAgent(BaseModel):
         with open(save_path, mode="w", encoding="utf-8") as f:
             json.dump(test_parameters_dict, f, ensure_ascii=False, indent=2)
         print(f"Test parameters saved to: {save_path}")
-        
-    
-        
+
     def identify_transaction(self) -> TransactionIdentificationResponse:
         """
         Identify the network transactions that directly correspond to the user's requested task.
@@ -240,7 +239,6 @@ class RoutineDiscoveryAgent(BaseModel):
         
         # return the parsed response
         return parsed_response
-
 
     def confirm_indetified_transaction(
         self,
@@ -304,8 +302,7 @@ class RoutineDiscoveryAgent(BaseModel):
         )
         
         return parsed_response
-    
-    
+
     def extract_variables(self, transaction_id: str) -> ExtractedVariableResponse:
         """
         Extract the variables from the transaction.
@@ -512,7 +509,6 @@ class RoutineDiscoveryAgent(BaseModel):
             
         return resolved_variable_responses
 
-
     def construct_routine(self, routine_transactions: dict, max_attempts: int = 3) -> Routine:
         """
         Construct the routine from the routine transactions.
@@ -592,7 +588,7 @@ class RoutineDiscoveryAgent(BaseModel):
             
             
         raise Exception(f"Failed to construct the routine after {max_attempts} attempts")
-    
+
     def productionize_routine(self, routine: Routine) -> Routine:
         
         message = (
@@ -641,8 +637,7 @@ class RoutineDiscoveryAgent(BaseModel):
         )
         
         return production_routine
-        
-    
+
     def get_test_parameters(self, routine: Routine) -> TestParametersResponse:
         """
         Get the test parameters for the routine.
@@ -680,8 +675,9 @@ class RoutineDiscoveryAgent(BaseModel):
         
         return parsed_response
 
-
     def _add_to_message_history(self, role: str, content: str) -> None:
-        self.message_history.append({"role": role, "content": content})
+        self.message_history.append(
+            {"role": role, "content": content}
+        )
         with open(os.path.join(self.output_dir, "message_history.json"), mode="w", encoding="utf-8") as f:
             json.dump(self.message_history, f, ensure_ascii=False, indent=2)
