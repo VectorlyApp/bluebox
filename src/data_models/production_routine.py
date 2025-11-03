@@ -448,24 +448,27 @@ class Routine(ResourceBase):
         # Extract all parameter names
         defined_parameters = {param.name for param in self.parameters}
 
-        # Find all parameter usages in the JSON: *{{*}}*
-        param_pattern = r'\{\{.*?\}\}'
+        # Find all parameter usages in the JSON: *"{{*}}"*
+        # Match quoted placeholders: "{{param}}" or \"{{param}}\" (escaped quotes in JSON strings)
+        # \"{{param}}\" in JSON string means "{{param}}" in actual value
+        # Pattern REQUIRES quotes (either " or \") immediately before {{ and after }}
+        param_pattern = r'(?:"|\\")\{\{([^}"]*)\}\}(?:"|\\")'
         matches = re.findall(param_pattern, routine_json)
-
+        
         # track used parameters
         used_parameters = set()
-
+        
         # iterate over all parameter usages
         for match in matches:
             
-            # clean the match from the {{ and }}
-            match = match.strip()[2:-2].strip()
+            # clean the match (already extracted the content between braces)
+            match = match.strip()
             
-            # if the parameter name starts with a colon, it is a storage parameter
+            # if the parameter name contains a colon, it is a storage parameter
             if ":" in match:
                 kind, path = [p.strip() for p in match.split(":", 1)]
-                assert kind in ["sessionStorage", "localStorage", "cookie"], f"Invalid prefix in parameter name: {kind}"
-                assert path, f"Path is required for sessionStorage, localStorage, and cookie: {kind}:{path}"
+                assert kind in ["sessionStorage", "localStorage", "cookie", "meta"], f"Invalid prefix in parameter name: {kind}"
+                assert path, f"Path is required for sessionStorage, localStorage, cookie, and meta: {kind}:{path}"
                 continue
             # if the parameter name is a builtin parameter, add it to the used parameters
             elif match in builtin_parameter_names:
@@ -491,4 +494,3 @@ class Routine(ResourceBase):
             )
 
         return self
-

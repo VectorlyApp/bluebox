@@ -12,7 +12,7 @@ class TransactionIdentificationResponse(BaseModel):
     Response from the LLM for identifying the network transaction that directly corresponds to
     the user's requested task. 
     """
-    transaction_id: str
+    transaction_id: str | None
     description: str
     url: str
     method: Method

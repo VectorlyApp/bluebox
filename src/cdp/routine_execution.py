@@ -74,7 +74,20 @@ def _generate_fetch_js(
         "  // Simple tokens (computed locally, no source lookup)",
         "  function replaceSimpleTokens(str){",
         "    if (typeof str !== 'string') return str;",
-        "    str = str.replace(/\\{\\{\\s*epoch_milliseconds\\s*\\}\\}/ig, () => String(Date.now()));",
+        "    // Handle quoted and unquoted: \"{{epoch_milliseconds}}\" or {{epoch_milliseconds}}",
+        "    str = str.replace(/\\\"?\\{\\{\\s*epoch_milliseconds\\s*\\}\\}\\\"?/g, () => String(Date.now()));",
+        "    // Handle {{uuid}} - generate UUID using crypto.randomUUID() if available",
+        "    str = str.replace(/\\\"?\\{\\{\\s*uuid\\s*\\}\\}\\\"?/g, () => {",
+        "      if ('randomUUID' in crypto) {",
+        "        return crypto.randomUUID();",
+        "      }",
+        "      // Fallback for browsers without crypto.randomUUID()",
+        "      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {",
+        "        const r = Math.random() * 16 | 0;",
+        "        const v = c === 'x' ? r : (r & 0x3 | 0x8);",
+        "        return v.toString(16);",
+        "      });",
+        "    });",
         "    return str;",
         "  }",
         "",
@@ -113,7 +126,7 @@ def _generate_fetch_js(
         "    }",
         "  }",
         "",
-        "  const PLACEHOLDER = /\\{\\{\\s*(sessionStorage|localStorage|cookie|meta)\\s*:\\s*([^}]+?)\\s*\\}\\}/g;",
+        "  const PLACEHOLDER = /\\\"?\\{\\{\\s*(sessionStorage|localStorage|cookie|meta)\\s*:\\s*([^}]+?)\\s*\\}\\}\\\"?/g;",
         "  function resolveOne(token){",
         "    const [lhs, rhs] = token.split('||');",
         "    const [kind, path] = lhs.split(':');",
@@ -137,10 +150,22 @@ def _generate_fetch_js(
         "  function resolvePlaceholders(str){",
         "    if (typeof str !== 'string') return str;",
         "    str = replaceSimpleTokens(str);",
+        "    // Follow test.py pattern: for quoted placeholders, strings use raw value, objects use JSON.stringify",
         "    return str.replace(PLACEHOLDER, (m, _k, inner) => {",
         "      const v = resolveOne(`${_k}:${inner}`);",
         "      if (v === undefined || v === null) return m;",
-        "      return (typeof v === 'object') ? JSON.stringify(v) : String(v);",
+        "      // Check if match was quoted - could be \"{{...}}\" or \\\"{{...}}\\\"",
+        "      // Check for escaped quote \\\" at start/end, or simple quote \"",
+        "      const startsWithEscaped = m.startsWith('\\\\\"') || m.startsWith('\"');",
+        "      const endsWithEscaped = m.endsWith('\\\\\"') || (m.endsWith('\"') && m.length > 2);",
+        "      const isQuoted = startsWithEscaped && endsWithEscaped;",
+        "      if (isQuoted) {",
+        "        // Quoted: strings use raw value (no quotes), objects use JSON.stringify",
+        "        return (typeof v === 'string') ? v : JSON.stringify(v);",
+        "      } else {",
+        "        // Unquoted: always stringify",
+        "        return (typeof v === 'object') ? JSON.stringify(v) : String(v);",
+        "      }",
         "    });",
         "  }",
         "",
@@ -344,7 +369,7 @@ def _execute_fetch_in_session(
         body_str = json.dumps(endpoint.body)  # convert body from dict to str
         body_str_interpolated = _apply_params(body_str, parameters_dict)
         body = json.loads(body_str_interpolated)  # convert body from str to dict
-
+        
     # Prepare headers and body for injection
     hdrs = headers or {}
 
@@ -402,6 +427,11 @@ def _apply_params(text: str, parameters_dict: dict | None) -> str:
 
     Only replaces {{param}} where 'param' is in parameters_dict.
     Leaves other placeholders like {{sessionStorage:...}} untouched.
+    
+    Follows the pattern from test.py:
+    - For string values in quoted placeholders: insert raw string (no quotes)
+    - For non-string values in quoted placeholders: use json.dumps(value)
+    - For unquoted placeholders: use str(value)
 
     Args:
         text: Text containing parameter placeholders.
@@ -412,15 +442,33 @@ def _apply_params(text: str, parameters_dict: dict | None) -> str:
     """
     if not text or not parameters_dict:
         return text
-    pattern = (
-        r"\{\{\s*(" + "|".join(map(re.escape, parameters_dict.keys())) + r")\s*\}\}"
-    )
+    
+    for key, value in parameters_dict.items():
+        # Compute replacement based on value type (following test.py pattern)
+        if isinstance(value, str):
+            literal = value  # For strings, insert raw string (no quotes)
+        else:
+            literal = json.dumps(value)  # For numbers/bools/null, use JSON encoding
+        
+        escaped_key = re.escape(key)
+        
+        # Pattern 1: Simple quoted placeholder "{{key}}" in JSON string
+        # Matches: "{{key}}" (when the JSON value itself is the string "{{key}}")
+        # Use regular string concatenation to avoid f-string brace escaping issues
+        simple_quoted = '"' + r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}' + '"'
+        text = re.sub(simple_quoted, literal, text)
+        
+        # Pattern 2: Escaped quote variant \"{{key}}\"
+        # In JSON string this appears as: \\"{{key}}\\" 
+        # Use regular string concatenation to build pattern with proper escaping
+        double_escaped = r'\\"' + r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}' + r'\\"'
+        text = re.sub(double_escaped, literal, text)
+        
+        # Pattern 3: Bare placeholder {{key}} (unquoted, for URL params, etc.)
+        bare_pattern = r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}'
+        text = re.sub(bare_pattern, str(value), text)
 
-    def repl(m):
-        key = m.group(1)
-        return str(parameters_dict.get(key, m.group(0)))
-
-    return re.sub(pattern, repl, text)
+    return text
 
 
 def _generate_random_user_agent() -> str:

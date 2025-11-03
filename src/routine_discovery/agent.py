@@ -77,6 +77,9 @@ class RoutineDiscoveryAgent(BaseModel):
             # identify the transaction
             identified_transaction = self.identify_transaction()
             
+            if identified_transaction.transaction_id is None:
+                raise Exception("Failed to identify the network transactions that directly correspond to the user's requested task.")
+            
             # confirm the identified transaction
             confirmation_response = self.confirm_indetified_transaction(identified_transaction)
             
@@ -115,7 +118,7 @@ class RoutineDiscoveryAgent(BaseModel):
             transaction = self.context_manager.get_transaction_by_id(transaction_id)
             
             # extract variables from the transaction
-            print("Extract variables (args, cookies, tokens, browser variables) from the identified transaction...")
+            print("Extracting variables (args, cookies, tokens, browser variables) from the identified transaction...")
             extracted_variables = self.extract_variables(transaction_id)
             
             # save the extracted variables
@@ -134,13 +137,6 @@ class RoutineDiscoveryAgent(BaseModel):
             with open(save_path, "w") as f:
                 json.dump(resolved_variables_json, f, ensure_ascii=False, indent=2)
             print(f"Resolved variables saved to: {save_path}")
-            
-            # adding transaction that need to be processed to the queue
-            for resolved_variable in resolved_variables:
-                if resolved_variable.transaction_source is not None:
-                    new_transaction_id = resolved_variable.transaction_source.transaction_id
-                    if new_transaction_id not in routine_transactions:
-                        transaction_queue.append(new_transaction_id)
                         
             # adding transaction data to the routine transactions
             routine_transactions[transaction_id] = {
@@ -149,10 +145,15 @@ class RoutineDiscoveryAgent(BaseModel):
                 "resolved_variables": [resolved_variable.model_dump() for resolved_variable in resolved_variables]
             }
             
+            # adding transaction that need to be processed to the queue
+            for resolved_variable in resolved_variables:
+                if resolved_variable.transaction_source is not None:
+                    new_transaction_id = resolved_variable.transaction_source.transaction_id
+                    if new_transaction_id not in routine_transactions:
+                        transaction_queue.append(new_transaction_id)
+            
         # construct the routine
         routine = self.construct_routine(routine_transactions)
-        
-        print(f"Finalized routine construction! Routine saved to: {save_path}")
 
         # save the routine
         save_path = os.path.join(self.output_dir, f"routine.json")
@@ -230,7 +231,7 @@ class RoutineDiscoveryAgent(BaseModel):
         # parse the response to the pydantic model
         parsed_response = llm_parse_text_to_model(
             text=response_text,
-            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
             pydantic_model=TransactionIdentificationResponse,
             client=self.client,
             llm_model='gpt-5-nano'
@@ -296,7 +297,7 @@ class RoutineDiscoveryAgent(BaseModel):
         # parse the response to the pydantic model
         parsed_response = llm_parse_text_to_model(
             text=response_text,
-            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
             pydantic_model=TransactionConfirmationResponse,
             client=self.client,
             llm_model='gpt-5-nano'
@@ -338,14 +339,14 @@ class RoutineDiscoveryAgent(BaseModel):
             transactions.append(
                 {
                     "request": transaction["request"],
-                    "response": transaction["response"],
-                    "response_body": response_body
+                    # "response": transaction["response"],
+                    # "response_body": response_body
                 }
             )
         
         # add message to the message history
         message = (
-            f"Please extract the variables from the requests of identified network transactions: {transactions}"
+            f"Please extract the variables from only these network requests (requests only!): {transactions}"
             f"Please respond in the following format: {ExtractedVariableResponse.model_json_schema()}"
             "Mark each variable with requires_resolution=True if we need to dynamically resolve this variable at runtime."
             "If we can most likely hardcode this value, mark requires_resolution=False."
@@ -378,7 +379,7 @@ class RoutineDiscoveryAgent(BaseModel):
         # parse the response to the pydantic model
         parsed_response = llm_parse_text_to_model(
             text=response_text,
-            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
             pydantic_model=ExtractedVariableResponse,
             client=self.client,
             llm_model="gpt-5-nano"
@@ -409,6 +410,8 @@ class RoutineDiscoveryAgent(BaseModel):
         # for each variable to resolve, try to find the source of the variable in the storage and transactions
         for variable in variables_to_resolve:
             
+            print(f"Resolving variable: {variable.name} with values to scan for: {variable.values_to_scan_for}")
+            
             # get the storage objects that contain the value and are before the latest timestamp
             storage_objects = []
             for value in variable.values_to_scan_for:
@@ -416,9 +419,12 @@ class RoutineDiscoveryAgent(BaseModel):
                     value=value
                 )
                 storage_sources.extend(storage_sources)
+                
+            if len(storage_sources) > 0:
+                print(f"Found {len(storage_sources)} storage sources that contain the value")
             
             # get the transaction ids that contain the value and are before the latest timestamp
-            transaction_ids = []
+            transaction_ids = {}
             for value in variable.values_to_scan_for:
                 transaction_ids.extend(self.context_manager.scan_transaction_responses(
                     value=value, max_timestamp=max_timestamp
@@ -426,6 +432,9 @@ class RoutineDiscoveryAgent(BaseModel):
                 
             # deduplicate transaction ids
             transaction_ids = list(set(transaction_ids))
+                
+            if len(transaction_ids) > 0:
+                print(f"Found {len(transaction_ids)} transaction ids that contain the value: {transaction_ids}")
 
             # add the transactions to the vectorstore
             uuid = str(uuid4())
@@ -445,6 +454,7 @@ class RoutineDiscoveryAgent(BaseModel):
                 f"Dot paths should be like this: 'key.data.items[0].id', 'path.to.valiable.0.value', etc."
                 f"For paths in transaction responses, start with the first key of the response body"
                 f"For paths in storage, start with the cookie, local storage, or session storage entry name"
+                f"If the variable is found in both storage and transactions, you should indicate both sources and resolve them accordinly!"
             )
             self._add_to_message_history("user", message)
             
@@ -480,7 +490,7 @@ class RoutineDiscoveryAgent(BaseModel):
             # parse the response to the pydantic model
             parsed_response = llm_parse_text_to_model(
                 text=response_text,
-                context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+                context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
                 pydantic_model=ResolvedVariableResponse,
                 client=self.client,
                 llm_model="gpt-5-nano"
@@ -509,7 +519,15 @@ class RoutineDiscoveryAgent(BaseModel):
             f"First step of the routine should be to navigate to the target web page and sleep for a bit of time (2-3 seconds). "
             f"All fetch operations should be constructed as follows: {RoutineFetchOperation.model_json_schema()}. "
             f"Parameters are only the most important arguments. "
-            f"You can inject variables by using the following syntax: {{{{parameter_name}}}} {{{{cookie:cookie_name}}}} {{{{sessionStorage:key.path.to.0.value}}}} {{{{local_storage:local_storage_name}}}}. "
+            f"You can inject variables by using placeholders. CRITICAL: PLACEHOLDERS ARE REPLACED AT RUNTIME AND THE RESULT MUST BE VALID JSON! "
+            f"For STRING values: Use \\\"{{{{parameter_name}}}}\\\" format (escaped quote + placeholder + escaped quote). "
+            f"Example: \\\"name\\\": \\\"\\\"{{{{user_name}}}}\\\"\\\". At runtime, \\\"\\\"{{{{user_name}}}}\\\"\\\" is replaced and becomes \\\"name\\\": \\\"John\\\" (valid JSON string). "
+            f"For NUMERIC values (int, float) or NULL: Use \\\"{{{{parameter_name}}}}\\\" format (regular quote + placeholder + quote). "
+            f"Example: \\\"amount\\\": \\\"{{{{price}}}}\\\". At runtime, \\\"{{{{price}}}}\\\" is replaced with the numeric value and quotes are removed, becoming \\\"amount\\\": 99.99 (JSON number, not string). "
+            f"Example: \\\"quantity\\\": \\\"{{{{count}}}}\\\" with value 5 becomes \\\"quantity\\\": 5 (JSON number). "
+            f"For NULL: \\\"metadata\\\": \\\"{{{{optional_field}}}}\\\" with null value becomes \\\"metadata\\\": null (JSON null). "
+            f"REMEMBER: After placeholder replacement, the JSON must be valid and parseable! "
+            f"Placeholder types: {{{{parameter_name}}}} for parameters, {{{{cookie:cookie_name}}}} for cookies, {{{{sessionStorage:key.path.to.0.value}}}} for session storage, {{{{localStorage:local_storage_name}}}} for local storage. "
             f"You can hardcode unresolved variables to their observed values. "
             f"You will want to navigate to the target page, then perform the fetch operations in the proper order. "
             f"Browser variables should be hardcoded to observed values. "
@@ -547,7 +565,7 @@ class RoutineDiscoveryAgent(BaseModel):
             # parse the response to the pydantic model
             routine = llm_parse_text_to_model(
                 text=response_text,
-                context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+                context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
                 pydantic_model=Routine,
                 client=self.client,
                 llm_model=self.llm_model
@@ -577,6 +595,18 @@ class RoutineDiscoveryAgent(BaseModel):
             f"You need to clean up this routine to follow the following format: {ProductionRoutine.model_json_schema()}"
             f"Please respond in the following format: {ProductionRoutine.model_json_schema()}"
             f"You immediate output needs to be a valid JSON object that conforms to the production routine schema."
+            f"CRITICAL: PLACEHOLDERS ARE REPLACED AT RUNTIME AND MUST RESULT IN VALID JSON! "
+            f"EXPLANATION: Placeholders like {{{{key}}}} are replaced at runtime with actual values. The format you choose determines the resulting JSON type. "
+            f"For STRING values: Use \\\"{{{{key}}}}\\\" format (escaped quote + placeholder + escaped quote). "
+            f"This means in the JSON file you write: \\\"\\\"{{{{user_name}}}}\\\"\\\". At runtime, the \\\"{{{{user_name}}}}\\\" part gets replaced, "
+            f"so \\\"\\\"{{{{user_name}}}}\\\"\\\" becomes \\\"\\\"John\\\"\\\" which becomes \\\"John\\\" (valid JSON string). "
+            f"For NUMERIC/NULL values: Use \\\"{{{{key}}}}\\\" format (regular quote + placeholder + quote). "
+            f"This means in the JSON file you write: \\\"{{{{item_id}}}}\\\". At runtime, the {{{{item_id}}}} part gets replaced with the number, "
+            f"and the surrounding quotes are removed, so \\\"{{{{item_id}}}}\\\" with value 42 becomes just 42 (valid JSON number, not string). "
+            f"Example: \\\"{{{{total_price}}}}\\\" with value 29.99 → becomes 29.99 (quotes removed, valid JSON number). "
+            f"Example: \\\"{{{{optional_data}}}}\\\" with null → becomes null (quotes removed, valid JSON null). "
+            """Placeholders will be resolved using this: param_pattern = r'(?:"|\\")\{\{([^}"]*)\}\}(?:"|\\")'"""
+            f"The resulting JSON MUST be valid and parseable after all placeholder replacements are done."
         )
         self._add_to_message_history("user", message)
     
@@ -596,9 +626,10 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("assistant", response_text)
         
         # parse the response to the pydantic model
+        # context includes the last 2 messages (user prompt + assistant response) to help with parsing
         production_routine = manual_llm_parse_text_to_model(
             text=response_text,
-            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
             pydantic_model=ProductionRoutine,
             client=self.client,
             llm_model=self.llm_model
@@ -635,7 +666,7 @@ class RoutineDiscoveryAgent(BaseModel):
         # parse the response to the pydantic model
         parsed_response = llm_parse_text_to_model(
             text=response_text,
-            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
             pydantic_model=TestParametersResponse,
             client=self.client,
             llm_model="gpt-5-nano"

@@ -210,11 +210,9 @@ def setup_output_directory(output_dir, keep_output):
     # Create organized subdirectories
     network_dir = os.path.join(output_dir, "network")
     storage_dir = os.path.join(output_dir, "storage")
-    interactions_dir = os.path.join(output_dir, "interactions")
     
     os.makedirs(network_dir, exist_ok=True)
     os.makedirs(storage_dir, exist_ok=True)
-    os.makedirs(interactions_dir, exist_ok=True)
     
     # Create transactions directory for unified request/response storage
     transactions_dir = os.path.join(network_dir, "transactions")
@@ -224,15 +222,11 @@ def setup_output_directory(output_dir, keep_output):
         # Main directories
         'network_dir': network_dir,
         'storage_dir': storage_dir,
-        'interactions_dir': interactions_dir,
         'transactions_dir': transactions_dir,
         
         
         # Storage files  
         'storage_jsonl_path': os.path.join(storage_dir, "events.jsonl"),
-        
-        # Interaction files
-        'interactions_jsonl_path': os.path.join(interactions_dir, "events.jsonl"),
         
         # Summary file
         'summary_path': os.path.join(output_dir, "session_summary.json")
@@ -266,9 +260,6 @@ def save_session_summary(paths, summary, args, start_time, end_time, created_tab
             },
             "storage": {
                 "events": paths['storage_jsonl_path']
-            },
-            "interactions": {
-                "events": paths['interactions_jsonl_path']
             }
         }
     }

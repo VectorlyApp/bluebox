@@ -241,7 +241,8 @@ class ContextManager(BaseModel):
                 )
             ):
                 results.append(transaction_id)
-        return results
+                
+        return list(set(results))
     
 
     def scan_storage_for_value(self, value: str, max_timestamp: str | None = None) -> list[str]:
