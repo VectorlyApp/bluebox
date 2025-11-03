@@ -110,9 +110,6 @@ This defines a deterministic flow: open → wait → authenticate → return a s
 Placeholders inside operation fields are resolved at runtime:
 
 - **Parameter placeholders**: `"{{paramName}}"` or `\"{{paramName}}\"` → substituted from routine parameters
-- **Builtin parameters** (no definition required):
-  - `{{uuid}}` — generates a UUID v4
-  - `{{epoch_milliseconds}}` — generates current timestamp in milliseconds
 - **Storage placeholders** (read values from the current session):
   - `{{sessionStorage:myKey.path.to.value}}` — access nested values in sessionStorage
   - `{{localStorage:myKey}}` — access localStorage values
