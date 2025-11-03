@@ -93,27 +93,27 @@ class RoutineDiscoveryAgent(BaseModel):
         
         # save the indentified transactions
         save_path = os.path.join(self.output_dir, "root_transaction.json")
-        with open(save_path, "w") as f:
+        with open(save_path, mode="w", encoding="utf-8") as f:
             json.dump(identified_transaction.model_dump(), f, ensure_ascii=False, indent=2)
-            
+
         print(f"Identified transaction: {identified_transaction.transaction_id} saved to: {save_path}")
-        
+
         # populating the transaction queue with the identified transaction
         transaction_queue = [identified_transaction.transaction_id]
-        
+
         # storing data for all transactions necessary for the routine construction
         routine_transactions = {}
-        
+
         # processing the transaction queue (breadth-first search)
         while (len(transaction_queue) > 0):
-            
+
             # make the output directory for the transaction
             os.makedirs(os.path.join(self.output_dir, f"transaction_{len(routine_transactions)}"), exist_ok=True)
-            
+
             # dequeue the transaction
             transaction_id = transaction_queue.pop(0)
             print(f"Processing transaction: {transaction_id}")
-            
+
             # get the transaction
             transaction = self.context_manager.get_transaction_by_id(transaction_id)
             
@@ -123,7 +123,7 @@ class RoutineDiscoveryAgent(BaseModel):
             
             # save the extracted variables
             save_path = os.path.join(self.output_dir, f"transaction_{len(routine_transactions)}", "extracted_variables.json")
-            with open(save_path, "w") as f:
+            with open(save_path, mode="w", encoding="utf-8") as f:
                 json.dump(extracted_variables.model_dump(), f, ensure_ascii=False, indent=2)
             print(f"Extracted variables saved to: {save_path}")
                 
@@ -134,37 +134,37 @@ class RoutineDiscoveryAgent(BaseModel):
             
             # save the resolved variables
             save_path = os.path.join(self.output_dir, f"transaction_{len(routine_transactions)}", "resolved_variables.json")
-            with open(save_path, "w") as f:
+            with open(save_path, mode="w", encoding="utf-8") as f:
                 json.dump(resolved_variables_json, f, ensure_ascii=False, indent=2)
             print(f"Resolved variables saved to: {save_path}")
-                        
+
             # adding transaction data to the routine transactions
             routine_transactions[transaction_id] = {
                 "request": transaction["request"],
                 "extracted_variables": extracted_variables.model_dump(),
                 "resolved_variables": [resolved_variable.model_dump() for resolved_variable in resolved_variables]
             }
-            
+
             # adding transaction that need to be processed to the queue
             for resolved_variable in resolved_variables:
                 if resolved_variable.transaction_source is not None:
                     new_transaction_id = resolved_variable.transaction_source.transaction_id
                     if new_transaction_id not in routine_transactions:
                         transaction_queue.append(new_transaction_id)
-            
+
         # construct the routine
         routine = self.construct_routine(routine_transactions)
 
         # save the routine
         save_path = os.path.join(self.output_dir, f"routine.json")
-        with open(save_path, "w") as f:
+        with open(save_path, mode="w", encoding="utf-8") as f:
             json.dump(routine.model_dump(), f, ensure_ascii=False, indent=2) 
         print(f"Routine saved to: {save_path}")
         
         # productionize the routine
         print(f"Productionizing the routine...")
         routine = self.productionize_routine(routine)
-        with open(save_path, "w") as f:
+        with open(save_path, mode="w", encoding="utf-8") as f:
             json.dump(routine.model_dump(), f, ensure_ascii=False, indent=2) 
         print(f"Routine saved to: {save_path}")
     
@@ -175,7 +175,7 @@ class RoutineDiscoveryAgent(BaseModel):
         
         # save the test parameters
         save_path = os.path.join(self.output_dir, f"test_parameters.json")
-        with open(save_path, "w") as f:
+        with open(save_path, mode="w", encoding="utf-8") as f:
             json.dump(test_parameters_dict, f, ensure_ascii=False, indent=2)
         print(f"Test parameters saved to: {save_path}")
         
@@ -310,7 +310,9 @@ class RoutineDiscoveryAgent(BaseModel):
         """
         Extract the variables from the transaction.
         """
-        
+        # save the original transaction_id before it gets shadowed in the loop
+        original_transaction_id = transaction_id
+
         # get the transaction
         transaction = self.context_manager.get_transaction_by_id(transaction_id)
         
@@ -386,6 +388,9 @@ class RoutineDiscoveryAgent(BaseModel):
         )
         self._add_to_message_history("assistant", parsed_response.model_dump_json())
         
+        # override the transaction_id with the one passed in, since the LLM may return an incorrect format
+        parsed_response.transaction_id = original_transaction_id
+
         return parsed_response
     
     def resolve_variables(self, extracted_variables: ExtractedVariableResponse) -> list[ResolvedVariableResponse]:
@@ -678,5 +683,5 @@ class RoutineDiscoveryAgent(BaseModel):
 
     def _add_to_message_history(self, role: str, content: str) -> None:
         self.message_history.append({"role": role, "content": content})
-        with open(os.path.join(self.output_dir, "message_history.json"), "w") as f:
+        with open(os.path.join(self.output_dir, "message_history.json"), mode="w", encoding="utf-8") as f:
             json.dump(self.message_history, f, ensure_ascii=False, indent=2)

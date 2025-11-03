@@ -51,14 +51,14 @@ class ContextManager(BaseModel):
             
         # convert jsonl to json (jsonl not supported by openai)
         storage_data = []
-        with open(self.storage_jsonl_path, "r") as storage_jsonl_file:
+        with open(self.storage_jsonl_path, mode="r", encoding="utf-8") as storage_jsonl_file:
             for line in storage_jsonl_file:
                 obj = json.loads(line)
                 storage_data.append(obj)
         
         # create a single storage.json file
         storage_file_path = os.path.join(self.tmp_dir, "storage.json")
-        with open(storage_file_path, "w") as f:
+        with open(storage_file_path, mode="w", encoding="utf-8") as f:
             json.dump(storage_data, f, ensure_ascii=False, indent=2)
                     
         # upload the storage to the vectorstore using add_file_to_vectorstore method
@@ -88,20 +88,20 @@ class ContextManager(BaseModel):
         result = {}
         
         try:
-            with open(os.path.join(self.transactions_dir, transaction_id, "request.json"), "r") as f:
+            with open(os.path.join(self.transactions_dir, transaction_id, "request.json"), mode="r") as f:
                 result["request"] = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             result["request"] = "No request found for transaction {transaction_id}"
             
         try:
-            with open(os.path.join(self.transactions_dir, transaction_id, "response.json"), "r") as f:
+            with open(os.path.join(self.transactions_dir, transaction_id, "response.json"), mode="r") as f:
                 result["response"] = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             result["response"] = "No response found for transaction {transaction_id}"
         
         try:
             response_body_path = os.path.join(self.transactions_dir, transaction_id, "response_body.json")
-            with open(response_body_path, "r") as f:
+            with open(response_body_path, mode="r") as f:
                 result["response_body"] = json.load(f)
                 
         except (json.JSONDecodeError, FileNotFoundError):
@@ -118,7 +118,7 @@ class ContextManager(BaseModel):
                 result["response_body"] = open(
                     os.path.join(
                         self.transactions_dir, transaction_id, response_body_file_name
-                    ), "r", encoding='utf-8', errors='replace').read()
+                    ), mode="r", encoding='utf-8', errors='replace').read()
             
         return result
     
@@ -155,9 +155,8 @@ class ContextManager(BaseModel):
             transaction_data = self.get_transaction_by_id(transaction_id)
             transaction_file_path = os.path.join(self.tmp_dir, f"{transaction_id}.json")
             
-            with open(transaction_file_path, "w") as f:
+            with open(transaction_file_path, mode="w", encoding="utf-8") as f:
                 json.dump(transaction_data, f, ensure_ascii=False, indent=2)
-                
             # upload the transaction to the vectorstore using the add_file_to_vectorstore method
             self.add_file_to_vectorstore(transaction_file_path, metadata)
             
@@ -180,7 +179,7 @@ class ContextManager(BaseModel):
         file_name = os.path.basename(file_path)
         
         # Create the raw file
-        with open(file_path, "rb") as f:
+        with open(file_path, mode="rb") as f:
             uploaded = self.client.files.create(
                 file=f,
                 purpose="assistants",
@@ -208,7 +207,7 @@ class ContextManager(BaseModel):
             try:
                 # Only read the request.json file to check the URL
                 request_path = os.path.join(self.transactions_dir, transaction_id, "request.json")
-                with open(request_path, "r") as f:
+                with open(request_path, mode="r", encoding="utf-8") as f:
                     request_data = json.load(f)
                     if request_data.get("url") == request_url:
                         transaction_ids.append(transaction_id)
@@ -256,7 +255,7 @@ class ContextManager(BaseModel):
             A list of storage items that contain the value.
         """
         results = []
-        with open(self.storage_jsonl_path, "r", encoding='utf-8', errors='replace') as f:
+        with open(self.storage_jsonl_path, mode="r", encoding='utf-8', errors='replace') as f:
             for line in f:
                 obj = json.loads(line)
                 if value in line and (max_timestamp is None or obj["timestamp"] <= max_timestamp):

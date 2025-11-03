@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "web-hacker"
 version = "0.1.0"
-description = "Add your description here"
+description = " Reverse engineer any web app!"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

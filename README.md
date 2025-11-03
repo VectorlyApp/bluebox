@@ -141,12 +141,14 @@ This substitutes parameter values and injects `auth_token` from cookies. The JSO
 
 - Python 3.11+
 - Google Chrome (stable)
-- uv (Python package manager)
+- [uv (Python package manager)](https://github.com/astral-sh/uv)
   - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
   - Windows (PowerShell): `iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex`
 - OpenAI API key
 
 ## Set up Your Environment 🔧
+
+### Linux
 
 ```bash
 # 1) Clone and enter the repo
@@ -164,6 +166,29 @@ uv pip install -e .
 cp .env.example .env  # then edit values
 # or set directly
 export OPENAI_API_KEY="sk-..."
+```
+
+### Windows
+
+```powershell
+# 1) Clone and enter the repo
+git clone https://github.com/VectorlyApp/web-hacker.git
+cd web-hacker
+
+# 2) Install uv (if not already installed)
+iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex
+
+# 3) Create & activate virtual environment (uv)
+uv venv --prompt web-hacker
+.venv\Scripts\activate
+
+# 4) Install in editable mode via uv (pip-compatible interface)
+uv pip install -e .
+
+# 5) Configure environment
+copy .env.example .env  # then edit values
+# or set directly
+$env:OPENAI_API_KEY="sk-..."
 ```
 
 ## Launch Chrome in Debug Mode 🐞
@@ -242,11 +267,7 @@ Use the CDP browser monitor to block trackers and capture network, storage, and 
 **Run this command to start monitoring:**
 
 ```bash
-python scripts/browser_monitor.py \
-  --host 127.0.0.1 \
-  --port 9222 \
-  --output-dir ./cdp_captures \
-  --url about:blank
+python scripts/browser_monitor.py --host 127.0.0.1 --port 9222 --output-dir ./cdp_captures --url about:blank
 ```
 
 The script will open a new tab (starting at `about:blank`). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` when done; the script will consolidate transactions and produce a HAR automatically.
@@ -280,12 +301,21 @@ Use the **routine-discovery pipeline** to analyze captured data and synthesize a
 
 > ⚠️ **Important:** You must specify your own `--task` parameter. The example below is just for demonstration—replace it with a description of what you want to automate.
 
-```
+**Linux/macOS (bash):**
+```bash
 python scripts/discover_routines.py \
   --task "recover the api endpoints for searching for trains and their prices" \
   --cdp-captures-dir ./cdp_captures \
   --output-dir ./routine_discovery_output \
   --llm-model gpt-5
+```
+
+**Windows (PowerShell):**
+```powershell
+# Simple task (no quotes inside):
+python scripts/discover_routines.py --task "recover the api endpoints for searching for trains and their prices" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5
+
+python scripts/discover_routines.py --task "REcover API endpoints for searching an adddressin the Boston city assessor DB. Also recover the API endpoint for getting details on the return value of the DB search, searching by parcel ID." --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5
 ```
 
 **Example tasks:**
