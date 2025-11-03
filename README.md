@@ -37,7 +37,6 @@ Each Routine includes:
 - **description** — what the Routine does
 - **parameters** — input values the Routine needs to run (e.g. URLs, credentials, text)
 - **operations** — the ordered browser actions that perform the automation
-- **incognito** — whether to execute in incognito mode (default: `true`)
 
 Example:
 > Navigate to a dashboard, search based on keywords, and return results — all as a reusable Routine.
@@ -45,14 +44,12 @@ Example:
 ### Parameters
 
 - Defined as typed inputs (see [`Parameter`](https://github.com/VectorlyApp/web-hacker/blob/main/src/data_models/production_routine.py) class).
-- Each parameter has required `name` and `description` fields, along with `type`, `required`, and optional `default`/`examples`.
-- Parameters are referenced inside operations using placeholder tokens like `"{{paramName}}"` or `\"{{paramName}}\"` (see [Placeholder Interpolation](#placeholder-interpolation-) below).
+- Each parameter has required `name` and `description` fields. Optional fields include `type` (defaults to `string`), `required` (defaults to `true`), `default`, and `examples`.
+- Parameters are referenced inside `operations` using placeholder tokens like `"{{paramName}}"` or `\"{{paramName}}\"` (see [Placeholder Interpolation](#placeholder-interpolation-) below).
 - **Parameter Types**: Supported types include `string`, `integer`, `number`, `boolean`, `date`, `datetime`, `email`, `url`, and `enum`.
 - **Parameter Validation**: Parameters support validation constraints such as `min_length`, `max_length`, `min_value`, `max_value`, `pattern` (regex), `enum_values`, and `format`.
 - **Reserved Prefixes**: Parameter names cannot start with reserved prefixes: `sessionStorage`, `localStorage`, `cookie`, `meta`, `uuid`, `epoch_milliseconds`.
-- **Builtin Parameters**: The following builtin parameters are available without definition:
-  - `{{uuid}}` — generates a UUID v4
-  - `{{epoch_milliseconds}}` — generates current timestamp in milliseconds
+
 
 ### Operations
 
