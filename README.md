@@ -313,6 +313,8 @@ routine_discovery_output/
 
 ### 3. Execute the Discovered Routines 🏃
 
+⚠️ **Prerequisite:** Make sure Chrome is still running in debug mode (see [Launch Chrome in Debug Mode](#launch-chrome-in-debug-mode-🐞) above). The routine execution script connects to the same Chrome debug session on `127.0.0.1:9222`.
+
 ⚠️ **Important:** If you have a string-typed parameter used in a JSON body field, it may need to be escaped. When the agent generates routines, string parameters are sometimes placed as `"{{PARAM}}"` when they should be `"\"{{PARAM}}\""` to ensure proper JSON string escaping.
 
 **Example:** If you see:
@@ -339,10 +341,10 @@ python scripts/execute_routine.py \
 
 python scripts/execute_routine.py \
   --routine-path example_routines/amtrak_one_way_train_search_routine.json \
-  --parameters-dict '{"origin": "boston", "destination": "new york", "departureDate": "2026-03-22"}'
+  --parameters-dict '{"origin": "BOS", "destination": "NYP", "departureDate": "2026-03-22"}'
 ```
 
-Once you have a routine JSON from discovery, run it in a real browser session:
+Run a discovered routine:
 
 ```
 python scripts/execute_routine.py \
