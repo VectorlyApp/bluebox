@@ -45,7 +45,7 @@ Example:
 
 - Defined as typed inputs (see [`Parameter`](https://github.com/VectorlyApp/web-hacker/blob/main/src/data_models/production_routine.py) class).
 - Each parameter has required `name` and `description` fields, along with `type`, `required`, and optional `default`/`examples`.
-- Parameters are referenced inside operations using placeholder tokens like `{{paramName}}` (see [Placeholder Interpolation](#placeholder-interpolation-) below).
+- Parameters are referenced inside operations using placeholder tokens like `"{{paramName}}"` or `"\"{{paramName}}\""` (see [Placeholder Interpolation](#placeholder-interpolation-) below).
 
 ### Operations
 
