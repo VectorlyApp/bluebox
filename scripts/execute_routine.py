@@ -5,8 +5,8 @@ Example commands:
 
     # Execute routine with parameters from a file
     python scripts/execute_routine.py \
-        --routine-path example_routines/jetblue_one_way_flight_search.json \
-        --parameters-path /Users/dimavremenko/Desktop/code/web-hacker/example_routines/jet_blue_input.json
+        --routine-path routine_discovery_output/routine.json \
+        --parameters-path routine_discovery_output/test_parameters.json
 
     # Execute routine with parameters from a dictionary
     python scripts/execute_routine.py \
