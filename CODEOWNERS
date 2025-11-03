@@ -1,0 +1,6 @@
+# CODEOWNERS file
+# This file defines ownership of the codebase.
+# When a PR modifies files, GitHub will automatically request reviews from the listed owners.
+
+# Owners for the entire repository
+* @alex-w-99 @dimavrem22 @rayruizhiliao
