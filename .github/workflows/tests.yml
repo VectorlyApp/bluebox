@@ -1,0 +1,45 @@
+# .github/workflows/tests.yml
+
+name: Linter and Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:                     # catches PRs from feature branches → main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read                    # fetch code
+  id-token: write                   # enable OIDC if we ever need cloud creds
+  # pull-requests: write            # only if you want to post PR comments
+
+jobs:
+  lintAndTest:
+    runs-on: "ubuntu-latest"
+    defaults:
+      run:
+        shell: bash -l {0}
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml') }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint
+        run: uv run pylint $(git ls-files '*.py')
+
+      #- name: Run tests
+      #  run: uv run pytest tests/ -v
