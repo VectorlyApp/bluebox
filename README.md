@@ -88,7 +88,7 @@ Example sequence:
     "endpoint": { 
       "method": "POST", 
       "url": "/auth", 
-      "body": { "username": "{{user}}", "password": "{{pass}}" } 
+      "body": { "username": "\"{{user}}\"", "password": "\"{{pass}}\"" } 
     }, 
     "session_storage_key": "token" 
   },
