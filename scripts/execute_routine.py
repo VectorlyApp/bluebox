@@ -18,10 +18,11 @@ import argparse
 import json
 import logging
 
+from src.config import Config
 from src.cdp.routine_execution import execute_routine
 from src.data_models.production_routine import Routine
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +39,7 @@ def main(routine_path: str, parameters_path: str | None = None, parameters_dict:
         parameters_dict = json.loads(parameters_dict)
     else:
         raise ValueError("Either --parameters-path or --parameters-dict must be provided")
-        
+
     # load routine data
     routine_data = json.load(open(routine_path))
     routine = Routine(**routine_data)

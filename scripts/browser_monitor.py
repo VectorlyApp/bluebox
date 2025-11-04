@@ -12,11 +12,12 @@ import time
 import shutil
 import sys
 
+from src.config import Config
 from src.cdp.cdp_session import CDPSession
 from src.data_models.network import ResourceType
 from src.cdp.tab_managements import cdp_new_tab, dispose_context
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 # ---- Configuration ----
@@ -235,11 +236,10 @@ def setup_output_directory(output_dir, keep_output):
         'network_dir': network_dir,
         'storage_dir': storage_dir,
         'transactions_dir': transactions_dir,
-        
-        
+
         # Storage files  
         'storage_jsonl_path': os.path.join(storage_dir, "events.jsonl"),
-        
+
         # Summary file
         'summary_path': os.path.join(output_dir, "session_summary.json")
     }
@@ -275,10 +275,10 @@ def save_session_summary(paths, summary, args, start_time, end_time, created_tab
             }
         }
     }
-    
+
     with open(paths['summary_path'], mode='w', encoding='utf-8') as f:
         json.dump(session_summary, f, indent=2, ensure_ascii=False)
-    
+
     return session_summary
 
 
@@ -296,7 +296,7 @@ def main():
     created_tab = False
     context_id = None
     remote_debugging_address = f"http://{args.host}:{args.port}"
-    
+
     if not tab_id:
         logger.info("No tab ID provided, creating new tab...")
         try:
@@ -312,11 +312,11 @@ def main():
         except Exception as e:
             logger.info(f"Error creating new tab: {e}")
             sys.exit(1)
-    
+
     # Build WebSocket URL
     ws_url = f"ws://{args.host}:{args.port}/devtools/page/{tab_id}"
     navigate_to = None if args.no_navigate else args.url
-    
+
     logger.info(f"Starting CDP monitoring session...")
     logger.info(f"Output directory: {args.output_dir}")
     logger.info(f"Target URL: {navigate_to or 'No navigation (attach only)'}")

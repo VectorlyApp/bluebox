@@ -12,9 +12,10 @@ from openai import OpenAI
 from openai.types.responses import Response
 from pydantic import BaseModel
 
+from src.config import Config
 from src.utils.exceptions import LLMStructuredOutputError
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 

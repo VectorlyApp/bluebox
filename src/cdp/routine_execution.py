@@ -9,6 +9,7 @@ from urllib.parse import urlparse, urlunparse
 import requests
 import websocket
 
+from src.config import Config
 from src.data_models.production_routine import (
     Routine,
     Endpoint,
@@ -20,7 +21,7 @@ from src.data_models.production_routine import (
     RoutineReturnScreenshotOperation,
 )
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 
@@ -365,12 +366,14 @@ def _execute_fetch_in_session(
         headers_str = json.dumps(endpoint.headers)  # convert headers from dict to str
         headers_str_interpolated = _apply_params(headers_str, parameters_dict)
         headers = json.loads(headers_str_interpolated)  # convert headers from str to dict
+        logger.debug(f"Headers: {headers}")
 
     body = None
     if endpoint.body:
         body_str = json.dumps(endpoint.body)  # convert body from dict to str
         body_str_interpolated = _apply_params(body_str, parameters_dict)
         body = json.loads(body_str_interpolated)  # convert body from str to dict
+        logger.debug(f"Body: {body}")
         
     # Prepare headers and body for injection
     hdrs = headers or {}

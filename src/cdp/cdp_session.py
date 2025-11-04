@@ -10,10 +10,11 @@ import websocket
 import threading
 import time
 
+from src.config import Config
 from src.cdp.network_monitor import NetworkMonitor
 from src.cdp.storage_monitor import StorageMonitor
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 

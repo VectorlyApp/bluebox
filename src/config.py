@@ -4,6 +4,7 @@ src/config.py
 Centralized environment variable configuration.
 """
 
+import logging
 import os
 from typing import Any
 
@@ -16,6 +17,11 @@ class Config():
     """
     Centralized configuration for environment variables.
     """
+
+    LOG_LEVEL: int = logging.getLevelNamesMapping().get(
+        os.getenv("LOG_LEVEL", "DEBUG").upper(),
+        logging.DEBUG
+    )
 
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
 
