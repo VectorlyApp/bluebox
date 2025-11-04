@@ -1,5 +1,6 @@
-#!/usr/bin/env python3
 """
+src/cdp/network_monitor.py
+
 Network monitoring via CDP — *minimal*, non‑blocking, and reliable.
 
 What this version does:
@@ -36,6 +37,10 @@ from src.data_models.network import Stage
 
 
 class NetworkMonitor:
+    """
+    Network monitor for CDP.
+    """
+
     def __init__(self, output_dir, paths, capture_resources=None, block_patterns=None):
         self.output_dir = output_dir
         self.paths = paths
@@ -916,7 +921,7 @@ class NetworkMonitor:
         # Get response body content - read full content from file, not truncated data
         content_text = ""
         content_size = 0
-        
+
         # Try to read the full response body file directly
         transaction_dir = response_data.get("transactionDir") or request_data.get("transactionDir")
         if transaction_dir:
@@ -925,7 +930,7 @@ class NetworkMonitor:
                 try:
                     file_size = os.path.getsize(response_body_file)
                     content_size = file_size
-                    
+
                     # Read full content for HAR file (no truncation)
                     file_ext = os.path.splitext(response_body_file)[1].lower()
                     if file_ext in ['.json', '.xml', '.html', '.txt', '.js', '.css']:

@@ -137,9 +137,9 @@ Interpolation occurs before an operation executes. For example, a fetch endpoint
 
 This substitutes parameter values and injects `auth_token` from cookies. The JSON response is stored under `sessionStorage['result_key']` and can be returned by a final `return` operation using the matching `session_storage_key`.
 
-## Prerequisits
+## Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - Google Chrome (stable)
 - [uv (Python package manager)](https://github.com/astral-sh/uv)
   - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
@@ -351,6 +351,7 @@ routine_discovery_output/
 ```json
 "field": "{{paramName}}"
 ```
+
 And `paramName` is a string parameter, manually change it to:
 ```json
 "field": "\"{{paramName}}\""
@@ -360,7 +361,7 @@ This ensures the parameter value is properly quoted as a JSON string when substi
 
 Run the example routine: 
 
-```
+```bash
 # Using a parameters file:
 
 python scripts/execute_routine.py \
@@ -376,7 +377,7 @@ python scripts/execute_routine.py \
 
 Run a discovered routine:
 
-```
+```bash
 python scripts/execute_routine.py \
   --routine-path routine_discovery_output/routine.json \
   --parameters-path routine_discovery_output/test_parameters.json

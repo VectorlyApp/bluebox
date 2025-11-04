@@ -1,7 +1,21 @@
-from pydantic import BaseModel
-from openai import OpenAI
-from typing import Type
+"""
+src/utils/llm_utils.py
+
+Utility functions for LLM API calls.
+"""
+
 import json
+import logging
+from typing import Type
+
+from openai import OpenAI
+from openai.types.responses import Response
+from pydantic import BaseModel
+
+from src.utils.exceptions import LLMStructuredOutputError
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def llm_parse_text_to_model(
@@ -13,7 +27,7 @@ def llm_parse_text_to_model(
     n_tries: int = 3
 ) -> BaseModel:
     """
-    Call to cheap LLM model to parse outtext to a pydantic model.
+    Call to LLM model to parse outtext to a pydantic model.
     Args:
         text (str): The text to parse.
         context (str): The context to use for the parsing (stringified message history between user and assistant).
@@ -24,6 +38,7 @@ def llm_parse_text_to_model(
     Returns:
         BaseModel: The parsed pydantic model.
     """
+    # define system prompt
     SYSTEM_PROMPT = f"""
     You are a helpful assistant that parses text to a pydantic model.
     You must conform to the provided pydantic model schema.
@@ -45,12 +60,13 @@ def llm_parse_text_to_model(
             return completion.choices[0].message.parsed
 
         except Exception as e:
-            print(f"Try {current_try + 1} failed with error: {e}")
+            logger.warning(f"Try {current_try + 1} failed with error: {e}")
             message.append({
                 "role": "user", "content": f"Previous attempt failed with error: {e}. Please try again."
             })
  
-    raise Exception(f"Failed to parse text to model after {n_tries} tries")
+    logger.error(f"Failed to parse text to model after {n_tries} tries")
+    raise LLMStructuredOutputError(f"Failed to parse text to model after {n_tries} tries")
 
 
 def manual_llm_parse_text_to_model(
@@ -62,9 +78,18 @@ def manual_llm_parse_text_to_model(
     n_tries: int = 3,
 ) -> BaseModel:
     """
-    Manual LLM parse text to model. (without using structured output)
+    Manual LLM parse text to model (without using structured output).
+    Args:
+        text (str): The text to parse.
+        context (str): The context to use for the parsing (stringified message history between user and assistant).
+        pydantic_model (Type[BaseModel]): The pydantic model to parse the text to.
+        client (OpenAI): The OpenAI client to use.
+        llm_model (str): The LLM model to use.
+        n_tries (int): The number of tries to parse the text.
+    Returns:
+        BaseModel: The parsed pydantic model.
     """
-
+    # define system prompt
     SYSTEM_PROMPT = f"""
     You are a helpful assistant that parses text to a pydantic model.
     You must conform to the provided pydantic model schema.
@@ -88,19 +113,19 @@ def manual_llm_parse_text_to_model(
             text = response.choices[0].message.content
 
             parsed_model = pydantic_model(**json.loads(text))
-
             return parsed_model
 
         except Exception as e:
-            print(f"Try {current_try + 1} failed with error: {e}")
+            logger.warning(f"Try {current_try + 1} failed with error: {e}")
             messages.append(
                 {"role": "user", "content": f"Previous attempt failed with error: {e}. Please try again."}
             )
 
-    raise Exception(f"Failed to parse text to model after {n_tries} tries")
+    logger.error(f"Failed to parse text to model after {n_tries} tries")
+    raise LLMStructuredOutputError(f"Failed to parse text to model after {n_tries} tries")
 
 
-def collect_text_from_response(resp) -> str:
+def collect_text_from_response(resp: Response) -> str:
     """
     Collect the text from the response.
     Args:
