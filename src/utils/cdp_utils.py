@@ -1,5 +1,6 @@
-#!/usr/bin/env python3
 """
+src/utils/cdp_utils.py
+
 Utility functions for CDP web scraping.
 """
 
@@ -11,13 +12,13 @@ import re
 
 def write_jsonl(path, obj):
     """Write object as JSON line to file."""
-    with open(path, "a", encoding="utf-8") as f:
+    with open(path, mode="a", encoding="utf-8") as f:
         f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 
 def write_json_file(path, obj):
     """Write pretty JSON file."""
-    with open(path, "w", encoding="utf-8") as f:
+    with open(path, mode="w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
 
 
@@ -75,9 +76,8 @@ def cookie_names_from_set_cookie(values):
 
 def blocked_by_regex(url: str, block_regexes: list) -> bool:
     """Check if URL should be blocked by regex patterns."""
-
     u = url or ""
     for rx in block_regexes:
         if re.search(rx, u, flags=re.IGNORECASE):
             return True
-    return False 
+    return False

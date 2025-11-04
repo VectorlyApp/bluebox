@@ -22,7 +22,7 @@ import os
 import base64
 import time
 import json
-from typing import Dict, Any, List
+from typing import Any
 from fnmatch import fnmatch
 from datetime import datetime
 
@@ -42,10 +42,10 @@ class NetworkMonitor:
         self.capture_resources = capture_resources or set()
         self.block_patterns = block_patterns or []
 
-        self.req_meta: Dict[str, Dict[str, Any]] = {}
-        self.pending_body: Dict[int, str] = {}
-        self.fetch_get_body_wait: Dict[int, Dict[str, Any]] = {}
-        self.session_registry: Dict[int, Any] = {}  # session_id -> CDPSession
+        self.req_meta: dict[str, dict[str, Any]] = {}
+        self.pending_body: dict[int, str] = {}
+        self.fetch_get_body_wait: dict[int, dict[str, Any]] = {}
+        self.session_registry: dict[int, Any] = {}  # session_id -> CDPSession
         
     # ------------------------ Setup ------------------------
     def setup_network_monitoring(self, cdp_session):

@@ -3,7 +3,7 @@ from uuid import uuid4
 import os
 
 from openai import OpenAI
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from src.routine_discovery.context_manager import ContextManager
 from src.utils.llm_utils import llm_parse_text_to_model, collect_text_from_response, manual_llm_parse_text_to_model
