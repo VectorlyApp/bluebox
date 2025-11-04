@@ -98,11 +98,11 @@ class RoutineDiscoveryAgent(BaseModel):
 
                 # construct the error message
                 error_message = (
-                    "Failed to identify the network transactions that directly correspond to the user's requested task."
-                    f"Description: {description}"
-                    f"Explanation: {explanation}"
-                    f"URL: {url}"
-                    f"Confidence level: {confidence_level}"
+                    "Failed to identify the network transactions that directly correspond to the user's requested task.\n"
+                    f"- Description: {description}\n"
+                    f"- Explanation: {explanation}\n"
+                    f"- URL: {url}\n"
+                    f"- Confidence level: {confidence_level}\n"
                 )
                 logger.error(error_message)
                 raise TransactionIdentificationFailedError(error_message)
@@ -247,7 +247,7 @@ class RoutineDiscoveryAgent(BaseModel):
             )
             self._add_to_message_history("user", message)
         
-        logger.info(f"\n\nMessage history:\n{self.message_history}\n")##DEBUG
+        logger.debug(f"\n\nMessage history:\n{self.message_history}\n")
 
         # call to the LLM API
         response = self.client.responses.create(
@@ -265,7 +265,7 @@ class RoutineDiscoveryAgent(BaseModel):
         response_text = collect_text_from_response(response)
         self._add_to_message_history("assistant", response_text)
         
-        logger.info(f"\nResponse text:\n{response_text}\n\n")##DEBUG
+        logger.debug(f"\nResponse text:\n{response_text}\n\n")
 
         # TODO FIXME BUG
         # parse the response to the pydantic model
@@ -278,8 +278,8 @@ class RoutineDiscoveryAgent(BaseModel):
         )
         self._add_to_message_history("assistant", parsed_response.model_dump_json())
         
-        logger.info(f"\nParsed response:\n{parsed_response.model_dump_json()}")##DEBUG
-        logger.info(f"New chat history:\n{self.message_history}\n")##DEBUG
+        logger.debug(f"\nParsed response:\n{parsed_response.model_dump_json()}")
+        logger.debug(f"New chat history:\n{self.message_history}\n")
 
         # return the parsed response
         return parsed_response

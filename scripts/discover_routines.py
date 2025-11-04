@@ -6,9 +6,10 @@ from argparse import ArgumentParser
 import logging
 import os
 
-from dotenv import load_dotenv
 from openai import OpenAI
 
+from src.config import Config
+from src.utils.exceptions import ApiKeyNotFoundError
 from src.routine_discovery.agent import RoutineDiscoveryAgent
 from src.routine_discovery.context_manager import ContextManager
 
@@ -25,20 +26,18 @@ def main() -> None:
     parser.add_argument("--output-dir", type=str, default="./routine_discovery_output", help="The directory to save the output to.")
     parser.add_argument("--llm-model", type=str, default="gpt-5", help="The LLM model to use.")
     args = parser.parse_args()
-    
-    # load environment variables
-    load_dotenv()
-    
+
     # ensure OpenAI API key is set
-    if os.getenv("OPENAI_API_KEY") is None:
-        raise ValueError("OPENAI_API_KEY is not set")
-    
+    if Config.OPENAI_API_KEY is None:
+        logger.error("OPENAI_API_KEY is not set")
+        raise ApiKeyNotFoundError("OPENAI_API_KEY is not set")
+
     logger.info(f"\n{'-' * 100}")
     logger.info(f"Starting routine discovery for task:\n{args.task}")
     logger.info(f"{'-' * 100}\n")
     
     # initialize OpenAI client
-    openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    openai_client = OpenAI(api_key=Config.OPENAI_API_KEY)
     
     # create the output directory
     os.makedirs(args.output_dir, exist_ok=True)
