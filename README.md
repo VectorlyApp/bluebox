@@ -53,8 +53,7 @@ Example:
 
 ### Operations
 
-Operations define the executable steps of a Routine.  
-They are represented as a **typed list** (see [`RoutineOperationUnion`](https://github.com/VectorlyApp/web-hacker/blob/main/src/data_models/production_routine.py)) and are executed sequentially by the browser agent.
+Operations define the executable steps of a Routine. They are represented as a **typed list** (see [`RoutineOperationUnion`](https://github.com/VectorlyApp/web-hacker/blob/main/src/data_models/production_routine.py)) and are executed sequentially by a browser.
 
 Each operation specifies a `type` and its parameters:
 
