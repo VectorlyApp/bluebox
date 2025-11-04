@@ -81,37 +81,51 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("user", f"These are the possible network transaction ids you can choose from: {self.context_manager.get_all_transaction_ids()}")
 
         logger.info("Identifying the network transaction that directly corresponds to the user's requested task...")
-        logger.info(f"\n\nMessage history:\n{self.message_history}\n\n")##DEBUG
+        logger.debug(f"\n\nMessage history:\n{self.message_history}\n\n")
 
         identified_transaction = None
         while identified_transaction is None:
             # identify the transaction
             identified_transaction = self.identify_transaction()
-            logger.info(f"\nIdentified transaction:\n{identified_transaction.model_dump_json()}")##DEBUG
+            logger.debug(f"\nIdentified transaction:\n{identified_transaction.model_dump_json()}")
 
             if identified_transaction.transaction_id is None:
-                logger.error("Failed to identify the network transactions that directly correspond to the user's requested task.")
-                raise Exception("Failed to identify the network transactions that directly correspond to the user's requested task.")
+                # get vars
+                description = identified_transaction.description if identified_transaction.description is not None else 'No description provided'
+                explanation = identified_transaction.explanation if identified_transaction.explanation is not None else 'No explanation provided'
+                url = identified_transaction.url if identified_transaction.url is not None else 'No URL provided'
+                confidence_level = identified_transaction.confidence_level if identified_transaction.confidence_level is not None else 'No confidence level provided'
+
+                # construct the error message
+                error_message = (
+                    "Failed to identify the network transactions that directly correspond to the user's requested task.\n"
+                    f"- Description: {description}\n"
+                    f"- Explanation: {explanation}\n"
+                    f"- URL: {url}\n"
+                    f"- Confidence level: {confidence_level}\n"
+                )
+                logger.error(error_message)
+                raise TransactionIdentificationFailedError(error_message)
 
             # confirm the identified transaction
             confirmation_response = self.confirm_identified_transaction(identified_transaction)
-            logger.info(f"\nConfirmation response:\n{confirmation_response.model_dump_json()}")##DEBUG
+            logger.debug(f"\nConfirmation response:\n{confirmation_response.model_dump_json()}")
 
             # if the identified transaction is not correct, try again
             if not confirmation_response.is_correct:
                 identified_transaction = None
                 self.current_transaction_identification_attempt += 1
-                logger.info(
+                logger.debug(
                     "Trying again to identify the network transaction that directly corresponds to the user's requested task... "
                     f"(attempt {self.current_transaction_identification_attempt})"
-                )##DEBUG
+                )
 
         if identified_transaction is None:
             logger.error("Failed to identify the network transactions that directly correspond to the user's requested task.")
             raise TransactionIdentificationFailedError(
                 "Failed to identify the network transactions that directly correspond to the user's requested task."
             )
-        logger.info(f"Identified transaction: {identified_transaction.transaction_id}")##DEBUG
+        logger.info(f"Identified transaction: {identified_transaction.transaction_id}")
 
         # save the indentified transactions
         save_path = os.path.join(self.output_dir, "root_transaction.json")
@@ -233,7 +247,7 @@ class RoutineDiscoveryAgent(BaseModel):
             )
             self._add_to_message_history("user", message)
         
-        logger.info(f"\n\nMessage history:\n{self.message_history}\n")##DEBUG
+        logger.debug(f"\n\nMessage history:\n{self.message_history}\n")
 
         # call to the LLM API
         response = self.client.responses.create(
@@ -251,7 +265,7 @@ class RoutineDiscoveryAgent(BaseModel):
         response_text = collect_text_from_response(response)
         self._add_to_message_history("assistant", response_text)
         
-        logger.info(f"\nResponse text:\n{response_text}\n\n")##DEBUG
+        logger.debug(f"\nResponse text:\n{response_text}\n\n")
 
         # TODO FIXME BUG
         # parse the response to the pydantic model
@@ -264,8 +278,8 @@ class RoutineDiscoveryAgent(BaseModel):
         )
         self._add_to_message_history("assistant", parsed_response.model_dump_json())
         
-        logger.info(f"\nParsed response:\n{parsed_response.model_dump_json()}")##DEBUG
-        logger.info(f"New chat history:\n{self.message_history}\n")##DEBUG
+        logger.debug(f"\nParsed response:\n{parsed_response.model_dump_json()}")
+        logger.debug(f"New chat history:\n{self.message_history}\n")
 
         # return the parsed response
         return parsed_response
@@ -386,9 +400,9 @@ class RoutineDiscoveryAgent(BaseModel):
             "values_to_scan_for should be possible substrings that will likely be present in the response body of a network transaction or a storage entry value."
             "This is necessary to figure out where the variable is coming from."
         )
-        
+
         self._add_to_message_history("user", message)
-        
+
         # call to the LLM API for extraction of the variables
         response = self.client.responses.create(
             model=self.llm_model,
@@ -397,14 +411,14 @@ class RoutineDiscoveryAgent(BaseModel):
             tools=self.tools,
             tool_choice="required" if len(transactions) > 1 else "auto",
         )
-        
+
         # save the response id
         self.last_response_id = response.id
-        
+
         # collect the text from the response
         response_text = collect_text_from_response(response)
         self.message_history.append({"role": "assistant","content": response_text})
-        
+
         # TODO FIXME BUG
         # parse the response to the pydantic model
         parsed_response = llm_parse_text_to_model(
@@ -415,7 +429,7 @@ class RoutineDiscoveryAgent(BaseModel):
             llm_model="gpt-5-nano"
         )
         self._add_to_message_history("assistant", parsed_response.model_dump_json())
-        
+
         # override the transaction_id with the one passed in, since the LLM may return an incorrect format
         parsed_response.transaction_id = original_transaction_id
 
@@ -425,21 +439,23 @@ class RoutineDiscoveryAgent(BaseModel):
         """
         Resolve the variables from the extracted variables.
         """
-        
         # get the latest timestamp
-        max_timestamp = self.context_manager.get_transaction_timestamp(extracted_variables.transaction_id)
-        
+        max_timestamp = self.context_manager.extract_timestamp_from_transaction_id(extracted_variables.transaction_id)
+
         # get a list of cookies and tokens that require resolution
         variables_to_resolve = [
-            var for var in extracted_variables.variables if var.requires_resolution and
-            var.type in [
-                VariableType.COOKIE,
-                VariableType.TOKEN
-            ]
+            var for var in extracted_variables.variables
+            if (
+                var.requires_resolution
+                and var.type in [
+                    VariableType.COOKIE,
+                    VariableType.TOKEN
+                ]
+            )
         ]
 
         resolved_variable_responses = []
-        
+
         # for each variable to resolve, try to find the source of the variable in the storage and transactions
         for variable in variables_to_resolve:
             logger.info(f"Resolving variable: {variable.name} with values to scan for: {variable.values_to_scan_for}")
@@ -448,12 +464,21 @@ class RoutineDiscoveryAgent(BaseModel):
             storage_objects = []
             for value in variable.values_to_scan_for:
                 storage_sources = self.context_manager.scan_storage_for_value(
-                    value=value
+                    value=value,
                 )
                 storage_objects.extend(storage_sources)
 
             if len(storage_objects) > 0:
-                print(f"Found {len(storage_objects)} storage sources that contain the value")
+                logger.info(f"Found {len(storage_objects)} storage sources that contain the value")
+
+            # get the transaction ids that contain the value and are before the latest timestamp
+            transaction_ids = []
+            for value in variable.values_to_scan_for:
+                transaction_ids_found = self.context_manager.scan_transaction_responses(
+                    value=value,
+                    max_timestamp=max_timestamp
+                )
+                transaction_ids.extend(transaction_ids_found)
 
             # deduplicate transaction ids
             transaction_ids = list(set(transaction_ids))
@@ -472,7 +497,7 @@ class RoutineDiscoveryAgent(BaseModel):
             # construct the message to the LLM
             message = (
                 f"Please resolve the variable: {variable.observed_value}"
-                f"The variable was found in the following storage sources: {storage_sources}"
+                f"The variable was found in the following storage sources: {storage_objects}"
                 f"The variable was found in the following transactions ids: {transaction_ids}"
                 f"These transactions are added to the vectorstore in full (including response bodies)."
                 f"Please respond in the following format: {ResolvedVariableResponse.model_json_schema()}"
@@ -563,11 +588,9 @@ class RoutineDiscoveryAgent(BaseModel):
             f"To feed output of a fetch into a subsequent fetch, you can save result to session storage and then use {{sessionStorage:key.to.path}}. "
         )
         self._add_to_message_history("user", message)
-        
+
         current_attempt = 0
-        
         while current_attempt < max_attempts:
-            
             current_attempt += 1
             
             # call to the LLM API for construction of the routine
@@ -608,17 +631,16 @@ class RoutineDiscoveryAgent(BaseModel):
                 f"Please try again to construct the routine."
             )
             self._add_to_message_history("user", message)
-            
-            
+
         raise Exception(f"Failed to construct the routine after {max_attempts} attempts")
 
-    def productionize_routine(self, routine: Routine) -> Routine:
+    def productionize_routine(self, routine: Routine) -> ProductionRoutine:
         """
         Productionize the routine into a production routine.
         Args:
             routine (Routine): The routine to productionize.
         Returns:
-            Routine: The productionized routine.
+            ProductionRoutine: The productionized routine.
         """
         message = (
             f"Please productionize the routine (from previosu step): {routine.model_dump_json()}"
@@ -666,7 +688,7 @@ class RoutineDiscoveryAgent(BaseModel):
         
         return production_routine
 
-    def get_test_parameters(self, routine: Routine) -> TestParametersResponse:
+    def get_test_parameters(self, routine: ProductionRoutine) -> TestParametersResponse:
         """
         Get the test parameters for the routine.
         """

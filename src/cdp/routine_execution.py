@@ -701,9 +701,9 @@ def execute_routine(
         result = None
         current_url = None
 
-        print(f"Executing routine with {len(routine.operations)} operations")
+        logger.info(f"Executing routine with {len(routine.operations)} operations")
         for i, operation in enumerate(routine.operations):
-            print(
+            logger.info(
                 f"Executing operation {i+1}/{len(routine.operations)}: {type(operation).__name__}"
             )
             if isinstance(operation, RoutineNavigateOperation):

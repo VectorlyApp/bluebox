@@ -136,8 +136,8 @@ class ContextManager(BaseModel):
             self.client.vector_stores.delete(vector_store_id=self.vectorstore_id)
         except Exception as e:
             raise ValueError(f"Failed to delete vectorstore: {e}")
-
         self.vectorstore_id = None
+
 
     def add_transaction_to_vectorstore(self, transaction_id: str, metadata: dict) -> None:
         """
@@ -219,7 +219,28 @@ class ContextManager(BaseModel):
         return transaction_ids
 
 
-    def scan_transaction_responses(self, value: str, max_timestamp: str | None = None) -> list[str]:
+    def extract_timestamp_from_transaction_id(self, transaction_id: str) -> int:
+        """
+        Get the timestamp of a transaction.
+        Args:
+            transaction_id: The id of the transaction.
+        Returns:
+            The timestamp of the transaction.
+        """
+        #TODO: cleaner way to get the timestamp
+        parts = transaction_id.split("_")
+        if len(parts) < 2:
+            raise ValueError(f"Invalid transaction_id format: {transaction_id}. Expected format: 'prefix_timestamp'")
+        unix_timestamp = parts[1]
+        try:
+            return int(unix_timestamp)
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid timestamp in transaction_id '{transaction_id}'; {unix_timestamp} is not a valid integer: {str(e)}"
+            )
+
+
+    def scan_transaction_responses(self, value: str, max_timestamp: int | None = None) -> list[str]:
         """
         Scan the network transaction responses for a value.
         
@@ -238,7 +259,7 @@ class ContextManager(BaseModel):
                 and 
                 (
                     max_timestamp is None 
-                    or self.get_transaction_timestamp(transaction_id) < max_timestamp
+                    or self.extract_timestamp_from_transaction_id(transaction_id) < max_timestamp
                 )
             ):
                 results.append(transaction_id)
@@ -246,7 +267,7 @@ class ContextManager(BaseModel):
         return list(set(results))
 
 
-    def scan_storage_for_value(self, value: str, max_timestamp: str | None = None) -> list[str]:
+    def scan_storage_for_value(self, value: str, max_timestamp: int | None = None) -> list[str]:
         """
         Scan the storage for a value.
         Args:
@@ -256,18 +277,28 @@ class ContextManager(BaseModel):
             A list of storage items that contain the value.
         """
         results = []
+        # convert max_timestamp to float if provided (storage timestamps are floats)
+        max_timestamp_float = None
+        if max_timestamp is not None:
+            max_timestamp_float = float(max_timestamp)
+
         with open(self.storage_jsonl_path, mode="r", encoding='utf-8', errors='replace') as f:
             for line in f:
                 obj = json.loads(line)
-                if value in line and (max_timestamp is None or obj["timestamp"] <= max_timestamp):
+                # check timestamp if filtering is enabled
+                timestamp_check = True
+                if max_timestamp_float is not None:
+                    if "timestamp" not in obj:
+                        # skip entries without timestamps when filtering is enabled
+                        timestamp_check = False
+                    else:
+                        try:
+                            obj_timestamp = float(obj["timestamp"])
+                            timestamp_check = obj_timestamp <= max_timestamp_float
+                        except (ValueError, TypeError):
+                            # skip entries with invalid timestamp format
+                            timestamp_check = False
+                
+                if value in line and timestamp_check:
                     results.append(line)
         return results
-
-
-    def get_transaction_timestamp(self, transaction_id: str) -> str:
-        """
-        Get the timestamp of a transaction.
-        """
-        #TODO: cleaner way to get the timestamp
-        transaction_id = transaction_id.split("_")[1]
-        return transaction_id

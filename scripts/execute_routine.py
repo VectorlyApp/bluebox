@@ -14,11 +14,15 @@ Example commands:
         --parameters-dict "{'origin': 'boston', 'destination': 'new york', 'departureDate': '2026-03-22'}"
 """
 
-import json
 import argparse
+import json
+import logging
+
 from src.cdp.routine_execution import execute_routine
 from src.data_models.production_routine import Routine
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def main(routine_path: str, parameters_path: str | None = None, parameters_dict: dict | None = None):
@@ -49,10 +53,10 @@ def main(routine_path: str, parameters_path: str | None = None, parameters_dict:
             close_tab_when_done=False,
             incognito=True,
         )
-        print(f"Result: {result}")
+        logger.info(f"Result: {result}")
         
     except Exception as e:
-        print("Error executing routine: %s", e)
+        logger.error("Error executing routine: %s", e)
 
 
 if __name__ == "__main__":

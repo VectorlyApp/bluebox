@@ -1,18 +1,26 @@
-#!/usr/bin/env python3
 """
+src/cdp/cdp_session.py
+
 CDP Session management for web scraping with Chrome DevTools Protocol.
 """
 
 import json
+import logging
 import websocket
 import threading
 import time
+
 from src.cdp.network_monitor import NetworkMonitor
 from src.cdp.storage_monitor import StorageMonitor
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class CDPSession:
-    """Manages CDP WebSocket connection and coordinates monitoring components."""
+    """
+    "Manages CDP WebSocket connection and coordinates monitoring components.
+    """
     
     def __init__(
         self, 
@@ -91,7 +99,7 @@ class CDPSession:
         
         # Clear cookies if requested
         if self.clear_cookies:
-            print("Clearing all browser cookies...")
+            logger.info("Clearing all browser cookies...")
             self.send("Network.clearBrowserCookies")
             
             # Also clear cookie store
@@ -102,7 +110,7 @@ class CDPSession:
         
         # Clear storage if requested
         if self.clear_storage:
-            print("Clearing localStorage and sessionStorage...")
+            logger.info("Clearing localStorage and sessionStorage...")
             try:
                 # Clear all storage for all origins
                 self.send("Storage.clearDataForOrigin", {
@@ -119,7 +127,7 @@ class CDPSession:
                         "includeCommandLineAPI": True
                     })
                 except:
-                    print("Warning: Could not clear storage automatically")
+                    logger.info("Warning: Could not clear storage automatically")
         
         # Setup monitoring components
         self.network_monitor.setup_network_monitoring(self)
@@ -179,14 +187,14 @@ class CDPSession:
     
     def run(self):
         """Main message processing loop."""
-        print("Blocking trackers & capturing network/storage… Press Ctrl+C to stop.")
+        logger.info("Blocking trackers & capturing network/storage… Press Ctrl+C to stop.")
         
         try:
             while True:
                 msg = json.loads(self.ws.recv())
                 self.handle_message(msg)
         except KeyboardInterrupt:
-            print("\nStopped.")
+            logger.info("\nStopped.")
             # Final cookie sync using native CDP (no delay needed)
             self.storage_monitor.monitor_cookie_changes(self)
             

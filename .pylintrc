@@ -1,7 +1,7 @@
 [MAIN]
 
 # minimum score (out of 10) required to pass
-fail-under=0.00
+fail-under=5.00
 
 # files or directories to be skipped
 ignore=*.ipynb

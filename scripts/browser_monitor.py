@@ -1,11 +1,23 @@
 """
+src/scripts/browser_monitor.py
+
 CDP-based web scraper that blocks trackers and captures network requests.
 """
 
-import os, json, time, shutil, sys, argparse
+import argparse
+import logging
+import os
+import json
+import time
+import shutil
+import sys
+
 from src.cdp.cdp_session import CDPSession
 from src.data_models.network import ResourceType
 from src.cdp.tab_managements import cdp_new_tab, dispose_context
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ---- Configuration ----
 
@@ -264,7 +276,7 @@ def save_session_summary(paths, summary, args, start_time, end_time, created_tab
         }
     }
     
-    with open(paths['summary_path'], 'w', encoding='utf-8') as f:
+    with open(paths['summary_path'], mode='w', encoding='utf-8') as f:
         json.dump(session_summary, f, indent=2, ensure_ascii=False)
     
     return session_summary
@@ -286,7 +298,7 @@ def main():
     remote_debugging_address = f"http://{args.host}:{args.port}"
     
     if not tab_id:
-        print("No tab ID provided, creating new tab...")
+        logger.info("No tab ID provided, creating new tab...")
         try:
             tab_id, context_id = cdp_new_tab(
                 remote_debugging_address=remote_debugging_address,
@@ -294,22 +306,22 @@ def main():
                 url=args.url if not args.no_navigate else "about:blank"
             )
             created_tab = True
-            print(f"Created new tab: {tab_id}")
+            logger.info(f"Created new tab: {tab_id}")
             if context_id:
-                print(f"Browser context: {context_id}")
+                logger.info(f"Browser context: {context_id}")
         except Exception as e:
-            print(f"Error creating new tab: {e}")
+            logger.info(f"Error creating new tab: {e}")
             sys.exit(1)
     
     # Build WebSocket URL
     ws_url = f"ws://{args.host}:{args.port}/devtools/page/{tab_id}"
     navigate_to = None if args.no_navigate else args.url
     
-    print(f"Starting CDP monitoring session...")
-    print(f"Output directory: {args.output_dir}")
-    print(f"Target URL: {navigate_to or 'No navigation (attach only)'}")
-    print(f"Tab ID: {tab_id}")
-    
+    logger.info(f"Starting CDP monitoring session...")
+    logger.info(f"Output directory: {args.output_dir}")
+    logger.info(f"Target URL: {navigate_to or 'No navigation (attach only)'}")
+    logger.info(f"Tab ID: {tab_id}")
+
     # Create and run CDP session
     try:
         session = CDPSession(
@@ -323,58 +335,58 @@ def main():
         )
         session.setup_cdp(navigate_to)
         session.run()
-        
+
     except KeyboardInterrupt:
-        print("\nSession stopped by user")
+        logger.info("\nSession stopped by user")
     except Exception as e:
-        print(f"Error: {e}")
+        logger.info(f"Error: {e}")
         sys.exit(1)
     finally:
         # Cleanup: dispose context if we created a tab
         if created_tab and context_id:
             try:
-                print("Cleaning up created browser context...")
+                logger.info("Cleaning up created browser context...")
                 dispose_context(remote_debugging_address, context_id)
             except Exception as e:
-                print(f"Warning: Could not dispose browser context: {e}")
-        
+                logger.info(f"Warning: Could not dispose browser context: {e}")
+
         end_time = time.time()
-        
+
         # Get final summary and save it
         try:
             summary = session.get_monitoring_summary()
             save_session_summary(paths, summary, args, start_time, end_time, created_tab, context_id)
-            
+
             # Print organized summary
-            print("\n" + "="*60)
-            print("SESSION SUMMARY")
-            print("="*60)
-            print(f"Duration: {end_time - start_time:.1f} seconds")
-            print(f"Tab created: {'Yes' if created_tab else 'No'}")
+            logger.info("\n" + "="*60)
+            logger.info("SESSION SUMMARY")
+            logger.info("="*60)
+            logger.info(f"Duration: {end_time - start_time:.1f} seconds")
+            logger.info(f"Tab created: {'Yes' if created_tab else 'No'}")
             if created_tab and context_id:
-                print(f"Browser context: {context_id}")
-            print(f"Network requests tracked: {summary['network']['requests_tracked']}")
-            print(f"Cookies tracked: {summary['storage']['cookies_count']}")
-            print(f"LocalStorage origins: {len(summary['storage']['local_storage_origins'])}")
-            print(f"SessionStorage origins: {len(summary['storage']['session_storage_origins'])}")
-            print("OUTPUT STRUCTURE:")
-            print(f"├── session_summary.json")
-            print(f"├── network/")
-            print(f"│   ├── consolidated_transactions.json")
-            print(f"│   ├── network.har")
-            print(f"│   └── transactions/")
-            print(f"│       └── [timestamp_url_id]/")
-            print(f"│           ├── request.json")
-            print(f"│           ├── response.json")
-            print(f"│           └── response_body.[ext]")
-            print(f"└── storage/")
-            print(f"    └── events.jsonl")
-            print()
-            print(f"Session complete! Check {args.output_dir} for all outputs.")
-            
+                logger.info(f"Browser context: {context_id}")
+            logger.info(f"Network requests tracked: {summary['network']['requests_tracked']}")
+            logger.info(f"Cookies tracked: {summary['storage']['cookies_count']}")
+            logger.info(f"LocalStorage origins: {len(summary['storage']['local_storage_origins'])}")
+            logger.info(f"SessionStorage origins: {len(summary['storage']['session_storage_origins'])}")
+            logger.info("OUTPUT STRUCTURE:")
+            logger.info(f"├── session_summary.json")
+            logger.info(f"├── network/")
+            logger.info(f"│   ├── consolidated_transactions.json")
+            logger.info(f"│   ├── network.har")
+            logger.info(f"│   └── transactions/")
+            logger.info(f"│       └── [timestamp_url_id]/")
+            logger.info(f"│           ├── request.json")
+            logger.info(f"│           ├── response.json")
+            logger.info(f"│           └── response_body.[ext]")
+            logger.info(f"└── storage/")
+            logger.info(f"    └── events.jsonl")
+            logger.info()
+            logger.info(f"Session complete! Check {args.output_dir} for all outputs.")
+
         except Exception as e:
-            print(f"Warning: Could not generate summary: {e}")
+            logger.info("Warning: Could not generate summary: %s", e)
 
 
 if __name__ == "__main__":
-    main() 
+    main()
