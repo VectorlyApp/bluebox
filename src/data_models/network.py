@@ -32,4 +32,3 @@ class Method(StrEnum):
 class Stage(StrEnum):
     REQUEST = "Request"
     RESPONSE = "Response"
-    

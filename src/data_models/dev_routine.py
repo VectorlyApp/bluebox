@@ -9,6 +9,14 @@ from typing import Union, Literal
 from pydantic import BaseModel
 
 
+class HTMLScope(StrEnum):
+    """
+    HTML scope options for return operations.
+    """
+    PAGE = "page"
+    ELEMENT = "element"
+
+
 class HTTPMethod(StrEnum):
     """
     Supported HTTP methods for API endpoints.
@@ -67,6 +75,9 @@ class RoutineOperationTypes(StrEnum):
     SLEEP = "sleep"
     FETCH = "fetch"
     RETURN = "return"
+
+    RETURN_HTML = "return_html"
+    RETURN_SCREENSHOT = "return_screenshot"
 
 
 class RoutineOperation(BaseModel):
@@ -144,6 +155,35 @@ class RoutineReturnOperation(RoutineOperation):
     session_storage_key: str
 
 
+class RoutineReturnHTMLOperation(RoutineOperation):
+    """
+    Return HTML operation for routine - returns HTML content from the page or element.
+    Args:
+        type (Literal[RoutineOperationTypes.RETURN_HTML]): The type of operation.
+        scope (Literal["page", "element"]): Whether to return page or element HTML. Defaults to "page".
+        selector (str | None): CSS selector for element (required if scope is "element").
+        timeout_ms (int): Maximum time to wait for element in milliseconds. Defaults to 20_000.
+    """
+    type: Literal[RoutineOperationTypes.RETURN_HTML] = RoutineOperationTypes.RETURN_HTML
+    # scope: "page" returns document.documentElement.outerHTML; "element" returns selected element.outerHTML
+    scope: HTMLScope = HTMLScope.PAGE
+    selector: str | None = None
+    timeout_ms: int = 20_000
+
+
+class RoutineReturnScreenshotOperation(RoutineOperation):
+    """
+    Return screenshot operation for routine - captures and returns a screenshot of the page.
+    Args:
+        type (Literal[RoutineOperationTypes.RETURN_SCREENSHOT]): The type of operation.
+        full_page (bool): Whether to capture the full page (beyond viewport). Defaults to False.
+        timeout_ms (int): Maximum time to wait in milliseconds. Defaults to 20_000.
+    """
+    type: Literal[RoutineOperationTypes.RETURN_SCREENSHOT] = RoutineOperationTypes.RETURN_SCREENSHOT
+    full_page: bool = False
+    timeout_ms: int = 20_000
+
+
 # Routine operation union _________________________________________________________________________
 
 RoutineOperationUnion = Union[
@@ -151,6 +191,8 @@ RoutineOperationUnion = Union[
     RoutineSleepOperation,
     RoutineFetchOperation,
     RoutineReturnOperation,
+    RoutineReturnHTMLOperation,
+    RoutineReturnScreenshotOperation,
 ]
 
 

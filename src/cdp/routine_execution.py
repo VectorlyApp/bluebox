@@ -16,6 +16,8 @@ from src.data_models.production_routine import (
     RoutineNavigateOperation,
     RoutineReturnOperation,
     RoutineSleepOperation,
+    RoutineReturnHTMLOperation,
+    RoutineReturnScreenshotOperation,
 )
 
 logging.basicConfig(level=logging.DEBUG)
@@ -706,6 +708,7 @@ def execute_routine(
             logger.info(
                 f"Executing operation {i+1}/{len(routine.operations)}: {type(operation).__name__}"
             )
+
             if isinstance(operation, RoutineNavigateOperation):
                 # Navigate to URL
                 url = _apply_params(operation.url, parameters_dict)
@@ -771,6 +774,82 @@ def execute_routine(
                         result = stored_value
                 else:
                     result = None
+            
+            elif isinstance(operation, RoutineReturnHTMLOperation):
+                # Get HTML from page or element
+                if operation.scope == "page":
+                    # Get full page HTML
+                    js = "document.documentElement.outerHTML"
+                else:
+                    # Get element HTML with selector
+                    if not operation.selector:
+                        return {"ok": False, "result": "Selector is required for element scope"}
+
+                    # Build JS to find element and get HTML
+                    js = f"""
+                    (() => {{
+                        const element = document.querySelector({json.dumps(operation.selector)});
+                        if (!element) {{
+                            throw new Error('Element not found with selector: {operation.selector}');
+                        }}
+                        return element.outerHTML;
+                    }})()
+                    """
+
+                # Execute JavaScript to get HTML
+                eval_id = send_cmd(
+                    "Runtime.evaluate",
+                    {
+                        "expression": js,
+                        "returnByValue": True,
+                        "timeout": operation.timeout_ms,
+                    },
+                    session_id=session_id,
+                )
+
+                reply = recv_until(
+                    predicate=lambda m: m.get("id") == eval_id, 
+                    deadline=time.time() + (operation.timeout_ms / 1000),
+                )
+
+                if "error" in reply:
+                    return {"ok": False, "result": reply["error"]}
+
+                # Check if there was an exception in the JavaScript execution
+                if reply.get("result", {}).get("exceptionDetails"):
+                    exception = reply["result"]["exceptionDetails"]
+                    error_msg = exception.get("exception", {}).get("description", "Unknown error")
+                    return {"ok": False, "result": f"JavaScript error: {error_msg}"}
+
+                html_content = reply["result"]["result"].get("value")
+                result = html_content
+
+            elif isinstance(operation, RoutineReturnScreenshotOperation):
+                # Capture screenshot using CDP Page.captureScreenshot
+                screenshot_params = {
+                    "format": "png",
+                    "captureBeyondViewport": operation.full_page,
+                }
+
+                screenshot_id = send_cmd(
+                    "Page.captureScreenshot",
+                    screenshot_params,
+                    session_id=session_id,
+                )
+
+                reply = recv_until(
+                    predicate=lambda m: m.get("id") == screenshot_id,
+                    deadline=time.time() + (operation.timeout_ms / 1000),
+                )
+
+                if "error" in reply:
+                    return {"ok": False, "result": reply["error"]}
+
+                # Get base64-encoded screenshot data
+                screenshot_data = reply.get("result", {}).get("data")
+                if not screenshot_data:
+                    return {"ok": False, "result": "Failed to capture screenshot"}
+                result = screenshot_data
 
         return {"ok": True, "result": result}
 

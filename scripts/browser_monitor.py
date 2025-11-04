@@ -70,7 +70,7 @@ BLOCK_REGEXES = [
 ]
 
 # Default values - can be overridden by command line args
-DEFAULT_CAPTURE_RESOURCE_TYPES = {ResourceType.XHR, ResourceType.FETCH}
+DEFAULT_CAPTURE_RESOURCE_TYPES = {ResourceType.XHR, ResourceType.FETCH, ResourceType.DOCUMENT}
 
 
 def parse_arguments():
