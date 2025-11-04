@@ -28,6 +28,7 @@ from datetime import datetime
 from fnmatch import fnmatch
 from typing import Any
 
+from src.config import Config
 from src.utils.cdp_utils import (
     build_pair_dir,
     get_set_cookie_values,
@@ -37,7 +38,7 @@ from src.utils.cdp_utils import (
 from src.data_models.network import Stage
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 

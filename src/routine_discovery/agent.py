@@ -12,6 +12,7 @@ import os
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
+from src.config import Config
 from src.routine_discovery.context_manager import ContextManager
 from src.utils.llm_utils import llm_parse_text_to_model, collect_text_from_response, manual_llm_parse_text_to_model
 from src.data_models.llm_responses import (
@@ -26,7 +27,7 @@ from src.data_models.production_routine import Routine as ProductionRoutine
 from src.data_models.dev_routine import Routine, RoutineFetchOperation
 from src.utils.exceptions import TransactionIdentificationFailedError
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 

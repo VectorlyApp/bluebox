@@ -12,11 +12,12 @@ import time
 import shutil
 import sys
 
+from src.config import Config
 from src.cdp.cdp_session import CDPSession
 from src.data_models.network import ResourceType
 from src.cdp.tab_managements import cdp_new_tab, dispose_context
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 # ---- Configuration ----

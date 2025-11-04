@@ -13,7 +13,7 @@ from src.utils.exceptions import ApiKeyNotFoundError
 from src.routine_discovery.agent import RoutineDiscoveryAgent
 from src.routine_discovery.context_manager import ContextManager
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 

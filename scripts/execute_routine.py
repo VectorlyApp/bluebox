@@ -18,10 +18,11 @@ import argparse
 import json
 import logging
 
+from src.config import Config
 from src.cdp.routine_execution import execute_routine
 from src.data_models.production_routine import Routine
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 

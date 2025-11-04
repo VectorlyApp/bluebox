@@ -9,6 +9,7 @@ from urllib.parse import urlparse, urlunparse
 import requests
 import websocket
 
+from src.config import Config
 from src.data_models.production_routine import (
     Routine,
     Endpoint,
@@ -18,7 +19,7 @@ from src.data_models.production_routine import (
     RoutineSleepOperation,
 )
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 
