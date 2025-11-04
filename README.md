@@ -27,26 +27,76 @@ Welcome to Vectorly's Web Hacker... **No API? No Problem!**
 
 ## What is a *Routine*?
 
-> A Routine is a portable recipe for automating a web flow. It has:
+> A **Routine** is a portable automation recipe that captures how to perform a specific task in any web app.
 
-- name, description
-- parameters: input values the routine needs
-- operations: ordered steps the browser executes
+Define once. Reuse everywhere. Automate anything you can do in a browser.
+
+Each Routine includes:
+- **name** — a human-readable identifier
+- **description** — what the Routine does
+- **parameters** — input values the Routine needs to run (e.g. URLs, credentials, text)
+- **operations** — the ordered browser actions that perform the automation
+
+Example:
+> Log in to a website, navigate to a dashboard, and export a report — all as a reusable Routine.
 
 ### Parameters
 
-- Defined as typed inputs (see `src/data_models/production_routine.py:Parameter`).
-- Each parameter has a `name`, `type`, `required`, and optional `default`/`examples`.
-- Parameters are referenced inside operations using placeholder tokens like `{{argument_1}}`, `{{argument_2}}`.
+- Defined as typed inputs (see [`Parameter`](https://github.com/VectorlyApp/web-hacker/blob/main/src/data_models/production_routine.py) class).
+- Each parameter has required `name` and `description` fields, along with `type`, `required`, and optional `default`/`examples`.
+- Parameters are referenced inside operations using placeholder tokens like `{{paramName}}` (see [Placeholder Interpolation](#placeholder-interpolation-) below).
 
 ### Operations
 
-Operations are a typed list (see `RoutineOperationUnion`) executed in order:
+Operations define the executable steps of a Routine.  
+They are represented as a **typed list** (see [`RoutineOperationUnion`](https://github.com/VectorlyApp/web-hacker/blob/main/src/data_models/production_routine.py)) and are executed sequentially by the browser agent.
 
-- navigate: `{ "type": "navigate", "url": "https://example.com" }`
-- sleep: `{ "type": "sleep", "timeout_seconds": 1.5 }`
-- fetch: performs an HTTP request described by an `endpoint` object (method, url, headers, body, credentials) and can store results under a `session_storage_key`.
-- return: returns the value previously stored under a `session_storage_key`.
+Each operation specifies a `type` and its parameters:
+
+- **navigate** — open a URL in the browser.  
+  ```json
+  { "type": "navigate", "url": "https://example.com" }
+  ```
+- **sleep** — pause execution for a given duration (in seconds).  
+  ```json
+  { "type": "sleep", "timeout_seconds": 1.5 }
+  ```
+- **fetch** — perform an HTTP request defined by an `endpoint` object (method, URL, headers, body, credentials). Optionally, store the response under a `session_storage_key`.  
+  ```json
+  { 
+    "type": "fetch", 
+    "endpoint": { 
+      "method": "GET", 
+      "url": "https://api.example.com" 
+    }, 
+    "session_storage_key": "userData" 
+  }
+  ```
+- **return** — return the value previously stored under a `session_storage_key`.  
+  ```json
+  { "type": "return", "session_storage_key": "userData" }
+  ```
+
+Example sequence:
+```json
+[
+  { "type": "navigate", "url": "https://example.com/login" },
+  { "type": "sleep", "timeout_seconds": 1 },
+  { 
+    "type": "fetch", 
+    "endpoint": { 
+      "method": "POST", 
+      "url": "/auth", 
+      "body": { "username": "{{user}}", "password": "{{pass}}" } 
+    }, 
+    "session_storage_key": "token" 
+  },
+  { "type": "return", "session_storage_key": "token" }
+]
+```
+
+This defines a deterministic flow: open → wait → authenticate → return a session token.
+
 
 ### Placeholder Interpolation `{{...}}`
 
@@ -165,6 +215,14 @@ if (!(Test-Path $chrome)) {
 ```
 
 ## HACK (reverse engineer) WEB APPS 👨🏻‍💻
+
+The reverse engineering process follows a simple three-step workflow:
+
+1. **Monitor** — Capture network traffic, storage events, and interactions while you manually perform the target task in Chrome
+2. **Discover** — Let the AI agent analyze the captured data and generate a reusable Routine
+3. **Execute** — Run the discovered Routine with different parameters to automate the task
+
+Each step is detailed below. Start by ensuring Chrome is running in debug mode (see [Launch Chrome in Debug Mode](#launch-chrome-in-debug-mode-🐞) above).
 
 ### Monitor Browser While Performing Some Task
 
