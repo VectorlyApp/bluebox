@@ -270,7 +270,7 @@ Use the CDP browser monitor to block trackers and capture network, storage, and 
 python scripts/browser_monitor.py --host 127.0.0.1 --port 9222 --output-dir ./cdp_captures --url about:blank --incognito
 ```
 
-The script will open a new tab (starting at `about:blank`). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` or simply close the Chrome window when done; the script will consolidate transactions and produce a HAR automatically.
+The script will open a new tab (starting at `about:blank`). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` and the script will consolidate transactions and produce a HAR automatically.
 
 **Output structure** (under `--output-dir`, default `./cdp_captures`):
 
