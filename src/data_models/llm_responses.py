@@ -37,9 +37,15 @@ class TransactionConfirmationResponse(BaseModel):
     Response obejct for confirming the identified network transactions that directly correspond to
     the user's requested task.
     """
-    is_correct: bool
-    confirmed_transaction_id: str
-    explanation: str
+    is_correct: bool = Field(
+        description="Whether the identified network transaction directly corresponds to the user's requested task."
+    )
+    confirmed_transaction_id: str = Field(
+        description="The ID of the network transaction that directly corresponds to the user's requested task."
+    )
+    explanation: str = Field(
+        description="The explanation of the confirmation. Should be a short explanation of why the transaction is correct."
+    )
     confidence_level: ConfidenceLevel = Field(
         description="The confidence level of the confirmation. May be LOW, MEDIUM, or HIGH."
     )

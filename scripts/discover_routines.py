@@ -1,12 +1,16 @@
 """
 Script for discovering routines from the network transactions.
 """
+
 from argparse import ArgumentParser
+import os
+
+from dotenv import load_dotenv
 from openai import OpenAI
+
 from src.routine_discovery.agent import RoutineDiscoveryAgent
 from src.routine_discovery.context_manager import ContextManager
-from dotenv import load_dotenv
-import os
+
 
 def main() -> None:
     
@@ -24,7 +28,6 @@ def main() -> None:
     # ensure OpenAI API key is set
     if os.getenv("OPENAI_API_KEY") is None:
         raise ValueError("OPENAI_API_KEY is not set")
-    
     
     print(f"\n{'-' * 100}")
     print(f"Starting routine discovery for task:\n{args.task}")

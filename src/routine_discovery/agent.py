@@ -92,7 +92,7 @@ class RoutineDiscoveryAgent(BaseModel):
                 raise Exception("Failed to identify the network transactions that directly correspond to the user's requested task.")
 
             # confirm the identified transaction
-            confirmation_response = self.confirm_indetified_transaction(identified_transaction)
+            confirmation_response = self.confirm_identified_transaction(identified_transaction)
             
             # if the identified transaction is not correct, try again
             if not confirmation_response.is_correct:
@@ -220,8 +220,7 @@ class RoutineDiscoveryAgent(BaseModel):
                 f"Respond in the following format: {TransactionIdentificationResponse.model_json_schema()}"
             )
             self._add_to_message_history("user", message)
-            
-        
+
         # call to the LLM API
         response = self.client.responses.create(
             model=self.llm_model,
@@ -230,14 +229,15 @@ class RoutineDiscoveryAgent(BaseModel):
             tools=self.tools,
             tool_choice="required",
         )
-        
+
         # save the response id
         self.last_response_id = response.id
         
         # collect the text from the response
         response_text = collect_text_from_response(response)
         self._add_to_message_history("assistant", response_text)
-        
+
+        # TODO FIXME BUG
         # parse the response to the pydantic model
         parsed_response = llm_parse_text_to_model(
             text=response_text,
@@ -247,11 +247,11 @@ class RoutineDiscoveryAgent(BaseModel):
             llm_model='gpt-5-nano'
         )
         self._add_to_message_history("assistant", parsed_response.model_dump_json())
-        
+
         # return the parsed response
         return parsed_response
 
-    def confirm_indetified_transaction(
+    def confirm_identified_transaction(
         self,
         identified_transaction: TransactionIdentificationResponse,
     ) -> TransactionConfirmationResponse:
@@ -323,15 +323,15 @@ class RoutineDiscoveryAgent(BaseModel):
 
         # get the transaction
         transaction = self.context_manager.get_transaction_by_id(transaction_id)
-        
+
         # get all transaction ids by request url
-        transaction_ids = self.context_manager.get_transaction_ids_by_request_url(transaction["request"]["url"])
-        
+        transaction_ids = self.context_manager.get_transaction_ids_by_request_url(request_url=transaction["request"]["url"])
+
         # get the requests of the identified transactions
         transactions = []
         for transaction_id in transaction_ids:
             transaction = self.context_manager.get_transaction_by_id(transaction_id)
-            
+
             # Handle response_body - truncate if it's a string
             response_body = transaction["response_body"]
             if response_body is None:
@@ -386,6 +386,7 @@ class RoutineDiscoveryAgent(BaseModel):
         response_text = collect_text_from_response(response)
         self.message_history.append({"role": "assistant","content": response_text})
         
+        # TODO FIXME BUG
         # parse the response to the pydantic model
         parsed_response = llm_parse_text_to_model(
             text=response_text,
