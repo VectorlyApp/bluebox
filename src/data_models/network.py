@@ -1,4 +1,11 @@
+"""
+src/data_models/network.py
+
+Network data models.
+"""
+
 from enum import StrEnum
+
 
 class ResourceType(StrEnum):
     XHR = "XHR"
@@ -10,7 +17,7 @@ class ResourceType(StrEnum):
     FONT = "Font"
     MEDIA = "Media"
     OTHER = "Other"
-    
+
 class Method(StrEnum):
     GET = "GET"
     POST = "POST"

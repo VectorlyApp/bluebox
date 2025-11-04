@@ -1,3 +1,9 @@
+"""
+src/routine_discovery/agent.py
+
+Agent for discovering routines from the network transactions.
+"""
+
 import json
 from uuid import uuid4
 import os

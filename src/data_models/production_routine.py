@@ -1,17 +1,17 @@
 import re
-import json
+import time
 import uuid
 from abc import ABC
 from datetime import datetime
-from enum import Enum, StrEnum
+from enum import StrEnum
 from typing import Any, Annotated, ClassVar, Literal, Union, Callable
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+
 class ResourceBase(BaseModel, ABC):
     """
     Base class for all resources that provides a standardized ID format.
-    
     ID format: [resourceType]_[uuidv4]
     Examples: "Project_123e4567-e89b-12d3-a456-426614174000"
     """
@@ -54,7 +54,7 @@ class ResourceBase(BaseModel, ABC):
             cls.model_fields['id'].default_factory = lambda: f"{cls.__name__}_{uuid.uuid4()}"
 
 
-class ParameterType(str, Enum):
+class ParameterType(StrEnum):
     """Supported parameter types for MCP tools."""
     STRING = "string"
     INTEGER = "integer"
@@ -65,6 +65,7 @@ class ParameterType(str, Enum):
     EMAIL = "email"
     URL = "url"
     ENUM = "enum"
+
 
 class BuiltinParameter(BaseModel):
     """
@@ -95,6 +96,7 @@ BUILTIN_PARAMETERS = [
         value_generator=lambda: str(int(time.time() * 1000))
     ),
 ]
+
 
 class Parameter(BaseModel):
     """
@@ -266,7 +268,7 @@ class Parameter(BaseModel):
 
 
 
-class HTTPMethod(str, Enum):
+class HTTPMethod(StrEnum):
     """
     Supported HTTP methods for API endpoints.
     """
@@ -277,7 +279,7 @@ class HTTPMethod(str, Enum):
     PATCH = "PATCH"
 
 
-class CREDENTIALS(str, Enum):
+class CREDENTIALS(StrEnum):
     """
     Supported credentials modes for API requests.
     """
