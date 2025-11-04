@@ -246,7 +246,8 @@ python scripts/browser_monitor.py \
   --host 127.0.0.1 \
   --port 9222 \
   --output-dir ./cdp_captures \
-  --url about:blank
+  --url about:blank \
+  --incognito
 ```
 
 The script will open a new tab (starting at `about:blank`). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` when done; the script will consolidate transactions and produce a HAR automatically.
