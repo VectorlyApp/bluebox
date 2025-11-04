@@ -26,7 +26,7 @@ from src.data_models.production_routine import Routine as ProductionRoutine
 from src.data_models.dev_routine import Routine, RoutineFetchOperation
 from src.utils.exceptions import TransactionIdentificationFailedError
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -81,12 +81,13 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("user", f"These are the possible network transaction ids you can choose from: {self.context_manager.get_all_transaction_ids()}")
 
         logger.info("Identifying the network transaction that directly corresponds to the user's requested task...")
-        logger.debug(f"\n\nMessage history:\n{self.message_history}\n\n")
+        logger.info(f"\n\nMessage history:\n{self.message_history}\n\n")##DEBUG
 
         identified_transaction = None
         while identified_transaction is None:
             # identify the transaction
             identified_transaction = self.identify_transaction()
+            logger.info(f"\nIdentified transaction:\n{identified_transaction.model_dump_json()}")##DEBUG
 
             if identified_transaction.transaction_id is None:
                 logger.error("Failed to identify the network transactions that directly correspond to the user's requested task.")
@@ -94,15 +95,23 @@ class RoutineDiscoveryAgent(BaseModel):
 
             # confirm the identified transaction
             confirmation_response = self.confirm_identified_transaction(identified_transaction)
-            
+            logger.info(f"\nConfirmation response:\n{confirmation_response.model_dump_json()}")##DEBUG
+
             # if the identified transaction is not correct, try again
             if not confirmation_response.is_correct:
                 identified_transaction = None
                 self.current_transaction_identification_attempt += 1
-                
+                logger.info(
+                    "Trying again to identify the network transaction that directly corresponds to the user's requested task... "
+                    f"(attempt {self.current_transaction_identification_attempt})"
+                )##DEBUG
+
         if identified_transaction is None:
             logger.error("Failed to identify the network transactions that directly correspond to the user's requested task.")
-            raise TransactionIdentificationFailedError("Failed to identify the network transactions that directly correspond to the user's requested task.")
+            raise TransactionIdentificationFailedError(
+                "Failed to identify the network transactions that directly correspond to the user's requested task."
+            )
+        logger.info(f"Identified transaction: {identified_transaction.transaction_id}")##DEBUG
 
         # save the indentified transactions
         save_path = os.path.join(self.output_dir, "root_transaction.json")
@@ -195,6 +204,8 @@ class RoutineDiscoveryAgent(BaseModel):
     def identify_transaction(self) -> TransactionIdentificationResponse:
         """
         Identify the network transactions that directly correspond to the user's requested task.
+        Returns:
+            TransactionIdentificationResponse: The response from the LLM API.
         """
         if self.current_transaction_identification_attempt == 0:
             self.message_history = [
@@ -221,6 +232,8 @@ class RoutineDiscoveryAgent(BaseModel):
                 f"Respond in the following format: {TransactionIdentificationResponse.model_json_schema()}"
             )
             self._add_to_message_history("user", message)
+        
+        logger.info(f"\n\nMessage history:\n{self.message_history}\n")##DEBUG
 
         # call to the LLM API
         response = self.client.responses.create(
@@ -233,10 +246,12 @@ class RoutineDiscoveryAgent(BaseModel):
 
         # save the response id
         self.last_response_id = response.id
-        
+
         # collect the text from the response
         response_text = collect_text_from_response(response)
         self._add_to_message_history("assistant", response_text)
+        
+        logger.info(f"\nResponse text:\n{response_text}\n\n")##DEBUG
 
         # TODO FIXME BUG
         # parse the response to the pydantic model
@@ -248,6 +263,9 @@ class RoutineDiscoveryAgent(BaseModel):
             llm_model='gpt-5-nano'
         )
         self._add_to_message_history("assistant", parsed_response.model_dump_json())
+        
+        logger.info(f"\nParsed response:\n{parsed_response.model_dump_json()}")##DEBUG
+        logger.info(f"New chat history:\n{self.message_history}\n")##DEBUG
 
         # return the parsed response
         return parsed_response
