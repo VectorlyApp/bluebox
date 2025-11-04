@@ -138,7 +138,7 @@ This substitutes parameter values and injects `auth_token` from cookies. The JSO
   - Windows (PowerShell): `iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex`
 - OpenAI API key
 
-## Setup Your Environment 🔧
+## Set up Your Environment 🔧
 
 ```bash
 # 1) Clone and enter the repo
@@ -224,15 +224,16 @@ The reverse engineering process follows a simple three-step workflow:
 
 Each step is detailed below. Start by ensuring Chrome is running in debug mode (see [Launch Chrome in Debug Mode](#launch-chrome-in-debug-mode-🐞) above).
 
-### Monitor Browser While Performing Some Task
+### 0. Legal & Privacy Notice ⚠️
+Reverse-engineering and automating a website can violate terms of service. Store captures securely and scrub any sensitive fields before sharing.
 
-Use the CDP browser monitor to block trackers and capture network, storage and interaction data while you manually perform tasks in Chrome.
+### 1. Monitor Browser While Performing Some Task
 
-Prereq: Chrome running in debug mode (see above). Get a `TAB_ID` from `chrome://inspect/#devices` or `http://127.0.0.1:9222/json`.
+Use the CDP browser monitor to block trackers and capture network, storage, and interaction data while you manually perform the task in Chrome.
 
-Basic usage:
+**Run this command to start monitoring:**
 
-```
+```bash
 python scripts/browser_monitor.py \
   --host 127.0.0.1 \
   --port 9222 \
@@ -240,56 +241,9 @@ python scripts/browser_monitor.py \
   --url about:blank
 ```
 
-Attach to existing tab:
+The script will open a new tab (starting at `about:blank`). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` when done; the script will consolidate transactions and produce a HAR automatically.
 
-```
-python scripts/browser_monitor.py <TAB_ID>
-# or
-python scripts/browser_monitor.py --tab-id <TAB_ID>
-```
-
-Create a new tab automatically:
-
-```
-python scripts/browser_monitor.py --url about:blank
-```
-
-Incognito new tab (only when not supplying TAB_ID):
-
-```
-python scripts/browser_monitor.py --incognito --url https://example.com
-```
-
-Attach without navigating (keep current page):
-
-```
-python scripts/browser_monitor.py --tab-id <TAB_ID> --no-navigate
-```
-
-Control output directory behavior:
-
-```
-# default is to clear; to keep previous outputs
-python scripts/browser_monitor.py --keep-output
-```
-
-Select which resource types to capture (default: XHR, Fetch):
-
-```
-python scripts/browser_monitor.py --tab-id <TAB_ID> \
-  --capture-resources XHR Fetch
-```
-
-Disable clearing cookies/storage (cleared by default):
-
-```
-python scripts/browser_monitor.py --tab-id <TAB_ID> --no-clear-all
-# or granular
-python scripts/browser_monitor.py --tab-id <TAB_ID> --no-clear-cookies
-python scripts/browser_monitor.py --tab-id <TAB_ID> --no-clear-storage
-```
-
-Output structure (under `--output-dir`, default `./cdp_captures`):
+**Output structure** (under `--output-dir`, default `./cdp_captures`):
 
 ```
 cdp_captures/
@@ -306,15 +260,17 @@ cdp_captures/
 │   └── events.jsonl
 ```
 
-Tip: Keep Chrome focused while monitoring and perform the target flow (search, checkout, etc.). Press Ctrl+C to stop; the script will consolidate transactions and produce a HAR automatically.
+Tip: Keep Chrome focused while monitoring and perform the target flow (search, checkout, etc.). Press Ctrl+C to stop; the script will consolidate transactions and produce a HTTP Archive (HAR) automatically.
 
-### Run Routine Discovery Agent (Our Very Smart AI with Very Good Prompt🔮)🤖
+### 2. Run Routine-Discovery Agent (Our Very Smart AI with Very Good Prompt🔮)🤖
 
-Use the routine discovery pipeline to generate a reusable Routine (navigate → fetch → return) from your captured network data.
+Use the **routine-discovery pipeline** to analyze captured data and synthesize a reusable Routine (`navigate → fetch → return`).
 
-Prereq: You have already captured data with the browser monitor (see above) and have `./cdp_captures` populated.
+**Prerequisites:** You’ve already captured a session with the browser monitor (`./cdp_captures` exists).
 
-Basic usage:
+**Run the discovery agent:**
+
+> ⚠️ **Important:** You must specify your own `--task` parameter. The example below is just for demonstration—replace it with a description of what you want to automate.
 
 ```
 python scripts/discover_routines.py \
@@ -324,9 +280,15 @@ python scripts/discover_routines.py \
   --llm-model gpt-5
 ```
 
+**Example tasks:**
+- `"recover the api endpoints for searching for trains and their prices"` (shown above)
+- `"discover how to search for flights and get pricing"`
+- `"find the API endpoint for user authentication"`
+- `"extract the endpoint for submitting a job application"`
+
 Arguments:
 
-- **--task**: What you want to achieve? What API endpoint should it discover?
+- **--task**: A clear description of what you want to automate. This guides the AI agent to identify which network requests to extract and convert into a Routine. Examples: searching for products, booking appointments, submitting forms, etc.
 - **--cdp-captures-dir**: Root of prior CDP capture output (default: `./cdp_captures`)
 - **--output-dir**: Directory to write results (default: `./routine_discovery_output`)
 - **--llm-model**: LLM to use for reasoning/parsing (default: `gpt-5`)
@@ -341,11 +303,22 @@ routine_discovery_output/
 └── routine.json                    # Final Routine model (name, parameters, operations)
 ```
 
-### Execute the Discovered Routines 🏃
+### 3. Execute the Discovered Routines 🏃
+
+⚠️ **Important:** If you have a string-typed parameter used in a JSON body field, it may need to be escaped. When the agent generates routines, string parameters are sometimes placed as `"{{PARAM}}"` when they should be `"\"{{PARAM}}\""` to ensure proper JSON string escaping.
+
+**Example:** If you see:
+```json
+"field": "{{paramName}}"
+```
+And `paramName` is a string parameter, manually change it to:
+```json
+"field": "\"{{paramName}}\""
+```
+
+This ensures the parameter value is properly quoted as a JSON string when substituted.
 
 Run the example routine: 
-
-
 
 ```
 # Using a parameters file (see examples in `scripts/execute_routine.py`):
@@ -370,6 +343,8 @@ python scripts/execute_routine.py \
         --parameters-path routine_discovery_output/test_parameters.json
 ```
 
+**Alternative:** Deploy your routine to [console.vectorly.app](https://console.vectorly.app) to expose it as an API endpoint or MCP server for use in production environments.
+
 ## Common Issues ⚠️
 
 - Chrome not detected / cannot connect to DevTools
@@ -379,6 +354,14 @@ python scripts/execute_routine.py \
 - `OPENAI_API_KEY` not set
 
   - Export the key in your shell or create a `.env` file and run via `uv run` (dotenv is loaded).
+- `No such file or directory: './cdp_captures/network/transactions/N/A'` or similar transaction path errors
+  
+  - The agent cannot find any network transactions relevant to your task. This usually means:
+    - The `--task` description doesn't match what you actually performed during monitoring
+    - The relevant network requests weren't captured (they may have been blocked or filtered)
+    - The task description is too vague or too specific
+  
+  - **Fix:** Reword your `--task` parameter to more accurately describe what you did during the monitoring step, or re-run the browser monitor and ensure you perform the exact actions you want to automate. 
 
 ## Coming Soon 🔮
 
