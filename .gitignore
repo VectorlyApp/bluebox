@@ -210,5 +210,5 @@ __marimo__/
 .DS_Store
 
 # output directories
-cdp_captures/
-routine_discovery_output/
+cdp_captures*/
+routine_discovery_output*/
