@@ -1,0 +1,26 @@
+{
+  "name": "routine_with_invalid_description",
+  "description": "This routine has a {{param}} placeholder in the description which should fail validation",
+  "incognito": true,
+  "parameters": [
+    {
+      "name": "query",
+      "type": "string",
+      "required": true,
+      "description": "Search query"
+    }
+  ],
+  "operations": [
+    {
+      "type": "fetch",
+      "endpoint": {
+        "url": "https://api.example.com/search?q={{query}}",
+        "method": "GET",
+        "headers": {},
+        "body": {},
+        "credentials": "include"
+      },
+      "session_storage_key": "results"
+    }
+  ]
+}

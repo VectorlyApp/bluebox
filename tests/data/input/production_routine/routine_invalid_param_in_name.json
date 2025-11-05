@@ -1,0 +1,26 @@
+{
+  "name": "Routine for {{user_id}}",
+  "description": "This routine has a parameter placeholder in the name which should fail validation",
+  "incognito": true,
+  "parameters": [
+    {
+      "name": "user_id",
+      "type": "string",
+      "required": true,
+      "description": "User ID"
+    }
+  ],
+  "operations": [
+    {
+      "type": "fetch",
+      "endpoint": {
+        "url": "https://api.example.com/users/{{user_id}}",
+        "method": "GET",
+        "headers": {},
+        "body": {},
+        "credentials": "include"
+      },
+      "session_storage_key": "user_data"
+    }
+  ]
+}

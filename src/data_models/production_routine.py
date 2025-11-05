@@ -442,6 +442,24 @@ class Routine(ResourceBase):
         and no undefined parameters are used.
         Raises ValueError if unused parameters are found or undefined parameters are used.
         """
+        # Check 0: Ensure name and description fields don't contain parameter placeholders
+        # These are metadata fields and should not have interpolation patterns
+        param_pattern = r'\{\{([^}]*)\}\}'
+        # check in Routine.name
+        name_matches = re.findall(param_pattern, self.name)
+        if name_matches:
+            raise ValueError(
+                f"Parameter placeholders found in routine name '{self.name}': {name_matches}. "
+                "The 'name' field is a metadata field and should not contain parameter placeholders like {{param}}."
+            )
+        # check in Routine.description
+        description_matches = re.findall(param_pattern, self.description)
+        if description_matches:
+            raise ValueError(
+                f"Parameter placeholders found in routine description: {description_matches}. "
+                "The 'description' field is a metadata field and should not contain parameter placeholders like {{param}}."
+            )
+
         # list of builtin parameter names
         builtin_parameter_names = [builtin_parameter.name for builtin_parameter in BUILTIN_PARAMETERS]
 
@@ -451,10 +469,6 @@ class Routine(ResourceBase):
         # Extract all parameter names
         defined_parameters = {param.name for param in self.parameters}
 
-        #TODO # Find all parameter usages in the JSON: {{*}}
-        #TODO # Match placeholders anywhere: {{param}}
-        #TODO # This matches parameters whether they're standalone quoted values or embedded in strings
-        #TODO param_pattern = r'\{\{([^}]*)\}\}'
         # Find all parameter usages in the JSON: {{*}}
         # Match placeholders anywhere: {{param}}
         # This matches parameters whether they're standalone quoted values or embedded in strings
@@ -487,7 +501,7 @@ class Routine(ResourceBase):
         if unused_parameters:
             raise ValueError(
                 f"Unused parameters found in routine '{self.name}': {list(unused_parameters)}. "
-                f"All defined parameters must be used somewhere in the routine operations."
+                "All defined parameters must be used somewhere in the routine operations."
             )
 
         # Check 2: No undefined parameters should be used
@@ -495,7 +509,7 @@ class Routine(ResourceBase):
         if undefined_parameters:
             raise ValueError(
                 f"Undefined parameters found in routine '{self.name}': {list(undefined_parameters)}. "
-                f"All parameters used in the routine must be defined in parameters."
+                "All parameters used in the routine must be defined in parameters."
             )
 
         return self

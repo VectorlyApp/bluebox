@@ -772,7 +772,29 @@ class TestRoutine:
         error_msg = str(exc_info.value)
         assert "Unused parameters" in error_msg
         assert "unused_param" in error_msg
-    
+
+    def test_invalid_routine_param_in_description_from_json(self, input_data_dir: Path) -> None:
+        """Routine with parameter placeholder in description should fail validation."""
+        data = load_data(input_data_dir / "production_routine" / "routine_invalid_param_in_description.json")
+        with pytest.raises(ValidationError) as exc_info:
+            Routine(**data)
+
+        error_msg = str(exc_info.value)
+        assert "Parameter placeholders found in routine description" in error_msg
+        assert "param" in error_msg
+        assert "metadata field" in error_msg
+
+    def test_invalid_routine_param_in_name_from_json(self, input_data_dir: Path) -> None:
+        """Routine with parameter placeholder in name should fail validation."""
+        data = load_data(input_data_dir / "production_routine" / "routine_invalid_param_in_name.json")
+        with pytest.raises(ValidationError) as exc_info:
+            Routine(**data)
+
+        error_msg = str(exc_info.value)
+        assert "Parameter placeholders found in routine name" in error_msg
+        assert "user_id" in error_msg
+        assert "metadata field" in error_msg
+
     def test_routine_with_url_params_only_from_json(self, input_data_dir: Path) -> None:
         """Routine with parameters used only in URLs should be valid."""
         data = load_data(input_data_dir / "production_routine" / "routine_url_params_only.json")
@@ -800,6 +822,101 @@ class TestRoutine:
 
         # verify empty body (no parameters)
         assert fetch_op.endpoint.body == {}
+    
+    def test_routine_with_escaped_string_params_from_json(self, input_data_dir: Path) -> None:
+        """Routine with properly escaped string parameters should be valid."""
+        data = load_data(input_data_dir / "production_routine" / "routine_escaped_string_params.json")
+        routine = Routine(**data)
+
+        assert routine.name == "routine_with_escaped_string_params"
+        assert len(routine.parameters) == 6
+
+        # verify all parameters
+        param_names = {p.name for p in routine.parameters}
+        assert param_names == {"api_key", "search_query", "user_agent", "page_size", "timeout_ms", "price_threshold"}
+
+        # verify parameter types
+        param_types = {p.name: p.type for p in routine.parameters}
+        assert param_types["api_key"] == ParameterType.STRING
+        assert param_types["search_query"] == ParameterType.STRING
+        assert param_types["user_agent"] == ParameterType.STRING
+        assert param_types["page_size"] == ParameterType.INTEGER
+        assert param_types["timeout_ms"] == ParameterType.INTEGER
+        assert param_types["price_threshold"] == ParameterType.NUMBER
+
+        # get the fetch operation
+        fetch_op = routine.operations[2]
+        assert isinstance(fetch_op, RoutineFetchOperation)
+
+        # verify STRING parameters are ESCAPED in headers with \"{{param}}\"
+        assert fetch_op.endpoint.headers["Authorization"] == '"{{api_key}}"'
+        assert fetch_op.endpoint.headers["User-Agent"] == '"{{user_agent}}"'
+        assert fetch_op.endpoint.headers["X-Search-Query"] == '"{{search_query}}"'
+
+        # verify NON-STRING parameters are NOT ESCAPED in headers (just {{param}})
+        assert fetch_op.endpoint.headers["X-Page-Size"] == "{{page_size}}"
+        assert fetch_op.endpoint.headers["X-Timeout-Ms"] == "{{timeout_ms}}"
+
+        # verify STRING parameters are ESCAPED in body with \"{{param}}\"
+        assert fetch_op.endpoint.body["query"] == '"{{search_query}}"'
+        assert fetch_op.endpoint.body["api_key"] == '"{{api_key}}"'
+        assert fetch_op.endpoint.body["metadata"]["user_agent"] == '"{{user_agent}}"'
+
+        # verify NON-STRING parameters are NOT ESCAPED in body (just {{param}})
+        assert fetch_op.endpoint.body["page_size"] == "{{page_size}}"
+        assert fetch_op.endpoint.body["timeout_ms"] == "{{timeout_ms}}"
+        assert fetch_op.endpoint.body["threshold"] == "{{price_threshold}}"
+
+        # verify builtin parameters (not escaped)
+        assert fetch_op.endpoint.body["metadata"]["timestamp"] == "{{epoch_milliseconds}}"
+
+        # verify parameters in URL (no escaping needed in URLs)
+        assert "{{search_query}}" in fetch_op.endpoint.url
+        assert "{{page_size}}" in fetch_op.endpoint.url
+    
+    def test_yahoo_finance_routine_from_discovery_output(self) -> None:
+        """Real-world example: Yahoo Finance routine with escaped string headers."""
+        # load the actual routine from routine_discovery_output
+        routine_path = Path("/home/ec2-user/web-hacker/routine_discovery_output/routine.json")
+        if not routine_path.exists():
+            pytest.skip("Yahoo Finance routine not found in routine_discovery_output")
+        
+        data = load_data(routine_path)
+        routine = Routine(**data)
+
+        assert routine.name == "Yahoo Finance - Search Ticker"
+        assert len(routine.parameters) == 6
+
+        # verify all parameters are string or integer types
+        param_types = {p.name: p.type for p in routine.parameters}
+        assert param_types["query"] == ParameterType.STRING
+        assert param_types["lang"] == ParameterType.STRING
+        assert param_types["region"] == ParameterType.STRING
+        assert param_types["quotesCount"] == ParameterType.INTEGER
+        assert param_types["newsCount"] == ParameterType.INTEGER
+        assert param_types["listsCount"] == ParameterType.INTEGER
+
+        # get the fetch operation
+        fetch_op = routine.operations[2]
+        assert isinstance(fetch_op, RoutineFetchOperation)
+
+        # verify STRING parameters are ESCAPED in x-param headers
+        assert fetch_op.endpoint.headers["x-param-query"] == '"{{query}}"'
+        assert fetch_op.endpoint.headers["x-param-lang"] == '"{{lang}}"'
+        assert fetch_op.endpoint.headers["x-param-region"] == '"{{region}}"'
+
+        # verify INTEGER parameters are ESCAPED in x-param headers (note: even integers get escaped in this pattern)
+        assert fetch_op.endpoint.headers["x-param-quotesCount"] == '"{{quotesCount}}"'
+        assert fetch_op.endpoint.headers["x-param-newsCount"] == '"{{newsCount}}"'
+        assert fetch_op.endpoint.headers["x-param-listsCount"] == '"{{listsCount}}"'
+
+        # verify parameters are in URL (no escaping in URLs)
+        assert "{{query}}" in fetch_op.endpoint.url
+        assert "{{lang}}" in fetch_op.endpoint.url
+        assert "{{region}}" in fetch_op.endpoint.url
+        assert "{{quotesCount}}" in fetch_op.endpoint.url
+        assert "{{newsCount}}" in fetch_op.endpoint.url
+        assert "{{listsCount}}" in fetch_op.endpoint.url
 
     def test_routine_inherits_from_resource_base(self) -> None:
         """Routine should inherit ResourceBase functionality."""
