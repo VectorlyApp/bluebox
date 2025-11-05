@@ -19,8 +19,8 @@ class Config():
     """
 
     LOG_LEVEL: int = logging.getLevelNamesMapping().get(
-        os.getenv("LOG_LEVEL", "DEBUG").upper(),
-        logging.DEBUG
+        os.getenv("LOG_LEVEL", "INFO").upper(),
+        logging.INFO
     )
 
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
