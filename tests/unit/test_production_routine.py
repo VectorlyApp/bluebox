@@ -768,7 +768,7 @@ class TestRoutine:
         data = load_data(input_data_dir / "production_routine" / "routine_invalid_unused_param.json")
         with pytest.raises(ValidationError) as exc_info:
             Routine(**data)
-        
+
         error_msg = str(exc_info.value)
         assert "Unused parameters" in error_msg
         assert "unused_param" in error_msg
