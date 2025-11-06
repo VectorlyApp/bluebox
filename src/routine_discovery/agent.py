@@ -435,9 +435,26 @@ class RoutineDiscoveryAgent(BaseModel):
 
         return parsed_response
     
-    def resolve_variables(self, extracted_variables: ExtractedVariableResponse) -> list[ResolvedVariableResponse]:
+    def resolve_variables(
+        self, 
+        extracted_variables: ExtractedVariableResponse,
+        max_storage_objects_to_show: int = 100
+    ) -> list[ResolvedVariableResponse]:
         """
-        Resolve the variables from the extracted variables.
+        Find the source/origin of variables that were extracted from network transactions.
+        
+        For each variable that requires resolution (cookies, tokens), this method:
+        - Searches browser storage (cookies, localStorage, sessionStorage) for where the value came from
+        - Searches previous network transactions for where the value came from
+        - Returns resolved variables with their source paths (e.g., sessionStorage keys or transaction response paths)
+        
+        Args:
+            extracted_variables: Variables extracted from a network transaction (contains observed values but not their sources)
+            max_storage_objects_to_show: Maximum number of storage objects to include in the summary (default: 100). 
+                Limits message size sent to LLM to prevent context overflow.
+        
+        Returns:
+            List of resolved variables, each containing information about where the variable's value comes from
         """
         # get the latest timestamp
         max_timestamp = self.context_manager.extract_timestamp_from_transaction_id(extracted_variables.transaction_id)
@@ -470,8 +487,9 @@ class RoutineDiscoveryAgent(BaseModel):
 
             # Parse storage objects and extract only metadata to avoid huge messages
             storage_objects_summary = []
-            max_storage_objects_to_show = 20  # Limit to prevent message size issues
             for storage_line in storage_objects_raw[:max_storage_objects_to_show]:
+                if not storage_line or not storage_line.strip():
+                    continue  # Skip empty lines
                 try:
                     obj = json.loads(storage_line)
                     # Extract only key metadata instead of full content
@@ -482,9 +500,13 @@ class RoutineDiscoveryAgent(BaseModel):
                         "timestamp": obj.get("timestamp", ""),
                     }
                     storage_objects_summary.append(summary)
-                except (json.JSONDecodeError, KeyError):
-                    # If parsing fails, just include a minimal summary
-                    storage_objects_summary.append({"raw": storage_line[:100] + "..." if len(storage_line) > 100 else storage_line})
+                except json.JSONDecodeError as e:
+                    # If parsing fails, log and include a minimal summary
+                    logger.warning(f"Failed to parse storage object: {e}. Raw preview: {storage_line[:100]}")
+                    storage_objects_summary.append({
+                        "error": "parse_failed",
+                        "raw_preview": storage_line[:100] + "..." if len(storage_line) > 100 else storage_line
+                    })
 
             if len(storage_objects_raw) > 0:
                 logger.info(f"Found {len(storage_objects_raw)} storage sources that contain the value")
