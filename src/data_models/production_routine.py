@@ -371,7 +371,7 @@ class RoutineFetchOperation(RoutineOperation):
     Args:
         type (Literal[RoutineOperationTypes.FETCH]): The type of operation.
         endpoint (Endpoint): The endpoint to fetch.
-        session_storage_key (str | None): The session storage key to save the result to (optional).
+        session_storage_key (str): The session storage key to save the fetch response to.
     
     Returns:
         RoutineFetchOperation: The interpolated operation.
