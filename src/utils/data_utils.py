@@ -9,13 +9,13 @@ import json
 import re
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 from bs4 import BeautifulSoup
 
 from src.utils.exceptions import UnsupportedFileFormat
 
 
-def load_data(file_path: Path) -> dict | list:
+def load_data(file_path: Path) -> Union[dict, list]:
     """
     Load data from a file.
     Raises:
@@ -23,7 +23,7 @@ def load_data(file_path: Path) -> dict | list:
     Args:
         file_path (str): Path to the JSON file.
     Returns:
-        dict | list: Data contained in file.
+        Union[dict, list]: Data contained in file.
     """
     file_path_str = str(file_path)
     if file_path_str.endswith(".json"):
