@@ -80,7 +80,7 @@ class ContextManager(BaseModel):
 
     def get_all_transaction_ids(self) -> list[str]:
         """
-        Get all transaction ids from the context manager.
+        Get all transaction ids from the context manager that have a response body file with a supported extension.
         Cached per instance to avoid repeated filesystem operations.
         """
         if self.cached_transaction_ids is not None:
