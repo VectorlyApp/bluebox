@@ -474,9 +474,6 @@ def _apply_params(text: str, parameters_dict: dict | None) -> str:
         double_escaped = r'\\"' + r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}' + r'\\"'
         text = re.sub(double_escaped, literal, text)
         
-        # Pattern 3: Bare placeholder {{key}} (unquoted, for URL params, etc.)
-        bare_pattern = r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}'
-        text = re.sub(bare_pattern, str(value), text)
 
     return text
 
