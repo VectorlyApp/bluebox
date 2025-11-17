@@ -161,10 +161,25 @@ This substitutes parameter values and injects `auth_token` from cookies. The JSO
 
 ```bash
 # Create and activate a virtual environment
-python3.12 -m venv web-hacker-env
+# Option 1: Using uv (recommended - handles Python version automatically)
+uv venv web-hacker-env
 source web-hacker-env/bin/activate  # On Windows: web-hacker-env\Scripts\activate
+uv pip install web-hacker
 
-# Install web-hacker
+# Option 2: Using python3 (if Python 3.12+ is your default)
+python3 -m venv web-hacker-env
+source web-hacker-env/bin/activate  # On Windows: web-hacker-env\Scripts\activate
+pip install web-hacker
+
+# Option 3: Using pyenv (if you need a specific Python version)
+pyenv install 3.12.3  # if not already installed
+pyenv local 3.12.3
+python -m venv web-hacker-env
+source web-hacker-env/bin/activate  # On Windows: web-hacker-env\Scripts\activate
+pip install web-hacker
+
+# Troubleshooting: If pip is not found, recreate the venv or use:
+python -m ensurepip --upgrade  # Install pip in the venv
 pip install web-hacker
 ```
 
