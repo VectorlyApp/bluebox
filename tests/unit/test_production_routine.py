@@ -874,49 +874,6 @@ class TestRoutine:
         assert "{{search_query}}" in fetch_op.endpoint.url
         assert "{{page_size}}" in fetch_op.endpoint.url
     
-    def test_yahoo_finance_routine_from_discovery_output(self) -> None:
-        """Real-world example: Yahoo Finance routine with escaped string headers."""
-        # load the actual routine from routine_discovery_output
-        routine_path = Path("/home/ec2-user/web-hacker/routine_discovery_output/routine.json")
-        if not routine_path.exists():
-            pytest.skip("Yahoo Finance routine not found in routine_discovery_output")
-        
-        data = load_data(routine_path)
-        routine = Routine(**data)
-
-        assert routine.name == "Yahoo Finance - Search Ticker"
-        assert len(routine.parameters) == 6
-
-        # verify all parameters are string or integer types
-        param_types = {p.name: p.type for p in routine.parameters}
-        assert param_types["query"] == ParameterType.STRING
-        assert param_types["lang"] == ParameterType.STRING
-        assert param_types["region"] == ParameterType.STRING
-        assert param_types["quotesCount"] == ParameterType.INTEGER
-        assert param_types["newsCount"] == ParameterType.INTEGER
-        assert param_types["listsCount"] == ParameterType.INTEGER
-
-        # get the fetch operation
-        fetch_op = routine.operations[2]
-        assert isinstance(fetch_op, RoutineFetchOperation)
-
-        # verify STRING parameters are ESCAPED in x-param headers
-        assert fetch_op.endpoint.headers["x-param-query"] == '"{{query}}"'
-        assert fetch_op.endpoint.headers["x-param-lang"] == '"{{lang}}"'
-        assert fetch_op.endpoint.headers["x-param-region"] == '"{{region}}"'
-
-        # verify INTEGER parameters are ESCAPED in x-param headers (note: even integers get escaped in this pattern)
-        assert fetch_op.endpoint.headers["x-param-quotesCount"] == '"{{quotesCount}}"'
-        assert fetch_op.endpoint.headers["x-param-newsCount"] == '"{{newsCount}}"'
-        assert fetch_op.endpoint.headers["x-param-listsCount"] == '"{{listsCount}}"'
-
-        # verify parameters are in URL (no escaping in URLs)
-        assert "{{query}}" in fetch_op.endpoint.url
-        assert "{{lang}}" in fetch_op.endpoint.url
-        assert "{{region}}" in fetch_op.endpoint.url
-        assert "{{quotesCount}}" in fetch_op.endpoint.url
-        assert "{{newsCount}}" in fetch_op.endpoint.url
-        assert "{{listsCount}}" in fetch_op.endpoint.url
 
     def test_routine_inherits_from_resource_base(self) -> None:
         """Routine should inherit ResourceBase functionality."""
