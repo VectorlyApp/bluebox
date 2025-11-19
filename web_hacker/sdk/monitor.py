@@ -135,6 +135,7 @@ class BrowserMonitor:
         
         try:
             import json
+            import websocket
             
             # Set a timeout on the websocket to allow checking stop event
             if hasattr(self.session.ws, 'settimeout'):
@@ -144,6 +145,17 @@ class BrowserMonitor:
                 try:
                     msg = json.loads(self.session.ws.recv())
                     self.session.handle_message(msg)
+                    
+                    # Check if connection was lost due to tab closure
+                    if self.session._connection_lost:
+                        logger.info("Tab closed during monitoring. Saving assets...")
+                        break
+                except (websocket.WebSocketConnectionClosedException, OSError, ConnectionError) as e:
+                    if self._stop_event.is_set():
+                        break
+                    # Connection lost (tab closed, browser closed, etc.)
+                    logger.info(f"Connection lost: {e}. Saving assets...")
+                    break
                 except Exception as e:
                     if self._stop_event.is_set():
                         break
@@ -155,37 +167,52 @@ class BrowserMonitor:
         except KeyboardInterrupt:
             pass
         finally:
-            # Final cookie sync
-            try:
-                if self.session:
-                    self.session.storage_monitor.monitor_cookie_changes(self.session)
-            except:
-                pass
-            
-            # Consolidate transactions
-            try:
-                if self.session:
-                    consolidated_path = f"{self.output_dir}/network/consolidated_transactions.json"
-                    self.session.network_monitor.consolidate_transactions(consolidated_path)
-            except:
-                pass
-            
-            # Generate HAR file
-            try:
-                if self.session:
-                    har_path = f"{self.output_dir}/network/network.har"
-                    self.session.network_monitor.generate_har_from_transactions(har_path, "Web Hacker Session")
-            except:
-                pass
-            
-            # Consolidate interactions
-            try:
-                if self.session:
-                    interaction_dir = self.session.paths.get('interaction_dir', f"{self.output_dir}/interaction")
-                    consolidated_interactions_path = str(Path(interaction_dir) / "consolidated_interactions.json")
-                    self.session.interaction_monitor.consolidate_interactions(consolidated_interactions_path)
-            except:
-                pass
+            # Always generate assets, even if connection is lost
+            # Use the session's asset generation method if available, otherwise do it manually
+            if self.session:
+                try:
+                    # Use the session's built-in asset generation
+                    if hasattr(self.session, '_generate_assets'):
+                        self.session._generate_assets()
+                    else:
+                        # Fallback to manual asset generation
+                        self._generate_assets_manual()
+                except Exception as e:
+                    logger.warning(f"Error generating assets: {e}")
+    
+    def _generate_assets_manual(self):
+        """Manual asset generation fallback."""
+        if not self.session:
+            return
+        
+        # Final cookie sync (only if connection is still alive)
+        try:
+            if not self.session._connection_lost:
+                self.session.storage_monitor.monitor_cookie_changes(self.session)
+        except Exception as e:
+            logger.debug(f"Could not sync cookies: {e}")
+        
+        # Consolidate transactions (works with cached data)
+        try:
+            consolidated_path = f"{self.output_dir}/network/consolidated_transactions.json"
+            self.session.network_monitor.consolidate_transactions(consolidated_path)
+        except Exception as e:
+            logger.warning(f"Could not consolidate transactions: {e}")
+        
+        # Generate HAR file (works with cached data)
+        try:
+            har_path = f"{self.output_dir}/network/network.har"
+            self.session.network_monitor.generate_har_from_transactions(har_path, "Web Hacker Session")
+        except Exception as e:
+            logger.warning(f"Could not generate HAR file: {e}")
+        
+        # Consolidate interactions (works with cached data)
+        try:
+            interaction_dir = self.session.paths.get('interaction_dir', f"{self.output_dir}/interaction")
+            consolidated_interactions_path = str(Path(interaction_dir) / "consolidated_interactions.json")
+            self.session.interaction_monitor.consolidate_interactions(consolidated_interactions_path)
+        except Exception as e:
+            logger.warning(f"Could not consolidate interactions: {e}")
     
     def stop(self) -> dict:
         """Stop monitoring and return summary."""

@@ -377,28 +377,87 @@ def main():
         print()
     
     # Step 3: Discover
+    print_colored("Step 3: Discovering routine from captured data...", GREEN)
+    
+    # Check if capture data exists first
     transactions_dir = cdp_captures_dir / "network" / "transactions"
     if not cdp_captures_dir.exists() or not transactions_dir.exists() or not any(transactions_dir.iterdir()):
         print_colored("⚠️  No capture data found. Skipping discovery step.", YELLOW)
         print("   Make sure you performed actions during monitoring.")
         return
     
-    print_colored("Step 3: Discovering routine from captured data...", GREEN)
-    new_output_dir = input(f"   Enter discovery output directory path [Press Enter to use: {DISCOVERY_OUTPUT_DIR.resolve()}]: ").strip()
-    if new_output_dir:
-        discovery_output_dir = Path(new_output_dir)
-        print_colored(f"✅ Using discovery output directory: {discovery_output_dir}", GREEN)
-    
-    # Check if routine already exists
-    routine_file = discovery_output_dir / "routine.json"
-    has_existing_routine = routine_file.exists()
-    
-    if has_existing_routine:
-        print_colored(f"📁 Found existing routine at {routine_file}", YELLOW)
-        skip = input("   Skip discovery? (y/n): ").strip().lower()
-        if skip == 'y':
-            print_colored("⏭️  Skipping discovery step.", GREEN)
-            print()
+    skip = input("   Skip discovery step? (y/n): ").strip().lower()
+    if skip == 'y':
+        # Use default directory when skipping - user can specify routine path in step 4 if needed
+        discovery_output_dir = DISCOVERY_OUTPUT_DIR
+        print_colored("⏭️  Skipping discovery step.", GREEN)
+        print_colored(f"   Using default discovery output directory: {discovery_output_dir.resolve()}", GREEN)
+        print()
+        
+        # Set routine_file for step 4 even if skipped
+        routine_file = discovery_output_dir / "routine.json"
+    else:
+        new_output_dir = input(f"   Enter discovery output directory path [Press Enter to use: {DISCOVERY_OUTPUT_DIR.resolve()}]: ").strip()
+        if new_output_dir:
+            discovery_output_dir = Path(new_output_dir)
+            print_colored(f"✅ Using discovery output directory: {discovery_output_dir}", GREEN)
+        else:
+            discovery_output_dir = DISCOVERY_OUTPUT_DIR
+        
+        # Check if routine already exists
+        routine_file = discovery_output_dir / "routine.json"
+        has_existing_routine = routine_file.exists()
+        
+        if has_existing_routine:
+            print_colored(f"📁 Found existing routine at {routine_file}", YELLOW)
+            overwrite = input("   Overwrite existing routine? (y/n): ").strip().lower()
+            if overwrite != 'y':
+                print_colored("⏭️  Keeping existing routine. Skipping discovery step.", GREEN)
+                print()
+            else:
+                # Check if directory exists and has content before running discovery
+                if discovery_output_dir.exists() and any(discovery_output_dir.iterdir()):
+                    print_colored(f"⚠️  Directory {discovery_output_dir} already exists and contains files.", YELLOW)
+                    confirm = input("   Remove existing data before discovery? (Data may be overwritten if not removed) (y/n): ").strip().lower()
+                    if confirm == 'y':
+                        # Remove all data but keep the directory
+                        for item in discovery_output_dir.iterdir():
+                            if item.is_file():
+                                item.unlink()
+                            elif item.is_dir():
+                                shutil.rmtree(item)
+                        print_colored(f"✅ Cleared data in {discovery_output_dir}", GREEN)
+                    else:
+                        print_colored(f"⚠️  Keeping existing data in {discovery_output_dir}", YELLOW)
+                
+                print_colored("📋 Enter a description of what you want to automate:", YELLOW)
+                print("   Example: 'Search for flights and get prices'")
+                print("   (Press Ctrl+C to exit)")
+                
+                task = ""
+                while not task:
+                    try:
+                        task = input("   Task: ").strip()
+                        if not task:
+                            print_colored("⚠️  Task cannot be empty. Please enter a description (or Ctrl+C to exit).", YELLOW)
+                    except KeyboardInterrupt:
+                        print()
+                        print_colored("⚠️  Discovery cancelled by user.", YELLOW)
+                        return
+                
+                print()
+                print("🤖 Running routine discovery agent...")
+                
+                discover_cmd = [
+                    "web-hacker-discover",
+                    "--task", task,
+                    "--cdp-captures-dir", str(cdp_captures_dir),
+                    "--output-dir", str(discovery_output_dir),
+                    "--llm-model", "gpt-5",
+                ]
+                
+                run_command(discover_cmd, "discovery")
+                print()
         else:
             # Check if directory exists and has content before running discovery
             if discovery_output_dir.exists() and any(discovery_output_dir.iterdir()):
@@ -443,50 +502,6 @@ def main():
             
             run_command(discover_cmd, "discovery")
             print()
-    else:
-        # Check if directory exists and has content before running discovery
-        if discovery_output_dir.exists() and any(discovery_output_dir.iterdir()):
-            print_colored(f"⚠️  Directory {discovery_output_dir} already exists and contains files.", YELLOW)
-            confirm = input("   Remove existing data before discovery? (Data may be overwritten if not removed) (y/n): ").strip().lower()
-            if confirm == 'y':
-                # Remove all data but keep the directory
-                for item in discovery_output_dir.iterdir():
-                    if item.is_file():
-                        item.unlink()
-                    elif item.is_dir():
-                        shutil.rmtree(item)
-                print_colored(f"✅ Cleared data in {discovery_output_dir}", GREEN)
-            else:
-                print_colored(f"⚠️  Keeping existing data in {discovery_output_dir}", YELLOW)
-        
-        print_colored("📋 Enter a description of what you want to automate:", YELLOW)
-        print("   Example: 'Search for flights and get prices'")
-        print("   (Press Ctrl+C to exit)")
-        
-        task = ""
-        while not task:
-            try:
-                task = input("   Task: ").strip()
-                if not task:
-                    print_colored("⚠️  Task cannot be empty. Please enter a description (or Ctrl+C to exit).", YELLOW)
-            except KeyboardInterrupt:
-                print()
-                print_colored("⚠️  Discovery cancelled by user.", YELLOW)
-                return
-        
-        print()
-        print("🤖 Running routine discovery agent...")
-        
-        discover_cmd = [
-            "web-hacker-discover",
-            "--task", task,
-            "--cdp-captures-dir", str(cdp_captures_dir),
-            "--output-dir", str(discovery_output_dir),
-            "--llm-model", "gpt-5",
-        ]
-        
-        run_command(discover_cmd, "discovery")
-        print()
     
     # Step 4: Execute (optional)
     if not routine_file.exists():
