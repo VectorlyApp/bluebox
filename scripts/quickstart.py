@@ -22,8 +22,8 @@ NC = '\033[0m'  # No Color
 
 # Configuration
 PORT = 9222
-OUTPUT_DIR = Path("./cdp_captures")
-ROUTINE_OUTPUT = Path("./routine_discovery_output")
+CDP_CAPTURES_DIR = Path("./cdp_captures")
+DISCOVERY_OUTPUT_DIR = Path("./routine_discovery_output")
 
 
 def print_colored(text: str, color: str = NC) -> None:
@@ -348,7 +348,7 @@ def main():
         "web-hacker-monitor",
         "--host", "127.0.0.1",
         "--port", str(PORT),
-        "--output-dir", str(OUTPUT_DIR),
+        "--output-dir", str(CDP_CAPTURES_DIR),
         "--url", "about:blank",
         "--incognito",
     ]
@@ -357,8 +357,8 @@ def main():
     print()
     
     # Step 3: Discover
-    transactions_dir = OUTPUT_DIR / "network" / "transactions"
-    if not OUTPUT_DIR.exists() or not transactions_dir.exists() or not any(transactions_dir.iterdir()):
+    transactions_dir = CDP_CAPTURES_DIR / "network" / "transactions"
+    if not CDP_CAPTURES_DIR.exists() or not transactions_dir.exists() or not any(transactions_dir.iterdir()):
         print_colored("⚠️  No capture data found. Skipping discovery step.", YELLOW)
         print("   Make sure you performed actions during monitoring.")
         return
@@ -385,8 +385,8 @@ def main():
     discover_cmd = [
         "web-hacker-discover",
         "--task", task,
-        "--cdp-captures-dir", str(OUTPUT_DIR),
-        "--output-dir", str(ROUTINE_OUTPUT),
+        "--cdp-captures-dir", str(CDP_CAPTURES_DIR),
+        "--output-dir", str(DISCOVERY_OUTPUT_DIR),
         "--llm-model", "gpt-5",
     ]
     
@@ -394,7 +394,7 @@ def main():
     print()
     
     # Step 4: Execute (optional)
-    routine_file = ROUTINE_OUTPUT / "routine.json"
+    routine_file = DISCOVERY_OUTPUT_DIR / "routine.json"
     if not routine_file.exists():
         print_colored(f"⚠️  Routine not found at {routine_file}", YELLOW)
         return
@@ -408,7 +408,7 @@ def main():
     print("   web-hacker-execute \\")
     print(f"     --routine-path {routine_file} \\")
     
-    test_params_file = ROUTINE_OUTPUT / "test_parameters.json"
+    test_params_file = DISCOVERY_OUTPUT_DIR / "test_parameters.json"
     if test_params_file.exists():
         print(f"     --parameters-path {test_params_file}")
     else:
