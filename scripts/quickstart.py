@@ -13,12 +13,7 @@ import shutil
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
-
-try:
-    import requests
-except ImportError:
-    print("Error: 'requests' package is required. Install it with: pip install requests")
-    sys.exit(1)
+import requests
 
 # Colors for output (ANSI codes work on modern Windows 10+ terminals)
 GREEN = '\033[0;32m'
