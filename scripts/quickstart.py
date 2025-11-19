@@ -308,8 +308,9 @@ def run_command(cmd: list[str], description: str) -> bool:
 
 def main():
     """Main workflow."""
-    # Use local variable that can be updated
+    # Use local variables that can be updated
     cdp_captures_dir = CDP_CAPTURES_DIR
+    discovery_output_dir = DISCOVERY_OUTPUT_DIR
     
     print_colored("╔════════════════════════════════════════════════════════════╗", BLUE)
     print_colored("║         Web Hacker - Quickstart Workflow                   ║", BLUE)
@@ -346,6 +347,21 @@ def main():
         print_colored("⏭️  Skipping monitoring step.", GREEN)
         print()
     else:
+        # Check if directory exists and has content before running monitoring
+        if cdp_captures_dir.exists() and any(cdp_captures_dir.iterdir()):
+            print_colored(f"⚠️  Directory {cdp_captures_dir} already exists and contains files.", YELLOW)
+            confirm = input("   Remove existing data before monitoring? (Data may be overwritten if not removed) (y/n): ").strip().lower()
+            if confirm == 'y':
+                # Remove all data but keep the directory
+                for item in cdp_captures_dir.iterdir():
+                    if item.is_file():
+                        item.unlink()
+                    elif item.is_dir():
+                        shutil.rmtree(item)
+                print_colored(f"✅ Cleared data in {cdp_captures_dir}", GREEN)
+            else:
+                print_colored(f"⚠️  Keeping existing data in {cdp_captures_dir}", YELLOW)
+        
         print_colored("📋 Instructions:", YELLOW)
         print("   1. A new Chrome tab will open")
         print("   2. Navigate to your target website")
@@ -376,8 +392,14 @@ def main():
         print("   Make sure you performed actions during monitoring.")
         return
     
+    print_colored("Step 3: Discovering routine from captured data...", GREEN)
+    new_output_dir = input(f"   Enter discovery output directory path [Press Enter to use: {DISCOVERY_OUTPUT_DIR.resolve()}]: ").strip()
+    if new_output_dir:
+        discovery_output_dir = Path(new_output_dir)
+        print_colored(f"✅ Using discovery output directory: {discovery_output_dir}", GREEN)
+    
     # Check if routine already exists
-    routine_file = DISCOVERY_OUTPUT_DIR / "routine.json"
+    routine_file = discovery_output_dir / "routine.json"
     has_existing_routine = routine_file.exists()
     
     if has_existing_routine:
@@ -387,7 +409,21 @@ def main():
             print_colored("⏭️  Skipping discovery step.", GREEN)
             print()
         else:
-            print_colored("Step 3: Discovering routine from captured data...", GREEN)
+            # Check if directory exists and has content before running discovery
+            if discovery_output_dir.exists() and any(discovery_output_dir.iterdir()):
+                print_colored(f"⚠️  Directory {discovery_output_dir} already exists and contains files.", YELLOW)
+                confirm = input("   Remove existing data before discovery? (Data may be overwritten if not removed) (y/n): ").strip().lower()
+                if confirm == 'y':
+                    # Remove all data but keep the directory
+                    for item in discovery_output_dir.iterdir():
+                        if item.is_file():
+                            item.unlink()
+                        elif item.is_dir():
+                            shutil.rmtree(item)
+                    print_colored(f"✅ Cleared data in {discovery_output_dir}", GREEN)
+                else:
+                    print_colored(f"⚠️  Keeping existing data in {discovery_output_dir}", YELLOW)
+            
             print_colored("📋 Enter a description of what you want to automate:", YELLOW)
             print("   Example: 'Search for flights and get prices'")
             print("   (Press Ctrl+C to exit)")
@@ -410,14 +446,28 @@ def main():
                 "web-hacker-discover",
                 "--task", task,
                 "--cdp-captures-dir", str(cdp_captures_dir),
-                "--output-dir", str(DISCOVERY_OUTPUT_DIR),
+                "--output-dir", str(discovery_output_dir),
                 "--llm-model", "gpt-5",
             ]
             
             run_command(discover_cmd, "discovery")
             print()
     else:
-        print_colored("Step 3: Discovering routine from captured data...", GREEN)
+        # Check if directory exists and has content before running discovery
+        if discovery_output_dir.exists() and any(discovery_output_dir.iterdir()):
+            print_colored(f"⚠️  Directory {discovery_output_dir} already exists and contains files.", YELLOW)
+            confirm = input("   Remove existing data before discovery? (Data may be overwritten if not removed) (y/n): ").strip().lower()
+            if confirm == 'y':
+                # Remove all data but keep the directory
+                for item in discovery_output_dir.iterdir():
+                    if item.is_file():
+                        item.unlink()
+                    elif item.is_dir():
+                        shutil.rmtree(item)
+                print_colored(f"✅ Cleared data in {discovery_output_dir}", GREEN)
+            else:
+                print_colored(f"⚠️  Keeping existing data in {discovery_output_dir}", YELLOW)
+        
         print_colored("📋 Enter a description of what you want to automate:", YELLOW)
         print("   Example: 'Search for flights and get prices'")
         print("   (Press Ctrl+C to exit)")
@@ -440,7 +490,7 @@ def main():
             "web-hacker-discover",
             "--task", task,
             "--cdp-captures-dir", str(cdp_captures_dir),
-            "--output-dir", str(DISCOVERY_OUTPUT_DIR),
+            "--output-dir", str(discovery_output_dir),
             "--llm-model", "gpt-5",
         ]
         
@@ -461,7 +511,7 @@ def main():
     print("   web-hacker-execute \\")
     print(f"     --routine-path {routine_file} \\")
     
-    test_params_file = DISCOVERY_OUTPUT_DIR / "test_parameters.json"
+    test_params_file = discovery_output_dir / "test_parameters.json"
     if test_params_file.exists():
         print(f"     --parameters-path {test_params_file}")
     else:
