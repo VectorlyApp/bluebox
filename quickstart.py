@@ -10,9 +10,11 @@ import time
 import platform
 import subprocess
 import shutil
+import json
 from pathlib import Path
 from typing import Optional
 import requests
+import websocket
 
 # Colors for output (ANSI codes work on modern Windows 10+ terminals)
 GREEN = '\033[0;32m'
@@ -60,9 +62,6 @@ def open_url_in_chrome(port: int, url: str) -> bool:
         
         # Navigate the existing tab using WebSocket
         try:
-            import websocket
-            import json
-            
             # Get browser WebSocket URL (not the tab's)
             version_response = requests.get(f"http://127.0.0.1:{port}/json/version", timeout=2)
             if version_response.status_code != 200:
