@@ -1,5 +1,5 @@
 """
-src/config.py
+web_hacker/config.py
 
 Centralized environment variable configuration.
 """

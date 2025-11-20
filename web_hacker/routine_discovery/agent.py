@@ -1,5 +1,5 @@
 """
-src/routine_discovery/agent.py
+web_hacker/routine_discovery/agent.py
 
 Agent for discovering routines from the network transactions.
 """
@@ -12,10 +12,10 @@ import os
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
-from src.config import Config
-from src.routine_discovery.context_manager import ContextManager
-from src.utils.llm_utils import llm_parse_text_to_model, collect_text_from_response, manual_llm_parse_text_to_model
-from src.data_models.llm_responses import (
+from web_hacker.config import Config
+from web_hacker.routine_discovery.context_manager import ContextManager
+from web_hacker.utils.llm_utils import llm_parse_text_to_model, collect_text_from_response, manual_llm_parse_text_to_model
+from web_hacker.data_models.llm_responses import (
     TransactionIdentificationResponse,
     ExtractedVariableResponse,
     TransactionConfirmationResponse,
@@ -23,9 +23,9 @@ from src.data_models.llm_responses import (
     ResolvedVariableResponse,
     TestParametersResponse
 )
-from src.data_models.production_routine import Routine as ProductionRoutine
-from src.data_models.dev_routine import Routine, RoutineFetchOperation
-from src.utils.exceptions import TransactionIdentificationFailedError
+from web_hacker.data_models.production_routine import Routine as ProductionRoutine
+from web_hacker.data_models.dev_routine import Routine, RoutineFetchOperation
+from web_hacker.utils.exceptions import TransactionIdentificationFailedError
 
 logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
 logger = logging.getLogger(__name__)

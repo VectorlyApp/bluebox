@@ -6,16 +6,37 @@ build-backend = "hatchling.build"
 
 [project]
 name = "web-hacker"
-version = "0.1.0"
-description = " Reverse engineer any web app!"
+version = "1.1.0"
+description = "SDK for reverse engineering web apps"
 readme = "README.md"
-requires-python = ">=3.12.3,<3.13"  # pinning to 3.12.x
+requires-python = ">=3.12.3,<3.13"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Vectorly", email = "contact@vectorly.app"}
+]
+keywords = [
+    "web-scraping",
+    "automation",
+    "cdp",
+    "chrome-devtools",
+    "api-discovery",
+    "reverse-engineering",
+    "browser-automation",
+    "sdk",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP :: Browsers",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
-    "ipykernel>=6.29.5",
     "openai>=2.6.1",
     "pydantic>=2.11.4",
-    "pylint>=3.0.0",
-    "pytest>=8.3.5",
     "python-dotenv>=1.2.1",
     "requests>=2.31.0",
     "websockets>=15.0.1",
@@ -23,5 +44,33 @@ dependencies = [
     "beautifulsoup4>=4.14.2",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "ipykernel>=6.29.5",
+    "pylint>=3.0.0",
+    "pytest>=8.3.5",
+]
+
+[project.scripts]
+web-hacker-monitor = "web_hacker.scripts.browser_monitor:main"
+web-hacker-discover = "web_hacker.scripts.discover_routines:main"
+web-hacker-execute = "web_hacker.scripts.execute_routine:main"
+
+[project.urls]
+Homepage = "https://www.vectorly.app"
+Documentation = "https://github.com/VectorlyApp/web-hacker#readme"
+Repository = "https://github.com/VectorlyApp/web-hacker"
+Issues = "https://github.com/VectorlyApp/web-hacker/issues"
+
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["web_hacker"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/web_hacker",
+    "/tests",
+    "/example_routines",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]

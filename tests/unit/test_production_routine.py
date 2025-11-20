@@ -11,8 +11,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from src.utils.data_utils import load_data
-from src.data_models.production_routine import (
+from web_hacker.utils.data_utils import load_data
+from web_hacker.data_models.production_routine import (
     ResourceBase,
     Routine,
     Parameter,

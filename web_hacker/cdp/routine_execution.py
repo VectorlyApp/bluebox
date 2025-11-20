@@ -1,5 +1,5 @@
 """
-src/cdp/routine_execution.py
+web_hacker/cdp/routine_execution.py
 
 Execute a routine using Chrome DevTools Protocol.
 """
@@ -15,8 +15,8 @@ from urllib.parse import urlparse, urlunparse
 import requests
 import websocket
 
-from src.config import Config
-from src.data_models.production_routine import (
+from web_hacker.config import Config
+from web_hacker.data_models.production_routine import (
     Routine,
     Endpoint,
     RoutineFetchOperation,

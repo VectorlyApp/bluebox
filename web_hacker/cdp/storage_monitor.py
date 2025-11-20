@@ -5,7 +5,7 @@ Tracks cookies, localStorage, sessionStorage, and other storage mechanisms using
 """
 
 import time
-from src.utils.cdp_utils import write_jsonl
+from web_hacker.utils.cdp_utils import write_jsonl
 
 
 class StorageMonitor:

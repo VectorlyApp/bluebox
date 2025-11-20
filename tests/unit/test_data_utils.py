@@ -6,7 +6,7 @@ Unit tests for data utility functions.
 
 import pytest
 
-from src.utils.data_utils import get_text_from_html
+from web_hacker.utils.data_utils import get_text_from_html
 
 
 class TestGetTextFromHtml:

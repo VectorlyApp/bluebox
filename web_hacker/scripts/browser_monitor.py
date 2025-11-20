@@ -1,5 +1,5 @@
 """
-src/scripts/browser_monitor.py
+web_hacker/scripts/browser_monitor.py
 
 CDP-based web scraper that blocks trackers and captures network requests.
 """
@@ -12,10 +12,10 @@ import time
 import shutil
 import sys
 
-from src.config import Config
-from src.cdp.cdp_session import CDPSession
-from src.data_models.network import ResourceType
-from src.cdp.tab_managements import cdp_new_tab, dispose_context
+from web_hacker.config import Config
+from web_hacker.cdp.cdp_session import CDPSession
+from web_hacker.data_models.network import ResourceType
+from web_hacker.cdp.tab_managements import cdp_new_tab, dispose_context
 
 logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
 logger = logging.getLogger(__name__)

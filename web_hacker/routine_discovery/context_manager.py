@@ -5,7 +5,7 @@ import json
 import time
 import shutil
 
-from src.utils.data_utils import get_text_from_html
+from web_hacker.utils.data_utils import get_text_from_html
 
 
 class ContextManager(BaseModel):

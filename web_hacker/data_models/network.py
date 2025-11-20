@@ -1,5 +1,5 @@
 """
-src/data_models/network.py
+web_hacker/data_models/network.py
 
 Network data models.
 """

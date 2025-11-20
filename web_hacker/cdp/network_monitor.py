@@ -1,5 +1,5 @@
 """
-src/cdp/network_monitor.py
+web_hacker/cdp/network_monitor.py
 
 Network monitoring via CDP — *minimal*, non‑blocking, and reliable.
 
@@ -28,14 +28,14 @@ from datetime import datetime
 from fnmatch import fnmatch
 from typing import Any
 
-from src.config import Config
-from src.utils.cdp_utils import (
+from web_hacker.config import Config
+from web_hacker.utils.cdp_utils import (
     build_pair_dir,
     get_set_cookie_values,
     write_json_file,
     write_jsonl,
 )
-from src.data_models.network import Stage
+from web_hacker.data_models.network import Stage
 
 
 logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)

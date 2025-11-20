@@ -1,5 +1,5 @@
 """
-src/utils/llm_utils.py
+web_hacker/utils/llm_utils.py
 
 Utility functions for LLM API calls.
 """
@@ -12,8 +12,8 @@ from openai import OpenAI
 from openai.types.responses import Response
 from pydantic import BaseModel
 
-from src.config import Config
-from src.utils.exceptions import LLMStructuredOutputError
+from web_hacker.config import Config
+from web_hacker.utils.exceptions import LLMStructuredOutputError
 
 logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
 logger = logging.getLogger(__name__)

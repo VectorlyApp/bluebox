@@ -18,15 +18,29 @@ import argparse
 import json
 import logging
 
-from src.config import Config
-from src.cdp.routine_execution import execute_routine
-from src.data_models.production_routine import Routine
+from web_hacker.config import Config
+from web_hacker.cdp.routine_execution import execute_routine
+from web_hacker.data_models.production_routine import Routine
 
 logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
 logger = logging.getLogger(__name__)
 
 
-def main(routine_path: str, parameters_path: str | None = None, parameters_dict: dict | None = None):
+def main(routine_path: str | None = None, parameters_path: str | None = None, parameters_dict: str | None = None):
+    """
+    Main function for executing a routine.
+    Can be called with arguments (for direct execution) or without (for CLI entry point).
+    """
+    # If called as CLI entry point, parse arguments
+    if routine_path is None:
+        parser = argparse.ArgumentParser(description="Execute a routine")
+        parser.add_argument("--routine-path", type=str, required=True, help="Path to the routine JSON file")
+        parser.add_argument("--parameters-path", type=str, required=False, help="Path to the parameters JSON file")
+        parser.add_argument("--parameters-dict", type=str, required=False, help="Dictionary of parameters")
+        args = parser.parse_args()
+        routine_path = args.routine_path
+        parameters_path = args.parameters_path
+        parameters_dict = args.parameters_dict
     
     # ensure only one of parameters_path or parameters_dict is provided
     if parameters_path and parameters_dict:
@@ -34,9 +48,9 @@ def main(routine_path: str, parameters_path: str | None = None, parameters_dict:
     
     # Load routine data
     if parameters_path:
-        parameters_dict = json.load(open(parameters_path))
+        parameters_dict_parsed = json.load(open(parameters_path))
     elif parameters_dict:
-        parameters_dict = json.loads(parameters_dict)
+        parameters_dict_parsed = json.loads(parameters_dict)
     else:
         raise ValueError("Either --parameters-path or --parameters-dict must be provided")
         
@@ -48,7 +62,7 @@ def main(routine_path: str, parameters_path: str | None = None, parameters_dict:
     try:
         result = execute_routine(
             routine=routine,
-            parameters_dict=parameters_dict,
+            parameters_dict=parameters_dict_parsed,
             timeout=60.0,
             wait_after_navigate_sec=3.0,
             close_tab_when_done=False,
@@ -61,9 +75,4 @@ def main(routine_path: str, parameters_path: str | None = None, parameters_dict:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Execute a routine")
-    parser.add_argument("--routine-path", type=str, required=True, help="Path to the routine JSON file")
-    parser.add_argument("--parameters-path", type=str, required=False, help="Path to the parameters JSON file")
-    parser.add_argument("--parameters-dict", type=str, required=False, help="Dictionary of parameters")
-    args = parser.parse_args()
-    main(args.routine_path, args.parameters_path, args.parameters_dict)
+    main()

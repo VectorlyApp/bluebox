@@ -1,5 +1,5 @@
 """
-src/utils/cdp_utils.py
+web_hacker/utils/cdp_utils.py
 
 Utility functions for CDP use.
 """

@@ -1,5 +1,5 @@
 """
-src/scripts/discover_routines.py
+web_hacker/scripts/discover_routines.py
 
 Script for discovering routines from the network transactions.
 """
@@ -10,10 +10,10 @@ import os
 
 from openai import OpenAI
 
-from src.config import Config
-from src.utils.exceptions import ApiKeyNotFoundError
-from src.routine_discovery.agent import RoutineDiscoveryAgent
-from src.routine_discovery.context_manager import ContextManager
+from web_hacker.config import Config
+from web_hacker.utils.exceptions import ApiKeyNotFoundError
+from web_hacker.routine_discovery.agent import RoutineDiscoveryAgent
+from web_hacker.routine_discovery.context_manager import ContextManager
 
 logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
 logger = logging.getLogger(__name__)

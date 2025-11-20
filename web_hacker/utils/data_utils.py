@@ -1,5 +1,5 @@
 """
-src/utils/data_utils.py
+web_hacker/utils/data_utils.py
 
 Utility functions for loading data.
 """
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Union
 from bs4 import BeautifulSoup
 
-from src.utils.exceptions import UnsupportedFileFormat
+from web_hacker.utils.exceptions import UnsupportedFileFormat
 
 
 def load_data(file_path: Path) -> Union[dict, list]:

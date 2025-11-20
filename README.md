@@ -148,113 +148,151 @@ This substitutes parameter values and injects `auth_token` from cookies. The JSO
 
 - Python 3.12+
 - Google Chrome (stable)
-- [uv (Python package manager)](https://github.com/astral-sh/uv)
+- [uv (Python package manager)](https://github.com/astral-sh/uv) (optional, for development)
   - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
   - Windows (PowerShell): `iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex`
 - OpenAI API key
 
-## Set up Your Environment 🔧
+## Installation
 
-### Linux
+### From PyPI (Recommended)
+
+**Note:** We recommend using a virtual environment to avoid dependency conflicts.
 
 ```bash
-# 1) Clone and enter the repo
+# Create and activate a virtual environment
+# Option 1: Using uv (recommended - handles Python version automatically)
+uv venv web-hacker-env
+source web-hacker-env/bin/activate  # On Windows: web-hacker-env\Scripts\activate
+uv pip install web-hacker
+
+# Option 2: Using python3 (if Python 3.12+ is your default)
+python3 -m venv web-hacker-env
+source web-hacker-env/bin/activate  # On Windows: web-hacker-env\Scripts\activate
+pip install web-hacker
+
+# Option 3: Using pyenv (if you need a specific Python version)
+pyenv install 3.12.3  # if not already installed
+pyenv local 3.12.3
+python -m venv web-hacker-env
+source web-hacker-env/bin/activate  # On Windows: web-hacker-env\Scripts\activate
+pip install web-hacker
+
+# Troubleshooting: If pip is not found, recreate the venv or use:
+python -m ensurepip --upgrade  # Install pip in the venv
+pip install web-hacker
+```
+
+### From Source (Development)
+
+For development or if you want the latest code:
+
+```bash
+# Clone the repository
 git clone https://github.com/VectorlyApp/web-hacker.git
 cd web-hacker
 
-# 2) Create & activate virtual environment (uv)
-uv venv --prompt web-hacker
-source .venv/bin/activate   # Windows: .venv\\Scripts\\activate
+# Create and activate virtual environment
+python3 -m venv web-hacker-env
+source web-hacker-env/bin/activate  # On Windows: web-hacker-env\Scripts\activate
 
-# 3) Install exactly what lockfile says
-uv sync
+# Install in editable mode
+pip install -e .
 
-# 4) Install in editable mode via uv (pip-compatible interface)
+# Or using uv (faster)
+uv venv web-hacker-env
+source web-hacker-env/bin/activate
 uv pip install -e .
+```
 
-# 5) Configure environment
-cp .env.example .env  # then edit values
-# or set directly
+## Quickstart (Easiest Way) 🚀
+
+The fastest way to get started is using the quickstart script, which automates the entire workflow:
+
+```bash
+# Make sure web-hacker is installed
+pip install web-hacker
+
+# Set your OpenAI API key
 export OPENAI_API_KEY="sk-..."
+
+# Run the quickstart script
+python quickstart.py
+```
+
+The quickstart script will:
+1. ✅ Automatically launch Chrome in debug mode
+2. 📊 Start browser monitoring (you perform actions)
+3. 🤖 Discover routines from captured data
+4. 📝 Show you how to execute the discovered routine
+
+**Note:** The quickstart script is included in the repository. If you installed from PyPI, you can download it from the [GitHub repository](https://github.com/VectorlyApp/web-hacker/blob/main/quickstart.py).
+
+## Launch Chrome in Debug Mode 🐞
+
+> 💡 **Tip:** The [quickstart script](#quickstart-easiest-way-🚀) automatically launches Chrome for you. You only need these manual instructions if you're not using the quickstart script.
+
+### macOS
+
+```bash
+# Create temporary Chrome user directory
+mkdir -p $HOME/tmp/chrome
+
+# Launch Chrome in debug mode
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/tmp/chrome" \
+  --remote-allow-origins=* \
+  --no-first-run \
+  --no-default-browser-check
+
+# Verify Chrome is running
+curl http://127.0.0.1:9222/json/version
 ```
 
 ### Windows
 
 ```powershell
-# 1) Clone and enter the repo
-git clone https://github.com/VectorlyApp/web-hacker.git
-cd web-hacker
-
-# 2) Install uv (if not already installed)
-iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex
-
-# 3) Create & activate virtual environment (uv)
-uv venv --prompt web-hacker
-.venv\Scripts\activate
-
-# 4) Install in editable mode via uv (pip-compatible interface)
-uv pip install -e .
-
-# 5) Configure environment
-copy .env.example .env  # then edit values
-# or set directly
-$env:OPENAI_API_KEY="sk-..."
-```
-
-## Launch Chrome in Debug Mode 🐞
-
-### Instructions for MacOS
-
-```
-# You should see JSON containing a webSocketDebuggerUrl like:
-# ws://127.0.0.1:9222/devtools/browser/*************************************# Create temporary chrome user directory
-mkdir $HOME/tmp
-mkdir $HOME/tmp/chrome
-
-# Launch Chrome app in debug mode (this exposes websocket for controlling and monitoring the browser)
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --remote-debugging-address=127.0.0.1 \
-  --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/tmp/chrome" \
-  '--remote-allow-origins=*' \
-  --no-first-run \
-  --no-default-browser-check
-
-
-# Verify chrome is running in debug mode
-curl http://127.0.0.1:9222/json/version
-
-# You should see JSON containing a webSocketDebuggerUrl like:
-# ws://127.0.0.1:9222/devtools/browser/*************************************
-```
-
-### Instructions for Windows
-
-```
 # Create temporary Chrome user directory
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\\tmp\\chrome" | Out-Null
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\tmp\chrome" | Out-Null
 
-# Locate Chrome (adjust path if Chrome is installed elsewhere)
-$chrome = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+# Locate Chrome
+$chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
 if (!(Test-Path $chrome)) {
-  $chrome = "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
+  $chrome = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
 }
 
-# Launch Chrome in debug mode (exposes DevTools WebSocket)
+# Launch Chrome in debug mode
 & $chrome `
   --remote-debugging-address=127.0.0.1 `
   --remote-debugging-port=9222 `
-  --user-data-dir="$env:USERPROFILE\\tmp\\chrome" `
+  --user-data-dir="$env:USERPROFILE\tmp\chrome" `
   --remote-allow-origins=* `
   --no-first-run `
   --no-default-browser-check
 
-
-# Verify Chrome is running in debug mode
+# Verify Chrome is running
 (Invoke-WebRequest http://127.0.0.1:9222/json/version).Content
+```
 
-# You should see JSON containing a webSocketDebuggerUrl like:
-# ws://127.0.0.1:9222/devtools/browser/*************************************
+### Linux
+
+```bash
+# Create temporary Chrome user directory
+mkdir -p $HOME/tmp/chrome
+
+# Launch Chrome in debug mode (adjust path if needed)
+google-chrome \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/tmp/chrome" \
+  --remote-allow-origins=* \
+  --no-first-run \
+  --no-default-browser-check
+
+# Verify Chrome is running
+curl http://127.0.0.1:9222/json/version
 ```
 
 ## HACK (reverse engineer) WEB APPS 👨🏻‍💻
@@ -264,6 +302,12 @@ The reverse engineering process follows a simple three-step workflow:
 1. **Monitor** — Capture network traffic, storage events, and interactions while you manually perform the target task in Chrome
 2. **Discover** — Let the AI agent analyze the captured data and generate a reusable Routine
 3. **Execute** — Run the discovered Routine with different parameters to automate the task
+
+### Quick Start (Recommended)
+
+**Easiest way:** Use the [quickstart script](#quickstart-easiest-way-🚀) which automates the entire workflow.
+
+### Manual Workflow (Step-by-Step)
 
 Each step is detailed below. Start by ensuring Chrome is running in debug mode (see [Launch Chrome in Debug Mode](#launch-chrome-in-debug-mode-🐞) above).
 
@@ -277,7 +321,7 @@ Use the CDP browser monitor to block trackers and capture network, storage, and 
 **Run this command to start monitoring:**
 
 ```bash
-python scripts/browser_monitor.py --host 127.0.0.1 --port 9222 --output-dir ./cdp_captures --url about:blank --incognito
+web-hacker-monitor --host 127.0.0.1 --port 9222 --output-dir ./cdp_captures --url about:blank --incognito
 ```
 
 The script will open a new tab (starting at `about:blank`). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` and the script will consolidate transactions and produce a HAR automatically.
@@ -313,7 +357,7 @@ Use the **routine-discovery pipeline** to analyze captured data and synthesize a
 
 **Linux/macOS (bash):**
 ```bash
-python scripts/discover_routines.py \
+web-hacker-discover \
   --task "Recover API endpoints for searching for trains and their prices" \
   --cdp-captures-dir ./cdp_captures \
   --output-dir ./routine_discovery_output \
@@ -323,7 +367,7 @@ python scripts/discover_routines.py \
 **Windows (PowerShell):**
 ```powershell
 # Simple task (no quotes inside):
-python scripts/discover_routines.py --task "Recover the API endpoints for searching for trains and their prices" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5
+web-hacker-discover --task "Recover the API endpoints for searching for trains and their prices" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5
 ```
 
 **Example tasks:**
@@ -372,13 +416,13 @@ Run the example routine:
 ```bash
 # Using a parameters file:
 
-python scripts/execute_routine.py \
+web-hacker-execute \
   --routine-path example_routines/amtrak_one_way_train_search_routine.json \
   --parameters-path example_routines/amtrak_one_way_train_search_input.json
 
 # Or pass parameters inline (JSON string):
 
-python scripts/execute_routine.py \
+web-hacker-execute \
   --routine-path example_routines/amtrak_one_way_train_search_routine.json \
   --parameters-dict '{"origin": "BOS", "destination": "NYP", "departureDate": "2026-03-22"}'
 ```
@@ -386,7 +430,7 @@ python scripts/execute_routine.py \
 Run a discovered routine:
 
 ```bash
-python scripts/execute_routine.py \
+web-hacker-execute \
   --routine-path routine_discovery_output/routine.json \
   --parameters-path routine_discovery_output/test_parameters.json
 ```

@@ -1,5 +1,5 @@
 """
-src/data_models/llm_responses.py
+web_hacker/data_models/llm_responses.py
 
 LLM response data models.
 """
@@ -8,7 +8,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-from src.data_models.network import Method
+from web_hacker.data_models.network import Method
 
 
 class ConfidenceLevel(StrEnum):

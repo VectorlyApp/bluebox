@@ -1,5 +1,5 @@
 """
-src/cdp/interaction_monitor.py
+web_hacker/cdp/interaction_monitor.py
 
 Interaction monitoring for CDP — tracks mouse and keyboard events with element details.
 """
@@ -10,8 +10,8 @@ import time
 import json
 from collections import defaultdict
 
-from src.config import Config
-from src.utils.cdp_utils import write_jsonl, write_json_file
+from web_hacker.config import Config
+from web_hacker.utils.cdp_utils import write_jsonl, write_json_file
 
 logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
 logger = logging.getLogger(__name__)
