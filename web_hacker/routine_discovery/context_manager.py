@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator, Field
+from pydantic import BaseModel, field_validator, Field, ConfigDict
 from openai import OpenAI
 import os
 import json
@@ -26,9 +26,7 @@ class ContextManager(BaseModel):
     cached_transaction_ids: list[str] | None = Field(default=None, exclude=True)
     uploaded_transaction_ids: set[str] = Field(default_factory=set, exclude=True)
 
-    class Config:
-        arbitrary_types_allowed = True
-        
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @field_validator('transactions_dir', 'consolidated_transactions_path', 'storage_jsonl_path')
     @classmethod

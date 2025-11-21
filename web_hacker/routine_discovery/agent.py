@@ -10,7 +10,7 @@ from uuid import uuid4
 import os
 
 from openai import OpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from web_hacker.config import Config
 from web_hacker.routine_discovery.context_manager import ContextManager
@@ -46,8 +46,7 @@ class RoutineDiscoveryAgent(BaseModel):
     n_transaction_identification_attempts: int = 3
     current_transaction_identification_attempt: int = 0
 
-    class Config:
-        arbitrary_types_allowed: bool = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     SYSTEM_PROMPT_IDENTIFY_TRANSACTIONS: str = f"""
     You are a helpful assistant that is an expert in parsing network traffic.

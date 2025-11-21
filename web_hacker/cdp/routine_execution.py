@@ -56,7 +56,6 @@ def _get_browser_websocket_url(remote_debugging_address: str) -> str:
     except Exception as e:
         raise RuntimeError(f"Failed to get browser WebSocket URL: {e}")
 
-
 def _generate_fetch_js(
     fetch_url: str,
     headers: dict,
@@ -133,16 +132,29 @@ def _generate_fetch_js(
         "    }",
         "  }",
         "",
-        "  const PLACEHOLDER = /\\\"?\\{\\{\\s*(sessionStorage|localStorage|cookie|meta)\\s*:\\s*([^}]+?)\\s*\\}\\}\\\"?/g;",
+        "  const PLACEHOLDER = /\\\"?\\{\\{\\s*(sessionStorage|localStorage|cookie|meta|windowProperty)\\s*:\\s*([^}]+?)\\s*\\}\\}\\\"?/g;",
+        "  function getWindowProperty(path){",
+        "    const parts = path.trim().split('.');",
+        "    let obj = window;",
+        "    for (const part of parts) {",
+        "      if (obj == null || obj === undefined) return undefined;",
+        "      obj = obj[part];",
+        "    }",
+        "    // Convert the final value to a string if it's not null/undefined",
+        "    if (obj == null || obj === undefined) return undefined;",
+        "    return obj;",
+        "  }",
         "  function resolveOne(token){",
         "    const [lhs, rhs] = token.split('||');",
         "    const [kind, path] = lhs.split(':');",
         "    let val;",
-        "    switch(kind){",
+        "    switch(kind.trim()){",
         "      case 'sessionStorage': val = readStorage(window.sessionStorage, path.trim()); break;",
         "      case 'localStorage':   val = readStorage(window.localStorage, path.trim()); break;",
         "      case 'cookie':         val = getCookie(path.trim()); break;",
         "      case 'meta':           val = getMeta(path.trim()); break;",
+        "      case 'windowProperty': val = getWindowProperty(path.trim()); break;",
+        "      default: val = undefined;",
         "    }",
         "    if ((val === undefined || val === null || val === '') && rhs){",
         "      if (rhs.trim() === 'uuid' && 'randomUUID' in crypto){",
@@ -168,10 +180,13 @@ def _generate_fetch_js(
         "      const isQuoted = startsWithEscaped && endsWithEscaped;",
         "      if (isQuoted) {",
         "        // Quoted: strings use raw value (no quotes), objects use JSON.stringify",
-        "        return (typeof v === 'string') ? v : JSON.stringify(v);",
+        "        if (typeof v === 'string') return v;",
+        "        if (typeof v === 'object') return JSON.stringify(v);",
+        "        return String(v);",
         "      } else {",
         "        // Unquoted: always stringify",
-        "        return (typeof v === 'object') ? JSON.stringify(v) : String(v);",
+        "        if (typeof v === 'object') return JSON.stringify(v);",
+        "        return String(v);",
         "      }",
         "    });",
         "  }",
@@ -205,7 +220,20 @@ def _generate_fetch_js(
         "  // Resolve body (if any)",
         "  if (BODY_LITERAL !== null) {",
         "    const bodyVal = deepResolve(BODY_LITERAL);",
-        "    if (typeof bodyVal === 'string' && bodyVal.trim().startsWith('{') && bodyVal.trim().endsWith('}')) {",
+        "    ",
+        "    // Check if content-type is application/x-www-form-urlencoded (after interpolation)",
+        "    const contentType = headers['content-type'] || headers['Content-Type'] || '';",
+        "    const isFormUrlEncoded = contentType.toLowerCase().includes('application/x-www-form-urlencoded');",
+        "    ",
+        "    if (isFormUrlEncoded && bodyVal && typeof bodyVal === 'object' && !Array.isArray(bodyVal)) {",
+        "      // Convert object to URL-encoded string",
+        "      const formData = Object.entries(bodyVal).map(([key, value]) => {",
+        "        const encodedKey = encodeURIComponent(String(key));",
+        "        const encodedValue = encodeURIComponent(String(value === null || value === undefined ? '' : value));",
+        "        return `${encodedKey}=${encodedValue}`;",
+        "      }).join('&');",
+        "      opts.body = formData;",
+        "    } else if (typeof bodyVal === 'string' && bodyVal.trim().startsWith('{') && bodyVal.trim().endsWith('}')) {",
         "      opts.body = bodyVal;",
         "    } else {",
         "      opts.body = JSON.stringify(bodyVal);",
@@ -223,7 +251,6 @@ def _generate_fetch_js(
     ]
 
     return "\n".join(js_lines)
-
 
 def _create_cdp_helpers(ws):
     """Create helper functions for CDP communication."""
@@ -383,11 +410,11 @@ def _execute_fetch_in_session(
     # Prepare headers and body for injection
     hdrs = headers or {}
 
-    # Serialize body to JS string literal
+    # Serialize body to JS string literal (conversion to form-urlencoded happens in JS after interpolation)
     if body is None:
         body_js_literal = "null"
     elif isinstance(body, (dict, list)):
-        body_js_literal = json.dumps(body)  # JS object, will be JSON.stringify'd in JS
+        body_js_literal = json.dumps(body)  # JS object, will be processed in JS after interpolation
     elif isinstance(body, bytes):
         body_js_literal = json.dumps(body.decode("utf-8", errors="ignore"))
     else:

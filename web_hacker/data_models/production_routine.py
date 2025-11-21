@@ -126,7 +126,13 @@ class Parameter(BaseModel):
 
     # reserved prefixes: names that cannot be used at the beginning of a parameter name
     RESERVED_PREFIXES: ClassVar[list[str]] = [
-        "sessionStorage", "localStorage", "cookie", "meta", "uuid", "epoch_milliseconds"
+        "sessionStorage",
+        "localStorage",
+        "cookie",
+        "meta",
+        "windowProperty",
+        "uuid",
+        "epoch_milliseconds",
     ]
 
     name: str = Field(..., description="Parameter name (must be valid Python identifier)")
@@ -483,11 +489,11 @@ class Routine(ResourceBase):
             # clean the match (already extracted the content between braces)
             match = match.strip()
 
-            # if the parameter name contains a colon, it is a storage parameter
+            # if the parameter name contains a colon, it is an application parameter
             if ":" in match:
                 kind, path = [p.strip() for p in match.split(":", 1)]
-                assert kind in ["sessionStorage", "localStorage", "cookie", "meta"], f"Invalid prefix in parameter name: {kind}"
-                assert path, f"Path is required for sessionStorage, localStorage, cookie, and meta: {kind}:{path}"
+                assert kind in ["sessionStorage", "localStorage", "cookie", "meta", "windowProperty"], f"Invalid prefix in parameter name: {kind}"
+                assert path, f"Path is required for sessionStorage, localStorage, cookie, meta, and windowProperty: {kind}:{path}"
                 continue
             # if the parameter name is a builtin parameter, add it to the used parameters
             elif match in builtin_parameter_names:
