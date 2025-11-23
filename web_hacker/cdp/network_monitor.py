@@ -111,7 +111,8 @@ class NetworkMonitor:
                 logger.info("Frame navigated to: %s", url)
             except Exception:
                 pass
-            return True
+            # Don't swallow this event, let other monitors see it
+            return False
         return False
 
     def handle_network_command_reply(self, msg, cdp_session):

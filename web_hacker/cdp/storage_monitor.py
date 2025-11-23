@@ -95,11 +95,13 @@ class StorageMonitor:
         # Page navigation events (cookies might change on navigation)
         elif method == "Page.frameNavigated":
             self._trigger_native_cookie_check(cdp_session)
-            return True
+            # Don't swallow this event, let other monitors see it
+            return False
         
         elif method == "Page.loadEventFired":
             self._trigger_native_cookie_check(cdp_session)
-            return True
+            # Don't swallow this event, let other monitors see it
+            return False
         
         # Optional: Runtime console events for document.cookie detection
         elif method == "Runtime.consoleAPICalled":

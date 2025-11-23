@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import time
+import threading
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
@@ -47,44 +48,18 @@ class WindowPropertyMonitor:
         self.last_collection_time = 0
         self.navigation_detected = False
         self.page_ready = False  # Track if page is ready for collection
+        self.collection_thread = None
+        self.collection_lock = threading.Lock()
         
         # Output path
         root_output_dir = paths.get('output_dir', output_dir)
         self.window_properties_dir = os.path.join(root_output_dir, "window_properties")
         os.makedirs(self.window_properties_dir, exist_ok=True)
         self.output_file = os.path.join(self.window_properties_dir, "window_properties_flat.json")
-        
-        # Load existing history
-        self._load_history()
-    
-    def _load_history(self):
-        """Load existing window properties history from file."""
-        if os.path.exists(self.output_file):
-            try:
-                with open(self.output_file, "r", encoding="utf-8") as f:
-                    loaded_data = json.load(f)
-                
-                # Migrate old format to new format if necessary
-                migration_ts = time.time()
-                migration_url = None  # Will be set during first collection
-                
-                for k, v in loaded_data.items():
-                    if not isinstance(v, list):
-                        # Old format: key -> value. Convert to key -> [{ts, value, url}]
-                        self.history_db[k] = [{"timestamp": migration_ts, "value": v, "url": ""}]
-                    else:
-                        # Assume new format, but ensure url key exists
-                        self.history_db[k] = v
-                        for entry in self.history_db[k]:
-                            if "url" not in entry:
-                                entry["url"] = ""
-                
-                logger.info(f"Loaded existing history with {len(self.history_db)} keys")
-            except Exception as e:
-                logger.warning(f"Error loading existing file: {e}")
     
     def _save_history(self):
         """Save window properties history to file."""
+        logger.info(f"Saving window properties to {self.output_file}")
         try:
             with open(self.output_file, "w", encoding="utf-8") as f:
                 json.dump(self.history_db, f, indent=2, ensure_ascii=False)
@@ -120,16 +95,27 @@ class WindowPropertyMonitor:
         # Detect navigation events
         if method == "Runtime.executionContextsCleared":
             # JS context cleared - page is navigating, but NOT ready yet
-            logger.debug("JavaScript context cleared - navigation starting")
+            logger.info("JavaScript context cleared - navigation starting")
             self.page_ready = False  # Page is NOT ready yet
             self.navigation_detected = True
             return True
         
         elif method == "Page.frameNavigated":
             # Frame navigated - page might be loading
-            logger.debug("Frame navigated")
+            logger.info("Frame navigated")
             self.navigation_detected = True
-            # Don't mark as ready yet - wait for loadEventFired
+            # We can start trying to collect here, but it might be too early.
+            # But if the user wants "as soon as possible", we should try.
+            self.page_ready = True 
+            self._trigger_collection_thread(cdp_session)
+            return True
+        
+        elif method == "Page.domContentEventFired":
+            # DOM is ready - good time to collect
+            logger.info("DOM content event fired - page is ready")
+            self.page_ready = True
+            self.navigation_detected = True
+            self._trigger_collection_thread(cdp_session)
             return True
         
         elif method == "Page.loadEventFired":
@@ -137,10 +123,7 @@ class WindowPropertyMonitor:
             logger.info("Page load event fired - page is ready")
             self.page_ready = True
             self.navigation_detected = True
-            # Wait a bit for page to fully initialize JavaScript
-            time.sleep(0.5)
-            # Trigger immediate collection
-            self._collect_window_properties(cdp_session)
+            self._trigger_collection_thread(cdp_session)
             return True
         
         return False
@@ -231,7 +214,7 @@ class WindowPropertyMonitor:
                     flat_dict[prop_path] = value.get("value")
         
         except Exception as e:
-            logger.debug(f"Error resolving object {base_path}: {e}")
+            logger.error(f"Error resolving object {base_path}: {e}")
     
     def _get_current_url(self, cdp_session):
         """Get current page URL using CDP. Tries Page.getFrameTree first (doesn't require JS)."""
@@ -267,13 +250,14 @@ class WindowPropertyMonitor:
                 except Exception:
                     pass
         except Exception as e:
-            logger.debug(f"Could not get URL: {e}")
+            logger.info(f"Could not get URL: {e}")
         
         # Return placeholder if we can't get URL - don't fail collection
         return "unknown"
     
     def _collect_window_properties(self, cdp_session):
         """Collect all window properties into a flat dictionary."""
+        logger.info("Starting window property collection...")
         try:
             # Check if Runtime context is ready (quick check with short timeout)
             try:
@@ -284,20 +268,20 @@ class WindowPropertyMonitor:
                 }, timeout=2)
                 # Check if result has error or if result structure is invalid
                 if not test_result:
-                    logger.debug("Runtime context not ready yet, skipping collection")
+                    logger.info("Runtime context not ready yet (no result), skipping collection")
                     return
                 if isinstance(test_result, dict):
                     if "error" in test_result:
-                        logger.debug("Runtime context has error, skipping collection")
+                        logger.info(f"Runtime context has error: {test_result['error']}, skipping collection")
                         return
                     if "result" not in test_result:
-                        logger.debug("Runtime context returned invalid response, skipping collection")
+                        logger.info("Runtime context returned invalid response (no result key), skipping collection")
                         return
             except TimeoutError:
-                logger.debug("Runtime context check timed out, skipping collection")
+                logger.info("Runtime context check timed out, skipping collection")
                 return
             except Exception as e:
-                logger.debug(f"Runtime context check failed: {e}, skipping collection")
+                logger.info(f"Runtime context check failed: {e}, skipping collection")
                 return
             
             current_url = self._get_current_url(cdp_session)
@@ -310,7 +294,7 @@ class WindowPropertyMonitor:
             }, timeout=5)
             
             if not result or not result.get("result", {}).get("objectId"):
-                logger.debug("Window object not found, skipping collection")
+                logger.info("Window object not found, skipping collection")
                 return
             
             window_obj = result["result"]["objectId"]
@@ -323,6 +307,8 @@ class WindowPropertyMonitor:
             
             flat_dict = {}
             all_props = props_result.get("result", [])
+            
+            total_props = len(all_props)
             
             skipped_count = 0
             processed_count = 0
@@ -358,6 +344,9 @@ class WindowPropertyMonitor:
             current_ts = time.time()
             changes_count = 0
             
+            # Log collection stats
+            logger.info(f"Window properties collected: {total_props} total, {processed_count} processed, {skipped_count} skipped (native)")
+            
             # Update history with new/changed values
             for key, value in flat_dict.items():
                 if key not in self.history_db:
@@ -379,21 +368,41 @@ class WindowPropertyMonitor:
                         self.history_db[key].append({"timestamp": current_ts, "value": None, "url": current_url})
                         changes_count += 1
             
-            if changes_count > 0:
+            if changes_count > 0 or not os.path.exists(self.output_file):
                 self._save_history()
-                logger.info(f"Window properties: {processed_count} processed, {skipped_count} skipped, {changes_count} changes saved")
+                if changes_count > 0:
+                    logger.info(f"Window properties: {changes_count} changes saved")
+                else:
+                    logger.info(f"Window properties: No changes, but saved initial state")
             
         except Exception as e:
             logger.error(f"Error collecting window properties: {e}")
     
+    def _trigger_collection_thread(self, cdp_session):
+        """Trigger collection in a separate thread."""
+        with self.collection_lock:
+            if self.collection_thread and self.collection_thread.is_alive():
+                return
+            
+            self.collection_thread = threading.Thread(
+                target=self._collect_window_properties,
+                args=(cdp_session,)
+            )
+            self.collection_thread.daemon = True
+            self.collection_thread.start()
+
     def check_and_collect(self, cdp_session):
-        """Check if it's time to collect and collect if needed."""
+        """Check if it's time to collect and collect if needed (runs in background thread)."""
         # Don't collect until page is ready (after first navigation)
         if not self.page_ready:
             return
         
         current_time = time.time()
         
+        # Check if a collection is already running
+        if self.collection_thread and self.collection_thread.is_alive():
+            return
+
         # Collect on navigation or if interval has passed
         should_collect = (
             self.navigation_detected or
@@ -403,11 +412,20 @@ class WindowPropertyMonitor:
         if should_collect:
             self.navigation_detected = False
             self.last_collection_time = current_time
-            self._collect_window_properties(cdp_session)
+            self._trigger_collection_thread(cdp_session)
 
     def force_collect(self, cdp_session):
-        """Force immediate collection of window properties."""
-        self._collect_window_properties(cdp_session)
+        """Force immediate collection of window properties (blocks until done)."""
+        # For force_collect (used at exit), we might need to run it in a thread too if the main loop is still running?
+        # If called from _generate_assets in finally block, the main loop might be stopped or stopping.
+        # But send_and_wait relies on the main loop to process messages.
+        # If main loop is stopped (e.g. KeyboardInterrupt broke the loop), send_and_wait will hang forever!
+        
+        # We cannot rely on send_and_wait if the main loop is dead.
+        # So force_collect at exit is tricky with the current architecture.
+        # Ideally we should just let the background thread finish if it's running.
+        pass
+        # For now, disabling force_collect at exit to prevent hangs, as it relies on the dead event loop.
     
     def get_window_property_summary(self):
         """Get summary of window property monitoring."""

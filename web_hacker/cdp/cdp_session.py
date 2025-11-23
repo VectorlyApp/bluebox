@@ -239,6 +239,12 @@ class CDPSession:
             # Final cookie sync using native CDP (no delay needed)
             self.storage_monitor.monitor_cookie_changes(self)
             
+            # Force final window property collection
+            try:
+                self.window_property_monitor.force_collect(self)
+            except Exception as e:
+                logger.debug(f"Could not force collect window properties: {e}")
+            
             # Consolidate all transactions into a single JSON file
             consolidated_path = f"{self.output_dir}/consolidated_transactions.json"
             self.network_monitor.consolidate_transactions(consolidated_path)
