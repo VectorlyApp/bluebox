@@ -421,9 +421,9 @@ def main():
         
         if has_existing_routine:
             print_colored(f"📁 Found existing routine at {routine_file}", YELLOW)
-            skip = input("   Skip discovery? (y/n): ").strip().lower()
-            if skip == 'y':
-                print_colored("⏭️  Skipping discovery step.", GREEN)
+            overwrite = input("   Overwrite existing routine? (y/n): ").strip().lower()
+            if overwrite != 'y':
+                print_colored("⏭️  Keeping existing routine. Skipping discovery step.", GREEN)
                 print()
             else:
                 # Check if directory exists and has content before running discovery
