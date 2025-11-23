@@ -4,6 +4,7 @@ Storage monitoring functionality for CDP web scraping.
 Tracks cookies, localStorage, sessionStorage, and other storage mechanisms using NATIVE CDP events.
 """
 
+import os
 import time
 from web_hacker.utils.cdp_utils import write_jsonl
 

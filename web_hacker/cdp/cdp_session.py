@@ -236,36 +236,75 @@ class CDPSession:
                     last_check_time = current_time
         except KeyboardInterrupt:
             logger.info("\nStopped. Saving assets...")
-            # Final cookie sync using native CDP (no delay needed)
-            self.storage_monitor.monitor_cookie_changes(self)
             
-            # Force final window property collection
+            # Final cookie sync using native CDP (no delay needed)
+            logger.info("Syncing cookies...")
+            try:
+                self.storage_monitor.monitor_cookie_changes(self)
+                logger.info("✓ Cookies synced")
+            except Exception as e:
+                logger.error(f"Failed to sync cookies: {e}", exc_info=True)
+            
+            # Force final window property collection (non-blocking)
+            logger.info("Triggering final window property collection...")
             try:
                 self.window_property_monitor.force_collect(self)
             except Exception as e:
-                logger.debug(f"Could not force collect window properties: {e}")
+                logger.error(f"Could not trigger window property collection: {e}", exc_info=True)
             
             # Consolidate all transactions into a single JSON file
-            network_dir = self.paths.get('network_dir', os.path.join(self.output_dir, "network"))
-            consolidated_path = self.paths.get('consolidated_transactions_json_path', 
-                                               os.path.join(network_dir, "consolidated_transactions.json"))
-            self.network_monitor.consolidate_transactions(consolidated_path)
+            logger.info("Starting transaction consolidation...")
+            try:
+                network_dir = self.paths.get('network_dir', os.path.join(self.output_dir, "network"))
+                consolidated_path = self.paths.get('consolidated_transactions_json_path', 
+                                                   os.path.join(network_dir, "consolidated_transactions.json"))
+                logger.info(f"Consolidating transactions to {consolidated_path}...")
+                result = self.network_monitor.consolidate_transactions(consolidated_path)
+                logger.info(f"Consolidate method returned, checking file...")
+                if os.path.exists(consolidated_path):
+                    file_size = os.path.getsize(consolidated_path)
+                    logger.info(f"✓ Consolidated transactions saved to {consolidated_path} ({file_size} bytes)")
+                else:
+                    logger.error(f"✗ Consolidated transactions file NOT created at {consolidated_path}")
+            except Exception as e:
+                logger.error(f"Failed to consolidate transactions: {e}", exc_info=True)
             
             # Generate HAR file from consolidated transactions
-            har_path = self.paths.get('network_har_path', 
-                                     os.path.join(network_dir, "network.har"))
-            self.network_monitor.generate_har_from_transactions(har_path, "Web Hacker Session")
+            logger.info("Starting HAR file generation...")
+            try:
+                network_dir = self.paths.get('network_dir', os.path.join(self.output_dir, "network"))
+                har_path = self.paths.get('network_har_path', 
+                                         os.path.join(network_dir, "network.har"))
+                logger.info(f"Generating HAR file at {har_path}...")
+                self.network_monitor.generate_har_from_transactions(har_path, "Web Hacker Session")
+                logger.info(f"HAR method returned, checking file...")
+                if os.path.exists(har_path):
+                    file_size = os.path.getsize(har_path)
+                    logger.info(f"✓ HAR file saved to {har_path} ({file_size} bytes)")
+                else:
+                    logger.error(f"✗ HAR file NOT created at {har_path}")
+            except Exception as e:
+                logger.error(f"Failed to generate HAR file: {e}", exc_info=True)
             
             # Consolidate all interactions into a single JSON file
-            interaction_dir = self.paths.get('interaction_dir', os.path.join(self.output_dir, "interaction"))
-            consolidated_interactions_path = self.paths.get('consolidated_interactions_json_path',
-                                                           os.path.join(interaction_dir, "consolidated_interactions.json"))
-            self.interaction_monitor.consolidate_interactions(consolidated_interactions_path)
+            logger.info("Consolidating interactions...")
+            try:
+                interaction_dir = self.paths.get('interaction_dir', os.path.join(self.output_dir, "interaction"))
+                consolidated_interactions_path = self.paths.get('consolidated_interactions_json_path',
+                                                               os.path.join(interaction_dir, "consolidated_interactions.json"))
+                self.interaction_monitor.consolidate_interactions(consolidated_interactions_path)
+                logger.info("✓ Interactions consolidated")
+            except Exception as e:
+                logger.error(f"Failed to consolidate interactions: {e}", exc_info=True)
+            
+            logger.info("Asset saving complete.")
         finally:
             try:
+                logger.info("Closing WebSocket connection...")
                 self.ws.close()
-            except:
-                pass
+                logger.info("WebSocket closed")
+            except Exception as e:
+                logger.warning(f"Error closing WebSocket: {e}")
     
     def get_monitoring_summary(self):
         """Get summary of all monitoring activities."""

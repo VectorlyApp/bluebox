@@ -705,11 +705,13 @@ class NetworkMonitor:
         # Save to file if output path provided
         if output_file_path:
             try:
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
                 with open(output_file_path, 'w', encoding='utf-8') as f:
                     json.dump(consolidated, f, indent=2, ensure_ascii=False)
                 logger.info("Consolidated transactions saved to: %s", output_file_path)
             except Exception as e:
-                logger.info("Failed to save consolidated transactions: %s", e)
+                logger.error("Failed to save consolidated transactions: %s", e, exc_info=True)
         
         return consolidated
 
@@ -739,11 +741,14 @@ class NetworkMonitor:
         
         # Convert transaction directories to HAR entries
         entries = []
-        for dir_name in os.listdir(transactions_dir):
+        transaction_dirs = [d for d in os.listdir(transactions_dir) if os.path.isdir(os.path.join(transactions_dir, d))]
+        total_dirs = len(transaction_dirs)
+        logger.info(f"Processing {total_dirs} transaction directories for HAR file...")
+        
+        for idx, dir_name in enumerate(transaction_dirs, 1):
+            if idx % 50 == 0 or idx == total_dirs:
+                logger.info(f"Processing HAR entry {idx}/{total_dirs}...")
             dir_path = os.path.join(transactions_dir, dir_name)
-            if not os.path.isdir(dir_path):
-                continue
-                
             entry = self._create_har_entry_from_directory(dir_name, dir_path)
             if entry:
                 entries.append(entry)
@@ -751,12 +756,15 @@ class NetworkMonitor:
         har_data["log"]["entries"] = entries
         
         # Save HAR file
-        try:
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(har_data, f, indent=2, ensure_ascii=False)
-            logger.info("HAR file saved to: %s", output_path)
-        except Exception as e:
-            logger.info("Failed to save HAR file: %s", e)
+        if output_path:
+            try:
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    json.dump(har_data, f, indent=2, ensure_ascii=False)
+                logger.info("HAR file saved to: %s", output_path)
+            except Exception as e:
+                logger.error("Failed to save HAR file: %s", e, exc_info=True)
         
         return har_data
 

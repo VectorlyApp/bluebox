@@ -343,6 +343,7 @@ def main():
     logger.info(f"Tab ID: {tab_id}")
 
     # Create and run CDP session
+    session = None
     try:
         session = CDPSession(
             ws_url, 
@@ -362,20 +363,25 @@ def main():
         logger.error("Session crashed!", exc_info=True)
         sys.exit(1)
     finally:
+        logger.info("Running cleanup...")
         # Cleanup: dispose context if we created a tab
         if created_tab and context_id:
             try:
-                logger.info("Cleaning up created browser context...")
+                logger.info(f"Disposing browser context {context_id}...")
                 dispose_context(remote_debugging_address, context_id)
+                logger.info("✓ Browser context disposed - tab should close")
             except Exception as e:
-                logger.info(f"Warning: Could not dispose browser context: {e}")
+                logger.error(f"✗ Failed to dispose browser context: {e}", exc_info=True)
+        else:
+            logger.info("No browser context to dispose (tab was not created by this script)")
 
         end_time = time.time()
 
         # Get final summary and save it
         try:
-            summary = session.get_monitoring_summary()
-            save_session_summary(paths, summary, args, start_time, end_time, created_tab, context_id)
+            if session:
+                summary = session.get_monitoring_summary()
+                save_session_summary(paths, summary, args, start_time, end_time, created_tab, context_id)
 
             # Print organized summary
             logger.info("\n" + "="*60)

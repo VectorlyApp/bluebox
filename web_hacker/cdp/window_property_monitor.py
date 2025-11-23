@@ -479,27 +479,10 @@ class WindowPropertyMonitor:
             self._trigger_collection_thread(cdp_session)
 
     def force_collect(self, cdp_session):
-        """Force immediate collection of window properties (blocks until done or timeout)."""
-        # Wait for any existing collection thread to finish (with timeout)
-        if self.collection_thread and self.collection_thread.is_alive():
-            self.collection_thread.join(timeout=5.0)
-            if self.collection_thread.is_alive():
-                logger.warning("Previous collection thread did not finish in time")
-                return
-        
-        # Trigger new collection and wait for it
-        with self.collection_lock:
-            self.collection_thread = threading.Thread(
-                target=self._collect_window_properties,
-                args=(cdp_session,)
-            )
-            self.collection_thread.daemon = True
-            self.collection_thread.start()
-        
-        # Wait for collection to complete (with timeout)
-        self.collection_thread.join(timeout=15.0)
-        if self.collection_thread.is_alive():
-            logger.warning("Force collection did not complete in time")
+        """Force immediate collection of window properties (non-blocking)."""
+        # Just trigger the thread. If it's running, great. If not, start it.
+        # We do NOT wait for it to complete.
+        self._trigger_collection_thread(cdp_session)
     
     def get_window_property_summary(self):
         """Get summary of window property monitoring."""
