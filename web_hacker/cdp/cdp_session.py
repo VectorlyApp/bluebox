@@ -42,10 +42,6 @@ class CDPSession:
         self.clear_cookies = clear_cookies
         self.clear_storage = clear_storage
         
-        # Connection state tracking
-        self._connection_lost = False
-        self._connection_lost_lock = threading.Lock()
-        
         # Response tracking for synchronous commands
         self.pending_responses = {}
         self.response_lock = threading.Lock()
@@ -71,15 +67,8 @@ class CDPSession:
     
     def send(self, method, params=None):
         """Send CDP command and return sequence ID."""
-        if self._connection_lost:
-            raise ConnectionError("WebSocket connection is closed")
         self.seq += 1
-        try:
-            self.ws.send(json.dumps({"id": self.seq, "method": method, "params": params or {}}))
-        except (websocket.WebSocketConnectionClosedException, OSError, ConnectionError) as e:
-            with self._connection_lost_lock:
-                self._connection_lost = True
-            raise ConnectionError(f"WebSocket connection lost: {e}")
+        self.ws.send(json.dumps({"id": self.seq, "method": method, "params": params or {}}))
         return self.seq
     
     def send_and_wait(self, method, params=None, timeout=10):
@@ -111,14 +100,6 @@ class CDPSession:
     
     def setup_cdp(self, navigate_to=None):
         """Setup CDP domains and configuration."""
-        # Enable Target domain to receive target lifecycle events (if on browser WebSocket)
-        # Note: This may not work on tab WebSockets, but that's okay - we'll catch disconnections
-        try:
-            self.send("Target.setDiscoverTargets", {"discover": True})
-        except Exception as e:
-            # This is expected to fail on tab WebSockets - Target domain is browser-level
-            logger.debug(f"Could not enable Target domain (expected on tab WebSockets): {e}")
-        
         # Enable basic domains
         self.send("Page.enable")
         self.send("Runtime.enable")
@@ -167,14 +148,6 @@ class CDPSession:
     
     def handle_message(self, msg):
         """Handle incoming CDP message by delegating to appropriate monitors."""
-        # Check for target lifecycle events (tab closure)
-        method = msg.get("method")
-        if method == "Target.targetDestroyed":
-            logger.info("Tab was closed. Connection will be lost. Saving assets...")
-            with self._connection_lost_lock:
-                self._connection_lost = True
-            return
-        
         # Try network monitor first
         if self.network_monitor.handle_network_message(msg, self):
             return
@@ -229,84 +202,44 @@ class CDPSession:
         
         return False
     
-    def _generate_assets(self):
-        """Generate all monitoring assets. Works even if connection is lost."""
-        try:
-            # Final cookie sync using native CDP (only if connection is still alive)
-            if not self._connection_lost:
-                try:
-                    self.storage_monitor.monitor_cookie_changes(self)
-                except Exception as e:
-                    logger.debug(f"Could not sync cookies (connection may be lost): {e}")
-        except Exception as e:
-            logger.debug(f"Error in cookie sync: {e}")
-        
-        # Consolidate all transactions into a single JSON file (works with cached data)
-        try:
-            consolidated_path = f"{self.output_dir}/consolidated_transactions.json"
-            self.network_monitor.consolidate_transactions(consolidated_path)
-        except Exception as e:
-            logger.warning(f"Could not consolidate transactions: {e}")
-        
-        # Generate HAR file from consolidated transactions (works with cached data)
-        try:
-            har_path = f"{self.output_dir}/network.har"
-            self.network_monitor.generate_har_from_transactions(har_path, "Web Hacker Session")
-        except Exception as e:
-            logger.warning(f"Could not generate HAR file: {e}")
-        
-        # Consolidate all interactions into a single JSON file (works with cached data)
-        try:
-            interaction_dir = self.paths.get('interaction_dir', f"{self.output_dir}/interaction")
-            consolidated_interactions_path = os.path.join(interaction_dir, "consolidated_interactions.json")
-            self.interaction_monitor.consolidate_interactions(consolidated_interactions_path)
-        except Exception as e:
-            logger.warning(f"Could not consolidate interactions: {e}")
-    
     def run(self):
         """Main message processing loop."""
         logger.info("Blocking trackers & capturing network/storage… Press Ctrl+C to stop.")
         
         try:
             while True:
-                try:
-                    msg = json.loads(self.ws.recv())
-                    self.handle_message(msg)
-                    
-                    # Check if connection was lost due to tab closure
-                    if self._connection_lost:
-                        logger.info("Tab closed. Saving assets...")
-                        break
-                except (websocket.WebSocketConnectionClosedException, OSError, ConnectionError) as e:
-                    # WebSocket connection lost (tab closed, browser closed, etc.)
-                    logger.info(f"Connection lost: {e}. Saving assets...")
-                    with self._connection_lost_lock:
-                        self._connection_lost = True
-                    break
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Failed to parse message: {e}")
-                    continue
+                msg = json.loads(self.ws.recv())
+                self.handle_message(msg)
         except KeyboardInterrupt:
-            logger.info("\nStopped by user. Saving assets...")
-        finally:
-            # Always generate assets, even if connection is lost
-            self._generate_assets()
+            logger.info("\nStopped. Saving assets...")
+            # Final cookie sync using native CDP (no delay needed)
+            self.storage_monitor.monitor_cookie_changes(self)
             
-            # Close WebSocket if still open
+            # Consolidate all transactions into a single JSON file
+            consolidated_path = f"{self.output_dir}/consolidated_transactions.json"
+            self.network_monitor.consolidate_transactions(consolidated_path)
+            
+            # Generate HAR file from consolidated transactions
+            har_path = f"{self.output_dir}/network.har"
+            self.network_monitor.generate_har_from_transactions(har_path, "Web Hacker Session")
+            
+            # Consolidate all interactions into a single JSON file
+            interaction_dir = self.paths.get('interaction_dir', f"{self.output_dir}/interaction")
+            consolidated_interactions_path = os.path.join(interaction_dir, "consolidated_interactions.json")
+            self.interaction_monitor.consolidate_interactions(consolidated_interactions_path)
+        finally:
             try:
-                if self.ws and not self._connection_lost:
-                    self.ws.close()
-            except Exception:
+                self.ws.close()
+            except:
                 pass
     
     def get_monitoring_summary(self):
         """Get summary of all monitoring activities."""
-        # Trigger final cookie check using native CDP (only if connection is still alive)
-        if not self._connection_lost:
-            try:
-                self.storage_monitor.monitor_cookie_changes(self)
-            except Exception as e:
-                logger.debug(f"Could not sync cookies for summary: {e}")
+        # Trigger final cookie check using native CDP (no delay needed)
+        try:
+            self.storage_monitor.monitor_cookie_changes(self)
+        except:
+            pass
             
         storage_summary = self.storage_monitor.get_storage_summary()
         network_summary = self.network_monitor.get_network_summary()

@@ -11,8 +11,6 @@ import platform
 import subprocess
 import shutil
 import json
-import atexit
-import signal
 from pathlib import Path
 from typing import Optional
 import requests
@@ -28,9 +26,6 @@ NC = '\033[0m'  # No Color
 PORT = 9222
 CDP_CAPTURES_DIR = Path("./cdp_captures")
 DISCOVERY_OUTPUT_DIR = Path("./routine_discovery_output")
-
-# Global variable to track Chrome process for cleanup
-_chrome_process: Optional[subprocess.Popen] = None
 
 
 def print_colored(text: str, color: str = NC) -> None:
@@ -292,55 +287,6 @@ def launch_chrome(port: int) -> Optional[subprocess.Popen]:
         return None
 
 
-def cleanup_chrome(process: Optional[subprocess.Popen], port: int) -> None:
-    """Clean up Chrome process if it was launched by this script."""
-    if process is None:
-        return
-    
-    try:
-        # Check if Chrome is still running on the port
-        if not check_chrome_running(port):
-            return
-        
-        print()
-        print_colored("🧹 Cleaning up Chrome...", YELLOW)
-        
-        # Try graceful termination first
-        try:
-            if platform.system() == "Windows":
-                # On Windows with CREATE_NEW_PROCESS_GROUP, we need to kill the process group
-                process.terminate()
-                time.sleep(1)
-                if process.poll() is None:
-                    process.kill()
-            else:
-                process.terminate()
-                time.sleep(1)
-                if process.poll() is None:
-                    process.kill()
-            
-            # Wait a bit for Chrome to close
-            process.wait(timeout=3)
-            print_colored("✅ Chrome closed successfully", GREEN)
-        except subprocess.TimeoutExpired:
-            # Force kill if it didn't terminate
-            try:
-                process.kill()
-                process.wait(timeout=2)
-                print_colored("✅ Chrome force-closed", GREEN)
-            except Exception:
-                pass
-        except Exception as e:
-            # Process might already be dead
-            if process.poll() is not None:
-                print_colored("✅ Chrome already closed", GREEN)
-            else:
-                print_colored(f"⚠️  Error closing Chrome: {e}", YELLOW)
-    except Exception:
-        # Silently fail during cleanup
-        pass
-
-
 def run_command(cmd: list[str], description: str) -> bool:
     """Run a command and return True if successful."""
     try:
@@ -360,8 +306,6 @@ def run_command(cmd: list[str], description: str) -> bool:
 
 def main():
     """Main workflow."""
-    global _chrome_process
-    
     # Use local variables that can be updated
     cdp_captures_dir = CDP_CAPTURES_DIR
     discovery_output_dir = DISCOVERY_OUTPUT_DIR
@@ -370,7 +314,7 @@ def main():
     print_colored("║         Web Hacker - Quickstart Workflow                   ║", BLUE)
     print_colored("╚════════════════════════════════════════════════════════════╝", BLUE)
     print()
-    
+
     # Pipeline overview
     print_colored("Web-hacker Pipeline:", BLUE)
     print()
@@ -390,19 +334,6 @@ def main():
         print_colored(f"✅ Chrome is already running in debug mode on port {PORT}", GREEN)
     else:
         chrome_process = launch_chrome(PORT)
-        # Store globally for cleanup
-        _chrome_process = chrome_process
-        # Register cleanup function if we launched Chrome
-        if chrome_process is not None:
-            atexit.register(cleanup_chrome, chrome_process, PORT)
-            # Also register signal handlers for graceful shutdown
-            def signal_handler(signum, frame):
-                cleanup_chrome(chrome_process, PORT)
-                sys.exit(0)
-            signal.signal(signal.SIGINT, signal_handler)
-            # SIGTERM may not be available on all platforms
-            if hasattr(signal, 'SIGTERM'):
-                signal.signal(signal.SIGTERM, signal_handler)
     
     print()
     
@@ -456,14 +387,6 @@ def main():
         run_command(monitor_cmd, "monitoring")
         print()
     
-    # Close Chrome before Step 3 if we launched it
-    if chrome_process is not None:
-        cleanup_chrome(chrome_process, PORT)
-        atexit.unregister(cleanup_chrome)
-        chrome_process = None
-        _chrome_process = None
-        print()
-    
     # Step 3: Discover
     print_colored("Step 3: Discovering routine from captured data...", GREEN)
     
@@ -475,9 +398,11 @@ def main():
         return
     
     skip = input("   Skip discovery step? (y/n): ").strip().lower()
+    
     if skip == 'y':
         # Use default directory when skipping - user can specify routine path in step 4 if needed
         discovery_output_dir = DISCOVERY_OUTPUT_DIR
+        
         print_colored("⏭️  Skipping discovery step.", GREEN)
         print_colored(f"   Using default discovery output directory: {discovery_output_dir.resolve()}", GREEN)
         print()
@@ -489,8 +414,6 @@ def main():
         if new_output_dir:
             discovery_output_dir = Path(new_output_dir)
             print_colored(f"✅ Using discovery output directory: {discovery_output_dir}", GREEN)
-        else:
-            discovery_output_dir = DISCOVERY_OUTPUT_DIR
         
         # Check if routine already exists
         routine_file = discovery_output_dir / "routine.json"
@@ -621,8 +544,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print()
         print_colored("⚠️  Interrupted by user.", YELLOW)
-        # Clean up Chrome if we launched it
-        if _chrome_process is not None:
-            cleanup_chrome(_chrome_process, PORT)
         sys.exit(0)
-
