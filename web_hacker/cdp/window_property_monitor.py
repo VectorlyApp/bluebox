@@ -11,6 +11,8 @@ import time
 import threading
 from pathlib import Path
 
+from web_hacker.data_models.window_property import WindowProperty, WindowPropertyValue
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -40,8 +42,8 @@ class WindowPropertyMonitor:
         self.output_dir = output_dir
         self.paths = paths
         
-        # Window properties history
-        self.history_db = {}
+        # Window properties history: dict[path, WindowProperty]
+        self.history_db: dict[str, WindowProperty] = {}
         self.last_seen_keys = set()  # Track keys from previous collection to detect deletions
         
         # Collection state
@@ -63,8 +65,13 @@ class WindowPropertyMonitor:
     def _save_history(self):
         """Save window properties history to file."""
         try:
+            # Save as dict[path, WindowProperty.model_dump()]
+            serializable_dict = {
+                path: window_prop.model_dump(mode='json')
+                for path, window_prop in self.history_db.items()
+            }
             with open(self.output_file, "w", encoding="utf-8") as f:
-                json.dump(self.history_db, f, indent=2, ensure_ascii=False)
+                json.dump(serializable_dict, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Error saving window properties: {e}")
     
@@ -420,14 +427,29 @@ class WindowPropertyMonitor:
             for key, value in flat_dict.items():
                 current_keys.add(key)
                 if key not in self.history_db:
-                    # New key
-                    self.history_db[key] = [{"timestamp": current_ts, "value": value, "url": current_url}]
+                    # New key - create WindowProperty with first value
+                    window_prop_value = WindowPropertyValue(
+                        timestamp=current_ts,
+                        value=value,
+                        url=current_url
+                    )
+                    self.history_db[key] = WindowProperty(
+                        path=key,
+                        values=[window_prop_value]
+                    )
                     changes_count += 1
                 else:
                     # Existing key, check if value changed
-                    last_entry = self.history_db[key][-1]
-                    if last_entry["value"] != value:
-                        self.history_db[key].append({"timestamp": current_ts, "value": value, "url": current_url})
+                    window_property = self.history_db[key]
+                    last_entry = window_property.values[-1]
+                    if last_entry.value != value:
+                        # Value changed, add new entry
+                        window_prop_value = WindowPropertyValue(
+                            timestamp=current_ts,
+                            value=value,
+                            url=current_url
+                        )
+                        window_property.values.append(window_prop_value)
                         changes_count += 1
             
             # Check for deleted keys (only check keys from previous collection, not all history!)
@@ -435,9 +457,16 @@ class WindowPropertyMonitor:
                 if key not in current_keys:
                     # Key was deleted since last collection
                     if key in self.history_db:
-                        last_entry = self.history_db[key][-1]
-                        if last_entry["value"] is not None:
-                            self.history_db[key].append({"timestamp": current_ts, "value": None, "url": current_url})
+                        window_property = self.history_db[key]
+                        last_entry = window_property.values[-1]
+                        if last_entry.value is not None:
+                            # Add deletion marker (None value)
+                            window_prop_value = WindowPropertyValue(
+                                timestamp=current_ts,
+                                value=None,
+                                url=current_url
+                            )
+                            window_property.values.append(window_prop_value)
                             changes_count += 1
             
             # Update last_seen_keys for next collection
@@ -511,7 +540,7 @@ class WindowPropertyMonitor:
     def get_window_property_summary(self):
         """Get summary of window property monitoring."""
         total_keys = len(self.history_db)
-        total_entries = sum(len(history) for history in self.history_db.values())
+        total_entries = sum(len(window_prop.values) for window_prop in self.history_db.values())
         
         return {
             "total_keys": total_keys,
