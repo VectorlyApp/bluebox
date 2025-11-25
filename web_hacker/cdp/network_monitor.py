@@ -764,7 +764,7 @@ class NetworkMonitor:
                     json.dump(har_data, f, indent=2, ensure_ascii=False)
                 logger.info("HAR file saved to: %s", output_path)
             except Exception as e:
-                    logger.error("Failed to save HAR file: %s", e, exc_info=True)
+                logger.error("Failed to save HAR file: %s", e, exc_info=True)
         
         return har_data
 
