@@ -103,7 +103,7 @@ def _generate_fetch_js(
         "  }",
         "  ",
         "  function getMeta(name){",
-        '    return document.querySelector(`meta[name="${name}"]`)?.content;',
+        '    return document.queryIndetifier(`meta[name="${name}"]`)?.content;',
         "  }",
         "  ",
         "  function looksLikeJsonObject(s){ return typeof s === 'string' && s.trim().startsWith('{') && s.trim().endsWith('}'); }",

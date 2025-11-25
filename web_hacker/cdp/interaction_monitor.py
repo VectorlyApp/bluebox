@@ -15,7 +15,7 @@ from web_hacker.utils.cdp_utils import write_jsonl, write_json_file
 
 # Import UiElement and UiInteractionEvent models
 from web_hacker.data_models.ui_elements import (
-    UiElement, Selector, SelectorType, BoundingBox
+    UiElement, Indetifier, IndetifierType, BoundingBox
 )
 from web_hacker.data_models.ui_interactions import (
     UiInteractionEvent, InteractionType, Interaction
@@ -281,40 +281,40 @@ class InteractionMonitor:
     waitForBinding(function() {{
         // Mouse event listeners
         document.addEventListener('click', function(event) {{
-            logInteraction('mouse_click', event, event.target);
+            logInteraction('click', event, event.target);
         }}, true);
         
         document.addEventListener('mousedown', function(event) {{
-            logInteraction('mouse_down', event, event.target);
+            logInteraction('mousedown', event, event.target);
         }}, true);
         
         document.addEventListener('mouseup', function(event) {{
-            logInteraction('mouse_up', event, event.target);
+            logInteraction('mouseup', event, event.target);
         }}, true);
         
         document.addEventListener('dblclick', function(event) {{
-            logInteraction('mouse_double_click', event, event.target);
+            logInteraction('dblclick', event, event.target);
         }}, true);
         
         document.addEventListener('contextmenu', function(event) {{
-            logInteraction('mouse_context_menu', event, event.target);
+            logInteraction('contextmenu', event, event.target);
         }}, true);
         
         document.addEventListener('mouseover', function(event) {{
-            logInteraction('mouse_over', event, event.target);
+            logInteraction('mouseover', event, event.target);
         }}, true);
         
         // Keyboard event listeners
         document.addEventListener('keydown', function(event) {{
-            logInteraction('key_down', event, event.target);
+            logInteraction('keydown', event, event.target);
         }}, true);
         
         document.addEventListener('keyup', function(event) {{
-            logInteraction('key_up', event, event.target);
+            logInteraction('keyup', event, event.target);
         }}, true);
         
         document.addEventListener('keypress', function(event) {{
-            logInteraction('key_press', event, event.target);
+            logInteraction('keypress', event, event.target);
         }}, true);
         
         // Input events (for form fields)
@@ -443,8 +443,8 @@ class InteractionMonitor:
                         url=element_data.get("url") or raw_data.get("url"),
                     )
                     
-                    # Build default selectors
-                    ui_element.build_default_selectors()
+                    # Build default indetifiers
+                    ui_element.build_default_indetifiers()
                 
                 # Convert event data to Interaction format
                 interaction_details = None
