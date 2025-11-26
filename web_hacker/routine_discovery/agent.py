@@ -491,7 +491,7 @@ class RoutineDiscoveryAgent(BaseModel):
                 f"The variable was found in the following window properties: {window_properties}"
                 f"The variable was found in the following transactions ids: {transaction_ids}"
                 f"These transactions are added to the vectorstore in full (including response bodies)."
-                f"Dot paths should be like this: 'key.data.items[0].id', 'path.to.valiable.0.value', etc."
+                f"Dot paths should be like this: 'key.data.items[0].id', 'path.to.variable.0.value', etc."
                 f"For paths in transaction responses, start with the first key of the response body"
                 f"For paths in storage, start with the cookie, local storage, or session storage entry name"
                 f"If the variable is found in multiple places you need to resolve all of them!"
@@ -634,7 +634,7 @@ class RoutineDiscoveryAgent(BaseModel):
             ProductionRoutine: The productionized routine.
         """
         message = (
-            f"Please productionize the routine (from previosu step): {routine.model_dump_json()}"
+            f"Please productionize the routine (from previous step): {routine.model_dump_json()}"
             f"You need to clean up this routine to follow the following format: {ProductionRoutine.model_json_schema()}"
             f"You immediate output needs to be a valid JSON object that conforms to the production routine schema."
             f"CRITICAL: PLACEHOLDERS ARE REPLACED AT RUNTIME AND MUST RESULT IN VALID JSON! "
