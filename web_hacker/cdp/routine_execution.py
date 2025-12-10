@@ -62,6 +62,7 @@ def _generate_fetch_js(
     body_js_literal: str,
     endpoint_method: str,
     endpoint_credentials: str,
+    session_storage_key: str | None = None,
 ) -> str:
     """Generate JavaScript code for fetch operation."""
     hdrs_json = json.dumps(
@@ -76,6 +77,7 @@ def _generate_fetch_js(
         f"  const url = {json.dumps(fetch_url)};",
         f"  const rawHeaders = {hdrs_json};",
         f"  const BODY_LITERAL = {body_js_literal};",
+        "  const resolvedValues = {};",
         "",
         "  // Simple tokens (computed locally, no source lookup)",
         "  function replaceSimpleTokens(str){",
@@ -137,11 +139,9 @@ def _generate_fetch_js(
         "    const parts = path.trim().split('.');",
         "    let obj = window;",
         "    for (const part of parts) {",
-        "      if (obj == null || obj === undefined) return undefined;",
+        "      if (obj == null) return undefined;",
         "      obj = obj[part];",
         "    }",
-        "    // Convert the final value to a string if it's not null/undefined",
-        "    if (obj == null || obj === undefined) return undefined;",
         "    return obj;",
         "  }",
         "  function resolveOne(token){",
@@ -154,7 +154,6 @@ def _generate_fetch_js(
         "      case 'cookie':         val = getCookie(path.trim()); break;",
         "      case 'meta':           val = getMeta(path.trim()); break;",
         "      case 'windowProperty': val = getWindowProperty(path.trim()); break;",
-        "      default: val = undefined;",
         "    }",
         "    if ((val === undefined || val === null || val === '') && rhs){",
         "      if (rhs.trim() === 'uuid' && 'randomUUID' in crypto){",
@@ -172,6 +171,7 @@ def _generate_fetch_js(
         "    // Follow test.py pattern: for quoted placeholders, strings use raw value, objects use JSON.stringify",
         "    return str.replace(PLACEHOLDER, (m, _k, inner) => {",
         "      const v = resolveOne(`${_k}:${inner}`);",
+        "      resolvedValues[`${_k}:${inner}`] = (v === undefined) ? null : v;",
         "      if (v === undefined || v === null) return m;",
         "      // Check if match was quoted - could be \"{{...}}\" or \\\"{{...}}\\\"",
         "      // Check for escaped quote \\\" at start/end, or simple quote \"",
@@ -180,13 +180,10 @@ def _generate_fetch_js(
         "      const isQuoted = startsWithEscaped && endsWithEscaped;",
         "      if (isQuoted) {",
         "        // Quoted: strings use raw value (no quotes), objects use JSON.stringify",
-        "        if (typeof v === 'string') return v;",
-        "        if (typeof v === 'object') return JSON.stringify(v);",
-        "        return String(v);",
+        "        return (typeof v === 'string') ? v : JSON.stringify(v);",
         "      } else {",
         "        // Unquoted: always stringify",
-        "        if (typeof v === 'object') return JSON.stringify(v);",
-        "        return String(v);",
+        "        return (typeof v === 'object') ? JSON.stringify(v) : String(v);",
         "      }",
         "    });",
         "  }",
@@ -243,7 +240,9 @@ def _generate_fetch_js(
         "  try {",
         "    const resp = await fetch(resolvedUrl, opts);",
         "    const status = resp.status;",
-        "    const val = await resp.text(); return {status, value: val};",
+        "    const val = await resp.text();",
+        f"    if ({'true' if session_storage_key else 'false'}) {{ try {{ window.sessionStorage.setItem({json.dumps(session_storage_key) if session_storage_key else 'null'}, JSON.stringify(val)); }} catch(e) {{ return {{ __err: 'SessionStorage Error: ' + String(e) }}; }} }}",
+        "    return {status, value: 'success', resolvedValues};",
         "  } catch(e) {",
         "    return { __err: 'fetch failed: ' + String(e) };",
         "  }",
@@ -373,6 +372,7 @@ def _execute_fetch_in_session(
     send_cmd: callable,
     recv_until: callable,
     timeout: float,
+    session_storage_key: str | None = None,
 ):
     """
     Execute a fetch operation within an existing CDP session.
@@ -386,6 +386,7 @@ def _execute_fetch_in_session(
         send_cmd: Function to send CDP commands.
         recv_until: Function to receive CDP responses.
         timeout: Request timeout.
+        session_storage_key: Optional session storage key to store the result.
 
     Returns:
         dict: Result with "ok" status and "result" data.
@@ -433,9 +434,11 @@ def _execute_fetch_in_session(
         body_js_literal=body_js_literal,
         endpoint_method=endpoint.method,
         endpoint_credentials=endpoint.credentials,
+        session_storage_key=session_storage_key,
     )
 
     # Execute the fetch
+    logger.info(f"Sending Runtime.evaluate for fetch with timeout={timeout}s")
     eval_id = send_cmd(
         "Runtime.evaluate",
         {
@@ -449,13 +452,22 @@ def _execute_fetch_in_session(
 
     reply = recv_until(lambda m: m.get("id") == eval_id, time.time() + timeout)
     if "error" in reply:
+        logger.error(f"Error in execute_fetch_in_session (CDP error): {reply['error']}")
         return {"ok": False, "result": reply["error"]}
     payload = reply["result"]["result"].get("value")
 
     if isinstance(payload, dict) and payload.get("__err"):
+        logger.error(f"Error in execute_fetch_in_session (JS error): {payload.get('__err')}")
         return {"ok": False, "status": payload.get("status"), "result": payload.get("__err")}
+    
+    logger.info(f"Payload in execute_fetch_in_session: {str(payload)[:1000]}...")  # Truncate for safety
 
-    return {"ok": True, "status": payload.get("status"), "result": payload}
+    return {
+        "ok": True, 
+        "status": payload.get("status"), 
+        "result": payload.get("value"),
+        "placeholder_resolution": payload.get("resolvedValues", {})
+    }
 
 
 def _apply_params(text: str, parameters_dict: dict | None) -> str:
@@ -734,6 +746,7 @@ def execute_routine(
         # Execute operations
         result = None
         current_url = None
+        all_placeholder_resolution = {}
 
         logger.info(f"Executing routine with {len(routine.operations)} operations")
         for i, operation in enumerate(routine.operations):
@@ -775,39 +788,78 @@ def execute_routine(
                     send_cmd=send_cmd,
                     recv_until=recv_until,
                     timeout=timeout,
+                    session_storage_key=operation.session_storage_key,
                 )
-
-                # Store result in session storage if key provided
-                if operation.session_storage_key and fetch_result.get("ok"):
-                    result_data = fetch_result.get("result", {}).get("value", {})
-                    js = f"window.sessionStorage.setItem('{operation.session_storage_key}', JSON.stringify({json.dumps(result_data)}));"
-                    send_cmd(
-                        "Runtime.evaluate", {"expression": js}, session_id=session_id
-                    )
+                
+                # Collect resolved values from the fetch operation
+                if fetch_result.get("ok") and "placeholder_resolution" in fetch_result:
+                    all_placeholder_resolution.update(fetch_result["placeholder_resolution"])
 
             elif isinstance(operation, RoutineReturnOperation):
                 # Get result from session storage
-                js = f"window.sessionStorage.getItem('{operation.session_storage_key}')"
+                # Use chunking to retrieve large values from session storage
+                chunk_size = 256 * 1024  # 256KB chunks
+                
+                # First get the length
+                len_js = f"window.sessionStorage.getItem('{operation.session_storage_key}')?.length || 0"
                 eval_id = send_cmd(
                     "Runtime.evaluate",
-                    {"expression": js, "returnByValue": True},
+                    {"expression": len_js, "returnByValue": True},
                     session_id=session_id,
                 )
                 reply = recv_until(
                     lambda m: m.get("id") == eval_id, time.time() + timeout
                 )
-                stored_value = reply["result"]["result"].get("value")
+                if "error" in reply:
+                     raise RuntimeError(f"Failed to get storage length: {reply['error']}")
+                     
+                total_len = reply["result"]["result"].get("value", 0)
+                logger.info(f"Retrieving {total_len} bytes from session storage key '{operation.session_storage_key}'")
+                
+                if total_len == 0:
+                    result = None
+                else:
+                    stored_value = ""
+                    for offset in range(0, total_len, chunk_size):
+                        # Slice the string in JS
+                        chunk_js = f"""
+                        (function() {{
+                            const val = window.sessionStorage.getItem('{operation.session_storage_key}');
+                            return val.substring({offset}, {min(offset + chunk_size, total_len)});
+                        }})()
+                        """
+                        logger.info(f"Retrieving chunk at offset {offset}/{total_len} (size: {chunk_size})")
+                        eval_id = send_cmd(
+                            "Runtime.evaluate",
+                            {"expression": chunk_js, "returnByValue": True},
+                            session_id=session_id,
+                        )
+                        reply = recv_until(
+                            lambda m: m.get("id") == eval_id, time.time() + timeout
+                        )
+                        if "error" in reply:
+                             logger.error(f"Failed to retrieve chunk at offset {offset}: {reply['error']}")
+                             raise RuntimeError(f"Failed to retrieve chunk at offset {offset}: {reply['error']}")
+                        
+                        chunk = reply["result"]["result"].get("value", "")
+                        logger.info(f"Retrieved chunk at offset {offset}, size: {len(chunk)}")
+                        stored_value += chunk
+                        # Small sleep to yield to event loop if needed
+                        time.sleep(0.01)
 
-                if stored_value:
                     try:
                         result = json.loads(stored_value)
                     except Exception as e:
                         result = stored_value
-                else:
-                    result = None
 
-        return {"ok": True, "result": result}
 
+        return {
+            "ok": True,
+            "result": result,
+            "metadata": {
+                "all_placeholder_resolution": all_placeholder_resolution
+            },
+        }
     except Exception as e:
         return {"ok": False, "result": f"Routine execution failed: {e}"}
     finally:
