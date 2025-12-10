@@ -148,7 +148,7 @@ def _generate_fetch_js(
         "    const [lhs, rhs] = token.split('||');",
         "    const [kind, path] = lhs.split(':');",
         "    let val;",
-        "    switch(kind){",
+        "    switch(kind.trim()){",
         "      case 'sessionStorage': val = readStorage(window.sessionStorage, path.trim()); break;",
         "      case 'localStorage':   val = readStorage(window.localStorage, path.trim()); break;",
         "      case 'cookie':         val = getCookie(path.trim()); break;",
