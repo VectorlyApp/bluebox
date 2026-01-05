@@ -128,7 +128,7 @@ def cdp_new_tab(
     url: str = "about:blank",
 ) -> tuple[str, str | None, WebSocket]:
     """
-    Create a new browser tab and return target info and WebSocket connection.
+    Create a new browser tab and return target info and browser-level WebSocket.
 
     Args:
         remote_debugging_address: Chrome debugging server address.
@@ -136,7 +136,13 @@ def cdp_new_tab(
         url: Initial URL for the new tab.
 
     Returns:
-        Tuple of (target_id, browser_context_id, ws) where ws is the WebSocket connection.
+        Tuple of (target_id, browser_context_id, browser_ws) where browser_ws is the
+        BROWSER-LEVEL WebSocket connection (not page-level).
+
+        NOTE: This browser_ws can be used with Target.attachToTarget + session_id
+        for command-driven operations (like routine execution). For event-driven
+        monitoring (CDPSession), use a page-level WebSocket instead:
+        ws://{host}:{port}/devtools/page/{target_id}
 
     Raises:
         RuntimeError: If failed to create the tab.
@@ -144,16 +150,16 @@ def cdp_new_tab(
     ws_url = get_browser_websocket_url(remote_debugging_address)
     logger.debug(f"cdp_new_tab ws_url: {ws_url}")
 
-    ws = None
+    browser_ws = None
     try:
         try:
-            ws = websocket.create_connection(ws_url, timeout=10)
+            browser_ws = websocket.create_connection(ws_url, timeout=10)
         except Exception as e:
             raise RuntimeError(f"Failed to connect to browser WebSocket: {e}")
 
-        logger.debug(f"cdp_new_tab ws: {ws}")
+        logger.debug(f"cdp_new_tab browser_ws: {browser_ws}")
 
-        send_cmd, _, recv_until = create_cdp_helpers(ws)
+        send_cmd, _, recv_until = create_cdp_helpers(browser_ws)
 
         # Create incognito context if requested
         browser_context_id = None
@@ -176,15 +182,13 @@ def cdp_new_tab(
             raise RuntimeError(reply["error"])
         target_id = reply["result"]["targetId"]
 
-        # Return the WebSocket connection along with target info
-        # The caller needs to keep this connection open for subsequent operations
-        return target_id, browser_context_id, ws
+        return target_id, browser_context_id, browser_ws
 
     except Exception as e:
         # Only close WebSocket on error
-        if ws:
+        if browser_ws:
             try:
-                ws.close()
+                browser_ws.close()
             except Exception:
                 pass
         raise RuntimeError(f"Failed to create target: {e}")

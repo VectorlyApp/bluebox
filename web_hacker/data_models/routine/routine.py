@@ -287,9 +287,9 @@ class Routine(ResourceBase):
         if parameters_dict is None:
             parameters_dict = {}
 
-        # Create a new tab for the routine
+        # Create a new tab for the routine (returns browser-level WebSocket)
         try:
-            target_id, browser_context_id, ws = cdp_new_tab(
+            target_id, browser_context_id, browser_ws = cdp_new_tab(
                 remote_debugging_address=remote_debugging_address,
                 incognito=self.incognito,
                 url="about:blank",
@@ -301,23 +301,23 @@ class Routine(ResourceBase):
             )
 
         try:
-            # Attach to target
-            attach_id = send_cmd(ws, "Target.attachToTarget", {"targetId": target_id, "flatten": True})
-            reply = recv_until(ws, lambda m: m.get("id") == attach_id, time.time() + timeout)
+            # Attach to target using flattened session (allows multiplexing via session_id)
+            attach_id = send_cmd(browser_ws, "Target.attachToTarget", {"targetId": target_id, "flatten": True})
+            reply = recv_until(browser_ws, lambda m: m.get("id") == attach_id, time.time() + timeout)
             session_id = reply["result"]["sessionId"]
 
             # Enable domains
-            send_cmd(ws, "Page.enable", session_id=session_id)
-            send_cmd(ws, "Runtime.enable", session_id=session_id)
-            send_cmd(ws, "Network.enable", session_id=session_id)
-            send_cmd(ws, "DOM.enable", session_id=session_id)
+            send_cmd(browser_ws, "Page.enable", session_id=session_id)
+            send_cmd(browser_ws, "Runtime.enable", session_id=session_id)
+            send_cmd(browser_ws, "Network.enable", session_id=session_id)
+            send_cmd(browser_ws, "DOM.enable", session_id=session_id)
 
             # Create execution context
             routine_execution_context = RoutineExecutionContext(
                 session_id=session_id,
-                ws=ws,
-                send_cmd=lambda method, params=None, **kwargs: send_cmd(ws, method, params, **kwargs),
-                recv_until=lambda predicate, deadline: recv_until(ws, predicate, deadline),
+                ws=browser_ws,
+                send_cmd=lambda method, params=None, **kwargs: send_cmd(browser_ws, method, params, **kwargs),
+                recv_until=lambda predicate, deadline: recv_until(browser_ws, predicate, deadline),
                 parameters_dict=parameters_dict,
                 timeout=timeout,
             )
@@ -354,13 +354,13 @@ class Routine(ResourceBase):
         finally:
             try:
                 if close_tab_when_done:
-                    send_cmd(ws, "Target.closeTarget", {"targetId": target_id})
+                    send_cmd(browser_ws, "Target.closeTarget", {"targetId": target_id})
                     if browser_context_id and self.incognito:
                         dispose_context(remote_debugging_address, browser_context_id)
             except Exception:
                 pass
             try:
-                ws.close()
+                browser_ws.close()
             except Exception:
                 pass
 

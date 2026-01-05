@@ -22,20 +22,27 @@ logger = get_logger(__name__)
 
 class CDPSession:
     """
-    "Manages CDP WebSocket connection and coordinates monitoring components.
+    Manages CDP WebSocket connection and coordinates monitoring components.
     """
-    
+
     def __init__(
-        self, 
-        ws_url, 
-        output_dir, 
-        paths, 
-        capture_resources=None, 
-        block_patterns=None, 
-        clear_cookies=False, 
-        clear_storage=False
+        self,
+        output_dir: str,
+        paths: dict,
+        ws: websocket.WebSocket | None = None,
+        ws_url: str | None = None,
+        capture_resources: set | None = None,
+        block_patterns: list | None = None,
+        clear_cookies: bool = False,
+        clear_storage: bool = False,
     ) -> None:
-        self.ws = websocket.create_connection(ws_url)
+        # Accept existing WebSocket or create new one from URL
+        if ws is not None:
+            self.ws = ws
+        elif ws_url is not None:
+            self.ws = websocket.create_connection(ws_url)
+        else:
+            raise ValueError("Either ws or ws_url must be provided")
         self.seq = 0
         self.output_dir = output_dir
         self.paths = paths
