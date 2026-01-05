@@ -60,8 +60,6 @@ def make_routine():
         defaults = {
             "name": "test_routine",
             "description": "Test routine",
-            "created_by": "test_user",
-            "project_id": "test_project",
         }
         return Routine(operations=operations, **{**defaults, **kwargs})
     

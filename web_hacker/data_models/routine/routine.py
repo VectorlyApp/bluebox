@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from web_hacker.data_models.routine.execution import RoutineExecutionContext, RoutineExecutionResult
 from web_hacker.data_models.routine.operation import (
+    RoutineDownloadOperation,
     RoutineFetchOperation,
     RoutineNavigateOperation,
     RoutineOperationUnion,
@@ -49,85 +50,7 @@ class RoutineStatus(StrEnum):
 class Routine(BaseModel):
     """
     Routine model with comprehensive parameter validation.
-
-    DynamoDB Table: Routines
-
-    Table Structure:
-    - Partition Key: id (string)
-    - No Sort Key
-
-    Global Secondary Indices (GSI):
-    - project_id-updated_at-index
-      - Partition Key: project_id
-      - Sort Key: updated_at (number; Unix timestamp in seconds)
-    - public_status-updated_at-index (sparse: only when public_status is set)
-      - Partition Key: public_status (string; e.g., 'public#active' when is_public=true and routine_status='active')
-      - Sort Key: updated_at (number; Unix timestamp in seconds)
-    - public_status-popularity_sort-index (sparse)
-      - Partition Key: public_status (string; e.g., 'public#active' when is_public=true and routine_status='active')
-      - Sort Key: popularity_sort (string; lexicographically sortable string derived from fork_count and updated_at)    
     """
-    # metadata
-    created_by: str = Field(
-        description="User ID of the user who created the routine (from Clerk)"
-    )
-    project_id: str = Field(
-        description="Project ID of the project the routine belongs to"
-    )
-    cdp_captures_id: str | None = Field(
-        default=None,
-        description="CDP session ID of the routine"
-    )
-    discovery_job_id: str | None = Field(
-        default=None,
-        description="Routine discovery job ID that discovered the routine"
-    )
-    is_public: bool = Field(
-        default=False,
-        description="Whether the creator of the routine has made the routine publicly viewable"
-    )
-    routine_status: RoutineStatus = Field(
-        default=RoutineStatus.ACTIVE,
-        description="Status of the routine (active, archived, deleted, draft)"
-    )
-    parent_routine_id: str | None = Field(
-        default=None,
-        description="ID of the parent routine this was forked from"
-    )
-    child_routine_ids: list[str] | None = Field(
-        default=None,
-        description="IDs of child routines forked from this one"
-    )
-    tags: list[str] | None = Field(
-        default_factory=list,
-        description="List of tags for the routine (e.g., 'travel')"
-    )
-    is_mcp_tool_designated: bool | None = Field(
-        default=True,
-        description="Whether the routine is to be registered as an MCP tool. Assume False if None."
-    )
-
-    # for indexing
-    fork_count: int = Field(
-        default=0,
-        description=(
-            "Denormalized number of forks of the routine (precompute instead of computing "
-            "length of child_routine_ids on reads). Precompute instead of computing on reads."
-        )
-    )
-    public_status: str | None = Field(
-        default=None,
-        description="Public status value for the routine"
-    )
-    popularity_sort: str | None = Field(
-        default=None,
-        description="Popularity sort value for the routine"
-    )
-    base_urls: str | None = Field(
-        default=None,
-        description="Comma-separated list of unique base URLs extracted from navigate and fetch operations"
-    )
-
     # routine details
     name: str
     description: str
@@ -225,35 +148,37 @@ class Routine(BaseModel):
                 f"All parameters used in the routine must be defined in parameters."
             )
 
-        # Automatically compute base_urls from operations
-        self.base_urls = self.compute_base_urls_from_operations()
 
         return self
 
     def compute_base_urls_from_operations(self) -> str | None:
         """
         Computes comma-separated base URLs from routine operations.
-        Extracts unique base URLs from navigate and fetch operations.
+        Extracts unique base URLs from navigate, fetch, and download operations.
 
         Returns:
             Comma-separated string of unique base URLs (sorted), or None if none found.
         """
-        base_urls: set[str] = set()
+        urls: list[str] = []
 
+        # Collect all URLs from operations
         for operation in self.operations:
-            # Extract from navigate operations
             if isinstance(operation, RoutineNavigateOperation):
                 if operation.url:
-                    base_url = extract_base_url_from_url(operation.url)
-                    if base_url:
-                        base_urls.add(base_url)
-
-            # Extract from fetch operations
+                    urls.append(operation.url)
             elif isinstance(operation, RoutineFetchOperation):
                 if operation.endpoint and operation.endpoint.url:
-                    base_url = extract_base_url_from_url(operation.endpoint.url)
-                    if base_url:
-                        base_urls.add(base_url)
+                    urls.append(operation.endpoint.url)
+            elif isinstance(operation, RoutineDownloadOperation):
+                if operation.endpoint and operation.endpoint.url:
+                    urls.append(operation.endpoint.url)
+
+        # Extract base URLs from collected URLs
+        base_urls: set[str] = set()
+        for url in urls:
+            base_url = extract_base_url_from_url(url)
+            if base_url:
+                base_urls.add(base_url)
 
         if len(base_urls) == 0:
             return None

@@ -9,8 +9,9 @@ import pytest
 from pydantic import ValidationError
 
 from web_hacker.data_models.routine.operation import (
-    RoutineNavigateOperation,
+    RoutineDownloadOperation,
     RoutineFetchOperation,
+    RoutineNavigateOperation,
     RoutineSleepOperation,
     RoutineReturnOperation,
     RoutineJsEvaluateOperation,
@@ -610,23 +611,23 @@ class TestBaseUrlExtraction:
         assert extract_base_url_from_url("https://api.example.com/path#anchor") == "example.com"
 
     def test_routine_base_urls_auto_populated_navigate(self, make_routine) -> None:
-        """Test that base_urls is automatically populated for navigate operations."""
+        """Test that compute_base_urls_from_operations extracts base URLs from navigate operations."""
         routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://www.example.com"),
                 RoutineSleepOperation(timeout_seconds=1.0),
             ]
         )
-        assert routine.base_urls == "example.com"
+        assert routine.compute_base_urls_from_operations() == "example.com"
 
     def test_routine_base_urls_auto_populated_fetch(self, make_routine) -> None:
-        """Test that base_urls is automatically populated for fetch operations."""
+        """Test that compute_base_urls_from_operations extracts base URLs from fetch operations."""
         endpoint = Endpoint(url="https://api.example.com/data", method=HTTPMethod.GET, headers={}, body={})
         routine = make_routine(operations=[RoutineFetchOperation(endpoint=endpoint)])
-        assert routine.base_urls == "example.com"
+        assert routine.compute_base_urls_from_operations() == "example.com"
 
     def test_routine_base_urls_auto_populated_mixed(self, make_routine) -> None:
-        """Test that base_urls is automatically populated for mixed operations."""
+        """Test that compute_base_urls_from_operations extracts base URLs from mixed operations."""
         endpoint = Endpoint(url="https://api.example.com/data", method=HTTPMethod.GET, headers={}, body={})
         routine = make_routine(
             operations=[
@@ -635,20 +636,20 @@ class TestBaseUrlExtraction:
                 RoutineNavigateOperation(url="https://www.otherdomain.com"),
             ]
         )
-        assert routine.base_urls == "example.com,otherdomain.com"
+        assert routine.compute_base_urls_from_operations() == "example.com,otherdomain.com"
 
     def test_routine_base_urls_auto_populated_no_urls(self, make_routine) -> None:
-        """Test that base_urls is None when no URL operations exist."""
+        """Test that compute_base_urls_from_operations returns None when no URL operations exist."""
         routine = make_routine(
             operations=[
                 RoutineSleepOperation(timeout_seconds=1.0),
                 RoutineReturnOperation(session_storage_key="test"),
             ]
         )
-        assert routine.base_urls is None
+        assert routine.compute_base_urls_from_operations() is None
 
     def test_routine_base_urls_with_placeholders(self, make_routine) -> None:
-        """Test that base_urls extraction works with URLs containing placeholders."""
+        """Test that compute_base_urls_from_operations works with URLs containing placeholders."""
         routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://www.example.com/\"{{user_id}}\""),
@@ -661,10 +662,10 @@ class TestBaseUrlExtraction:
                 Parameter(name="param", type=ParameterType.STRING, description="Param"),
             ]
         )
-        assert routine.base_urls == "example.com"
+        assert routine.compute_base_urls_from_operations() == "example.com"
 
     def test_routine_base_urls_special_tlds(self, make_routine) -> None:
-        """Test that base_urls extraction handles special TLDs correctly."""
+        """Test that compute_base_urls_from_operations handles special TLDs correctly."""
         routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://www.example.co.uk"),
@@ -673,7 +674,38 @@ class TestBaseUrlExtraction:
                 ),
             ]
         )
-        assert routine.base_urls == "example.co.uk"
+        assert routine.compute_base_urls_from_operations() == "example.co.uk"
+
+    def test_routine_base_urls_auto_populated_download(self, make_routine) -> None:
+        """Test that compute_base_urls_from_operations extracts base URLs from download operations."""
+        endpoint = Endpoint(url="https://cdn.example.com/files/report.pdf", method=HTTPMethod.GET, headers={}, body={})
+        routine = make_routine(operations=[RoutineDownloadOperation(endpoint=endpoint, filename="report.pdf")])
+        assert routine.compute_base_urls_from_operations() == "example.com"
+
+    def test_routine_base_urls_mixed_with_download(self, make_routine) -> None:
+        """Test that compute_base_urls_from_operations extracts base URLs from mixed operations including download."""
+        fetch_endpoint = Endpoint(url="https://api.example.com/data", method=HTTPMethod.GET, headers={}, body={})
+        download_endpoint = Endpoint(url="https://cdn.example.com/files/report.pdf", method=HTTPMethod.GET, headers={}, body={})
+        routine = make_routine(
+            operations=[
+                RoutineNavigateOperation(url="https://www.example.com"),
+                RoutineFetchOperation(endpoint=fetch_endpoint),
+                RoutineDownloadOperation(endpoint=download_endpoint, filename="report.pdf"),
+            ]
+        )
+        # Should deduplicate example.com
+        assert routine.compute_base_urls_from_operations() == "example.com"
+
+    def test_routine_base_urls_download_different_domain(self, make_routine) -> None:
+        """Test that compute_base_urls_from_operations extracts base URLs from download operations on different domains."""
+        download_endpoint = Endpoint(url="https://cdn.downloads.com/files/report.pdf", method=HTTPMethod.GET, headers={}, body={})
+        routine = make_routine(
+            operations=[
+                RoutineNavigateOperation(url="https://www.example.com"),
+                RoutineDownloadOperation(endpoint=download_endpoint, filename="report.pdf"),
+            ]
+        )
+        assert routine.compute_base_urls_from_operations() == "downloads.com,example.com"
 
 
 class TestPremierLeagueRoutineValidation:
@@ -726,7 +758,7 @@ class TestPremierLeagueRoutineValidation:
         routine.validate_parameter_usage()
 
     def test_premier_league_routine_base_url_extraction(self) -> None:
-        """Test that base_urls is correctly extracted for Premier League routine."""
+        """Test that compute_base_urls_from_operations correctly extracts base URL for Premier League routine."""
         routine = Routine(
             name="Premier League Get Matchweek Games",
             description="Get all matchweek games for the EPL.",
@@ -767,7 +799,7 @@ class TestPremierLeagueRoutineValidation:
         )
         
         # Base URL should be extracted from pulselive.com
-        assert routine.base_urls == "pulselive.com"
+        assert routine.compute_base_urls_from_operations() == "pulselive.com"
 
     def test_premier_league_routine_missing_parameter_raises_error(self) -> None:
         """Test that using undefined parameters raises validation error."""
