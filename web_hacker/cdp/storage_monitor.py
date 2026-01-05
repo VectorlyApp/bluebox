@@ -11,29 +11,29 @@ from web_hacker.utils.data_utils import write_jsonl
 
 class StorageMonitor:
     """Monitors browser storage changes using native CDP events (no JavaScript injection)."""
-    
+
     def __init__(self, output_dir, paths):
         self.output_dir = output_dir
         self.paths = paths
-        
+
         # Storage state tracking
         self.cookies_state = {}
         self.local_storage_state = {}
         self.session_storage_state = {}
         self.indexed_db_state = {}
         self.cache_storage_state = {}
-        
+
         # Storage command tracking
         self.pending_storage_commands = {}
-        
+
         # Storage log paths
         storage_dir = self.paths.get('storage_dir', os.path.join(output_dir, "storage"))
         self.storage_log_path = self.paths.get('storage_jsonl_path', 
                                              os.path.join(storage_dir, "events.jsonl"))
-        
+
         # Debouncing for native cookie checks
         self._last_native_cookie_check = 0
-    
+
     def setup_storage_monitoring(self, cdp_session):
         """Setup storage monitoring via CDP session using NATIVE events only."""
         
@@ -43,10 +43,10 @@ class StorageMonitor:
             "maxResourceBufferSize": 5000000,
             "maxPostDataSize": 65536
         })
-        
+
         # Enable Runtime domain for console events (optional)
         cdp_session.send("Runtime.enable")
-        
+
         # Enable Page domain for navigation events
         cdp_session.send("Page.enable")
         
@@ -221,11 +221,11 @@ class StorageMonitor:
                 return True
         
         return False  # Command not handled
-    
+
     def monitor_cookie_changes(self, cdp_session):
         """Trigger native cookie monitoring (used by external callers)."""
         self._trigger_native_cookie_check(cdp_session)
-    
+
     def _get_initial_cookies(self, cdp_session):
         """Get initial cookie state using native CDP."""
         try:
@@ -243,7 +243,7 @@ class StorageMonitor:
                 "timestamp": time.time(),
                 "initial": True
             }
-    
+
     def _get_initial_dom_storage(self, cdp_session):
         """Get initial DOM storage state."""
         # We'll discover storage IDs through events or by scanning the page
@@ -464,11 +464,11 @@ class StorageMonitor:
             "params": params,
             "timestamp": time.time()
         })
-    
+
     def _log_storage_event(self, event_data):
         """Log storage event to file."""
         write_jsonl(self.storage_log_path, event_data)
-    
+
     def get_storage_summary(self):
         """Get summary of current storage state."""
         return {
@@ -478,4 +478,3 @@ class StorageMonitor:
             "local_storage_items": sum(len(items) for items in self.local_storage_state.values()),
             "session_storage_items": sum(len(items) for items in self.session_storage_state.values()),
         }
-    

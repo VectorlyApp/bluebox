@@ -444,4 +444,3 @@ class WindowPropertyMonitor:
             "total_history_entries": total_entries,
             "output_file": self.output_file
         }
-
