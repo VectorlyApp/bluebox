@@ -19,7 +19,7 @@ def generate_fetch_js(
     session_storage_key: str | None = None,
 ) -> str:
     """Generate JavaScript code for fetch operation.
-    
+
     Args:
         fetch_url: The URL to fetch.
         headers: Dictionary of HTTP headers.
@@ -27,7 +27,7 @@ def generate_fetch_js(
         endpoint_method: HTTP method (GET, POST, etc.).
         endpoint_credentials: Credentials mode (same-origin, include, omit).
         session_storage_key: Optional key to store result in session storage.
-    
+
     Returns:
         JavaScript code string that performs the fetch operation.
     """
@@ -247,7 +247,7 @@ def generate_download_js(
     filename: str,
 ) -> str:
     """Generate JavaScript code for downloading a file as base64.
-    
+
     Args:
         download_url: The URL to download from.
         headers: Dictionary of headers.
@@ -255,13 +255,13 @@ def generate_download_js(
         endpoint_method: HTTP method (GET, POST, etc.).
         endpoint_credentials: Credentials mode (same-origin, include, omit).
         filename: Filename for the downloaded file.
-    
+
     Returns:
         JavaScript code that fetches the URL, converts response to base64,
         stores in window.__downloadData, and returns metadata for chunked retrieval.
     """
     headers_json = json.dumps(headers)
-    
+
     js_lines = [
         "(async () => {",
         f"  const url = {json.dumps(download_url)};",
@@ -316,17 +316,17 @@ def generate_download_js(
         "  }",
         "})()",
     ]
-    
+
     return "\n".join(js_lines)
 
 
 def generate_click_js(selector: str, ensure_visible: bool) -> str:
     """Generate JavaScript to find element and get click coordinates.
-    
+
     Args:
         selector: CSS selector for the element.
         ensure_visible: Whether to scroll element into view.
-    
+
     Returns:
         JavaScript code that returns element coordinates or error info.
     """
@@ -362,17 +362,17 @@ def generate_click_js(selector: str, ensure_visible: bool) -> str:
     if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {{
         return {{ error: 'Element is hidden: ' + selector }};
     }}
-    
+
     if ({json.dumps(ensure_visible)}) {{
         element.scrollIntoView({{ behavior: 'auto', block: 'center', inline: 'center' }});
     }}
-    
+
     const rect = element.getBoundingClientRect();
-    
+
     if (rect.width === 0 || rect.height === 0) {{
         return {{ error: 'Element has no dimensions: ' + selector }};
     }}
-    
+
     return {{
         x: rect.left + rect.width / 2,
         y: rect.top + rect.height / 2,
@@ -385,11 +385,11 @@ def generate_click_js(selector: str, ensure_visible: bool) -> str:
 
 def generate_type_js(selector: str, clear: bool) -> str:
     """Generate JavaScript to find and focus an input element.
-    
+
     Args:
         selector: CSS selector for the element.
         clear: Whether to clear existing text.
-    
+
     Returns:
         JavaScript code that focuses the element or returns error.
     """
@@ -432,13 +432,13 @@ def generate_type_js(selector: str, clear: bool) -> str:
 
 def generate_scroll_element_js(selector: str, delta_x: int, delta_y: int, behavior: str) -> str:
     """Generate JavaScript to scroll a specific element.
-    
+
     Args:
         selector: CSS selector for the element.
         delta_x: Horizontal scroll amount.
         delta_y: Vertical scroll amount.
         behavior: Scroll behavior ('auto' or 'smooth').
-    
+
     Returns:
         JavaScript code that scrolls the element.
     """
@@ -446,14 +446,14 @@ def generate_scroll_element_js(selector: str, delta_x: int, delta_y: int, behavi
 (function() {{
     const selector = {json.dumps(selector)};
     const element = document.querySelector(selector);
-    
+
     if (!element) {{
         return {{ error: 'Element not found: ' + selector }};
     }}
-    
+
     const deltaX = {json.dumps(delta_x)};
     const deltaY = {json.dumps(delta_y)};
-    
+
     if (deltaX !== 0 || deltaY !== 0) {{
         element.scrollBy({{
             left: deltaX,
@@ -461,7 +461,7 @@ def generate_scroll_element_js(selector: str, delta_x: int, delta_y: int, behavi
             behavior: {json.dumps(behavior)}
         }});
     }}
-    
+
     return {{ success: true }};
 }})()
 """
@@ -475,14 +475,14 @@ def generate_scroll_window_js(
     behavior: str,
 ) -> str:
     """Generate JavaScript to scroll the window.
-    
+
     Args:
         x: Absolute X position (or None for relative).
         y: Absolute Y position (or None for relative).
         delta_x: Relative horizontal scroll amount.
         delta_y: Relative vertical scroll amount.
         behavior: Scroll behavior ('auto' or 'smooth').
-    
+
     Returns:
         JavaScript code that scrolls the window.
     """
@@ -493,7 +493,7 @@ def generate_scroll_window_js(
     const deltaX = {json.dumps(delta_x)};
     const deltaY = {json.dumps(delta_y)};
     const behavior = {json.dumps(behavior)};
-    
+
     if (x !== null || y !== null) {{
         window.scrollTo({{
             left: x !== null ? x : window.scrollX,
@@ -508,7 +508,7 @@ def generate_scroll_window_js(
             behavior: behavior
         }});
     }}
-    
+
     return {{ success: true }};
 }})()
 """
@@ -516,10 +516,10 @@ def generate_scroll_window_js(
 
 def generate_wait_for_url_js(url_regex: str) -> str:
     """Generate JavaScript to check if current URL matches a regex.
-    
+
     Args:
         url_regex: Regular expression pattern to match.
-    
+
     Returns:
         JavaScript code that checks URL match.
     """
@@ -528,7 +528,7 @@ def generate_wait_for_url_js(url_regex: str) -> str:
     const urlRegex = new RegExp({json.dumps(url_regex)});
     const currentUrl = window.location.href;
     const matches = urlRegex.test(currentUrl);
-    
+
     return {{
         matches: matches,
         currentUrl: currentUrl,
@@ -540,11 +540,11 @@ def generate_wait_for_url_js(url_regex: str) -> str:
 
 def generate_store_in_session_storage_js(key: str, value_json: str) -> str:
     """Generate JavaScript to store a value in session storage.
-    
+
     Args:
         key: Session storage key.
         value_json: JSON string to store.
-    
+
     Returns:
         JavaScript code that stores the value.
     """
@@ -562,10 +562,10 @@ def generate_store_in_session_storage_js(key: str, value_json: str) -> str:
 
 def generate_get_session_storage_length_js(key: str) -> str:
     """Generate JavaScript to get length of a session storage value.
-    
+
     Args:
         key: Session storage key.
-    
+
     Returns:
         JavaScript expression that returns the length.
     """
@@ -574,12 +574,12 @@ def generate_get_session_storage_length_js(key: str) -> str:
 
 def generate_get_session_storage_chunk_js(key: str, offset: int, end: int) -> str:
     """Generate JavaScript to get a chunk of a session storage value.
-    
+
     Args:
         key: Session storage key.
         offset: Start offset.
         end: End offset.
-    
+
     Returns:
         JavaScript code that returns the substring.
     """
@@ -593,11 +593,11 @@ def generate_get_session_storage_chunk_js(key: str, offset: int, end: int) -> st
 
 def generate_get_download_chunk_js(offset: int, end: int) -> str:
     """Generate JavaScript to get a chunk of download data.
-    
+
     Args:
         offset: Start offset.
         end: End offset.
-    
+
     Returns:
         JavaScript expression that returns the substring.
     """
@@ -606,14 +606,46 @@ def generate_get_download_chunk_js(offset: int, end: int) -> str:
 
 def generate_get_html_js(selector: str | None = None) -> str:
     """Generate JavaScript to get HTML content.
-    
+
     Args:
         selector: CSS selector for element, or None for full page.
-    
+
     Returns:
         JavaScript expression that returns HTML.
     """
     if selector is None:
         return "document.documentElement.outerHTML"
     return f"document.querySelector({json.dumps(selector)})?.outerHTML || ''"
+
+
+def generate_js_evaluate_with_storage_js(
+    iife: str,
+    session_storage_key: str,
+) -> str:
+    """
+    Wrap IIFE in an outer async IIFE that executes it and stores result in session storage.
+    
+    This allows executing JavaScript AND storing the result in session storage
+    with a SINGLE CDP Runtime.evaluate call.
+    
+    Args:
+        iife: The IIFE code (already validated to be in IIFE format).
+        session_storage_key: Key to store result in session storage.
+    
+    Returns:
+        JavaScript code that executes the IIFE and stores the result.
+    """
+    return f"""(async () => {{
+    // Execute IIFE and await if it returns a promise
+    const __result = await Promise.resolve({iife});
+    if (__result !== undefined) {{
+        try {{
+            window.sessionStorage.setItem({json.dumps(session_storage_key)}, JSON.stringify(__result));
+        }} catch(e) {{
+            return {{ __err: 'SessionStorage Error: ' + String(e) }};
+        }}
+    }}
+    return true;
+}})()"""
+
 

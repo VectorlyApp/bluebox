@@ -157,7 +157,7 @@ class Routine(ResourceBase):
         defined_parameters = {param.name for param in self.parameters}
         param_type_map = {param.name: param.type for param in self.parameters}
         builtin_parameter_names = {bp.name for bp in BUILTIN_PARAMETERS}
-        
+
         # Types that allow both quoted "{{...}}" and escape-quoted \"{{...}}\"
         non_string_types = {
             ParameterType.INTEGER,
@@ -170,12 +170,12 @@ class Routine(ResourceBase):
 
         # Track used parameters
         used_parameters: set[str] = set()
-        
+
         # Validate each placeholder
         for placeholder in placeholders:
             content = placeholder.content
             quote_type = placeholder.quote_type
-            
+
             # Check if it's a storage/meta/window placeholder (has colon prefix)
             if ":" in content:
                 prefix, path = [p.strip() for p in content.split(":", 1)]
@@ -185,18 +185,18 @@ class Routine(ResourceBase):
                     raise ValueError(f"Path is required for {prefix}: placeholder")
                 # Storage/meta/window placeholders can use either QUOTED or ESCAPE_QUOTED - valid
                 continue
-            
+
             # Check if it's a builtin parameter
             if content in builtin_parameter_names:
                 # Builtins can use either QUOTED or ESCAPE_QUOTED - valid
                 continue
-            
+
             # It's a regular user-defined parameter
             used_parameters.add(content)
-            
+
             # Get the parameter type (if defined)
             param_type = param_type_map.get(content)
-            
+
             if param_type is not None:
                 # Validate quote type based on parameter type
                 if param_type in non_string_types:
@@ -235,12 +235,12 @@ class Routine(ResourceBase):
         """
         Computes comma-separated base URLs from routine operations.
         Extracts unique base URLs from navigate and fetch operations.
-        
+
         Returns:
             Comma-separated string of unique base URLs (sorted), or None if none found.
         """
         base_urls: set[str] = set()
-        
+
         for operation in self.operations:
             # Extract from navigate operations
             if isinstance(operation, RoutineNavigateOperation):
@@ -248,26 +248,19 @@ class Routine(ResourceBase):
                     base_url = extract_base_url_from_url(operation.url)
                     if base_url:
                         base_urls.add(base_url)
-            
+
             # Extract from fetch operations
             elif isinstance(operation, RoutineFetchOperation):
                 if operation.endpoint and operation.endpoint.url:
                     base_url = extract_base_url_from_url(operation.endpoint.url)
                     if base_url:
                         base_urls.add(base_url)
-        
+
         if len(base_urls) == 0:
             return None
-        
+
         # Return comma-separated unique base URLs (sorted for consistency)
         return ','.join(sorted(base_urls))
-
-    def fix_placeholders(self) -> None:
-        """
-        Fix placeholders in the routine operations.
-        Ensures that string parameters are wrapped in escaped quotes and other parameters are not.
-        """
-        pass # TODO: Implement this
 
     def execute(
         self,
@@ -336,7 +329,7 @@ class Routine(ResourceBase):
                     f"Executing operation {i+1}/{len(self.operations)}: {type(operation).__name__}"
                 )
                 operation.execute(routine_execution_context)
-                
+
             # Try to parse string results as JSON or Python literals (skip for base64)
             result = routine_execution_context.result
             if isinstance(result.data, str) and not result.is_base64:
@@ -370,4 +363,5 @@ class Routine(ResourceBase):
                 ws.close()
             except Exception:
                 pass
+
 

@@ -8,7 +8,6 @@ interpolation pattern matching, and error handling.
 import pytest
 from pydantic import ValidationError
 
-from web_hacker.data_models.routine.routine import Routine
 from web_hacker.data_models.routine.operation import (
     RoutineNavigateOperation,
     RoutineFetchOperation,
@@ -16,6 +15,7 @@ from web_hacker.data_models.routine.operation import (
     RoutineReturnOperation,
     RoutineJsEvaluateOperation,
 )
+from web_hacker.data_models.routine.routine import Routine
 from web_hacker.data_models.routine.parameter import Parameter, ParameterType
 from web_hacker.data_models.routine.endpoint import Endpoint, HTTPMethod
 from web_hacker.data_models.routine.placeholder import (
@@ -136,253 +136,137 @@ class TestExtractPlaceholdersFromJson:
 class TestRoutineParameterValidation:
     """Test routine parameter validation and interpolation pattern matching."""
 
-    def test_validate_parameter_usage_basic_usage(self) -> None:
+    def test_validate_parameter_usage_basic_usage(self, make_routine) -> None:
         """Test basic parameter usage validation."""
         parameters = [
             Parameter(name="user_id", type=ParameterType.STRING, description="User ID"),
             Parameter(name="page", type=ParameterType.STRING, description="Page name")
         ]
-        
-        routine = Routine(
-            name="test_routine",
-            description="Test routine for basic parameter usage",
+        routine = make_routine(
             operations=[RoutineNavigateOperation(url="https://example.com/\"{{user_id}}\"/\"{{page}}\"")],
-            parameters=parameters,
-            created_by="test_user",
-            project_id="test_project"
+            parameters=parameters
         )
-        
-        # Should not raise any validation errors
         routine.validate_parameter_usage()
 
-    def test_validate_parameter_usage_undefined_parameter_raises_error(self) -> None:
+    def test_validate_parameter_usage_undefined_parameter_raises_error(self, make_routine) -> None:
         """Test that using undefined parameters raises validation error."""
         with pytest.raises(ValueError, match="Undefined parameters found in routine"):
-            Routine(
-                name="test_routine",
-                description="Test routine",
-                operations=[RoutineNavigateOperation(url="https://example.com/\"{{undefined_param}}\"")],
-                parameters=[],
-                created_by="test_user",
-                project_id="test_project"
+            make_routine(
+                operations=[RoutineNavigateOperation(url="https://example.com/\"{{undefined_param}}\"")]
             )
 
-    def test_validate_parameter_usage_storage_prefixes(self) -> None:
+    def test_validate_parameter_usage_storage_prefixes(self, make_routine) -> None:
         """Test validation of storage parameter prefixes."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
+        routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://example.com/\"{{sessionStorage:user.name}}\""),
                 RoutineSleepOperation(timeout_seconds=1.0),
                 RoutineReturnOperation(session_storage_key="selectors.button")
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
+            ]
         )
-        
-        # Should not raise errors for valid storage prefixes
         routine.validate_parameter_usage()
 
-    def test_validate_parameter_usage_invalid_storage_prefix_raises_error(self) -> None:
+    def test_validate_parameter_usage_invalid_storage_prefix_raises_error(self, make_routine) -> None:
         """Test that invalid storage prefixes raise validation error."""
         with pytest.raises(ValueError, match="Invalid prefix in placeholder: invalidStorage"):
-            Routine(
-                name="test_routine",
-                description="Test routine",
-                operations=[
-                    RoutineNavigateOperation(url="https://example.com/\"{{invalidStorage:user.name}}\"")
-                ],
-                parameters=[],
-                created_by="test_user",
-                project_id="test_project"
+            make_routine(
+                operations=[RoutineNavigateOperation(url="https://example.com/\"{{invalidStorage:user.name}}\"")]
             )
 
-    def test_validate_parameter_usage_meta_prefix(self) -> None:
+    def test_validate_parameter_usage_meta_prefix(self, make_routine) -> None:
         """Test validation of meta parameter prefix."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
-            operations=[
-                # meta placeholders don't require quotes - can resolve to any type
-                RoutineNavigateOperation(url="https://example.com/\"{{meta:timestamp}}\"")
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
+        routine = make_routine(
+            operations=[RoutineNavigateOperation(url="https://example.com/\"{{meta:timestamp}}\"")]
         )
-        
-        # Should not raise errors for meta prefix
         routine.validate_parameter_usage()
 
-    def test_validate_parameter_usage_mixed_usage(self) -> None:
+    def test_validate_parameter_usage_mixed_usage(self, make_routine) -> None:
         """Test validation with mixed parameter types."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
+        routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://example.com/\"{{user_id}}\""),
                 RoutineSleepOperation(timeout_seconds=2.0),
                 RoutineReturnOperation(session_storage_key="selectors.button"),
                 RoutineReturnOperation(session_storage_key="default_text")
             ],
-            parameters=[
-                Parameter(name="user_id", type=ParameterType.STRING, description="User ID")
-            ],
-            created_by="test_user",
-            project_id="test_project"
+            parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        
-        # Should not raise errors for mixed valid usage
         routine.validate_parameter_usage()
 
-    def test_validate_parameter_usage_fetch_operation(self) -> None:
+    def test_validate_parameter_usage_fetch_operation(self, make_routine) -> None:
         """Test parameter validation in fetch operations."""
         endpoint = Endpoint(
             url="https://api.example.com/\"{{user_id}}\"/data",
             method=HTTPMethod.GET,
-            # Storage placeholders don't require quotes - can resolve to any type
             headers={"Authorization": "Bearer {{sessionStorage:auth.token}}"},
             body={"filter": "{{localStorage:user.preferences.filter}}"}
         )
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
-            operations=[
-                RoutineFetchOperation(endpoint=endpoint)
-            ],
-            parameters=[
-                Parameter(name="user_id", type=ParameterType.STRING, description="User ID")
-            ],
-            created_by="test_user",
-            project_id="test_project"
+        routine = make_routine(
+            operations=[RoutineFetchOperation(endpoint=endpoint)],
+            parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-
-        # Should not raise errors for valid fetch operation parameters
         routine.validate_parameter_usage()
 
-    def test_validate_parameter_usage_nested_json_parameters(self) -> None:
+    def test_validate_parameter_usage_nested_json_parameters(self, make_routine) -> None:
         """Test parameter validation in nested JSON structures."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
+        routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://example.com/\"{{user_id}}\""),
                 RoutineSleepOperation(timeout_seconds=1.0),
                 RoutineReturnOperation(session_storage_key="ui.selectors.submit_button")
             ],
-            parameters=[
-                Parameter(name="user_id", type=ParameterType.STRING, description="User ID")
-            ],
-            created_by="test_user",
-            project_id="test_project"
+            parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        
-        # Should not raise errors for nested JSON parameter references
         routine.validate_parameter_usage()
 
-    def test_validate_parameter_usage_whitespace_handling(self) -> None:
+    def test_validate_parameter_usage_whitespace_handling(self, make_routine) -> None:
         """Test that whitespace in parameter patterns is handled correctly."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
+        routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://example.com/\"{{ user_id }}\""),
                 RoutineSleepOperation(timeout_seconds=1.0),
                 RoutineReturnOperation(session_storage_key="user.name")
             ],
-            parameters=[
-                Parameter(name="user_id", type=ParameterType.STRING, description="User ID")
-            ],
-            created_by="test_user",
-            project_id="test_project"
+            parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        
-        # Should not raise errors for parameters with whitespace
         routine.validate_parameter_usage()
 
-    def test_validate_parameter_usage_empty_parameters_list(self) -> None:
+    def test_validate_parameter_usage_empty_parameters_list(self, make_routine) -> None:
         """Test validation with empty parameters list."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
-            operations=[
-                # Storage placeholders don't require quotes
-                RoutineNavigateOperation(url="https://example.com/{{sessionStorage:user.id}}")
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
+        routine = make_routine(
+            operations=[RoutineNavigateOperation(url="https://example.com/{{sessionStorage:user.id}}")]
         )
-        
-        # Should not raise errors when only using storage parameters
         routine.validate_parameter_usage()
 
-    def test_validate_parameter_usage_no_interpolation(self) -> None:
+    def test_validate_parameter_usage_no_interpolation(self, make_routine) -> None:
         """Test validation when no parameter interpolation is used."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
+        routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://example.com/static-page"),
                 RoutineSleepOperation(timeout_seconds=1.0),
                 RoutineReturnOperation(session_storage_key="static_data")
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
+            ]
         )
-        
-        # Should not raise errors when no interpolation is used
         routine.validate_parameter_usage()
 
-    def test_validate_parameter_usage_jseval_op_with_valid_param(self) -> None:
+    def test_validate_parameter_usage_jseval_op_with_valid_param(self, make_routine) -> None:
         """Test validation with valid parameter in JS evaluation operation."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine with JS eval and parameter",
-            operations=[
-                RoutineJsEvaluateOperation(
-                    js='(function() { return "{{user_name}}"; })()'
-                ),
-            ],
-            parameters=[
-                Parameter(
-                    name="user_name",
-                    type=ParameterType.STRING,
-                    description="User name",
-                    required=True
-                )
-            ],
-            created_by="test_user",
-            project_id="test_project"
+        routine = make_routine(
+            operations=[RoutineJsEvaluateOperation(js='(function() { return "{{user_name}}"; })()')],
+            parameters=[Parameter(name="user_name", type=ParameterType.STRING, description="User name", required=True)]
         )
-        
-        # Should not raise any validation errors
         routine.validate_parameter_usage()
 
-    def test_validate_parameter_usage_jseval_op_with_undefined_param_raises_error(self) -> None:
+    def test_validate_parameter_usage_jseval_op_with_undefined_param_raises_error(self, make_routine) -> None:
         """Test that undefined parameter in JS evaluation operation raises validation error."""
         with pytest.raises(ValueError, match="Undefined parameters found in routine"):
-            Routine(
-                name="test_routine",
-                description="Test routine with undefined parameter in JS eval",
-                operations=[
-                    RoutineJsEvaluateOperation(
-                        js='(function() { return "{{undefined_param}}"; })()'
-                    ),
-                ],
-                parameters=[],
-                created_by="test_user",
-                project_id="test_project"
+            make_routine(
+                operations=[RoutineJsEvaluateOperation(js='(function() { return "{{undefined_param}}"; })()')]
             )
 
-    def test_validate_parameter_usage_complex_nested_operations(self) -> None:
+    def test_validate_parameter_usage_complex_nested_operations(self, make_routine) -> None:
         """Test validation with complex nested operation structures."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
+        routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://example.com/\"{{user_id}}\"/\"{{page}}\""),
                 RoutineSleepOperation(timeout_seconds=1.0),
@@ -393,66 +277,36 @@ class TestRoutineParameterValidation:
                 Parameter(name="user_id", type=ParameterType.STRING, description="User ID"),
                 Parameter(name="page", type=ParameterType.STRING, description="Page name"),
                 Parameter(name="user_email", type=ParameterType.STRING, description="User email")
-            ],
-            created_by="test_user",
-            project_id="test_project"
+            ]
         )
-        
-        # Should not raise errors for complex nested operations
         routine.validate_parameter_usage()
 
 
 class TestRoutineValidationErrorMessages:
     """Test that validation error messages are clear and helpful."""
 
-    def test_undefined_parameter_error_message(self) -> None:
+    def test_undefined_parameter_error_message(self, make_routine) -> None:
         """Test that undefined parameter error message is clear."""
         with pytest.raises(ValueError) as exc_info:
-            Routine(
-                name="test_routine",
-                description="Test routine",
-                operations=[
-                    RoutineNavigateOperation(url="https://example.com/\"{{undefined_param}}\"")
-                ],
-                parameters=[],
-                created_by="test_user",
-                project_id="test_project"
+            make_routine(
+                operations=[RoutineNavigateOperation(url="https://example.com/\"{{undefined_param}}\"")]
             )
-        
         assert "Undefined parameters found in routine" in str(exc_info.value)
 
-    def test_invalid_storage_prefix_error_message(self) -> None:
+    def test_invalid_storage_prefix_error_message(self, make_routine) -> None:
         """Test that invalid storage prefix error message is clear."""
         with pytest.raises(ValueError) as exc_info:
-            Routine(
-                name="test_routine",
-                description="Test routine",
-                operations=[
-                    RoutineNavigateOperation(url="https://example.com/\"{{invalidStorage:user.name}}\"")
-                ],
-                parameters=[],
-                created_by="test_user",
-                project_id="test_project"
+            make_routine(
+                operations=[RoutineNavigateOperation(url="https://example.com/\"{{invalidStorage:user.name}}\"")]
             )
-        
         assert "Invalid prefix in placeholder: invalidStorage" in str(exc_info.value)
 
-    def test_invalid_jseval_op_code_error_message(self) -> None:
+    def test_invalid_jseval_op_code_error_message(self, make_routine) -> None:
         """Test that invalid JS code in JS evaluation operation raises clear error."""
         with pytest.raises(ValidationError) as exc_info:
-            Routine(
-                name="test_routine",
-                description="Test routine with invalid JS code",
-                operations=[
-                    RoutineJsEvaluateOperation(
-                        js="return document.title;"  # Not wrapped in IIFE
-                    ),
-                ],
-                parameters=[],
-                created_by="test_user",
-                project_id="test_project"
+            make_routine(
+                operations=[RoutineJsEvaluateOperation(js="return document.title;")]  # Not wrapped in IIFE
             )
-        
         assert "IIFE" in str(exc_info.value)
 
 
@@ -576,280 +430,129 @@ class TestParameterReservedPrefixes:
 class TestParameterUsageValidation:
     """Test the specific parameter matching logic in validate_parameter_usage (lines 496-507)."""
 
-    def test_builtin_parameters_are_not_tracked_as_used(self) -> None:
+    def test_builtin_parameters_are_not_tracked_as_used(self, make_routine) -> None:
         """Test that builtin parameters (uuid, epoch_milliseconds) are skipped and not tracked."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine with builtin parameters",
+        routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://example.com/\"{{uuid}}\""),
                 RoutineSleepOperation(timeout_seconds=1.0),
-            ],
-            parameters=[],  # No parameters defined
-            created_by="test_user",
-            project_id="test_project"
+            ]
         )
-        
-        # Should not raise errors - builtin parameters are skipped
         routine.validate_parameter_usage()
 
-    def test_builtin_parameters_uuid_not_tracked(self) -> None:
+    def test_builtin_parameters_uuid_not_tracked(self, make_routine) -> None:
         """Test that uuid builtin parameter is not tracked as used_parameters."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine with uuid",
-            operations=[
-                RoutineNavigateOperation(url="https://example.com/\"{{uuid}}\""),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
+        routine = make_routine(
+            operations=[RoutineNavigateOperation(url="https://example.com/\"{{uuid}}\"")]
         )
-        
-        # Should not raise errors - uuid is a builtin
         routine.validate_parameter_usage()
 
-    def test_builtin_parameters_epoch_milliseconds_not_tracked(self) -> None:
+    def test_builtin_parameters_epoch_milliseconds_not_tracked(self, make_routine) -> None:
         """Test that epoch_milliseconds builtin parameter is not tracked as used_parameters."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine with epoch_milliseconds",
-            operations=[
-                RoutineNavigateOperation(url="https://example.com/\"{{epoch_milliseconds}}\""),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
+        routine = make_routine(
+            operations=[RoutineNavigateOperation(url="https://example.com/\"{{epoch_milliseconds}}\"")]
         )
-        
-        # Should not raise errors - epoch_milliseconds is a builtin
         routine.validate_parameter_usage()
 
-    def test_placeholder_params_with_colon_are_not_tracked(self) -> None:
+    def test_placeholder_params_with_colon_are_not_tracked(self, make_routine) -> None:
         """Test that placeholder params with ':' (sessionStorage, localStorage, etc.) are not tracked."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine with placeholder params",
+        routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://example.com/\"{{sessionStorage:user.id}}\""),
                 RoutineSleepOperation(timeout_seconds=1.0),
-            ],
-            parameters=[],  # No parameters defined
-            created_by="test_user",
-            project_id="test_project"
+            ]
         )
-        
-        # Should not raise errors - placeholder params are validated but not tracked
         routine.validate_parameter_usage()
 
-    def test_all_placeholder_prefixes_are_not_tracked(self) -> None:
+    def test_all_placeholder_prefixes_are_not_tracked(self, make_routine) -> None:
         """Test that all valid placeholder prefixes are not tracked as used_parameters."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine with all placeholder prefixes",
+        make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://example.com/\"{{sessionStorage:token}}\""),
                 RoutineSleepOperation(timeout_seconds=1.0),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
-        )
+            ]
+        ).validate_parameter_usage()
         
-        # Should not raise errors
-        routine.validate_parameter_usage()
-        
-        # Test localStorage
-        routine2 = Routine(
+        make_routine(
             name="test_routine2",
-            description="Test routine with localStorage",
-            operations=[
-                RoutineNavigateOperation(url="https://example.com/\"{{localStorage:pref}}\""),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
-        )
-        routine2.validate_parameter_usage()
+            operations=[RoutineNavigateOperation(url="https://example.com/\"{{localStorage:pref}}\"")]
+        ).validate_parameter_usage()
         
-        # Test cookie
-        routine3 = Routine(
+        make_routine(
             name="test_routine3",
-            description="Test routine with cookie",
-            operations=[
-                RoutineNavigateOperation(url="https://example.com/\"{{cookie:session}}\""),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
-        )
-        routine3.validate_parameter_usage()
+            operations=[RoutineNavigateOperation(url="https://example.com/\"{{cookie:session}}\"")]
+        ).validate_parameter_usage()
         
-        # Test meta
-        routine4 = Routine(
+        make_routine(
             name="test_routine4",
-            description="Test routine with meta",
-            operations=[
-                RoutineNavigateOperation(url="https://example.com/\"{{meta:csrf}}\""),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
-        )
-        routine4.validate_parameter_usage()
+            operations=[RoutineNavigateOperation(url="https://example.com/\"{{meta:csrf}}\"")]
+        ).validate_parameter_usage()
         
-        # Test windowProperty
-        routine5 = Routine(
+        make_routine(
             name="test_routine5",
-            description="Test routine with windowProperty",
-            operations=[
-                RoutineNavigateOperation(url="https://example.com/\"{{windowProperty:app.config}}\""),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
-        )
-        routine5.validate_parameter_usage()
+            operations=[RoutineNavigateOperation(url="https://example.com/\"{{windowProperty:app.config}}\"")]
+        ).validate_parameter_usage()
 
-    def test_regular_parameters_are_tracked(self) -> None:
+    def test_regular_parameters_are_tracked(self, make_routine) -> None:
         """Test that regular parameters (without ':') are tracked as used_parameters."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine with regular parameters",
-            operations=[
-                RoutineNavigateOperation(url="https://example.com/\"{{user_id}}\""),
-            ],
-            parameters=[
-                Parameter(name="user_id", type=ParameterType.STRING, description="User ID")
-            ],
-            created_by="test_user",
-            project_id="test_project"
+        routine = make_routine(
+            operations=[RoutineNavigateOperation(url="https://example.com/\"{{user_id}}\"")],
+            parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        
-        # Should not raise errors - user_id is defined and used
         routine.validate_parameter_usage()
 
-    def test_mixed_builtin_and_regular_parameters(self) -> None:
+    def test_mixed_builtin_and_regular_parameters(self, make_routine) -> None:
         """Test that builtin parameters don't interfere with regular parameter tracking."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine with mixed parameters",
-            operations=[
-                RoutineNavigateOperation(url="https://example.com/\"{{uuid}}\"/\"{{user_id}}\""),
-            ],
-            parameters=[
-                Parameter(name="user_id", type=ParameterType.STRING, description="User ID")
-            ],
-            created_by="test_user",
-            project_id="test_project"
+        routine = make_routine(
+            operations=[RoutineNavigateOperation(url="https://example.com/\"{{uuid}}\"/\"{{user_id}}\"")],
+            parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        
-        # Should not raise errors - uuid is builtin (skipped), user_id is tracked
         routine.validate_parameter_usage()
 
-    def test_mixed_placeholder_and_regular_parameters(self) -> None:
+    def test_mixed_placeholder_and_regular_parameters(self, make_routine) -> None:
         """Test that placeholder parameters don't interfere with regular parameter tracking."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine with mixed parameter types",
-            operations=[
-                RoutineNavigateOperation(url="https://example.com/\"{{user_id}}\""),
-                RoutineSleepOperation(timeout_seconds=1.0),
-            ],
-            parameters=[
-                Parameter(name="user_id", type=ParameterType.STRING, description="User ID")
-            ],
-            created_by="test_user",
-            project_id="test_project"
-        )
-        
-        # Add a fetch operation with placeholder params
         endpoint = Endpoint(
             url="https://api.example.com/data",
             method=HTTPMethod.POST,
-            # Storage placeholders don't require quotes
             headers={"Authorization": "Bearer {{sessionStorage:token}}"},
-            # Regular parameters MUST have quotes
             body={"user_id": "\"{{user_id}}\""}
         )
-        routine2 = Routine(
+        routine = make_routine(
             name="test_routine2",
-            description="Test routine with fetch and placeholders",
-            operations=[
-                RoutineFetchOperation(endpoint=endpoint)
-            ],
-            parameters=[
-                Parameter(name="user_id", type=ParameterType.STRING, description="User ID")
-            ],
-            created_by="test_user",
-            project_id="test_project"
+            operations=[RoutineFetchOperation(endpoint=endpoint)],
+            parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        
-        # Should not raise errors - sessionStorage:token is not tracked, user_id is tracked
-        routine2.validate_parameter_usage()
+        routine.validate_parameter_usage()
 
-    def test_placeholder_param_with_empty_path_raises_error(self) -> None:
+    def test_placeholder_param_with_empty_path_raises_error(self, make_routine) -> None:
         """Test that placeholder params with empty path after ':' raise an error."""
         with pytest.raises(ValueError) as exc_info:
-            Routine(
-                name="test_routine",
-                description="Test routine with empty path",
-                operations=[
-                    RoutineNavigateOperation(url="https://example.com/\"{{sessionStorage:}}\""),
-                ],
-                parameters=[],
-                created_by="test_user",
-                project_id="test_project"
+            make_routine(
+                operations=[RoutineNavigateOperation(url="https://example.com/\"{{sessionStorage:}}\"")]
             )
-        
         assert "Path is required" in str(exc_info.value)
 
-    def test_placeholder_param_with_whitespace_only_path_raises_error(self) -> None:
+    def test_placeholder_param_with_whitespace_only_path_raises_error(self, make_routine) -> None:
         """Test that placeholder params with whitespace-only path raise an error."""
         with pytest.raises(ValueError) as exc_info:
-            Routine(
-                name="test_routine",
-                description="Test routine with whitespace path",
-                operations=[
-                    RoutineNavigateOperation(url="https://example.com/\"{{sessionStorage:   }}\""),
-                ],
-                parameters=[],
-                created_by="test_user",
-                project_id="test_project"
+            make_routine(
+                operations=[RoutineNavigateOperation(url="https://example.com/\"{{sessionStorage:   }}\"")]
             )
-        
         assert "Path is required" in str(exc_info.value)
 
-    def test_invalid_placeholder_prefix_raises_error(self) -> None:
+    def test_invalid_placeholder_prefix_raises_error(self, make_routine) -> None:
         """Test that invalid placeholder prefixes raise an error."""
         with pytest.raises(ValueError) as exc_info:
-            Routine(
-                name="test_routine",
-                description="Test routine with invalid prefix",
-                operations=[
-                    RoutineNavigateOperation(url="https://example.com/\"{{invalidPrefix:value}}\""),
-                ],
-                parameters=[],
-                created_by="test_user",
-                project_id="test_project"
+            make_routine(
+                operations=[RoutineNavigateOperation(url="https://example.com/\"{{invalidPrefix:value}}\"")]
             )
-        
         assert "Invalid prefix in placeholder: invalidPrefix" in str(exc_info.value)
 
-    def test_placeholder_param_path_with_whitespace_is_valid(self) -> None:
+    def test_placeholder_param_path_with_whitespace_is_valid(self, make_routine) -> None:
         """Test that placeholder params with whitespace in path (but not empty) are valid."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine with whitespace in path",
-            operations=[
-                RoutineNavigateOperation(url="https://example.com/\"{{sessionStorage: user . token }}\""),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
+        routine = make_routine(
+            operations=[RoutineNavigateOperation(url="https://example.com/\"{{sessionStorage: user . token }}\"")]
         )
-        
-        # Should not raise errors - path has content (whitespace is stripped)
         routine.validate_parameter_usage()
 
 
@@ -906,123 +609,69 @@ class TestBaseUrlExtraction:
         assert extract_base_url_from_url("https://example.com#section") == "example.com"
         assert extract_base_url_from_url("https://api.example.com/path#anchor") == "example.com"
 
-    def test_routine_base_urls_auto_populated_navigate(self) -> None:
+    def test_routine_base_urls_auto_populated_navigate(self, make_routine) -> None:
         """Test that base_urls is automatically populated for navigate operations."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
+        routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://www.example.com"),
                 RoutineSleepOperation(timeout_seconds=1.0),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
+            ]
         )
         assert routine.base_urls == "example.com"
 
-    def test_routine_base_urls_auto_populated_fetch(self) -> None:
+    def test_routine_base_urls_auto_populated_fetch(self, make_routine) -> None:
         """Test that base_urls is automatically populated for fetch operations."""
-        endpoint = Endpoint(
-            url="https://api.example.com/data",
-            method=HTTPMethod.GET,
-            headers={},
-            body={}
-        )
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
-            operations=[
-                RoutineFetchOperation(endpoint=endpoint),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
-        )
+        endpoint = Endpoint(url="https://api.example.com/data", method=HTTPMethod.GET, headers={}, body={})
+        routine = make_routine(operations=[RoutineFetchOperation(endpoint=endpoint)])
         assert routine.base_urls == "example.com"
 
-    def test_routine_base_urls_auto_populated_mixed(self) -> None:
+    def test_routine_base_urls_auto_populated_mixed(self, make_routine) -> None:
         """Test that base_urls is automatically populated for mixed operations."""
-        endpoint = Endpoint(
-            url="https://api.example.com/data",
-            method=HTTPMethod.GET,
-            headers={},
-            body={}
-        )
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
+        endpoint = Endpoint(url="https://api.example.com/data", method=HTTPMethod.GET, headers={}, body={})
+        routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://www.example.com"),
                 RoutineFetchOperation(endpoint=endpoint),
                 RoutineNavigateOperation(url="https://www.otherdomain.com"),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
+            ]
         )
         assert routine.base_urls == "example.com,otherdomain.com"
 
-    def test_routine_base_urls_auto_populated_no_urls(self) -> None:
+    def test_routine_base_urls_auto_populated_no_urls(self, make_routine) -> None:
         """Test that base_urls is None when no URL operations exist."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
+        routine = make_routine(
             operations=[
                 RoutineSleepOperation(timeout_seconds=1.0),
                 RoutineReturnOperation(session_storage_key="test"),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
+            ]
         )
         assert routine.base_urls is None
 
-    def test_routine_base_urls_with_placeholders(self) -> None:
+    def test_routine_base_urls_with_placeholders(self, make_routine) -> None:
         """Test that base_urls extraction works with URLs containing placeholders."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
+        routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://www.example.com/\"{{user_id}}\""),
                 RoutineFetchOperation(
-                    endpoint=Endpoint(
-                        url="https://api.example.com/\"{{param}}\"/data",
-                        method=HTTPMethod.GET,
-                        headers={},
-                        body={}
-                    )
+                    endpoint=Endpoint(url="https://api.example.com/\"{{param}}\"/data", method=HTTPMethod.GET, headers={}, body={})
                 ),
             ],
             parameters=[
                 Parameter(name="user_id", type=ParameterType.STRING, description="User ID"),
                 Parameter(name="param", type=ParameterType.STRING, description="Param"),
-            ],
-            created_by="test_user",
-            project_id="test_project"
+            ]
         )
-        # Should still extract base URLs despite placeholders
         assert routine.base_urls == "example.com"
 
-    def test_routine_base_urls_special_tlds(self) -> None:
+    def test_routine_base_urls_special_tlds(self, make_routine) -> None:
         """Test that base_urls extraction handles special TLDs correctly."""
-        routine = Routine(
-            name="test_routine",
-            description="Test routine",
+        routine = make_routine(
             operations=[
                 RoutineNavigateOperation(url="https://www.example.co.uk"),
                 RoutineFetchOperation(
-                    endpoint=Endpoint(
-                        url="https://api.example.co.uk/data",
-                        method=HTTPMethod.GET,
-                        headers={},
-                        body={}
-                    )
+                    endpoint=Endpoint(url="https://api.example.co.uk/data", method=HTTPMethod.GET, headers={}, body={})
                 ),
-            ],
-            parameters=[],
-            created_by="test_user",
-            project_id="test_project"
+            ]
         )
         assert routine.base_urls == "example.co.uk"
 

@@ -33,6 +33,7 @@ from web_hacker.utils.js_utils import (
     generate_get_download_chunk_js,
     generate_get_html_js,
     generate_download_js,
+    generate_js_evaluate_with_storage_js,
 )
 
 logger = get_logger(name=__name__)
@@ -72,23 +73,23 @@ class RoutineOperationTypes(StrEnum):
 class RoutineOperation(BaseModel):
     """
     Base class for routine operations.
-    
+
     Args:
         type (RoutineOperationTypes): The type of operation.
-    
+
     Returns:
         RoutineOperation: The interpolated operation.
     """
     type: RoutineOperationTypes
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """
         Execute this operation.
-        
+
         Subclasses should override this method to implement their specific behavior.
         Operations modify routine_execution_context directly (e.g., routine_execution_context.result, routine_execution_context.current_url).
         Errors should be raised as exceptions.
-        
+
         Args:
             routine_execution_context: Execution context containing parameters, CDP functions, and mutable state.
         """
@@ -100,12 +101,12 @@ class RoutineOperation(BaseModel):
 class RoutineNavigateOperation(RoutineOperation):
     """
     Navigate operation for routine.
-    
+
     Args:
         type (Literal[RoutineOperationTypes.NAVIGATE]): The type of operation.
         url (str): The URL to navigate to.
         sleep_after_navigation_seconds (float): Seconds to wait after navigation for page to load.
-    
+
     Returns:
         RoutineNavigateOperation: The interpolated operation.
     """
@@ -115,13 +116,13 @@ class RoutineNavigateOperation(RoutineOperation):
         default=3.0,
         description="Seconds to wait after navigation for page to load (allows JS to execute and populate storage)"
     )
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Navigate to the specified URL."""
         url = apply_params(self.url, routine_execution_context.parameters_dict)
         routine_execution_context.send_cmd("Page.navigate", {"url": url}, session_id=routine_execution_context.session_id)
         routine_execution_context.current_url = url
-        
+
         # Wait for page to load (allows JS to execute and populate localStorage/sessionStorage)
         if self.sleep_after_navigation_seconds > 0:
             logger.info(f"Waiting {self.sleep_after_navigation_seconds}s after navigation to {url}")
@@ -131,17 +132,17 @@ class RoutineNavigateOperation(RoutineOperation):
 class RoutineSleepOperation(RoutineOperation):
     """
     Sleep operation for routine.
-    
+
     Args:
         type (Literal[RoutineOperationTypes.SLEEP]): The type of operation.
         timeout_seconds (float): The number of seconds to sleep.
-    
+
     Returns:
         RoutineSleepOperation: The interpolated operation.
     """
     type: Literal[RoutineOperationTypes.SLEEP] = RoutineOperationTypes.SLEEP
     timeout_seconds: float
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Sleep for the specified duration."""
         time.sleep(self.timeout_seconds)
@@ -150,25 +151,25 @@ class RoutineSleepOperation(RoutineOperation):
 class RoutineFetchOperation(RoutineOperation):
     """
     Fetch operation for routine.
-    
+
     Args:
         type (Literal[RoutineOperationTypes.FETCH]): The type of operation.
         endpoint (Endpoint): The endpoint to fetch.
         session_storage_key (str | None): The session storage key to save the result to (optional).
-    
+
     Returns:
         RoutineFetchOperation: The interpolated operation.
     """
     type: Literal[RoutineOperationTypes.FETCH] = RoutineOperationTypes.FETCH
     endpoint: Endpoint
     session_storage_key: str | None = None
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Execute the fetch operation."""
-        
+
         if routine_execution_context.ws is None:
             raise RuntimeError("WebSocket not available in RoutineExecutionContext for fetch operation")
-        
+
         # If current page is blank, navigate to the target origin first to avoid CORS
         if not routine_execution_context.current_url or routine_execution_context.current_url == "about:blank":
             # Extract origin URL from the fetch endpoint (scheme + netloc)
@@ -183,7 +184,7 @@ class RoutineFetchOperation(RoutineOperation):
             )
             routine_execution_context.current_url = origin_url
             time.sleep(3)  # Wait for page to load
-        
+
         fetch_result = execute_fetch_in_session(
             ws=routine_execution_context.ws,
             endpoint=self.endpoint,
@@ -192,11 +193,11 @@ class RoutineFetchOperation(RoutineOperation):
             timeout=routine_execution_context.timeout,
             session_storage_key=self.session_storage_key,
         )
-        
+
         # Check for errors
         if not fetch_result.ok:
             raise RuntimeError(f"Fetch failed: {fetch_result.error}")
-        
+
         # Collect resolved values
         if fetch_result.resolved_values:
             routine_execution_context.result.placeholder_resolution.update(fetch_result.resolved_values)
@@ -208,22 +209,22 @@ class RoutineFetchOperation(RoutineOperation):
 class RoutineReturnOperation(RoutineOperation):
     """
     Return operation for routine.
-    
+
     Args:
         type (Literal[RoutineOperationTypes.RETURN]): The type of operation.
         session_storage_key (str): The session storage key to return.
-    
+
     Returns:
         RoutineReturnOperation: The interpolated operation.
     """
     type: Literal[RoutineOperationTypes.RETURN] = RoutineOperationTypes.RETURN
     session_storage_key: str
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Get result from session storage and set it as the routine result."""
-        
+
         chunk_size = 256 * 1024  # 256KB chunks
-        
+
         # First get the length
         len_js = generate_get_session_storage_length_js(self.session_storage_key)
         eval_id = routine_execution_context.send_cmd(
@@ -236,9 +237,9 @@ class RoutineReturnOperation(RoutineOperation):
         )
         if "error" in reply:
             raise RuntimeError(f"Failed to get storage length: {reply['error']}")
-        
+
         total_len = reply["result"]["result"].get("value", 0)
-        
+
         if total_len == 0:
             routine_execution_context.result.data = None
         else:
@@ -260,11 +261,11 @@ class RoutineReturnOperation(RoutineOperation):
                 )
                 if "error" in reply:
                     raise RuntimeError(f"Failed to retrieve chunk at offset {offset}: {reply['error']}")
-                
+
                 chunk = reply["result"]["result"].get("value", "")
                 stored_value += chunk
                 time.sleep(0.01)
-            
+
             # Try to parse as JSON
             try:
                 routine_execution_context.result.data = json.loads(stored_value)
@@ -302,14 +303,14 @@ class NetworkSniffingMethod(StrEnum):
 class RoutineNetworkSniffingOperation(RoutineOperation):
     """
     Network interception operation for routine.
-    
+
     Args:
         type (Literal[RoutineOperationTypes.NETWORK_SNIFFING]): The type of operation.
         url_pattern (str): regex pattern for the url to intercept.
         session_storage_key (str): The session storage key to save the result to.
         element (NetworkTransactionElement | None): The element to save the result to.
         method (NetworkSniffingMethod): The method to save the result to.
-    
+
     Returns:
         RoutineNetworkSniffingOperation: The interpolated operation.
     """
@@ -322,16 +323,16 @@ class RoutineNetworkSniffingOperation(RoutineOperation):
 class RoutineGetCookiesOperation(RoutineOperation):
     """
     Get all cookies (including HttpOnly) via CDP and store them in session storage.
-    
+
     This operation uses the Chrome DevTools Protocol's Network.getAllCookies() method
     to retrieve all cookies, including HttpOnly cookies that are not accessible via
     document.cookie in JavaScript.
-    
+
     Args:
         type (Literal[RoutineOperationTypes.GET_COOKIES]): The type of operation.
         session_storage_key (str): The session storage key to save the cookies to.
         domain_filter (str): Domain to filter cookies by. Use wildcard '*' to get all cookies.
-    
+
     Returns:
         RoutineGetCookiesOperation: The operation instance.
     """
@@ -341,7 +342,7 @@ class RoutineGetCookiesOperation(RoutineOperation):
         default="*",
         description="Domain to filter cookies by. Use wildcard '*' to get all cookies."
     )
-    
+
     @field_validator("domain_filter")
     @classmethod
     def validate_domain_filter_not_empty(cls, v: str) -> str:
@@ -350,7 +351,7 @@ class RoutineGetCookiesOperation(RoutineOperation):
         if not v:
             raise ValueError("domain_filter cannot be empty")
         return v
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Get all cookies via CDP and store them in session storage."""
         cookies_id = routine_execution_context.send_cmd(
@@ -362,26 +363,26 @@ class RoutineGetCookiesOperation(RoutineOperation):
             predicate=lambda m: m.get("id") == cookies_id,
             deadline=time.time() + routine_execution_context.timeout
         )
-        
+
         if "error" in reply:
             raise RuntimeError(f"Failed to get cookies: {reply['error']}")
-        
+
         cookies = reply["result"].get("cookies", [])
-        
+
         # Filter by domain if specified (not wildcard)
         if self.domain_filter != "*":
             cookies = [
                 cookie for cookie in cookies
                 if self.domain_filter in cookie.get("domain", "")
             ]
-        
+
         # Store cookies in session storage via JS
         cookies_json = json.dumps(cookies)
         store_js = generate_store_in_session_storage_js(
             self.session_storage_key,
             cookies_json,
         )
-        
+
         eval_id = routine_execution_context.send_cmd(
             "Runtime.evaluate",
             {"expression": store_js, "returnByValue": True},
@@ -391,10 +392,10 @@ class RoutineGetCookiesOperation(RoutineOperation):
             predicate=lambda m: m.get("id") == eval_id,
             deadline=time.time() + routine_execution_context.timeout
         )
-        
+
         if "error" in reply:
             raise RuntimeError(f"Failed to store cookies in session storage: {reply['error']}")
-        
+
         store_result = reply["result"]["result"].get("value", {})
         if not store_result.get("ok"):
             raise RuntimeError(store_result.get("error"))
@@ -405,10 +406,10 @@ class RoutineGetCookiesOperation(RoutineOperation):
 class RoutineClickOperation(RoutineOperation):
     """
     Click operation for routine - clicks on an element by CSS selector.
-    
+
     Important: This operation automatically validates element visibility to avoid clicking
     hidden honeypot traps. Only visible, interactable elements will be clicked.
-    
+
     Args:
         type (Literal[RoutineOperationTypes.CLICK]): The type of operation.
         selector (str): CSS selector to find the element to click.
@@ -423,12 +424,12 @@ class RoutineClickOperation(RoutineOperation):
     click_count: int = 1
     timeout_ms: int = 20_000
     ensure_visible: bool = True
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Click on an element by CSS selector."""
         selector = apply_params(self.selector, routine_execution_context.parameters_dict)
         click_js = generate_click_js(selector, self.ensure_visible)
-        
+
         eval_id = routine_execution_context.send_cmd(
             "Runtime.evaluate",
             {
@@ -441,18 +442,18 @@ class RoutineClickOperation(RoutineOperation):
         reply = routine_execution_context.recv_until(
             lambda m: m.get("id") == eval_id, time.time() + (self.timeout_ms / 1000)
         )
-        
+
         if "error" in reply:
             raise RuntimeError(f"Failed to evaluate click script: {reply['error']}")
-        
+
         click_data = reply["result"]["result"].get("value", {})
-        
+
         if "error" in click_data:
             raise RuntimeError(click_data["error"])
-        
+
         x = click_data["x"]
         y = click_data["y"]
-        
+
         # Perform the click(s) using CDP Input domain
         for _ in range(self.click_count):
             # Mouse pressed
@@ -468,7 +469,7 @@ class RoutineClickOperation(RoutineOperation):
                 session_id=routine_execution_context.session_id,
             )
             time.sleep(0.05)
-            
+
             # Mouse released
             routine_execution_context.send_cmd(
                 "Input.dispatchMouseEvent",
@@ -481,7 +482,7 @@ class RoutineClickOperation(RoutineOperation):
                 },
                 session_id=routine_execution_context.session_id,
             )
-            
+
             if self.click_count > 1:
                 time.sleep(0.1)
 
@@ -489,10 +490,10 @@ class RoutineClickOperation(RoutineOperation):
 class RoutineTypeOperation(RoutineOperation):
     """
     Type operation for routine - types text into an input element.
-    
+
     Important: This operation automatically validates element visibility to avoid typing
     into hidden honeypot inputs. Only visible, interactable elements will receive input.
-    
+
     Args:
         type (Literal[RoutineOperationTypes.INPUT_TEXT]): The type of operation.
         selector (str): CSS selector to find the input element.
@@ -505,13 +506,13 @@ class RoutineTypeOperation(RoutineOperation):
     text: str
     clear: bool = False
     timeout_ms: int = 20_000
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Type text into an input element."""
         selector = apply_params(self.selector, routine_execution_context.parameters_dict)
         text = apply_params(self.text, routine_execution_context.parameters_dict)
         type_js = generate_type_js(selector, self.clear)
-        
+
         eval_id = routine_execution_context.send_cmd(
             "Runtime.evaluate",
             {
@@ -524,15 +525,15 @@ class RoutineTypeOperation(RoutineOperation):
         reply = routine_execution_context.recv_until(
             lambda m: m.get("id") == eval_id, time.time() + (self.timeout_ms / 1000)
         )
-        
+
         if "error" in reply:
             raise RuntimeError(f"Failed to evaluate type script: {reply['error']}")
-        
+
         type_data = reply["result"]["result"].get("value", {})
-        
+
         if "error" in type_data:
             raise RuntimeError(type_data["error"])
-        
+
         # Type the text character by character using CDP Input domain
         for char in text:
             routine_execution_context.send_cmd(
@@ -557,11 +558,11 @@ class RoutinePressOperation(RoutineOperation):
     """
     type: Literal[RoutineOperationTypes.PRESS] = RoutineOperationTypes.PRESS
     key: str
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Press a keyboard key."""
         key = self.key.lower()
-        
+
         # Map common key names to CDP key codes
         key_mapping = {
             "enter": "Enter",
@@ -585,9 +586,9 @@ class RoutinePressOperation(RoutineOperation):
             "alt": "Alt",
             "meta": "Meta",
         }
-        
+
         cdp_key = key_mapping.get(key, key)
-        
+
         routine_execution_context.send_cmd(
             "Input.dispatchKeyEvent",
             {"type": "keyDown", "key": cdp_key},
@@ -604,10 +605,10 @@ class RoutinePressOperation(RoutineOperation):
 class RoutineHoverOperation(RoutineOperation):
     """
     Hover operation for routine - moves mouse over an element.
-    
+
     Important: This operation automatically validates element visibility to avoid hovering
     over hidden honeypot elements. Only visible, interactable elements will receive hover.
-    
+
     Args:
         type (Literal[RoutineOperationTypes.HOVER]): The type of operation.
         selector (str): CSS selector to find the element to hover over.
@@ -628,7 +629,7 @@ class RoutineWaitForSelectorOperation(RoutineOperation):
         selector (str): CSS selector to wait for.
         state (Literal["visible", "hidden", "attached", "detached"]): Desired state. Defaults to "visible".
         timeout_ms (int): Maximum time to wait in milliseconds. Defaults to 20_000.
-        
+
     Note:
         - "visible": Element exists and is visible in viewport
         - "hidden": Element exists but is hidden (display:none, visibility:hidden, or outside viewport)
@@ -652,13 +653,13 @@ class RoutineWaitForUrlOperation(RoutineOperation):
     type: Literal[RoutineOperationTypes.WAIT_FOR_URL] = RoutineOperationTypes.WAIT_FOR_URL
     url_regex: str
     timeout_ms: int = 20_000
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Wait for URL to match a regex pattern."""
         timeout_sec = self.timeout_ms / 1000
         start_time = time.time()
         wait_js = generate_wait_for_url_js(self.url_regex)
-        
+
         matched = False
         wait_data = {}
         while time.time() - start_time < timeout_sec:
@@ -670,18 +671,18 @@ class RoutineWaitForUrlOperation(RoutineOperation):
             reply = routine_execution_context.recv_until(
                 lambda m: m.get("id") == eval_id, time.time() + 5
             )
-            
+
             if "error" in reply:
                 raise RuntimeError(f"Failed to evaluate wait for URL script: {reply['error']}")
-            
+
             wait_data = reply["result"]["result"].get("value", {})
-            
+
             if wait_data.get("matches"):
                 matched = True
                 break
-            
+
             time.sleep(0.2)
-        
+
         if not matched:
             raise RuntimeError(
                 f"Timeout waiting for URL to match pattern '{self.url_regex}'. "
@@ -724,7 +725,7 @@ class RoutineScrollOperation(RoutineOperation):
     delta_y: int | None = None
     behavior: ScrollBehavior = ScrollBehavior.AUTO
     timeout_ms: int = 20_000
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Scroll the page or a specific element."""
         if self.selector:
@@ -743,7 +744,7 @@ class RoutineScrollOperation(RoutineOperation):
                 self.delta_y or 0,
                 self.behavior,
             )
-        
+
         eval_id = routine_execution_context.send_cmd(
             "Runtime.evaluate",
             {
@@ -756,15 +757,15 @@ class RoutineScrollOperation(RoutineOperation):
         reply = routine_execution_context.recv_until(
             lambda m: m.get("id") == eval_id, time.time() + (self.timeout_ms / 1000)
         )
-        
+
         if "error" in reply:
             raise RuntimeError(f"Failed to evaluate scroll script: {reply['error']}")
-        
+
         scroll_data = reply["result"]["result"].get("value", {})
-        
+
         if "error" in scroll_data:
             raise RuntimeError(scroll_data["error"])
-        
+
         time.sleep(0.1)
 
 
@@ -797,7 +798,7 @@ class RoutineReturnHTMLOperation(RoutineOperation):
     scope: HTMLScope = HTMLScope.PAGE
     selector: str | None = None
     timeout_ms: int = 20_000
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Get HTML from the page or a specific element."""
         if self.scope == HTMLScope.PAGE or not self.selector:
@@ -805,7 +806,7 @@ class RoutineReturnHTMLOperation(RoutineOperation):
         else:
             selector = apply_params(self.selector, routine_execution_context.parameters_dict)
             js = generate_get_html_js(selector)
-        
+
         eval_id = routine_execution_context.send_cmd(
             "Runtime.evaluate",
             {
@@ -818,7 +819,7 @@ class RoutineReturnHTMLOperation(RoutineOperation):
         reply = routine_execution_context.recv_until(
             lambda m: m.get("id") == eval_id, time.time() + routine_execution_context.timeout
         )
-        
+
         if "error" in reply:
             routine_execution_context.result.data = None
         else:
@@ -841,11 +842,11 @@ class RoutineReturnScreenshotOperation(RoutineOperation):
 class RoutineDownloadOperation(RoutineOperation):
     """
     Download a file and return it as base64 in the routine result.
-    
+
     This operation fetches a binary file (PDF, image, audio, etc.) from an endpoint,
     converts it to base64, and directly sets it as the routine's result. This is
     typically the last operation in a routine.
-    
+
     Args:
         type (Literal[RoutineOperationTypes.DOWNLOAD]): The type of operation.
         endpoint (Endpoint): The endpoint to download from.
@@ -857,7 +858,7 @@ class RoutineDownloadOperation(RoutineOperation):
         ...,
         description="Filename for the downloaded file (e.g., 'report.pdf', 'image.png')"
     )
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Download a file and return it as base64."""
         # Apply parameters to endpoint
@@ -867,13 +868,13 @@ class RoutineDownloadOperation(RoutineOperation):
             headers_str = json.dumps(self.endpoint.headers)
             headers_str_interpolated = apply_params(headers_str, routine_execution_context.parameters_dict)
             download_headers = json.loads(headers_str_interpolated)
-        
+
         download_body = None
         if self.endpoint.body:
             body_str = json.dumps(self.endpoint.body)
             body_str_interpolated = apply_params(body_str, routine_execution_context.parameters_dict)
             download_body = json.loads(body_str_interpolated)
-        
+
         # Serialize body for JS
         if download_body is None:
             body_js_literal = "null"
@@ -881,10 +882,10 @@ class RoutineDownloadOperation(RoutineOperation):
             body_js_literal = json.dumps(download_body)
         else:
             body_js_literal = json.dumps(str(download_body))
-        
+
         # Interpolate filename
         download_filename = apply_params(self.filename, routine_execution_context.parameters_dict)
-        
+
         # Generate JS to fetch as binary and convert to base64
         download_js = generate_download_js(
             download_url=download_url,
@@ -894,7 +895,7 @@ class RoutineDownloadOperation(RoutineOperation):
             endpoint_credentials=self.endpoint.credentials.value,
             filename=download_filename,
         )
-        
+
         eval_id = routine_execution_context.send_cmd(
             "Runtime.evaluate",
             {
@@ -905,27 +906,27 @@ class RoutineDownloadOperation(RoutineOperation):
             },
             session_id=routine_execution_context.session_id,
         )
-        
+
         reply = routine_execution_context.recv_until(
             lambda m: m.get("id") == eval_id, time.time() + routine_execution_context.timeout
         )
-        
+
         if "error" in reply:
             raise RuntimeError(f"Download failed (CDP error): {reply['error']}")
-        
+
         payload = reply["result"]["result"].get("value", {})
-        
+
         if isinstance(payload, dict) and payload.get("__err"):
             raise RuntimeError(f"Download failed: {payload.get('__err')}")
-        
+
         # Get metadata from initial response
         result_content_type = payload.get("contentType")
         result_filename = payload.get("filename")
         base64_length = payload.get("base64Length", 0)
-        
+
         # Retrieve base64 data in chunks from window.__downloadData
         chunk_size = 256 * 1024  # 256KB chunks
-        
+
         if base64_length == 0:
             routine_execution_context.result.data = None
         else:
@@ -933,7 +934,7 @@ class RoutineDownloadOperation(RoutineOperation):
             for offset in range(0, base64_length, chunk_size):
                 end = min(offset + chunk_size, base64_length)
                 chunk_js = generate_get_download_chunk_js(offset, end)
-                
+
                 chunk_eval_id = routine_execution_context.send_cmd(
                     "Runtime.evaluate",
                     {"expression": chunk_js, "returnByValue": True},
@@ -942,15 +943,15 @@ class RoutineDownloadOperation(RoutineOperation):
                 chunk_reply = routine_execution_context.recv_until(
                     lambda m: m.get("id") == chunk_eval_id, time.time() + routine_execution_context.timeout
                 )
-                
+
                 if "error" in chunk_reply:
                     raise RuntimeError(f"Failed to retrieve chunk at offset {offset}: {chunk_reply['error']}")
-                
+
                 chunk_data = chunk_reply["result"]["result"].get("value", "")
                 chunks.append(chunk_data)
-            
+
             routine_execution_context.result.data = "".join(chunks)
-        
+
         routine_execution_context.result.is_base64 = True
         routine_execution_context.result.content_type = result_content_type
         routine_execution_context.result.filename = result_filename
@@ -959,35 +960,35 @@ class RoutineDownloadOperation(RoutineOperation):
 class RoutineJsEvaluateOperation(RoutineOperation):
     """
     Evaluate JavaScript code in the browser context.
-    
+
     ALLOWED:
     - Promises and async/await (e.g., `new Promise()`, `.then()`, `await`)
     - setTimeout/setInterval (useful for polling)
     - Loops (while, for, do) - timeout prevents infinite loops
     - Synchronous JavaScript operations
     - DOM manipulation
-    
+
     BLOCKED:
     - Dynamic code generation: eval(), Function constructor
     - Network requests: fetch(), XMLHttpRequest, WebSocket, sendBeacon (use RoutineFetchOperation instead)
     - Persistent event hooks: addEventListener(), on*=, MutationObserver, IntersectionObserver
     - Navigation/lifecycle: window.close(), location.*, history.*
-    
+
     FORMAT REQUIREMENT:
     The JavaScript code MUST be wrapped in an IIFE (Immediately Invoked Function Expression):
     - Format: `(function() { ... })()` or `(() => { ... })()`
     - Example: `(function() { return document.title; })()`
     - This is validated at the data model level.
-    
+
     Args:
         type (Literal[RoutineOperationTypes.JS_EVALUATE]): The type of operation.
         js (str): JavaScript code in IIFE format: (function() { ... })() or (() => { ... })()
         timeout_seconds (float): Maximum execution time in seconds. Defaults to 5.
         session_storage_key (str | None): Optional session storage key to store the result.
-    
+
     Returns:
         RoutineJsEvaluateOperation: The operation instance.
-    
+
     Raises:
         ValueError: If the JavaScript code contains dangerous patterns.
     """
@@ -1001,7 +1002,7 @@ class RoutineJsEvaluateOperation(RoutineOperation):
         default=None,
         description="Optional session storage key to store the evaluation result"
     )
-    
+
     # Dangerous patterns that are blocked
     DANGEROUS_PATTERNS: ClassVar[list[str]] = [
         # Dynamic code generation
@@ -1025,29 +1026,29 @@ class RoutineJsEvaluateOperation(RoutineOperation):
         r'location\.',
         r'history\.',
     ]
-    
+
     @field_validator("js")
     @classmethod
     def validate_js_code(cls, v: str) -> str:
         """
         Validate that JavaScript code is in IIFE format and doesn't contain dangerous patterns.
-        
+
         The code must be wrapped in an IIFE (Immediately Invoked Function Expression):
         `(function() { ... })()` or `(() => { ... })()`
-        
+
         Raises:
             ValueError: If code is not in IIFE format, dangerous patterns are detected, or syntax errors are found.
         """
         if not v or not v.strip():
             raise ValueError("JavaScript code cannot be empty")
-        
+
         # Basic syntax sanity check (balanced brackets, terminated strings)
         # Check this BEFORE IIFE format so we catch syntax errors with better messages
         try:
             assert_balanced_js_delimiters(v)
         except ValueError as e:
             raise ValueError(f"JavaScript syntax error: {e}")
-        
+
         # Validate IIFE format using regex
         # Matches: (function() { ... })() or (function(...) { ... })() or (() => { ... })()
         # Optional semicolon at the end: })() or })();
@@ -1057,22 +1058,22 @@ class RoutineJsEvaluateOperation(RoutineOperation):
                 "JavaScript code must be wrapped in an IIFE (Immediately Invoked Function Expression). "
                 "Use format: (function() { ... })() or (() => { ... })()"
             )
-        
+
         # Check each dangerous pattern (case-sensitive to allow "function" keyword in IIFEs)
         for pattern in cls.DANGEROUS_PATTERNS:
             if re.search(pattern, v, re.MULTILINE):
                 raise ValueError(
                     f"JavaScript code contains blocked pattern: {pattern}. "
                 )
-        
+
         # Check for storage/meta/window placeholders and builtin parameters
         # These placeholders are not interpolated in JS code - JS should access them directly
         placeholder_pattern = r'\{\{([^}]*)\}\}'
         builtin_names = {bp.name for bp in BUILTIN_PARAMETERS}
-        
+
         for match in re.finditer(placeholder_pattern, v):
             content = match.group(1).strip()
-            
+
             # Check if it's a storage/meta/window placeholder (has colon prefix)
             if ":" in content:
                 prefix = content.split(":", 1)[0].strip()
@@ -1081,7 +1082,7 @@ class RoutineJsEvaluateOperation(RoutineOperation):
                         f"JavaScript code contains placeholder '{{{{{content}}}}}' which will not be interpolated. "
                         f"Access {prefix} directly in JavaScript code instead. "
                     )
-            
+
             # Check if it's a builtin parameter
             if content in builtin_names:
                 raise ValueError(
@@ -1089,9 +1090,9 @@ class RoutineJsEvaluateOperation(RoutineOperation):
                     f"Access builtin values directly in JavaScript code instead. "
                     f"For example, use 'crypto.randomUUID()' for UUID or 'Date.now()' for epoch milliseconds."
                 )
-        
+
         return v
-    
+
     @field_validator("timeout_seconds")
     @classmethod
     def validate_timeout(cls, v: float) -> float:
@@ -1101,79 +1102,59 @@ class RoutineJsEvaluateOperation(RoutineOperation):
         if v > 10.0:
             raise ValueError("timeout_seconds cannot exceed 10 seconds")
         return v
-    
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Execute JavaScript code and optionally store result in session storage."""
         js_code = apply_params(self.js, routine_execution_context.parameters_dict)
-        
+
         # Validate again after parameter interpolation to prevent injection attacks
         RoutineJsEvaluateOperation.validate_js_code(js_code)
-        
+
+        # If session_storage_key is set, wrap in outer IIFE to handle storage in one injection
+        if self.session_storage_key:
+            expression = generate_js_evaluate_with_storage_js(
+                iife=js_code,
+                session_storage_key=self.session_storage_key,
+            )
+        else:
+            expression = js_code
+
         logger.info(
-            f"Executing JS evaluation: {len(js_code)} chars, "
+            f"Executing JS evaluation: {len(expression)} chars, "
             f"timeout={self.timeout_seconds}s, session_storage_key={self.session_storage_key}"
         )
-        
+
         # Code is validated to be in IIFE format and safe, execute as-is
         eval_id = routine_execution_context.send_cmd(
             "Runtime.evaluate",
             {
-                "expression": js_code,
+                "expression": expression,
                 "returnByValue": True,
                 "awaitPromise": True,
                 "timeout": int(self.timeout_seconds * 1000),
             },
             session_id=routine_execution_context.session_id,
         )
-        
+
         logger.info(f"JS evaluation ID: {eval_id}")
-        
+
         reply = routine_execution_context.recv_until(
             lambda m: m.get("id") == eval_id,
             deadline=time.time() + self.timeout_seconds + 1.0  # Extra 1s buffer
         )
-        
+
         logger.info(f"JS evaluation reply: {reply}")
-        
+
         if "error" in reply:
             raise RuntimeError(f"JS evaluation failed: {reply['error']}")
-        
+
         result_value = reply["result"]["result"].get("value")
-        
+
         logger.info(f"JS evaluation result: {result_value}")
         
-        # Store result in session storage if requested
-        if self.session_storage_key:
-            # Convert result to JSON string for storage
-            if result_value is None:
-                value_json = "null"
-            elif isinstance(result_value, str):
-                # If it's already a string, wrap it in JSON quotes
-                value_json = json.dumps(result_value)
-            else:
-                # Object/array/number/etc - stringify it
-                value_json = json.dumps(result_value)
-            
-            store_js = generate_store_in_session_storage_js(
-                self.session_storage_key,
-                value_json,
-            )
-            
-            store_eval_id = routine_execution_context.send_cmd(
-                "Runtime.evaluate",
-                {"expression": store_js, "returnByValue": True},
-                session_id=routine_execution_context.session_id,
-            )
-            
-            store_reply = routine_execution_context.recv_until(
-                lambda m: m.get("id") == store_eval_id,
-                deadline=time.time() + routine_execution_context.timeout
-            )
-            
-            if "error" in store_reply:
-                raise RuntimeError(f"Failed to store JS evaluation result in session storage: {store_reply['error']}")
-            
-            logger.info(f"Stored JS evaluation result in session storage key '{self.session_storage_key}'")
+        # Check for storage error from our wrapper (only applicable when session_storage_key is set)
+        if self.session_storage_key and isinstance(result_value, dict) and result_value.get("__err"):
+            raise RuntimeError(f"JS evaluation failed: {result_value['__err']}")
 
 
 # Routine operation unions ________________________________________________________________________
@@ -1210,3 +1191,4 @@ RoutineBackgroundOperationUnion = Annotated[
     ],
     Field(discriminator="type"),
 ]
+

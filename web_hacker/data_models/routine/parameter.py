@@ -34,7 +34,7 @@ class ParameterType(StrEnum):
 class Parameter(BaseModel):
     """
     Parameter model with comprehensive validation and type information.
-    
+
     Fields:
         name (str): Parameter name (must be valid Python identifier)
         type (ParameterType): Parameter data type
@@ -121,7 +121,7 @@ class Parameter(BaseModel):
                     f"Parameter name '{v}' cannot start with '{prefix}'. "
                     f"Reserved prefixes: {cls.RESERVED_PREFIXES}"
                 )
-        
+
         return v
 
     @model_validator(mode='after')
@@ -216,8 +216,8 @@ class BuiltinParameter(BaseModel):
         ...,
         description="Function to generate the builtin parameter value"
     )
-    
-    
+
+
 BUILTIN_PARAMETERS = [
     BuiltinParameter(
         name="uuid",
@@ -230,3 +230,4 @@ BUILTIN_PARAMETERS = [
         value_generator=lambda: str(int(time.time() * 1000))
     ),
 ]
+

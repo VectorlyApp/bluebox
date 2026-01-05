@@ -24,13 +24,13 @@ logger = get_logger(name=__name__)
 
 def get_browser_websocket_url(remote_debugging_address: str) -> str:
     """Get the normalized WebSocket URL for browser connection.
-    
+
     Args:
         remote_debugging_address: The Chrome debugging server address (e.g., 'http://127.0.0.1:9222').
-    
+
     Returns:
         The WebSocket URL for connecting to the browser.
-    
+
     Raises:
         RuntimeError: If unable to get the WebSocket URL from the browser.
     """
@@ -66,15 +66,15 @@ def cdp_new_tab(
 ) -> tuple[str, str | None, WebSocket]:
     """
     Create a new browser tab and return target info and WebSocket connection.
-    
+
     Args:
         remote_debugging_address: Chrome debugging server address.
         incognito: Whether to create an incognito context.
         url: Initial URL for the new tab.
-    
+
     Returns:
         Tuple of (target_id, browser_context_id, ws) where ws is the WebSocket connection.
-    
+
     Raises:
         RuntimeError: If failed to create the tab.
     """
@@ -128,7 +128,7 @@ def cdp_new_tab(
 def dispose_context(remote_debugging_address: str, browser_context_id: str) -> None:
     """
     Dispose of a browser context.
-    
+
     Args:
         remote_debugging_address: Chrome debugging server address.
         browser_context_id: The browser context ID to dispose.
@@ -244,7 +244,8 @@ def execute_fetch_in_session(
     if isinstance(payload, dict) and payload.get("__err"):
         logger.error(f"Error in execute_fetch_in_session (JS error): {payload.get('__err')}")
         return FetchExecutionResult(ok=False, error=payload.get("__err"), resolved_values=payload.get("resolvedValues", {}))
-    
+
     logger.info(f"Payload in execute_fetch_in_session: {str(payload)[:1000]}...")  # Truncate for safety
 
     return FetchExecutionResult(ok=True, result=payload.get("value"), resolved_values=payload.get("resolvedValues", {}))
+

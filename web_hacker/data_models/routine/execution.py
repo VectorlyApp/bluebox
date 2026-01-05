@@ -39,27 +39,27 @@ class RoutineExecutionResult(BaseModel):
 class RoutineExecutionContext(BaseModel):
     """
     Context passed to operation.execute() containing all necessary state and helpers.
-    
+
     Operations modify result directly (e.g., result.data, result.placeholder_resolution).
     """
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    
+
     # Required inputs
     session_id: str
     ws: WebSocket | None = None
     send_cmd: Callable
     recv_until: Callable
-    
+
     # Optional inputs with defaults
     parameters_dict: dict = Field(default_factory=dict)
     timeout: float = 180.0
-    
+
     # Current page URL (updated by navigate operations, used by fetch to detect blank page)
     current_url: str = Field(default="about:blank", description="Current page URL, updated by navigate operations")
-    
+
     # Result (operations update this directly)
     result: RoutineExecutionResult = Field(default_factory=RoutineExecutionResult)
-    
+
 class FetchExecutionResult(BaseModel):
     """
     Result of a fetch execution.
@@ -83,3 +83,4 @@ class RoutineExecutionState:
         self.requests: dict[str, dict[str, Any]] = {}
         self.matches: dict[str, str] = {}
         self.responses: dict[str, dict[str, Any]] = {}
+
