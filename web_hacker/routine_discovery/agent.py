@@ -22,8 +22,8 @@ from web_hacker.data_models.llm_responses import (
     ResolvedVariableResponse,
     TestParametersResponse
 )
-from web_hacker.data_models.routine.routine import Routine as ProductionRoutine
-from web_hacker.data_models.routine.dev_routine import Routine, RoutineFetchOperation
+from web_hacker.data_models.routine.routine import Routine
+from web_hacker.data_models.routine.dev_routine import DevRoutine
 from web_hacker.utils.exceptions import TransactionIdentificationFailedError
 from web_hacker.utils.logger import get_logger
 
@@ -557,7 +557,7 @@ class RoutineDiscoveryAgent(BaseModel):
             
         return resolved_variable_responses
 
-    def construct_routine(self, routine_transactions: dict, resolved_variables: list[ResolvedVariableResponse] = [], max_attempts: int = 3) -> Routine:
+    def construct_routine(self, routine_transactions: dict, resolved_variables: list[ResolvedVariableResponse] = [], max_attempts: int = 3) -> DevRoutine:
         """
         Construct the routine from the routine transactions.
         """
@@ -601,7 +601,7 @@ class RoutineDiscoveryAgent(BaseModel):
                 previous_response_id=self.last_response_id,
                 tools=self.tools,
                 tool_choice="required",
-                text_format=Routine
+                text_format=DevRoutine
             )
             routine = response.output_parsed
             logger.info(f"\nRoutine:\n{routine.model_dump()}")
@@ -624,17 +624,17 @@ class RoutineDiscoveryAgent(BaseModel):
 
         raise Exception(f"Failed to construct the routine after {max_attempts} attempts")
 
-    def productionize_routine(self, routine: Routine) -> ProductionRoutine:
+    def productionize_routine(self, routine: DevRoutine) -> Routine:
         """
         Productionize the routine into a production routine.
         Args:
             routine (Routine): The routine to productionize.
         Returns:
-            ProductionRoutine: The productionized routine.
+            Routine: The productionized routine.
         """
         message = (
             f"Please productionize the routine (from previous step): {routine.model_dump_json()}"
-            f"You need to clean up this routine to follow the following format: {ProductionRoutine.model_json_schema()}"
+            f"You need to clean up this routine to follow the following format: {Routine.model_json_schema()}"
             f"You immediate output needs to be a valid JSON object that conforms to the production routine schema."
             f"CRITICAL: PLACEHOLDERS ARE REPLACED AT RUNTIME AND MUST RESULT IN VALID JSON! "
             f"EXPLANATION: Placeholders like {{{{key}}}} are replaced at runtime with actual values. The format you choose determines the resulting JSON type. "
@@ -669,14 +669,14 @@ class RoutineDiscoveryAgent(BaseModel):
         production_routine = manual_llm_parse_text_to_model(
             text=response_text,
             context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
-            pydantic_model=ProductionRoutine,
+            pydantic_model=Routine,
             client=self.client,
             llm_model=self.llm_model
         )
 
         return production_routine
 
-    def get_test_parameters(self, routine: ProductionRoutine) -> TestParametersResponse:
+    def get_test_parameters(self, routine: Routine) -> TestParametersResponse:
         """
         Get the test parameters for the routine.
         """

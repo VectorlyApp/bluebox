@@ -1,26 +1,25 @@
 """
 tests/unit/test_dev_routine_validation.py
 
-Unit tests for Routine.validate method in dev_routine.py.
+Unit tests for DevRoutine.validate method in dev_routine.py.
 """
 
 import pytest
 from web_hacker.data_models.routine.dev_routine import (
-    Routine,
-    Parameter,
-    Endpoint,
-    HTTPMethod,
-    CREDENTIALS,
-    RoutineNavigateOperation,
-    RoutineSleepOperation,
-    RoutineFetchOperation,
-    RoutineReturnOperation,
+    DevRoutine,
+    DevEndpoint,
+    DevNavigateOperation,
+    DevSleepOperation,
+    DevFetchOperation,
+    DevReturnOperation,
 )
+from web_hacker.data_models.routine.endpoint import HTTPMethod, CREDENTIALS
+from web_hacker.data_models.routine.parameter import Parameter
 
 
-def _make_endpoint(url: str = "https://api.example.com", headers: str = "{}", body: str = "{}") -> Endpoint:
+def _make_endpoint(url: str = "https://api.example.com", headers: str = "{}", body: str = "{}") -> DevEndpoint:
     """Helper to create an endpoint."""
-    return Endpoint(
+    return DevEndpoint(
         url=url,
         method=HTTPMethod.GET,
         headers=headers,
@@ -30,30 +29,30 @@ def _make_endpoint(url: str = "https://api.example.com", headers: str = "{}", bo
     )
 
 
-def _make_fetch_op(key: str, url: str = "https://api.example.com", headers: str = "{}", body: str = "{}") -> RoutineFetchOperation:
+def _make_fetch_op(key: str, url: str = "https://api.example.com", headers: str = "{}", body: str = "{}") -> DevFetchOperation:
     """Helper to create a fetch operation."""
-    return RoutineFetchOperation(
+    return DevFetchOperation(
         endpoint=_make_endpoint(url=url, headers=headers, body=body),
         session_storage_key=key
     )
 
 
-def _make_return_op(key: str) -> RoutineReturnOperation:
+def _make_return_op(key: str) -> DevReturnOperation:
     """Helper to create a return operation."""
-    return RoutineReturnOperation(session_storage_key=key)
+    return DevReturnOperation(session_storage_key=key)
 
 
-def _make_navigate_op(url: str = "https://example.com") -> RoutineNavigateOperation:
+def _make_navigate_op(url: str = "https://example.com") -> DevNavigateOperation:
     """Helper to create a navigate operation."""
-    return RoutineNavigateOperation(url=url)
+    return DevNavigateOperation(url=url)
 
 
 class TestDevRoutineValidation:
-    """Tests for Routine.validate method."""
+    """Tests for DevRoutine.validate method."""
 
     def test_valid_routine_simple(self):
         """A simple valid routine (Navigate -> Fetch -> Return) should pass."""
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=[],
@@ -70,7 +69,7 @@ class TestDevRoutineValidation:
 
     def test_valid_routine_chained_fetches(self):
         """A routine where fetch 1 output is used in fetch 2 should pass."""
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=[],
@@ -88,7 +87,7 @@ class TestDevRoutineValidation:
 
     def test_invalid_structure_too_few_ops(self):
         """Routine with < 3 operations should fail."""
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=[],
@@ -103,7 +102,7 @@ class TestDevRoutineValidation:
 
     def test_invalid_structure_first_not_navigate(self):
         """Routine starting with something other than Navigate should fail."""
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=[],
@@ -119,7 +118,7 @@ class TestDevRoutineValidation:
 
     def test_invalid_structure_last_not_return(self):
         """Routine ending with something other than Return should fail."""
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=[],
@@ -135,7 +134,7 @@ class TestDevRoutineValidation:
 
     def test_invalid_structure_second_last_not_fetch(self):
         """Routine where second-to-last op is not Fetch should fail."""
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=[],
@@ -151,7 +150,7 @@ class TestDevRoutineValidation:
 
     def test_invalid_return_key_mismatch(self):
         """Return key must match the last fetch key."""
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=[],
@@ -163,12 +162,12 @@ class TestDevRoutineValidation:
         )
         valid, errors, exc = routine.validate()
         assert valid is False
-        assert "Session storage key of the last fetch operation should be the same as the return operation's session storage key" in errors
+        assert "Last fetch session_storage_key should match return session_storage_key" in errors
 
     def test_parameter_validation_valid(self):
         """Routine using all defined parameters should pass."""
         params = [Parameter(name="user_id", description="id")]
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=params,
@@ -184,7 +183,7 @@ class TestDevRoutineValidation:
     def test_parameter_validation_unused(self):
         """Routine with defined but unused parameter should fail."""
         params = [Parameter(name="unused_param", description="unused")]
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=params,
@@ -200,7 +199,7 @@ class TestDevRoutineValidation:
 
     def test_parameter_validation_undefined_placeholder(self):
         """Routine using undefined placeholder should fail."""
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=[],
@@ -212,12 +211,11 @@ class TestDevRoutineValidation:
         )
         valid, errors, exc = routine.validate()
         assert valid is False
-        expected_msg = "Placeholder 'undefined_param' is not a session storage key, cookie, local storage key, uuid, epoch_milliseconds, meta, or window property..."
-        assert expected_msg in errors or any(expected_msg in e for e in errors)
+        assert any("Placeholder 'undefined_param' has invalid prefix" in e for e in errors)
 
     def test_session_storage_unused_key(self):
         """Fetch producing a key that is NEVER used should fail."""
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=[],
@@ -235,7 +233,7 @@ class TestDevRoutineValidation:
     def test_session_storage_return_key_valid(self):
         """Fetch producing a key that is ONLY used by return should pass."""
         # This covers the bug we just fixed: list.remove(x) error when x was only in return op
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=[],
@@ -250,7 +248,7 @@ class TestDevRoutineValidation:
 
     def test_session_storage_chained_valid(self):
         """Fetch producing key used by next fetch should pass."""
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=[],
@@ -269,7 +267,7 @@ class TestDevRoutineValidation:
         """Using the same parameter multiple times should be valid."""
         # This tests that we don't crash on removing/checking used params
         params = [Parameter(name="uid", description="id")]
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=params,
@@ -285,7 +283,7 @@ class TestDevRoutineValidation:
     def test_mixed_usage_valid(self):
         """Mixed usage of params and session storage."""
         params = [Parameter(name="q", description="query")]
-        routine = Routine(
+        routine = DevRoutine(
             name="test",
             description="test",
             parameters=params,
