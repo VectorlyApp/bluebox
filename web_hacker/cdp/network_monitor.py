@@ -101,7 +101,9 @@ class NetworkMonitor:
         if method == "Page.frameNavigated":
             try:
                 url = msg["params"]["frame"].get("url")
-                logger.info("Frame navigated to: %s", url)
+                # Skip logging for about:blank to reduce noise
+                if url and url != "about:blank":
+                    logger.info("Frame navigated to: %s", url)
             except Exception:
                 pass
             return False # Don't swallow this event
