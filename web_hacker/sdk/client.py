@@ -11,7 +11,7 @@ from ..utils.exceptions import ApiKeyNotFoundError
 from .monitor import BrowserMonitor
 from .discovery import RoutineDiscovery
 from .execution import RoutineExecutor
-from ..data_models.production_routine import Routine
+from ..data_models.routine.routine import Routine
 
 
 class WebHacker:
@@ -40,7 +40,7 @@ class WebHacker:
         self,
         openai_api_key: Optional[str] = None,
         remote_debugging_address: str = "http://127.0.0.1:9222",
-        llm_model: str = "gpt-5",
+        llm_model: str = "gpt-5.1",
     ):
         """
         Initialize WebHacker client.
@@ -129,9 +129,7 @@ class WebHacker:
         routine: Routine,
         parameters: Dict[str, Any],
         timeout: float = 180.0,
-        wait_after_navigate_sec: float = 3.0,
         close_tab_when_done: bool = True,
-        incognito: bool = False,
     ) -> Dict[str, Any]:
         """
         Execute a routine with given parameters.
@@ -140,12 +138,10 @@ class WebHacker:
             routine: Routine to execute.
             parameters: Parameters for the routine.
             timeout: Operation timeout in seconds.
-            wait_after_navigate_sec: Wait time after navigation.
             close_tab_when_done: Whether to close tab when finished.
-            incognito: Whether to use incognito mode.
         
         Returns:
-            Result dictionary with "ok" status and "result" data.
+            RoutineExecutionResult with "ok" status and "result" data.
         """
         self._executor = RoutineExecutor(
             remote_debugging_address=self.remote_debugging_address,
@@ -154,8 +150,6 @@ class WebHacker:
             routine=routine,
             parameters=parameters,
             timeout=timeout,
-            wait_after_navigate_sec=wait_after_navigate_sec,
             close_tab_when_done=close_tab_when_done,
-            incognito=incognito,
         )
 

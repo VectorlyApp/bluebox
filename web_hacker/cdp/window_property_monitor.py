@@ -5,16 +5,15 @@ Tracks window properties over time, collecting on a schedule and on navigation e
 """
 
 import json
-import logging
 import os
 import time
 import threading
 from pathlib import Path
 
 from web_hacker.data_models.window_property import WindowProperty, WindowPropertyValue
+from web_hacker.utils.logger import get_logger
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Native browser API prefixes - used to identify native vs application objects (moved to JS)
 # See _collect_window_properties for the JS implementation
@@ -445,4 +444,3 @@ class WindowPropertyMonitor:
             "total_history_entries": total_entries,
             "output_file": self.output_file
         }
-

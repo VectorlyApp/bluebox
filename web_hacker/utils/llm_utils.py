@@ -5,7 +5,6 @@ Utility functions for LLM API calls.
 """
 
 import json
-import logging
 from typing import Type
 
 from openai import OpenAI
@@ -14,9 +13,9 @@ from pydantic import BaseModel
 
 from web_hacker.config import Config
 from web_hacker.utils.exceptions import LLMStructuredOutputError
+from web_hacker.utils.logger import get_logger
 
-logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def manual_llm_parse_text_to_model(

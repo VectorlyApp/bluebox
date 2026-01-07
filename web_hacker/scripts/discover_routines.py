@@ -5,7 +5,6 @@ Script for discovering routines from the network transactions.
 """
 
 from argparse import ArgumentParser
-import logging
 import os
 
 from openai import OpenAI
@@ -14,9 +13,9 @@ from web_hacker.config import Config
 from web_hacker.utils.exceptions import ApiKeyNotFoundError
 from web_hacker.routine_discovery.agent import RoutineDiscoveryAgent
 from web_hacker.routine_discovery.context_manager import ContextManager
+from web_hacker.utils.logger import get_logger
 
-logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def main() -> None:
@@ -25,7 +24,7 @@ def main() -> None:
     parser.add_argument("--task", type=str, required=True, help="The description of the task to discover routines for.")
     parser.add_argument("--cdp-captures-dir", type=str, default="./cdp_captures", help="The directory containing the CDP captures.")
     parser.add_argument("--output-dir", type=str, default="./routine_discovery_output", help="The directory to save the output to.")
-    parser.add_argument("--llm-model", type=str, default="gpt-5", help="The LLM model to use.")
+    parser.add_argument("--llm-model", type=str, default="gpt-5.1", help="The LLM model to use.")
     args = parser.parse_args()
 
     # ensure OpenAI API key is set
@@ -35,7 +34,7 @@ def main() -> None:
 
     logger.info(f"\n{'-' * 100}")
     logger.info("Starting routine discovery for task:\n%s", args.task)
-    logger.info(f"{'-' * 100}\n")
+    logger.info(f"\n{'-' * 100}\n")
 
     # initialize OpenAI client
     openai_client = OpenAI(api_key=Config.OPENAI_API_KEY)
@@ -70,7 +69,7 @@ def main() -> None:
 
     logger.info(f"\n{'-' * 100}")
     logger.info("Running routine discovery agent.")
-    logger.info(f"{'-' * 100}\n")
+    logger.info(f"\n{'-' * 100}\n")
 
     # run the routine discovery agent
     routine_discovery_agent.run()

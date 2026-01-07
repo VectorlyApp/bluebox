@@ -1,0 +1,104 @@
+{
+  "name": "massachusetts_corp_search",
+  "description": "Search for corporations and business entities registered in Massachusetts using the Secretary of State's corporate database.",
+  "parameters": [
+    {
+      "name": "entity_name",
+      "type": "string",
+      "required": true,
+      "description": "The name of the corporation or entity to search for (e.g., 'Microsoft Corporation')",
+      "default": null,
+      "examples": [],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": null,
+      "enum_values": null,
+      "format": null
+    }
+  ],
+  "operations": [
+    {
+      "type": "navigate",
+      "url": "https://corp.sec.state.ma.us/corpweb/CorpSearch/CorpSearch.aspx"
+    },
+    {
+      "type": "sleep",
+      "timeout_seconds": 3.5
+    },
+    {
+      "type": "scroll",
+      "selector": null,
+      "delta_x": null,
+      "delta_y": 100,
+      "x": null,
+      "y": null,
+      "timeout_ms": 5000,
+      "behavior": "auto"
+    },
+    {
+      "type": "click",
+      "selector": "input[name='ctl00$MainContent$txtEntityName']",
+      "button": "left",
+      "click_count": 1,
+      "timeout_ms": 20000,
+      "ensure_visible": true
+    },
+    {
+      "type": "input_text",
+      "selector": "input[name='ctl00$MainContent$txtEntityName']",
+      "text": "\"{{entity_name}}\"",
+      "clear": true,
+      "timeout_ms": 20000
+    },
+    {
+      "type": "click",
+      "selector": "select[name='ctl00$MainContent$ddRecordsPerPage']",
+      "button": "left",
+      "click_count": 1,
+      "timeout_ms": 20000,
+      "ensure_visible": true
+    },
+    {
+      "type": "sleep",
+      "timeout_seconds": 0.75
+    },
+    {
+      "type": "press",
+      "key": "arrowdown"
+    },
+    {
+      "type": "press",
+      "key": "arrowdown"
+    },
+    {
+      "type": "press",
+      "key": "enter"
+    },
+    {
+      "type": "click",
+      "selector": "input[name='ctl00$MainContent$btnSearch']",
+      "button": "left",
+      "click_count": 1,
+      "timeout_ms": 20000,
+      "ensure_visible": true
+    },
+    {
+      "type": "wait_for_url",
+      "url_regex": "CorpSearchResults\\.aspx",
+      "timeout_ms": 10000
+    },
+    {
+      "type": "sleep",
+      "timeout_seconds": 1
+    },
+    {
+      "type": "return_html",
+      "scope": "element",
+      "selector": "table",
+      "timeout_ms": 20000
+    }
+  ]
+}
+

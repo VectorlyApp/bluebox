@@ -9,7 +9,7 @@ from openai import OpenAI
 
 from ..routine_discovery.agent import RoutineDiscoveryAgent
 from ..routine_discovery.context_manager import ContextManager
-from ..data_models.production_routine import Routine
+from ..data_models.routine.routine import Routine
 
 
 class RoutineDiscovery:
@@ -31,7 +31,7 @@ class RoutineDiscovery:
         task: str,
         cdp_captures_dir: str = "./cdp_captures",
         output_dir: str = "./routine_discovery_output",
-        llm_model: str = "gpt-5",
+        llm_model: str = "gpt-5.1",
     ):
         self.client = client
         self.task = task
@@ -59,6 +59,7 @@ class RoutineDiscovery:
             transactions_dir=str(Path(self.cdp_captures_dir) / "network" / "transactions"),
             consolidated_transactions_path=str(Path(self.cdp_captures_dir) / "network" / "consolidated_transactions.json"),
             storage_jsonl_path=str(Path(self.cdp_captures_dir) / "storage" / "events.jsonl"),
+            window_properties_path=str(Path(self.cdp_captures_dir) / "window_properties" / "window_properties.json"),
         )
         self.context_manager.make_vectorstore()
         

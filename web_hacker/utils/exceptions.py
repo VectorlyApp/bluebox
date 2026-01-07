@@ -6,7 +6,7 @@ Custom exceptions for the project.
 
 class UnsupportedFileFormat(Exception):
     """
-    Raised when encountering an unsupported file type for some opertation.
+    Raised when encountering an unsupported file type for some operation.
     """
 
 
@@ -32,6 +32,42 @@ class TransactionIdentificationFailedError(Exception):
 class BrowserConnectionError(Exception):
     """
     Exception raised when unable to connect to the browser or create a browser tab.
+    """
+
+
+class ChromiumConnectionError(Exception):
+    """
+    Exception raised when there is an error connecting to the Chromium service.
+    """
+
+
+class NoSessionIdError(Exception):
+    """
+    Exception raised when a method requires a session ID but none is available.
+    """
+
+
+class HTTPClientError(Exception):
+    """
+    Exception raised when an HTTP request returns a 4xx client error status code.
+    """
+
+
+class HTTPServerError(Exception):
+    """
+    Exception raised when an HTTP request returns a 5xx server error status code.
+    """
+
+
+class NavigationError(Exception):
+    """
+    Raised when a page navigation appears to have failed or produced an invalid page.
+    """
+
+
+class NavigationBlockedError(NavigationError):
+    """
+    Raised when a page navigation appears to have been blocked by anti-bot or related mechanisms.
     """
 
 

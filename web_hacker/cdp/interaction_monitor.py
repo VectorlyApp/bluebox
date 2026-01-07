@@ -4,25 +4,24 @@ web_hacker/cdp/interaction_monitor.py
 Interaction monitoring for CDP — tracks mouse and keyboard events with element details.
 """
 
-import logging
 import os
 import time
 import json
 from collections import defaultdict
 
 from web_hacker.config import Config
-from web_hacker.utils.cdp_utils import write_jsonl, write_json_file
+from web_hacker.utils.data_utils import write_json_file, write_jsonl
+from web_hacker.utils.logger import get_logger
 
 # Import UiElement and UiInteractionEvent models
 from web_hacker.data_models.ui_elements import (
     UiElement, Identifier, IdentifierType, BoundingBox
 )
-from web_hacker.data_models.ui_interactions import (
+from web_hacker.data_models.ui_interaction import (
     UiInteractionEvent, InteractionType, Interaction
 )
 
-logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class InteractionMonitor:

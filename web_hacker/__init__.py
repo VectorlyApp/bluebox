@@ -29,16 +29,17 @@ __version__ = "1.1.0"
 from .sdk import WebHacker, BrowserMonitor, RoutineDiscovery, RoutineExecutor
 
 # Data models - for advanced users
-from .data_models.production_routine import (
-    Routine,
-    Parameter,
+from .data_models.routine.routine import Routine
+from .data_models.routine.parameter import Parameter
+from .data_models.routine.operation import (
     RoutineOperation,
+    RoutineOperationUnion,
     RoutineNavigateOperation,
     RoutineFetchOperation,
     RoutineReturnOperation,
     RoutineSleepOperation,
-    Endpoint,
 )
+from .data_models.routine.endpoint import Endpoint
 
 # Exceptions
 from .utils.exceptions import (
@@ -67,6 +68,7 @@ __all__ = [
     "Routine",
     "Parameter",
     "RoutineOperation",
+    "RoutineOperationUnion",
     "RoutineNavigateOperation",
     "RoutineFetchOperation",
     "RoutineReturnOperation",

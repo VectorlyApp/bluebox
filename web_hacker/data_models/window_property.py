@@ -1,5 +1,5 @@
 """
-web_hacker/data_models/window_property.py
+web_hacker/data_models/monitor/window_property.py
 
 Window property data models.
 """

@@ -1,5 +1,5 @@
 """
-web_hacker/data_models/ui_interactions.py
+web_hacker/data_models/monitor/ui_interactions.py
 
 UI interaction data models for tracking user interactions with web elements.
 """

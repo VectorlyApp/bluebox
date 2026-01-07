@@ -1,75 +1,104 @@
 """
-Python script to execute a routine.
+Execute a routine from the command line.
 
-Example commands:
-
-    # Execute routine with parameters from a file
-    python scripts/execute_routine.py \
-        --routine-path routine_discovery_output/routine.json \
-        --parameters-path routine_discovery_output/test_parameters.json
-
-    # Execute routine with parameters from a dictionary
-    python scripts/execute_routine.py \
-        --routine-path example_routines/amtrak_one_way_train_search_routine.json \
-        --parameters-dict "{'origin': 'boston', 'destination': 'new york', 'departureDate': '2026-03-22'}"
+Usage:
+    web-hacker-execute --routine-path <path> --parameters-path <path> [--output <path>] [--download-dir <dir>]
+    web-hacker-execute --routine-path <path> --parameters-dict '<json>' [--output <path>] [--download-dir <dir>]]
+    
+Examples:
+    web-hacker-execute --routine-path example_routines/amtrak_one_way_train_search_routine.json --parameters-path example_routines/amtrak_one_way_train_search_input.json
+    web-hacker-execute --routine-path example_routines/amtrak_one_way_train_search_routine.json --parameters-dict '{"origin": "boston", "destination": "new york", "departureDate": "2026-03-22"}' --output output.json
 """
 
 import argparse
 import json
-import logging
+import os
 
-from web_hacker.config import Config
-from web_hacker.cdp.routine_execution import execute_routine
-from web_hacker.data_models.production_routine import Routine
+from web_hacker.data_models.routine.execution import RoutineExecutionResult
+from web_hacker.data_models.routine.routine import Routine
+from web_hacker.utils.data_utils import save_data_to_file, write_json_file
+from web_hacker.utils.logger import get_logger
 
-logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
-def main(routine_path: str | None = None, parameters_path: str | None = None, parameters_dict: str | None = None):
+def save_result(
+    result: RoutineExecutionResult,
+    output_path: str | None = None,
+    download_dir: str | None = None,
+) -> None:
     """
-    Main function for executing a routine.
-    Can be called with arguments (for direct execution) or without (for CLI entry point).
+    Save execution result to files.
+    
+    Args:
+        result: The routine execution result.
+        output_path: Path to save the full RoutineExecutionResult as JSON.
+        download_dir: Directory to save data file when result.filename is present.
     """
-    # If called as CLI entry point, parse arguments
+    # Save data to filename if present
+    if result.filename:
+        if download_dir and not os.path.isabs(result.filename):
+            file_path = os.path.join(download_dir, result.filename)
+        else:
+            file_path = result.filename
+        os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
+        save_data_to_file(result.data, file_path, is_base64=result.is_base64)
+    
+    # Save full result as JSON if output path specified
+    if output_path:
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+        write_json_file(output_path, result.model_dump())
+        logger.info(f"Saved RoutineExecutionResult to: {output_path}")
+
+
+def main(
+    routine_path: str | None = None,
+    parameters_path: str | None = None,
+    parameters_dict: str | None = None,
+    output: str | None = None,
+    download_dir: str | None = None,
+) -> None:
+    """Execute a routine with given parameters."""
+    # Parse CLI arguments if not called programmatically
     if routine_path is None:
         parser = argparse.ArgumentParser(description="Execute a routine")
-        parser.add_argument("--routine-path", type=str, required=True, help="Path to the routine JSON file")
-        parser.add_argument("--parameters-path", type=str, required=False, help="Path to the parameters JSON file")
-        parser.add_argument("--parameters-dict", type=str, required=False, help="Dictionary of parameters")
+        parser.add_argument("--routine-path", type=str, required=True)
+        parser.add_argument("--parameters-path", type=str)
+        parser.add_argument("--parameters-dict", type=str)
+        parser.add_argument("--output", type=str, help="Save full RoutineExecutionResult as JSON")
+        parser.add_argument("--download-dir", type=str, help="Directory for downloaded files")
         args = parser.parse_args()
         routine_path = args.routine_path
         parameters_path = args.parameters_path
         parameters_dict = args.parameters_dict
+        output = args.output
+        download_dir = args.download_dir
     
-    # ensure only one of parameters_path or parameters_dict is provided
+    # Validate parameters
     if parameters_path and parameters_dict:
         raise ValueError("Only one of --parameters-path or --parameters-dict must be provided")
-    
-    # Load routine data
-    if parameters_path:
-        parameters_dict_parsed = json.load(open(parameters_path))
-    elif parameters_dict:
-        parameters_dict_parsed = json.loads(parameters_dict)
-    else:
+    if not parameters_path and not parameters_dict:
         raise ValueError("Either --parameters-path or --parameters-dict must be provided")
-        
-    # load routine data
-    routine_data = json.load(open(routine_path))
-    routine = Routine(**routine_data)
     
-    # Execute routine
+    # Load parameters
+    if parameters_path:
+        with open(parameters_path, encoding="utf-8") as f:
+            params = json.load(f)
+    else:
+        params = json.loads(parameters_dict)  # type: ignore[arg-type]
+    
+    # Load and execute routine
+    with open(routine_path, encoding="utf-8") as f:
+        routine = Routine(**json.load(f))
+    
     try:
-        result = execute_routine(
-            routine=routine,
-            parameters_dict=parameters_dict_parsed,
+        result = routine.execute(
+            parameters_dict=params,
             timeout=60.0,
-            wait_after_navigate_sec=3.0,
             close_tab_when_done=False,
-            incognito=True,
         )
         logger.info(f"Result: {result}")
-        
+        save_result(result, output, download_dir)
     except Exception as e:
         logger.error("Error executing routine: %s", e)
 

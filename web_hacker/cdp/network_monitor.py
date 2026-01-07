@@ -19,7 +19,6 @@ Why this fixes "200 but empty body":
   `Fetch.continueResponse`.
 """
 
-import logging
 import os
 import base64
 import time
@@ -29,17 +28,11 @@ from fnmatch import fnmatch
 from typing import Any
 
 from web_hacker.config import Config
-from web_hacker.utils.cdp_utils import (
-    build_pair_dir,
-    get_set_cookie_values,
-    write_json_file,
-    write_jsonl,
-)
-from web_hacker.data_models.network import Stage
+from web_hacker.utils.data_utils import write_json_file, write_jsonl
+from web_hacker.utils.data_utils import build_transaction_dir, get_set_cookie_values
+from web_hacker.utils.logger import get_logger
 
-
-logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class NetworkMonitor:
@@ -83,8 +76,8 @@ class NetworkMonitor:
         # Response stage: for capturing response bodies
         cdp_session.send("Fetch.enable", {
             "patterns": [
-                {"urlPattern": "*", "requestStage": Stage.REQUEST},
-                {"urlPattern": "*", "requestStage": Stage.RESPONSE},
+                {"urlPattern": "*", "requestStage": "Request"},
+                {"urlPattern": "*", "requestStage": "Response"},
             ]
         })
 
@@ -108,7 +101,9 @@ class NetworkMonitor:
         if method == "Page.frameNavigated":
             try:
                 url = msg["params"]["frame"].get("url")
-                logger.info("Frame navigated to: %s", url)
+                # Skip logging for about:blank to reduce noise
+                if url and url != "about:blank":
+                    logger.info("Frame navigated to: %s", url)
             except Exception:
                 pass
             return False # Don't swallow this event
@@ -219,7 +214,7 @@ class NetworkMonitor:
         if self.req_meta[request_id]["type"] in self.capture_resources:
             ts_ms = int(time.time() * 1000)
             transactions_dir = self.paths.get("transactions_dir", os.path.join(self.output_dir, "transactions"))
-            transaction_dir = build_pair_dir(self.req_meta[request_id]["url"], ts_ms, transactions_dir)
+            transaction_dir = build_transaction_dir(self.req_meta[request_id]["url"], ts_ms, transactions_dir)
             self.req_meta[request_id]["transactionDir"] = transaction_dir
             
             # Create clean request data - only essential fields

@@ -18,7 +18,7 @@ REVERSE ENGINEER ANY WEB APP! ⚡️
 
 Welcome to Vectorly's Web Hacker... **No API? No Problem!**
 
-## Our Process ᯓ ✈︎
+## Our Process ᯓ ✈︎`
 
 1) Launch Chrome in debug mode (enable DevTools protocol on `127.0.0.1:9222`).
 2) Run the browser monitor and manually perform the target actions to capture browser state.
@@ -62,35 +62,99 @@ Example:
 
 ### Operations
 
-Operations define the executable steps of a Routine. They are represented as a **typed list** (see [`RoutineOperationUnion`](https://github.com/VectorlyApp/web-hacker/blob/main/src/data_models/production_routine.py)) and are executed sequentially by a browser.
+Operations define the executable steps of a Routine. They are represented as a **typed list** (see [`RoutineOperationUnion`](https://github.com/VectorlyApp/web-hacker/blob/main/web_hacker/data_models/routine/operation.py)) and are executed sequentially by a browser.
 
 Each operation specifies a `type` and its parameters:
 
+#### Navigation
+
 - **navigate** — open a URL in the browser.
   ```json
-  { "type": "navigate", "url": "https://example.com" }
+  { "type": "navigate", "url": "https://example.com", "sleep_after_navigation_seconds": 3.0 }
   ```
 - **sleep** — pause execution for a given duration (in seconds).
   ```json
   { "type": "sleep", "timeout_seconds": 1.5 }
   ```
+- **wait_for_url** — wait for the current URL to match a regex pattern.
+  ```json
+  { "type": "wait_for_url", "url_regex": ".*dashboard.*", "timeout_ms": 20000 }
+  ```
+
+#### Network
+
 - **fetch** — perform an HTTP request defined by an `endpoint` object (method, URL, headers, body, credentials). Optionally, store the response under a `session_storage_key`.
   ```json
-  { 
-    "type": "fetch", 
-    "endpoint": { 
-      "method": "GET", 
+  {
+    "type": "fetch",
+    "endpoint": {
+      "method": "GET",
       "url": "https://api.example.com",
       "headers": {},
       "body": {},
       "credentials": "same-origin"
-    }, 
-    "session_storage_key": "userData" 
+    },
+    "session_storage_key": "userData"
   }
   ```
+- **download** — download a file and return it as base64-encoded content.
+  ```json
+  {
+    "type": "download",
+    "endpoint": {
+      "method": "GET",
+      "url": "https://example.com/report.pdf",
+      "headers": {},
+      "body": {}
+    },
+    "filename": "report.pdf"
+  }
+  ```
+- **get_cookies** — retrieve all cookies (including HttpOnly) via CDP and store them in session storage.
+  ```json
+  { "type": "get_cookies", "session_storage_key": "allCookies", "domain_filter": "*" }
+  ```
+
+#### Interaction
+
+- **click** — click on an element by CSS selector. Automatically validates visibility to avoid honeypot traps.
+  ```json
+  { "type": "click", "selector": "#submit-button", "button": "left", "ensure_visible": true }
+  ```
+- **input_text** — type text into an input element. Validates visibility before typing.
+  ```json
+  { "type": "input_text", "selector": "#username", "text": "\"{{username}}\"", "clear": false }
+  ```
+- **press** — press a keyboard key (enter, tab, escape, etc.).
+  ```json
+  { "type": "press", "key": "enter" }
+  ```
+- **scroll** — scroll the page or a specific element.
+  ```json
+  { "type": "scroll", "selector": "#content", "delta_y": 500, "behavior": "auto" }
+  ```
+
+#### Code Execution
+
+- **js_evaluate** — evaluate custom JavaScript code in the browser context. Must be wrapped in an IIFE format.
+  ```json
+  {
+    "type": "js_evaluate",
+    "js": "(function() { return document.title; })()",
+    "timeout_seconds": 5.0,
+    "session_storage_key": "pageTitle"
+  }
+  ```
+
+#### Data
+
 - **return** — return the value previously stored under a `session_storage_key`.
   ```json
   { "type": "return", "session_storage_key": "userData" }
+  ```
+- **return_html** — return HTML content from the page or a specific element.
+  ```json
+  { "type": "return_html", "scope": "page" }
   ```
 
 Example sequence:
@@ -246,7 +310,7 @@ mkdir -p $HOME/tmp/chrome
   --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port=9222 \
   --user-data-dir="$HOME/tmp/chrome" \
-  --remote-allow-origins=* \
+  --remote-allow-origins='*' \
   --no-first-run \
   --no-default-browser-check
 
@@ -290,7 +354,7 @@ google-chrome \
   --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port=9222 \
   --user-data-dir="$HOME/tmp/chrome" \
-  --remote-allow-origins=* \
+  --remote-allow-origins='*' \
   --no-first-run \
   --no-default-browser-check
 
@@ -373,7 +437,7 @@ web-hacker-discover \
 
 ```powershell
 # Simple task (no quotes inside):
-web-hacker-discover --task "Recover the API endpoints for searching for trains and their prices" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5
+web-hacker-discover --task "Recover the API endpoints for searching for trains and their prices" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5.1
 ```
 
 **Example tasks:**
@@ -388,7 +452,7 @@ Arguments:
 - **--task**: A clear description of what you want to automate. This guides the AI agent to identify which network requests to extract and convert into a Routine. Examples: searching for products, booking appointments, submitting forms, etc.
 - **--cdp-captures-dir**: Root of prior CDP capture output (default: `./cdp_captures`)
 - **--output-dir**: Directory to write results (default: `./routine_discovery_output`)
-- **--llm-model**: LLM to use for reasoning/parsing (default: `gpt-5`)
+- **--llm-model**: LLM to use for reasoning/parsing (default: `gpt-5.1`)
 
 Outputs (under `--output-dir`):
 
@@ -446,7 +510,7 @@ web-hacker-execute \
 
 **Note:** Routines execute in a new incognito tab by default (controlled by the routine's `incognito` field). This ensures clean sessions for each execution.
 
-**Alternative:** Deploy your routine to [console.vectorly.app](https://console.vectorly.app) to expose it as an API endpoint or MCP server for use in production environments.
+**Alternative:** Deploy your routine to [console.vectorly.app](https://console.vectorly.app) to expose it as an API endpoint or MCP tool for use in production environments.
 
 ## Common Issues ⚠️
 
@@ -466,14 +530,117 @@ web-hacker-execute \
     - The task description is too vague or too specific
   - **Fix:** Reword your `--task` parameter to more accurately describe what you did during the monitoring step, or re-run the browser monitor and ensure you perform the exact actions you want to automate.
 
+## Python SDK 🐍
+
+For programmatic control, use the Python SDK instead of CLI commands:
+
+### Basic Usage
+
+```python
+from web_hacker.sdk import WebHacker
+from web_hacker.data_models.routine.routine import Routine
+
+# Initialize (uses OPENAI_API_KEY from environment)
+hacker = WebHacker()
+
+# Load and execute an existing routine
+routine = Routine.model_validate_json(open("routine.json").read())
+result = hacker.execute_routine(
+    routine=routine,
+    parameters={"origin": "NYC", "destination": "LAX", "date": "2026-03-15"}
+)
+
+if result.ok:
+    print(result.data)  # API response data
+```
+
+### Full Workflow
+
+```python
+import json
+from web_hacker.sdk import WebHacker, BrowserMonitor
+
+hacker = WebHacker()
+
+# Step 1: Monitor browser activity
+monitor = BrowserMonitor(output_dir="./captures")
+monitor.start()
+# ... user performs actions in browser ...
+input("Press Enter when done")
+monitor.stop()
+
+# Step 2: Discover routine from captures
+routine = hacker.discover_routine(
+    task="Search for flights and get prices",
+    cdp_captures_dir="./captures",
+    output_dir="./output"
+)
+
+# Step 3: Test with generated test parameters
+test_params = json.load(open("./output/test_parameters.json"))
+result = hacker.execute_routine(routine=routine, parameters=test_params)
+
+# Step 4: Execute with new parameters
+result = hacker.execute_routine(
+    routine=routine,
+    parameters={"origin": "SFO", "destination": "JFK", "date": "2026-04-01"}
+)
+```
+
+### SDK Classes
+
+| Class                | Description                              |
+| -------------------- | ---------------------------------------- |
+| `WebHacker`        | Main client for the full workflow        |
+| `BrowserMonitor`   | Capture browser network/storage activity |
+| `RoutineDiscovery` | Discover routines from captured data     |
+| `RoutineExecutor`  | Execute routines programmatically        |
+
+See `quickstart.py` for a complete interactive example.
+
 ## Coming Soon 🔮
 
-- Integration of routine testing into the agentic pipeline
+### Pipeline Improvements
 
+- **Integration of routine testing into the agentic pipeline**
   - The agent will execute discovered routines, detect failures, and automatically suggest/fix issues to make routines more robust and efficient.
-- Checkpointing progress and resumability
-
+- **Checkpointing progress and resumability**
   - Avoid re-running the entire discovery pipeline after exceptions; the agent will checkpoint progress and resume from the last successful stage.
-- Parameter resolution visibility
+- **Parameter resolution visibility**
+  - During execution, show which placeholders (e.g., `{{sessionStorage:...}}`, `{{cookie:...}}`, `{{localStorage:...}}`) resolved successfully and which failed.
 
-  - During execution, show which placeholders (e.g., `{{sessionStorage:...}}`, `{{cookie:...}}`, `{{localStorage:...}}` resolved successfully and which failed
+### Additional Operations (Not Yet Implemented)
+
+#### Navigation
+
+- **wait_for_title** — wait for the page title to match a regex pattern
+
+#### Network
+
+- **network_sniffing** (background operation) — intercept and capture network requests matching a URL pattern in the background while other operations execute. Useful for capturing API calls triggered by UI interactions.
+  - Supports different capture modes: `list` (all matching requests), `first` (only first match), `last` (only last match)
+  - Can capture request, response, or body data
+
+#### Interaction
+
+- **hover** — move mouse over an element to trigger hover states
+- **wait_for_selector** — wait for an element to reach a specific state (visible, hidden, attached, detached)
+- **set_files** — set file paths for file input elements (for file uploads)
+
+#### Data
+
+- **return_screenshot** — capture and return a screenshot of the page as base64
+
+## Contributing 🤝
+
+We welcome contributions! Here's how to get started:
+
+1. **Report bugs or request features** — Open an [issue](https://github.com/VectorlyApp/web-hacker/issues)
+2. **Submit code** — Fork the repo and open a [pull request](https://github.com/VectorlyApp/web-hacker/pulls)
+3. **Test your code** — Add unit tests and make sure all tests pass:
+
+```bash
+pytest tests/ -v
+```
+
+Please follow existing code style and include tests for new features.

@@ -5,7 +5,6 @@ CDP-based web scraper that blocks trackers and captures network requests.
 """
 
 import argparse
-import logging
 import os
 import json
 import time
@@ -14,11 +13,11 @@ import sys
 
 from web_hacker.config import Config
 from web_hacker.cdp.cdp_session import CDPSession
-from web_hacker.data_models.network import ResourceType
-from web_hacker.cdp.tab_managements import cdp_new_tab, dispose_context
+from web_hacker.data_models.routine.endpoint import ResourceType
+from web_hacker.cdp.connection import cdp_new_tab, dispose_context
+from web_hacker.utils.logger import get_logger
 
-logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ---- Configuration ----
 
@@ -316,15 +315,22 @@ def main():
     created_tab = False
     context_id = None
     remote_debugging_address = f"http://{args.host}:{args.port}"
-    
+
     if not tab_id:
         logger.info("No tab ID provided, creating new tab...")
         try:
-            tab_id, context_id = cdp_new_tab(
+            # cdp_new_tab returns browser-level WebSocket (for tab management)
+            # We need page-level WebSocket for CDPSession, so close the browser WS
+            tab_id, context_id, browser_ws = cdp_new_tab(
                 remote_debugging_address=remote_debugging_address,
                 incognito=args.incognito,
                 url=args.url if not args.no_navigate else "about:blank"
             )
+            # Close browser WebSocket - we'll create a page-level one for CDPSession
+            try:
+                browser_ws.close()
+            except Exception:
+                pass
             created_tab = True
             logger.info(f"Created new tab: {tab_id}")
             if context_id:
@@ -332,27 +338,27 @@ def main():
         except Exception as e:
             logger.info(f"Error creating new tab: {e}")
             sys.exit(1)
-    
-    # Build WebSocket URL
+
+    # Build page-level WebSocket URL for monitoring
     ws_url = f"ws://{args.host}:{args.port}/devtools/page/{tab_id}"
     navigate_to = None if args.no_navigate else args.url
-    
+
     logger.info(f"Starting CDP monitoring session...")
     logger.info(f"Output directory: {args.output_dir}")
     logger.info(f"Target URL: {navigate_to or 'No navigation (attach only)'}")
     logger.info(f"Tab ID: {tab_id}")
 
-    # Create and run CDP session
+    # Create and run CDP session with page-level WebSocket
     session = None
     try:
         session = CDPSession(
-            ws_url, 
-            paths['network_dir'],  # Use network directory for response bodies
-            paths, 
+            output_dir=paths['network_dir'],
+            paths=paths,
+            ws_url=ws_url,
             capture_resources=args.capture_resources,
             block_patterns=BLOCK_PATTERNS,
             clear_cookies=args.clear_cookies,
-            clear_storage=args.clear_storage
+            clear_storage=args.clear_storage,
         )
         session.setup_cdp(navigate_to)
         session.run()

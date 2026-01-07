@@ -8,7 +8,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-from web_hacker.data_models.network import Method
+from web_hacker.data_models.routine.endpoint import HTTPMethod
 
 
 class ConfidenceLevel(StrEnum):
@@ -25,7 +25,7 @@ class TransactionIdentificationResponse(BaseModel):
     transaction_id: str | None
     description: str
     url: str
-    method: Method
+    method: HTTPMethod
     explanation: str
     confidence_level: ConfidenceLevel = Field(
         description="The confidence level of the identification. May be LOW, MEDIUM, or HIGH."

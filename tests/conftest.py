@@ -5,8 +5,12 @@ Configuration for pytest.
 """
 
 from pathlib import Path
+from typing import Any
 
 import pytest
+
+from web_hacker.data_models.routine.routine import Routine
+from web_hacker.data_models.routine.operation import RoutineOperationUnion
 
 
 @pytest.fixture(scope="session")
@@ -41,3 +45,22 @@ def input_data_dir(data_dir: Path) -> Path:
     d = data_dir / "input"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+@pytest.fixture
+def make_routine():
+    """
+    Factory fixture to create Routine with hardcoded defaults.
+    
+    Usage:
+        routine = make_routine(operations=[...])
+        routine = make_routine(operations=[...], parameters=[...], name="custom")
+    """
+    def factory(operations: list[RoutineOperationUnion], **kwargs: Any) -> Routine:
+        defaults = {
+            "name": "test_routine",
+            "description": "Test routine",
+        }
+        return Routine(operations=operations, **{**defaults, **kwargs})
+    
+    return factory

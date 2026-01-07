@@ -5,7 +5,6 @@ Browser monitoring SDK wrapper.
 from typing import Optional, Set
 from pathlib import Path
 import json
-import logging
 import os
 import sys
 import time
@@ -14,11 +13,12 @@ import threading
 import requests
 
 from ..cdp.cdp_session import CDPSession
-from ..cdp.tab_managements import cdp_new_tab, dispose_context
-from ..data_models.network import ResourceType
+from ..cdp.connection import cdp_new_tab, dispose_context
+from ..data_models.routine.endpoint import ResourceType
 from ..utils.exceptions import BrowserConnectionError
+from ..utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class BrowserMonitor:
@@ -74,16 +74,18 @@ class BrowserMonitor:
         self.start_time = time.time()
         
         # Create output directory structure
-        paths = {
-            # Main directories
+        # Directories to create
+        directories = {
             "output_dir": self.output_dir,
             "network_dir": str(Path(self.output_dir) / "network"),
             "transactions_dir": str(Path(self.output_dir) / "network" / "transactions"),
             "storage_dir": str(Path(self.output_dir) / "storage"),
             "interaction_dir": str(Path(self.output_dir) / "interaction"),
             "window_properties_dir": str(Path(self.output_dir) / "window_properties"),
-            
-            # File paths (all static output files)
+        }
+
+        # File paths (do NOT mkdir these - they are files, not directories)
+        file_paths = {
             "storage_jsonl_path": str(Path(self.output_dir) / "storage" / "events.jsonl"),
             "interaction_jsonl_path": str(Path(self.output_dir) / "interaction" / "events.jsonl"),
             "window_properties_json_path": str(Path(self.output_dir) / "window_properties" / "window_properties.json"),
@@ -93,21 +95,35 @@ class BrowserMonitor:
             "summary_path": str(Path(self.output_dir) / "session_summary.json"),
         }
         
-        # Create directories
-        for path in paths.values():
+        # Combine for paths dict (used by CDPSession)
+        paths = {**directories, **file_paths}
+        
+        # Create only directories (not file paths!)
+        for path in directories.values():
             Path(path).mkdir(parents=True, exist_ok=True)
         
         # Get or create browser tab
+        ws_url = None
+
         if self.create_tab:
             try:
-                target_id, browser_context_id, ws = cdp_new_tab(
+                # cdp_new_tab returns browser-level WebSocket (for tab management)
+                # We need page-level WebSocket for CDPSession
+                target_id, browser_context_id, browser_ws = cdp_new_tab(
                     remote_debugging_address=self.remote_debugging_address,
                     incognito=self.incognito,
                     url=self.url,
                 )
+                # Close browser WebSocket - we'll create a page-level one
+                try:
+                    browser_ws.close()
+                except Exception:
+                    pass
                 self.context_id = browser_context_id
                 self.created_tab = True
-                ws_url = ws
+                # Build page-level WebSocket URL
+                host_port = self.remote_debugging_address.replace("http://", "").replace("https://", "")
+                ws_url = f"ws://{host_port}/devtools/page/{target_id}"
             except Exception as e:
                 raise BrowserConnectionError(f"Failed to create browser tab: {e}")
         else:
@@ -121,12 +137,12 @@ class BrowserMonitor:
                     raise BrowserConnectionError("Could not get WebSocket URL from browser")
             except Exception as e:
                 raise BrowserConnectionError(f"Failed to connect to browser: {e}")
-        
-        # Initialize CDP session
+
+        # Initialize CDP session with page-level WebSocket URL
         self.session = CDPSession(
-            ws_url=ws_url,
-            output_dir=paths["network_dir"],  # Use network directory for response bodies
+            output_dir=paths["network_dir"],
             paths=paths,
+            ws_url=ws_url,
             capture_resources=self.capture_resources,
             block_patterns=self.block_patterns or [],
             clear_cookies=self.clear_cookies,
