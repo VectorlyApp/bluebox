@@ -84,4 +84,3 @@ def recv_until(ws: WebSocket, predicate: Callable[[dict], bool], deadline: float
         if predicate(msg):
             return msg
     raise TimeoutError("Timed out waiting for expected CDP message")
-

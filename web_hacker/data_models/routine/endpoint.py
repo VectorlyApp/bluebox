@@ -1,5 +1,5 @@
 """
-cdpkit/data_models/endpoint.py
+web_hacker/data_models/routine/endpoint.py
 
 Parameter models with comprehensive validation and type information.
 """
