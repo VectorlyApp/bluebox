@@ -5,15 +5,24 @@ Routine discovery SDK wrapper.
 from pathlib import Path
 from typing import Optional, Callable
 import os
+import json
 from openai import OpenAI
+from pydantic import BaseModel
 
 from ..routine_discovery.agent import RoutineDiscoveryAgent
 from ..routine_discovery.context_manager import LocalContextManager
 from ..data_models.routine.routine import Routine
 from ..data_models.routine_discovery.message import RoutineDiscoveryMessage
+from ..data_models.routine_discovery.llm_responses import TestParametersResponse
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class RoutineDiscoveryResult(BaseModel):
+    """Result of routine discovery containing the routine and test parameters."""
+    routine: Routine
+    test_parameters: TestParametersResponse
 
 
 class RoutineDiscovery:
@@ -26,7 +35,9 @@ class RoutineDiscovery:
         ...     task="Search for flights",
         ...     cdp_captures_dir="./captures"
         ... )
-        >>> routine = discovery.run()
+        >>> result = discovery.run()
+        >>> routine = result.routine
+        >>> test_params = result.test_parameters
     """
 
     def __init__(
@@ -74,12 +85,12 @@ class RoutineDiscovery:
         elif message.type == RoutineDiscoveryMessageType.ERROR:
             logger.error(f"❌ {message.content}")
     
-    def run(self) -> Routine:
+    def run(self) -> RoutineDiscoveryResult:
         """
-        Run routine discovery and return the discovered routine.
+        Run routine discovery and return the discovered routine with test parameters.
 
         Returns:
-            Discovered Routine object.
+            RoutineDiscoveryResult containing the routine and test parameters.
         """
         try:
             # Create output directory
@@ -114,7 +125,20 @@ class RoutineDiscovery:
             routine = self.agent.run()
             logger.info("Routine discovery completed successfully.")
 
-            return routine
+            # Get test parameters from the agent
+            test_parameters = self.agent.get_test_parameters(routine)
+            logger.info("Test parameters generated successfully.")
+
+            # Save test parameters to output directory
+            test_params_path = os.path.join(self.output_dir, "test_parameters.json")
+            with open(test_params_path, mode="w", encoding="utf-8") as f:
+                json.dump(test_parameters.model_dump(), f, ensure_ascii=False, indent=2)
+            logger.info(f"Test parameters saved to: {test_params_path}")
+
+            return RoutineDiscoveryResult(
+                routine=routine,
+                test_parameters=test_parameters
+            )
 
         finally:
             # Clean up vectorstore

@@ -9,7 +9,7 @@ from openai import OpenAI
 from ..config import Config
 from ..utils.exceptions import ApiKeyNotFoundError
 from .monitor import BrowserMonitor
-from .discovery import RoutineDiscovery
+from .discovery import RoutineDiscovery, RoutineDiscoveryResult
 from .execution import RoutineExecutor
 from ..data_models.routine.routine import Routine
 
@@ -17,19 +17,21 @@ from ..data_models.routine.routine import Routine
 class WebHacker:
     """
     Main SDK client for Web Hacker.
-    
+
     Provides a simple, high-level interface for monitoring browsers,
     discovering routines, and executing automation.
-    
+
     Example:
         >>> hacker = WebHacker(openai_api_key="sk-...")
         >>> with hacker.monitor_browser(output_dir="./captures"):
         ...     # User performs actions in browser
         ...     pass
-        >>> routine = hacker.discover_routine(
+        >>> discovery_result = hacker.discover_routine(
         ...     task="Search for flights",
         ...     cdp_captures_dir="./captures"
         ... )
+        >>> routine = discovery_result.routine
+        >>> test_params = discovery_result.test_parameters
         >>> result = hacker.execute_routine(
         ...     routine=routine,
         ...     parameters={"origin": "NYC", "destination": "LAX"}
@@ -102,18 +104,18 @@ class WebHacker:
         cdp_captures_dir: str = "./cdp_captures",
         output_dir: str = "./routine_discovery_output",
         llm_model: Optional[str] = None,
-    ) -> Routine:
+    ) -> RoutineDiscoveryResult:
         """
         Discover a routine from captured browser data.
-        
+
         Args:
             task: Description of the task to automate.
             cdp_captures_dir: Directory containing CDP captures.
             output_dir: Directory to save discovery results.
             llm_model: LLM model to use (overrides default).
-        
+
         Returns:
-            Discovered Routine object.
+            RoutineDiscoveryResult containing the routine and test parameters.
         """
         self._discovery = RoutineDiscovery(
             client=self.client,

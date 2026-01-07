@@ -102,7 +102,7 @@ def main() -> None:
             json.dump(routine.model_dump(), f, ensure_ascii=False, indent=2)
         logger.info(f"Production routine saved to: {routine_path}")
 
-        # optionally get test parameters
+        # get test parameters
         logger.info("Generating test parameters...")
         test_parameters = routine_discovery_agent.get_test_parameters(routine)
         test_parameters_dict = {param.name: param.value for param in test_parameters.parameters}
