@@ -27,9 +27,6 @@ class TransactionIdentificationResponse(BaseModel):
     url: str
     method: HTTPMethod
     explanation: str
-    confidence_level: ConfidenceLevel = Field(
-        description="The confidence level of the identification. May be LOW, MEDIUM, or HIGH."
-    )
 
 
 class TransactionConfirmationResponse(BaseModel):
@@ -46,10 +43,6 @@ class TransactionConfirmationResponse(BaseModel):
     explanation: str = Field(
         description="The explanation of the confirmation. Should be a short explanation of why the transaction is correct."
     )
-    confidence_level: ConfidenceLevel = Field(
-        description="The confidence level of the confirmation. May be LOW, MEDIUM, or HIGH."
-    )
-
 
 class VariableType(StrEnum):
     PARAMETER = "parameter"          # User input (e.g. query, item_id)
@@ -62,7 +55,7 @@ class Variable(BaseModel):
     A variable that was extracted from the network transaction.
     """
     type: VariableType
-    requires_resolution: bool = Field(description="Whether the variable requires resolution.")
+    requires_dynamic_resolution: bool = Field(description="Whether the variable requires resolution on the fly. If can be hardcoded, set to False.")
     name: str
     observed_value: str
     values_to_scan_for: list[str]

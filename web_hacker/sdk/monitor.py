@@ -158,24 +158,38 @@ class BrowserMonitor:
         
         logger.info(f"Browser monitoring started. Output directory: {self.output_dir}")
     
+    def _is_browser_connected(self) -> bool:
+        """Check if browser is still connected and responding."""
+        try:
+            response = requests.get(f"{self.remote_debugging_address}/json/version", timeout=1)
+            return response.status_code == 200
+        except Exception:
+            return False
+
     def _finalize_session(self):
         """Finalize session: sync cookies, collect window properties, and consolidate data."""
         logger.info("Finalizing session...")
         if not self.session:
             logger.warning("No session to finalize!")
             return
-        
-        # Final cookie sync
-        try:
-            self.session.storage_monitor.monitor_cookie_changes(self.session)
-        except Exception as e:
-            logger.error(f"Failed to sync cookies: {e}", exc_info=True)
-        
-        # Force final window property collection
-        try:
-            self.session.window_property_monitor.force_collect(self.session)
-        except Exception as e:
-            logger.error(f"Failed to force collect window properties: {e}", exc_info=True)
+
+        # Check if browser is still connected before attempting browser-dependent operations
+        browser_connected = self._is_browser_connected()
+
+        if browser_connected:
+            # Final cookie sync
+            try:
+                self.session.storage_monitor.monitor_cookie_changes(self.session)
+            except Exception as e:
+                logger.warning(f"Failed to sync cookies: {e}")
+
+            # Force final window property collection
+            try:
+                self.session.window_property_monitor.force_collect(self.session)
+            except Exception as e:
+                logger.warning(f"Failed to force collect window properties: {e}")
+        else:
+            logger.warning("Browser disconnected - skipping cookie sync and window property collection")
         
         # Consolidate transactions
         try:

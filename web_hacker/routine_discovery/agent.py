@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from web_hacker.config import Config
 from web_hacker.routine_discovery.context_manager import ContextManager
-from web_hacker.utils.llm_utils import collect_text_from_response, manual_llm_parse_text_to_model
+from web_hacker.utils.llm_utils import collect_text_from_response, manual_llm_parse_text_to_model, ContextManagedOpenAI
 from web_hacker.data_models.routine_discovery.llm_responses import (
     TransactionIdentificationResponse,
     ExtractedVariableResponse,
@@ -51,6 +51,8 @@ class RoutineDiscoveryAgent(BaseModel):
     n_transaction_identification_attempts: int = Field(default=3)
     current_transaction_identification_attempt: int = Field(default=1)
     timeout: int = Field(default=600)
+    context_window_threshold: float = Field(default=0.9)  # Summarize at 90% usage
+    context_managed_client: ContextManagedOpenAI | None = None
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     SYSTEM_PROMPT_IDENTIFY_TRANSACTIONS: str = f"""
@@ -68,6 +70,129 @@ class RoutineDiscoveryAgent(BaseModel):
             with open(save_path, mode="w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             logger.info(f"Saved to: {save_path}")
+
+    def _get_managed_client(self) -> ContextManagedOpenAI:
+        """Get a context-managed OpenAI client that handles context window limits."""
+        return ContextManagedOpenAI(
+            client=self.client,
+            on_context_limit_reached=self._on_context_limit_reached,
+            context_window_threshold=self.context_window_threshold,
+            default_model=self.llm_model,
+        )
+
+    def _on_context_limit_reached(self) -> None:
+        """Callback when context window limit is reached - summarize and reset."""
+        logger.info("Context window limit reached - summarizing conversation...")
+        self.emit_message_callable(RoutineDiscoveryMessage(
+            type=RoutineDiscoveryMessageType.PROGRESS_THINKING,
+            content="Summarizing progress to free up context window..."
+        ))
+
+        summary_prompt = (
+            "Summarize the KEY FINDINGS from each assistant message above. For EACH message, extract:\n\n"
+            "1. TRANSACTION IDs - exact IDs like '20260108_1767896068928_www.amtrak.com_dotcom_journey-solution-option'\n"
+            "2. EXTRACTED VARIABLES - list each variable with:\n"
+            "   - name (e.g., 'csrfToken', 'sessionId')\n"
+            "   - type (PARAMETER, DYNAMIC_TOKEN, STATIC_VALUE)\n"
+            "   - observed_value (the actual value seen)\n"
+            "   - requires_dynamic_resolution (true/false)\n"
+            "3. RESOLVED VARIABLES - for each resolved variable:\n"
+            "   - variable name\n"
+            "   - source type (transaction_source, session_storage_source, window_property_source)\n"
+            "   - source transaction_id if applicable\n"
+            "   - dot_path to extract the value (e.g., 'data.token', 'response.items[0].id')\n"
+            "4. API ENDPOINTS - full URLs and HTTP methods\n"
+            "5. REQUEST/RESPONSE STRUCTURE - key fields in request bodies and response formats\n\n"
+            "FORMAT: Use structured bullet points. Include EXACT values, IDs, and paths - not summaries.\n"
+            "This summary will be used to continue building the routine, so precision is critical."
+        )
+
+        summary_text = None
+
+        # Step 1: Try to summarize using existing session (if context isn't fully exceeded)
+        try:
+            logger.info("Attempting to summarize using existing session...")
+            response = self.client.responses.create(
+                model=self.llm_model,
+                input=[{"role": "user", "content": summary_prompt}],
+                previous_response_id=self.last_response_id,
+            )
+            summary_text = collect_text_from_response(response)
+            logger.info(f"Generated summary using existing session: {summary_text[:500]}...")
+
+        except Exception as e:
+            logger.warning(f"Failed to summarize with existing session: {e}")
+
+            # Step 2: Start a NEW session with only assistant messages from history
+            try:
+                logger.info("Attempting to summarize using new session with assistant outputs...")
+                assistant_messages = [
+                    msg for msg in self.message_history
+                    if msg.get("role") == "assistant"
+                ]
+
+                if assistant_messages:
+                    # Format each assistant message with index for clarity - NO TRUNCATION
+                    formatted_outputs = []
+                    for i, msg in enumerate(assistant_messages, 1):
+                        formatted_outputs.append(f"=== AGENT OUTPUT {i} ===\n{msg['content']}")
+
+                    # Ask a fresh LLM to summarize the assistant outputs
+                    new_session_input = [
+                        {"role": "system", "content": (
+                            "You are extracting structured data from a routine discovery agent's outputs. "
+                            "Your job is to preserve ALL technical details: transaction IDs, variable names, "
+                            "types, values, dot paths, URLs, etc. Do NOT summarize - extract and list."
+                        )},
+                        {"role": "user", "content": f"Task: {self.task}\n\nHere are the agent's outputs:\n\n" +
+                            "\n\n".join(formatted_outputs)},
+                        {"role": "user", "content": summary_prompt},
+                    ]
+                    response = self.client.responses.create(
+                        model=self.llm_model,
+                        input=new_session_input,
+                        # No previous_response_id - completely fresh session
+                    )
+                    summary_text = collect_text_from_response(response)
+                    logger.info(f"Generated summary using new session: {summary_text[:500]}...")
+
+            except Exception as e2:
+                logger.warning(f"Failed to summarize with new session: {e2}")
+
+        # Step 3: Reset the conversation - keep only user messages, insert summary
+        user_messages = [
+            msg for msg in self.message_history
+            if msg.get("role") in ("system", "user")
+        ]
+
+        if summary_text:
+            # Insert summary as assistant message in second-to-last position
+            if len(user_messages) >= 2:
+                self.message_history = (
+                    user_messages[:-1] +
+                    [{"role": "assistant", "content": f"Previous progress summary:\n{summary_text}"}] +
+                    [user_messages[-1]]
+                )
+            else:
+                self.message_history = user_messages + [
+                    {"role": "assistant", "content": f"Previous progress summary:\n{summary_text}"}
+                ]
+            logger.info("Context reset with summary inserted before last user message.")
+            self.emit_message_callable(RoutineDiscoveryMessage(
+                type=RoutineDiscoveryMessageType.PROGRESS_RESULT,
+                content="Context summarized and reset successfully"
+            ))
+        else:
+            # Fallback: just keep user messages without summary
+            self.message_history = user_messages
+            logger.warning("Context reset without summary (all summarization attempts failed).")
+            self.emit_message_callable(RoutineDiscoveryMessage(
+                type=RoutineDiscoveryMessageType.PROGRESS_RESULT,
+                content="Context reset (without summary)"
+            ))
+
+        # Reset the response ID to start fresh
+        self.last_response_id = None
 
     def _handle_transaction_identification_failure(self) -> None:
         """Handle failure to identify a valid transaction."""
@@ -106,6 +231,9 @@ class RoutineDiscoveryAgent(BaseModel):
         """
         # validate the context manager
         assert self.context_manager.vectorstore_id is not None, "Vectorstore ID is not set"
+
+        # Create context-managed client for automatic context window handling
+        self.context_managed_client = self._get_managed_client()
 
         # Push initial message
         self.emit_message_callable(RoutineDiscoveryMessage(
@@ -291,7 +419,6 @@ class RoutineDiscoveryAgent(BaseModel):
         logger.info("Productionized the routine")
 
         # save the routines (optional)
-        self._save_to_output_dir("dev_routine.json", dev_routine.model_dump())
         self._save_to_output_dir("routine.json", production_routine.model_dump())
 
         # Mark as finished
@@ -328,14 +455,13 @@ class RoutineDiscoveryAgent(BaseModel):
                 f"Please try again to identify the network transactions that directly correspond to the user's requested task."
                 f"The transaction id you provided does not exist or the request was not considered relevant to the user's requested task."
                 f"These are the possible network transaction ids you can choose from: {self.context_manager.get_all_transaction_ids()}"
-                f"Respond in the following format: {TransactionIdentificationResponse.model_json_schema()}"
             )
             self._add_to_message_history("user", message)
         
         logger.debug(f"\n\nMessage history:\n{self.message_history}\n")
 
         # call to the LLM API
-        response = self.client.responses.parse(
+        response = self.context_managed_client.responses.parse(
             model=self.llm_model,
             input=self.message_history if self.current_transaction_identification_attempt == 0 else [self.message_history[-1]],
             previous_response_id=self.last_response_id,
@@ -392,7 +518,7 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("user", message)
         
         # call to the LLM API for confirmation that the identified transaction is correct
-        response = self.client.responses.parse(
+        response = self.context_managed_client.responses.parse(
             model=self.llm_model,
             input=[self.message_history[-1]],
             previous_response_id=self.last_response_id,
@@ -446,11 +572,11 @@ class RoutineDiscoveryAgent(BaseModel):
         message = (
             f"Extract variables from these network REQUESTS only: {transactions}\n\n"
             "CRITICAL RULES:\n"
-            "1. **requires_resolution=False (STATIC_VALUE)**: Default to this. HARDCODE values whenever possible.\n"
+            "1. **requires_dynamic_resolution=False (STATIC_VALUE)**: Default to this. HARDCODE values whenever possible.\n"
             "   - Includes: App versions, constants, User-Agents, device info.\n"
             "   - **API CONTEXT**: Fields like 'hl' (language), 'gl' (region), 'clientName', 'timeZone' are STATIC_VALUE, NOT parameters.\n"
             "   - **TELEMETRY**: Fields like 'adSignals', 'screenHeight', 'clickTrackingParams' are STATIC_VALUE.\n"
-            "2. **requires_resolution=True (DYNAMIC_TOKEN)**: ONLY for dynamic security tokens that change per session.\n"
+            "2. **requires_dynamic_resolution=True (DYNAMIC_TOKEN)**: ONLY for dynamic security tokens that change per session.\n"
             "   - Includes: CSRF tokens, JWTs, Auth headers, 'visitorData', 'session_id'.\n"
             "   - **TRACE/REQUEST IDs**: 'x-trace-id', 'request-id', 'correlation-id' MUST be marked as DYNAMIC_TOKEN.\n"
             "   - **ALSO INCLUDE**: IDs, hashes, or blobs that are NOT user inputs but are required for the request (e.g. 'browseId', 'params' strings, 'clientVersion' if dynamic).\n"
@@ -464,7 +590,7 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("user", message)
 
         # call to the LLM API for extraction of the variables
-        response = self.client.responses.parse(
+        response = self.context_managed_client.responses.parse(
             model=self.llm_model,
             input=[self.message_history[-1]],
             previous_response_id=self.last_response_id,
@@ -494,7 +620,7 @@ class RoutineDiscoveryAgent(BaseModel):
         variables_to_resolve = [
             var for var in extracted_variables.variables
             if (
-                var.requires_resolution
+                var.requires_dynamic_resolution
                 and var.type == VariableType.DYNAMIC_TOKEN
             )
         ]
@@ -575,7 +701,7 @@ class RoutineDiscoveryAgent(BaseModel):
             ]
             
             # call to the LLM API for resolution of the variable
-            response = self.client.responses.parse(
+            response = self.context_managed_client.responses.parse(
                 model=self.llm_model,
                 input=[self.message_history[-1]],
                 previous_response_id=self.last_response_id,
@@ -659,7 +785,7 @@ class RoutineDiscoveryAgent(BaseModel):
             current_attempt += 1
             
             # call to the LLM API for construction of the routine
-            response = self.client.responses.parse(
+            response = self.context_managed_client.responses.parse(
                 model=self.llm_model,
                 input=[self.message_history[-1]],
                 previous_response_id=self.last_response_id,
@@ -698,7 +824,6 @@ class RoutineDiscoveryAgent(BaseModel):
         """
         message = (
             f"Please productionize the routine (from previous step): {routine.model_dump_json()}"
-            f"You need to clean up this routine to follow the following format: {Routine.model_json_schema()}"
             f"You immediate output needs to be a valid JSON object that conforms to the production routine schema."
             f"CRITICAL: PLACEHOLDERS ARE REPLACED AT RUNTIME AND MUST RESULT IN VALID JSON! "
             f"EXPLANATION: Placeholders like {{{{key}}}} are replaced at runtime with actual values. The format you choose determines the resulting JSON type. "
@@ -715,7 +840,7 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("user", message)
 
         # call to the LLM API for productionization of the routine
-        response = self.client.responses.create(
+        response = self.context_managed_client.responses.create(
             model=self.llm_model,
             input=[self.message_history[-1]],
             previous_response_id=self.last_response_id,
@@ -744,15 +869,18 @@ class RoutineDiscoveryAgent(BaseModel):
         """
         Get the test parameters for the routine.
         """
+        # Ensure context managed client is initialized
+        if self.context_managed_client is None:
+            self.context_managed_client = self._get_managed_client()
+
         message = (
             f"Write a dictionary of parameters to test this routine (from previous step): {routine.model_dump_json()}"
-            f"Please respond in the following format: {TestParametersResponse.model_json_schema()}"
             f"Ensure all parameters are present and have valid values."
         )
         self._add_to_message_history("user", message)
         
         # call to the LLM API for getting the test parameters
-        response = self.client.responses.parse(
+        response = self.context_managed_client.responses.parse(
             model=self.llm_model,
             input=[self.message_history[-1]],
             previous_response_id=self.last_response_id,

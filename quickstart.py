@@ -22,33 +22,16 @@ import websocket
 
 from web_hacker.sdk import WebHacker, BrowserMonitor
 from web_hacker.data_models.routine.routine import Routine
-
-# Colors for output (ANSI codes)
-GREEN = '\033[0;32m'
-YELLOW = '\033[1;33m'
-BLUE = '\033[0;34m'
-CYAN = '\033[0;36m'
-NC = '\033[0m'  # No Color
+from web_hacker.utils.terminal_utils import (
+    GREEN, YELLOW, BLUE, CYAN,
+    print_colored, print_header, ask_yes_no,
+)
 
 # Configuration
 PORT = 9222
 REMOTE_DEBUGGING_ADDRESS = f"http://127.0.0.1:{PORT}"
 CDP_CAPTURES_DIR = Path("./cdp_captures")
 DISCOVERY_OUTPUT_DIR = Path("./routine_discovery_output")
-
-
-def print_colored(text: str, color: str = NC) -> None:
-    """Print colored text."""
-    print(f"{color}{text}{NC}")
-
-
-def print_header(title: str) -> None:
-    """Print a styled header."""
-    print()
-    print_colored(f"{'─' * 60}", CYAN)
-    print_colored(f"  {title}", CYAN)
-    print_colored(f"{'─' * 60}", CYAN)
-    print()
 
 
 def check_chrome_running(port: int) -> bool:
@@ -115,6 +98,7 @@ def launch_chrome(port: int) -> Optional[subprocess.Popen]:
         "--remote-allow-origins=*",
         "--no-first-run",
         "--no-default-browser-check",
+        "https://github.com/VectorlyApp/web-hacker/blob/main/docs/chrome-debug-mode-explanation.md",
     ]
     
     print("🚀 Launching Chrome...")
@@ -164,43 +148,36 @@ def clear_directory(path: Path) -> None:
                 shutil.rmtree(item)
 
 
-def step_1_launch_chrome() -> bool:
-    """Step 1: Ensure Chrome is running in debug mode."""
-    print_header("Step 1: Launch Chrome in Debug Mode")
-    
-    if check_chrome_running(PORT):
-        print_colored(f"✅ Chrome is already running on port {PORT}", GREEN)
-        return True
-    
-    chrome_process = launch_chrome(PORT)
-    
-    if not check_chrome_running(PORT):
-        print_colored("❌ Chrome is not running. Cannot continue.", YELLOW)
-        return False
-    
-    return True
+def step_1_monitor_browser(cdp_captures_dir: Path) -> bool:
+    """Step 1: Monitor browser activity (launches Chrome if needed)."""
+    print_header("Step 1: Monitor Browser Activity")
 
-
-def step_2_monitor_browser(cdp_captures_dir: Path) -> bool:
-    """Step 2: Monitor browser activity."""
-    print_header("Step 2: Monitor Browser Activity")
-    
-    skip = input("Skip monitoring step? (y/n): ").strip().lower()
-    if skip == 'y':
+    if ask_yes_no("Skip monitoring step?"):
         new_dir = input(f"Enter CDP captures directory [default: {cdp_captures_dir}]: ").strip()
         if new_dir:
             cdp_captures_dir = Path(new_dir)
         print_colored(f"⏭️  Using existing captures from: {cdp_captures_dir}", GREEN)
         return True
-    
+
+    # Only launch Chrome if user is doing monitoring
+    chrome_was_running = check_chrome_running(PORT)
+    chrome_process = None
+
+    if chrome_was_running:
+        print_colored(f"✅ Chrome is already running on port {PORT}", GREEN)
+    else:
+        chrome_process = launch_chrome(PORT)
+        if not check_chrome_running(PORT):
+            print_colored("❌ Chrome is not running. Cannot continue.", YELLOW)
+            return False
+
     # Check for existing data
     if cdp_captures_dir.exists() and any(cdp_captures_dir.iterdir()):
         print_colored(f"⚠️  Directory {cdp_captures_dir} contains existing data.", YELLOW)
-        confirm = input("Clear existing data? (y/n): ").strip().lower()
-        if confirm == 'y':
+        if ask_yes_no("Clear existing data?"):
             clear_directory(cdp_captures_dir)
             print_colored(f"✅ Cleared {cdp_captures_dir}", GREEN)
-    
+
     print()
     print_colored("📋 Instructions:", YELLOW)
     print("   1. A new Chrome tab will open")
@@ -210,50 +187,62 @@ def step_2_monitor_browser(cdp_captures_dir: Path) -> bool:
     print()
     input("Press Enter to start monitoring...")
     print()
-    
+
     print("🔍 Starting browser monitor...")
     print_colored(f"   Output directory: {cdp_captures_dir}", BLUE)
     print()
-    
+
     monitor = BrowserMonitor(
         remote_debugging_address=REMOTE_DEBUGGING_ADDRESS,
         output_dir=str(cdp_captures_dir),
         url="about:blank",
         incognito=True,
     )
-    
+
     try:
         monitor.start()
         print_colored("✅ Monitoring started! Perform your actions in the browser.", GREEN)
         print_colored("   Press Ctrl+C when done...", YELLOW)
         print()
-        
+
         # Wait for user to press Ctrl+C
         while True:
             time.sleep(1)
-            
+
     except KeyboardInterrupt:
         print()
         print("⏹️  Stopping monitor...")
     finally:
         summary = monitor.stop()
-        
+
+        # Only terminate Chrome if we launched it
+        if chrome_process is not None:
+            print("🔄 Closing Chrome (launched by quickstart)...")
+            try:
+                chrome_process.terminate()
+                chrome_process.wait(timeout=5)
+            except Exception:
+                try:
+                    chrome_process.kill()
+                except Exception:
+                    pass
+
     print()
     print_colored("✅ Monitoring complete!", GREEN)
     if summary:
         print(f"   Duration: {summary.get('duration', 0):.1f}s")
         print(f"   Transactions captured: {summary.get('network_transactions', 0)}")
-    
+
     return True
 
 
-def step_3_discover_routine(
+def step_2_discover_routine(
     hacker: WebHacker,
     cdp_captures_dir: Path,
     discovery_output_dir: Path,
 ) -> Optional[Routine]:
-    """Step 3: Discover routine from captured data."""
-    print_header("Step 3: Discover Routine")
+    """Step 2: Discover routine from captured data."""
+    print_header("Step 2: Discover Routine")
     
     # Check if capture data exists
     transactions_dir = cdp_captures_dir / "network" / "transactions"
@@ -262,8 +251,7 @@ def step_3_discover_routine(
         print("   Make sure you performed actions during monitoring.")
         return None
     
-    skip = input("Skip discovery step? (y/n): ").strip().lower()
-    if skip == 'y':
+    if ask_yes_no("Skip discovery step?"):
         routine_file = discovery_output_dir / "routine.json"
         if routine_file.exists():
             print_colored(f"⏭️  Loading existing routine from: {routine_file}", GREEN)
@@ -276,16 +264,14 @@ def step_3_discover_routine(
     routine_file = discovery_output_dir / "routine.json"
     if routine_file.exists():
         print_colored(f"📁 Found existing routine at {routine_file}", YELLOW)
-        overwrite = input("Overwrite? (y/n): ").strip().lower()
-        if overwrite != 'y':
+        if not ask_yes_no("Overwrite?"):
             print_colored("⏭️  Using existing routine.", GREEN)
             return Routine.model_validate_json(routine_file.read_text())
     
     # Clear existing discovery output
     if discovery_output_dir.exists() and any(discovery_output_dir.iterdir()):
         print_colored(f"⚠️  Directory {discovery_output_dir} contains existing data.", YELLOW)
-        confirm = input("Clear existing data? (y/n): ").strip().lower()
-        if confirm == 'y':
+        if ask_yes_no("Clear existing data?"):
             clear_directory(discovery_output_dir)
             print_colored(f"✅ Cleared {discovery_output_dir}", GREEN)
     
@@ -312,18 +298,19 @@ def step_3_discover_routine(
     print()
     
     try:
-        routine = hacker.discover_routine(
+        result = hacker.discover_routine(
             task=task,
             cdp_captures_dir=str(cdp_captures_dir),
             output_dir=str(discovery_output_dir),
         )
-        
+        routine = result.routine
+
         print()
         print_colored("✅ Routine discovered successfully!", GREEN)
         print(f"   Name: {routine.name}")
         print(f"   Operations: {len(routine.operations)}")
         print(f"   Parameters: {len(routine.parameters)}")
-        
+
         return routine
         
     except Exception as e:
@@ -331,13 +318,13 @@ def step_3_discover_routine(
         return None
 
 
-def step_4_execute_routine(
+def step_3_execute_routine(
     hacker: WebHacker,
     routine: Routine,
     discovery_output_dir: Path,
 ) -> None:
-    """Step 4: Execute the discovered routine."""
-    print_header("Step 4: Execute Routine")
+    """Step 3: Execute the discovered routine."""
+    print_header("Step 3: Execute Routine")
     
     print_colored("📋 Routine Details:", BLUE)
     print(f"   Name: {routine.name}")
@@ -364,8 +351,7 @@ def step_4_execute_routine(
             print(f"   {json.dumps(parameters, indent=2)}")
             print()
             
-            use_test = input("Use these parameters? (y/n): ").strip().lower()
-            if use_test != 'y':
+            if not ask_yes_no("Use these parameters?"):
                 parameters = {}
         except Exception:
             pass
@@ -385,8 +371,7 @@ def step_4_execute_routine(
                 return
     
     print()
-    confirm = input("Execute routine? (y/n): ").strip().lower()
-    if confirm != 'y':
+    if not ask_yes_no("Execute routine?"):
         print_colored("⏭️  Skipping execution.", GREEN)
         return
     
@@ -438,24 +423,23 @@ def main() -> None:
     print_colored("║         Web Hacker - Quickstart Workflow                   ║", BLUE)
     print_colored("╚════════════════════════════════════════════════════════════╝", BLUE)
     print()
-    
+
     print_colored("Pipeline Overview:", CYAN)
-    print("  1. Launch Chrome in debug mode")
-    print("  2. Monitor browser interactions")
-    print("  3. Discover routine from captures")
-    print("  4. Execute routine")
+    print("  1. Monitor browser interactions (or skip with existing captures)")
+    print("  2. Discover routine from captures")
+    print("  3. Execute routine")
     print()
-    
+
     input("Press Enter to start: ")
-    
+
     # Configuration
     cdp_captures_dir = CDP_CAPTURES_DIR
     discovery_output_dir = DISCOVERY_OUTPUT_DIR
-    
-    # Step 1: Launch Chrome
-    if not step_1_launch_chrome():
+
+    # Step 1: Monitor (handles Chrome launch internally if needed)
+    if not step_1_monitor_browser(cdp_captures_dir):
         return
-    
+
     # Initialize client
     print()
     print("🔧 Initializing WebHacker...")
@@ -469,19 +453,15 @@ def main() -> None:
         print_colored(f"❌ Failed to initialize: {e}", YELLOW)
         print("   Make sure OPENAI_API_KEY is set.")
         return
-    
-    # Step 2: Monitor
-    if not step_2_monitor_browser(cdp_captures_dir):
-        return
-    
-    # Step 3: Discover
-    routine = step_3_discover_routine(hacker, cdp_captures_dir, discovery_output_dir)
+
+    # Step 2: Discover
+    routine = step_2_discover_routine(hacker, cdp_captures_dir, discovery_output_dir)
     if not routine:
         print_colored("⚠️  No routine available. Exiting.", YELLOW)
         return
-    
-    # Step 4: Execute
-    step_4_execute_routine(hacker, routine, discovery_output_dir)
+
+    # Step 3: Execute
+    step_3_execute_routine(hacker, routine, discovery_output_dir)
     
     print()
     print_colored("═" * 60, GREEN)
