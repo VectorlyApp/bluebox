@@ -1128,12 +1128,13 @@ class RoutineJsEvaluateOperation(RoutineOperation):
 
         # Validate IIFE format using regex
         # Matches: (function() { ... })() or (function(...) { ... })() or (() => { ... })()
+        # Also matches async variants: (async function() { ... })() or (async () => { ... })()
         # Optional semicolon at the end: })() or })();
-        iife_pattern = r'^\s*\(\s*(function\s*\([^)]*\)\s*\{|\(\)\s*=>\s*\{).+\}\s*\)\s*\(\s*\)\s*;?\s*$'
+        iife_pattern = r'^\s*\(\s*(async\s+)?(function\s*\([^)]*\)\s*\{|\(\)\s*=>\s*\{).+\}\s*\)\s*\(\s*\)\s*;?\s*$'
         if not re.match(iife_pattern, v, re.DOTALL):
             raise ValueError(
                 "JavaScript code must be wrapped in an IIFE (Immediately Invoked Function Expression). "
-                "Use format: (function() { ... })() or (() => { ... })()"
+                "Use format: (function() { ... })() or (() => { ... })() or (async () => { ... })()"
             )
 
         # Check each dangerous pattern (case-sensitive to allow "function" keyword in IIFEs)
