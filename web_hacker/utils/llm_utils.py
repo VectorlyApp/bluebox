@@ -21,9 +21,9 @@ logger = get_logger(__name__)
 
 def manual_llm_parse_text_to_model(
     text: str,
-    context: str | None = None,
     pydantic_model: Type[BaseModel],
     client: OpenAI,
+    context: str | None = None,
     llm_model: str = "gpt-5-nano",
     n_tries: int = 3,
 ) -> BaseModel:
