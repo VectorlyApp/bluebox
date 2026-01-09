@@ -267,7 +267,7 @@ class RoutineDiscoveryAgent(BaseModel):
 
             # adding transaction data to the routine transactions
             routine_transactions[transaction_id] = {
-                "request": self.context_manager.get_transaction_by_id(transaction_id),
+                "request": self.context_manager.get_transaction_by_id(transaction_id)['request'],
                 "extracted_variables": extracted_variables.model_dump(),
                 "resolved_variables": [resolved_variable.model_dump() for resolved_variable in resolved_variables]
             }
@@ -429,7 +429,7 @@ class RoutineDiscoveryAgent(BaseModel):
         
         # add message to the message history
         message = (
-            f"Extract variables from these network REQUESTS only: {encode(transaction)}\n\n"
+            f"Extract variables from these network REQUESTS only: {encode(transaction['request'])}\n\n"
             "CRITICAL RULES:\n"
             "1. **requires_dynamic_resolution=False (STATIC_VALUE)**: Default to this. HARDCODE values whenever possible.\n"
             "   - Includes: App versions, constants, User-Agents, device info.\n"
@@ -441,6 +441,7 @@ class RoutineDiscoveryAgent(BaseModel):
             "   - **ALSO INCLUDE**: IDs, hashes, or blobs that are NOT user inputs but are required for the request (e.g. 'browseId', 'params' strings, 'clientVersion' if dynamic).\n"
             "   - 'values_to_scan_for' must contain the EXACT raw string value seen in the request.\n"
             "   - **RULE**: If it looks like a generated ID or state blob, IT IS A TOKEN, NOT A PARAMETER.\n"
+            "   - **If the value can be hardcoded, set requires_dynamic_resolution=False (we dont need to waste time figureing out the source)\n"
             "3. **Parameters (PARAMETER)**: ONLY for values that represent the USER'S INTENT or INPUT.\n"
             "   - Examples: 'search_query', 'videoId', 'channelId', 'cursor', 'page_number'.\n"
             "   - If the user wouldn't explicitly provide it, it's NOT a parameter.\n"
@@ -453,8 +454,8 @@ class RoutineDiscoveryAgent(BaseModel):
             model=self.llm_model,
             input=[self.message_history[-1]],
             previous_response_id=self.last_response_id,
-            tools=self.tools,
-            tool_choice="required" if len(transactions) > 1 else "auto",
+            # tools=self.tools,
+            # tool_choice="auto",
             text_format=ExtractedVariableResponse
         )
         extracted_variable_response = response.output_parsed
@@ -521,8 +522,8 @@ class RoutineDiscoveryAgent(BaseModel):
                 )
                 transaction_ids.extend(transaction_ids_found)
 
-            # deduplicate transaction ids
-            transaction_ids = list(set(transaction_ids))
+            # deduplicate transaction ids (limit to 2 for now)
+            transaction_ids = list(set(transaction_ids))[:2]
 
             if len(transaction_ids) > 0:
                 logger.info(f"Found {len(transaction_ids)} transaction ids that contain the value: {transaction_ids}")
@@ -539,8 +540,8 @@ class RoutineDiscoveryAgent(BaseModel):
             message = (
                 f"Resolve variable: {encode(variable.model_dump())}\n\n"
                 f"Found in:\n"
-                f"- Storage: {encode(storage_objects)}\n"
-                f"- Window properties: {encode(window_properties)}\n"
+                f"- Storage: {encode(storage_objects[:3])}\n"
+                f"- Window properties: {encode(window_properties[:3])}\n"
                 f"- Transactions (in vectorstore): {encode(transaction_ids)}\n\n"
                 "Use dot paths like 'key.data.items[0].id'. For transaction responses, start with first key. "
                 "For storage, start with entry name. Resolve ALL occurrences if found in multiple places."
