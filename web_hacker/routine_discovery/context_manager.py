@@ -82,7 +82,6 @@ class LocalContextManager(ContextManager):
     supported_file_extensions: list[str] = Field(default_factory=lambda: [
         ".txt",
         ".json",
-        ".js",
         ".html",
         ".xml",
     ])

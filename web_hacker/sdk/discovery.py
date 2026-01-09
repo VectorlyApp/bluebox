@@ -125,15 +125,9 @@ class RoutineDiscovery:
             routine = self.agent.run()
             logger.info("Routine discovery completed successfully.")
 
-            # Get test parameters from the agent
+            # Get test parameters from the agent (agent saves to output_dir)
             test_parameters = self.agent.get_test_parameters(routine)
             logger.info("Test parameters generated successfully.")
-
-            # Save test parameters to output directory
-            test_params_path = os.path.join(self.output_dir, "test_parameters.json")
-            with open(test_params_path, mode="w", encoding="utf-8") as f:
-                json.dump(test_parameters.model_dump(), f, ensure_ascii=False, indent=2)
-            logger.info(f"Test parameters saved to: {test_params_path}")
 
             return RoutineDiscoveryResult(
                 routine=routine,

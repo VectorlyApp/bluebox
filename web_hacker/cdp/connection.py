@@ -122,6 +122,70 @@ def create_cdp_helpers(
 # Tab/context management __________________________________________________________________________
 
 
+def get_existing_tabs(remote_debugging_address: str) -> list[dict]:
+    """Get list of existing browser tabs/targets.
+
+    Args:
+        remote_debugging_address: Chrome debugging server address.
+
+    Returns:
+        List of target info dicts with keys: id, title, url, type, etc.
+    """
+    base = remote_debugging_address.rstrip("/")
+    try:
+        response = requests.get(f"{base}/json/list", timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        raise RuntimeError(f"Failed to get existing tabs: {e}")
+
+
+def cdp_attach_to_existing_tab(
+    remote_debugging_address: str = "http://127.0.0.1:9222",
+    target_id: str | None = None,
+) -> tuple[str, None, WebSocket]:
+    """
+    Attach to an existing browser tab instead of creating a new one.
+
+    Args:
+        remote_debugging_address: Chrome debugging server address.
+        target_id: Specific target ID to attach to. If None, attaches to first available page.
+
+    Returns:
+        Tuple of (target_id, None, browser_ws) - browser_context_id is None since we're
+        reusing an existing tab.
+
+    Raises:
+        RuntimeError: If no suitable tab found or failed to attach.
+    """
+    # Find a target to attach to
+    if target_id is None:
+        tabs = get_existing_tabs(remote_debugging_address)
+        # Filter for page targets (not devtools, extensions, etc.)
+        page_tabs = [t for t in tabs if t.get("type") == "page"]
+        if not page_tabs:
+            raise RuntimeError("No existing page tabs found to attach to")
+        # Use the first available page tab
+        target_id = page_tabs[0]["id"]
+        logger.debug(f"Auto-selected tab: {page_tabs[0].get('url', 'unknown')}")
+
+    ws_url = get_browser_websocket_url(remote_debugging_address)
+    logger.debug(f"cdp_attach_to_existing_tab ws_url: {ws_url}")
+
+    browser_ws = None
+    try:
+        browser_ws = websocket.create_connection(ws_url, timeout=10)
+        logger.debug(f"cdp_attach_to_existing_tab browser_ws: {browser_ws}")
+        return target_id, None, browser_ws
+    except Exception as e:
+        if browser_ws:
+            try:
+                browser_ws.close()
+            except Exception:
+                pass
+        raise RuntimeError(f"Failed to attach to existing tab: {e}")
+
+
 def cdp_new_tab(
     remote_debugging_address: str = "http://127.0.0.1:9222",
     incognito: bool = True,

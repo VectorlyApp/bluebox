@@ -11,12 +11,6 @@ from pydantic import BaseModel, Field
 from web_hacker.data_models.routine.endpoint import HTTPMethod
 
 
-class ConfidenceLevel(StrEnum):
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-
-
 class TransactionIdentificationResponse(BaseModel):
     """
     Response from the LLM for identifying the network transaction that directly corresponds to
@@ -26,10 +20,7 @@ class TransactionIdentificationResponse(BaseModel):
     description: str
     url: str
     method: HTTPMethod
-    explanation: str
-    confidence_level: ConfidenceLevel = Field(
-        description="The confidence level of the identification. May be LOW, MEDIUM, or HIGH."
-    )
+    short_explanation: str
 
 
 class TransactionConfirmationResponse(BaseModel):
@@ -43,13 +34,7 @@ class TransactionConfirmationResponse(BaseModel):
     confirmed_transaction_id: str = Field(
         description="The ID of the network transaction that directly corresponds to the user's requested task."
     )
-    explanation: str = Field(
-        description="The explanation of the confirmation. Should be a short explanation of why the transaction is correct."
-    )
-    confidence_level: ConfidenceLevel = Field(
-        description="The confidence level of the confirmation. May be LOW, MEDIUM, or HIGH."
-    )
-
+    short_explanation: str
 
 class VariableType(StrEnum):
     PARAMETER = "parameter"          # User input (e.g. query, item_id)
@@ -62,11 +47,10 @@ class Variable(BaseModel):
     A variable that was extracted from the network transaction.
     """
     type: VariableType
-    requires_resolution: bool = Field(description="Whether the variable requires resolution.")
+    requires_dynamic_resolution: bool = Field(description="False if the variable can be hardcoded between sessions.")
     name: str
     observed_value: str
     values_to_scan_for: list[str]
-    description: str
 
 
 class ExtractedVariableResponse(BaseModel):
@@ -75,7 +59,6 @@ class ExtractedVariableResponse(BaseModel):
     """
     transaction_id: str
     variables: list[Variable]
-    explanation: str
 
 
 class SessionStorageType(StrEnum):
@@ -114,7 +97,7 @@ class ResolvedVariableResponse(BaseModel):
     session_storage_source: SessionStorageSource | None = None
     transaction_source: TransactionSource | None = None
     window_property_source: WindowPropertySource | None = None
-    explanation: str
+    short_explanation: str
 
 
 class TestParameter(BaseModel):

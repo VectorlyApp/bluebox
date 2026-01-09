@@ -132,6 +132,7 @@ class WebHacker:
         parameters: Dict[str, Any],
         timeout: float = 180.0,
         close_tab_when_done: bool = True,
+        tab_id: str | None = None,
     ) -> Dict[str, Any]:
         """
         Execute a routine with given parameters.
@@ -141,6 +142,7 @@ class WebHacker:
             parameters: Parameters for the routine.
             timeout: Operation timeout in seconds.
             close_tab_when_done: Whether to close tab when finished.
+            tab_id: If provided, attach to this existing tab. If None, create a new tab.
         
         Returns:
             RoutineExecutionResult with "ok" status and "result" data.
@@ -153,5 +155,6 @@ class WebHacker:
             parameters=parameters,
             timeout=timeout,
             close_tab_when_done=close_tab_when_done,
+            tab_id=tab_id,
         )
 

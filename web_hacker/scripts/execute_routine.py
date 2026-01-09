@@ -2,12 +2,12 @@
 Execute a routine from the command line.
 
 Usage:
-    web-hacker-execute --routine-path <path> --parameters-path <path> [--output <path>] [--download-dir <dir>]
-    web-hacker-execute --routine-path <path> --parameters-dict '<json>' [--output <path>] [--download-dir <dir>]]
+    web-hacker-execute --routine-path <path> --parameters-path <path> [--output <path>] [--download-dir <dir>] [--keep-open]
+    web-hacker-execute --routine-path <path> --parameters-dict '<json>' [--output <path>] [--download-dir <dir>] [--keep-open]
     
 Examples:
     web-hacker-execute --routine-path example_routines/amtrak_one_way_train_search_routine.json --parameters-path example_routines/amtrak_one_way_train_search_input.json
-    web-hacker-execute --routine-path example_routines/amtrak_one_way_train_search_routine.json --parameters-dict '{"origin": "boston", "destination": "new york", "departureDate": "2026-03-22"}' --output output.json
+    web-hacker-execute --routine-path example_routines/amtrak_one_way_train_search_routine.json --parameters-dict '{"origin": "boston", "destination": "new york", "departureDate": "2026-03-22"}' --output output.json --keep-open
 """
 
 import argparse
@@ -57,6 +57,7 @@ def main(
     parameters_dict: str | None = None,
     output: str | None = None,
     download_dir: str | None = None,
+    keep_open: bool = False,
 ) -> None:
     """Execute a routine with given parameters."""
     # Parse CLI arguments if not called programmatically
@@ -67,12 +68,14 @@ def main(
         parser.add_argument("--parameters-dict", type=str)
         parser.add_argument("--output", type=str, help="Save full RoutineExecutionResult as JSON")
         parser.add_argument("--download-dir", type=str, help="Directory for downloaded files")
+        parser.add_argument("--keep-open", action="store_true", help="Keep the browser tab open after execution (default: False)")
         args = parser.parse_args()
         routine_path = args.routine_path
         parameters_path = args.parameters_path
         parameters_dict = args.parameters_dict
         output = args.output
         download_dir = args.download_dir
+        keep_open = args.keep_open
     
     # Validate parameters
     if parameters_path and parameters_dict:
@@ -95,7 +98,7 @@ def main(
         result = routine.execute(
             parameters_dict=params,
             timeout=60.0,
-            close_tab_when_done=False,
+            close_tab_when_done=not keep_open,
         )
         logger.info(f"Result: {result}")
         save_result(result, output, download_dir)

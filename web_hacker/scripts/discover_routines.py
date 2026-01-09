@@ -97,7 +97,7 @@ def main() -> None:
         logger.info("Routine discovery agent run complete.")
 
         # save the final routine to output
-        routine_path = os.path.join(args.output_dir, "production_routine.json")
+        routine_path = os.path.join(args.output_dir, "routine.json")
         with open(routine_path, mode="w", encoding="utf-8") as f:
             json.dump(routine.model_dump(), f, ensure_ascii=False, indent=2)
         logger.info(f"Production routine saved to: {routine_path}")
