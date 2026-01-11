@@ -1,5 +1,5 @@
 """
-web_hacker/scripts/discover_routines.py
+web_hacker/scripts/discover_routine.py
 
 Script for discovering routines from the network transactions.
 """

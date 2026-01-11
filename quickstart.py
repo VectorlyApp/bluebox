@@ -263,19 +263,57 @@ def step_2_discover_routine(
             print_colored(f"✅ Cleared {discovery_output_dir}", GREEN)
 
     print()
-    print_colored("📋 Describe the task you want to automate:", YELLOW)
-    print("   Example: 'Search for flights and get prices'")
+    print_colored("📋 Let's define your routine:", YELLOW)
+    print("   We'll analyze the recorded session and turn it into a reusable routine.")
     print()
 
-    task = ""
-    while not task:
+    # Step 1: What data to return
+    print_colored("   What data do you want this routine to return? *", CYAN)
+    print_colored("   (e.g., flight prices, product details, search results)", BLUE)
+    data_output = ""
+    while not data_output:
         try:
-            task = input("   Task: ").strip()
-            if not task:
-                print_colored("   ⚠️  Task cannot be empty.", YELLOW)
+            data_output = input("   → ").strip()
+            if not data_output:
+                print_colored("   ⚠️  This field is required.", YELLOW)
         except KeyboardInterrupt:
             print()
             return None
+    print()
+
+    # Step 2: What inputs/filters
+    print_colored("   What inputs or filters does it need?", CYAN)
+    print_colored("   (e.g., search query, date range, location)", BLUE)
+    try:
+        inputs_needed = input("   → ").strip()
+    except KeyboardInterrupt:
+        print()
+        return None
+    print()
+
+    # Step 3: Additional context
+    print_colored("   Anything else? (optional)", CYAN)
+    print_colored("   (e.g., notes, special handling, edge cases)", BLUE)
+    try:
+        extra_context = input("   → ").strip()
+    except KeyboardInterrupt:
+        print()
+        return None
+    print()
+
+    # Build the task description
+    task_parts = [f"Create a web routine that returns {data_output}"]
+    if inputs_needed:
+        task_parts.append(f"given {inputs_needed}")
+    if extra_context:
+        task_parts.append(f"({extra_context})")
+    task = " ".join(task_parts) + "."
+
+    # Show summary
+    print_colored("   ─────────────────────────────────────────────", BLUE)
+    print_colored("   ✓ Task:", YELLOW)
+    print(f"   \"{task}\"")
+    print_colored("   ─────────────────────────────────────────────", BLUE)
 
     print()
     print("🤖 Running routine discovery agent...")

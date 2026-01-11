@@ -55,7 +55,7 @@ dev = [
 
 [project.scripts]
 web-hacker-monitor = "web_hacker.scripts.browser_monitor:main"
-web-hacker-discover = "web_hacker.scripts.discover_routines:main"
+web-hacker-discover = "web_hacker.scripts.discover_routine:main"
 web-hacker-execute = "web_hacker.scripts.execute_routine:main"
 
 [project.urls]
