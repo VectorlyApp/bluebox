@@ -1,5 +1,6 @@
 from pydantic import BaseModel, field_validator, Field, ConfigDict
 from openai import OpenAI
+from abc import ABC, abstractmethod
 import os
 import json
 import time
@@ -8,7 +9,68 @@ import shutil
 from web_hacker.utils.data_utils import get_text_from_html
 
 
-class ContextManager(BaseModel):
+class ContextManager(BaseModel, ABC):
+    """Abstract base class for managing context data."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @abstractmethod
+    def make_vectorstore(self) -> None:
+        """Make a vectorstore from the context."""
+        pass
+
+    @abstractmethod
+    def get_all_transaction_ids(self) -> list[str]:
+        """Get all transaction ids from the context manager."""
+        pass
+
+    @abstractmethod
+    def get_transaction_by_id(self, transaction_id: str, clean_response_body: bool = False) -> dict:
+        """Get a transaction by id from the context manager."""
+        pass
+
+    @abstractmethod
+    def add_transaction_to_vectorstore(self, transaction_id: str, metadata: dict) -> None:
+        """Add a single transaction to the vectorstore."""
+        pass
+
+    @abstractmethod
+    def add_file_to_vectorstore(self, file_path: str, metadata: dict) -> None:
+        """Add a file to the vectorstore."""
+        pass
+
+    @abstractmethod
+    def get_transaction_ids_by_request_url(self, request_url: str) -> list[str]:
+        """Get all transaction ids by request url."""
+        pass
+
+    @abstractmethod
+    def get_transaction_timestamp(self, transaction_id: str) -> float:
+        """Get the timestamp of a transaction."""
+        pass
+
+    @abstractmethod
+    def scan_transaction_responses(self, value: str, max_timestamp: float | None = None) -> list[str]:
+        """Scan the network transaction responses for a value."""
+        pass
+
+    @abstractmethod
+    def scan_storage_for_value(self, value: str) -> list[str]:
+        """Scan the storage for a value."""
+        pass
+
+    @abstractmethod
+    def scan_window_properties_for_value(self, value: str) -> list[dict]:
+        """Scan the window properties for a value."""
+        pass
+
+    @abstractmethod
+    def clean_up(self) -> None:
+        """Clean up the context manager resources."""
+        pass
+
+
+class LocalContextManager(ContextManager):
 
     client: OpenAI
     tmp_dir: str
@@ -20,14 +82,11 @@ class ContextManager(BaseModel):
     supported_file_extensions: list[str] = Field(default_factory=lambda: [
         ".txt",
         ".json",
-        ".js",
         ".html",
         ".xml",
     ])
     cached_transaction_ids: list[str] | None = Field(default=None, exclude=True)
     uploaded_transaction_ids: set[str] = Field(default_factory=set, exclude=True)
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @field_validator('transactions_dir', 'consolidated_transactions_path', 'storage_jsonl_path', 'window_properties_path')
     @classmethod
@@ -149,9 +208,9 @@ class ContextManager(BaseModel):
                         result["response_body"] = get_text_from_html(result["response_body"])
         return result
 
-    def delete_vectorstore(self) -> None:
+    def clean_up(self) -> None:
         """
-        Delete the vectorstore from the context manager.
+        Clean up the context manager resources.
         """
         if self.vectorstore_id is None:
             raise ValueError("Vectorstore ID is not set")
@@ -248,7 +307,7 @@ class ContextManager(BaseModel):
         return transaction_ids
 
 
-    def extract_timestamp_from_transaction_id(self, transaction_id: str) -> int:
+    def get_transaction_timestamp(self, transaction_id: str) -> float:
         """
         Get the timestamp of a transaction.
         Args:
@@ -262,17 +321,17 @@ class ContextManager(BaseModel):
             raise ValueError(f"Invalid transaction_id format: {transaction_id}. Expected format: 'prefix_timestamp'")
         unix_timestamp = parts[1]
         try:
-            return int(unix_timestamp)
+            return float(unix_timestamp)
         except ValueError as e:
             raise ValueError(
-                f"Invalid timestamp in transaction_id '{transaction_id}'; {unix_timestamp} is not a valid integer: {str(e)}"
+                f"Invalid timestamp in transaction_id '{transaction_id}'; {unix_timestamp} is not a valid number: {str(e)}"
             )
 
 
-    def scan_transaction_responses(self, value: str, max_timestamp: int | None = None) -> list[str]:
+    def scan_transaction_responses(self, value: str, max_timestamp: float | None = None) -> list[str]:
         """
         Scan the network transaction responses for a value.
-        
+
         Args:
             value: The value to scan for in the network transaction responses.
             max_timestamp: latest timestamp to scan for.
@@ -284,11 +343,11 @@ class ContextManager(BaseModel):
         for transaction_id in all_transaction_ids:
             transaction = self.get_transaction_by_id(transaction_id)
             if (
-                value in str(transaction["response_body"]) 
-                and 
+                value in str(transaction["response_body"])
+                and
                 (
-                    max_timestamp is None 
-                    or self.extract_timestamp_from_transaction_id(transaction_id) < max_timestamp
+                    max_timestamp is None
+                    or self.get_transaction_timestamp(transaction_id) < max_timestamp
                 )
             ):
                 results.append(transaction_id)
@@ -296,58 +355,37 @@ class ContextManager(BaseModel):
         return list(set(results))
 
 
-    def scan_storage_for_value(self, value: str, max_timestamp: int | None = None) -> list[str]:
+    def scan_storage_for_value(self, value: str) -> list[str]:
         """
         Scan the storage for a value.
         Args:
             value: The value to scan for in the storage.
-            max_timestamp: latest timestamp to scan for.
         Returns:
             A list of storage items that contain the value.
         """
         results = []
-        # convert max_timestamp to float if provided (storage timestamps are floats)
-        max_timestamp_float = None
-        if max_timestamp is not None:
-            max_timestamp_float = float(max_timestamp)
-
         with open(self.storage_jsonl_path, mode="r", encoding='utf-8', errors='replace') as f:
             for line in f:
-                obj = json.loads(line)
-                # check timestamp if filtering is enabled
-                timestamp_check = True
-                if max_timestamp_float is not None:
-                    if "timestamp" not in obj:
-                        # skip entries without timestamps when filtering is enabled
-                        timestamp_check = False
-                    else:
-                        try:
-                            obj_timestamp = float(obj["timestamp"])
-                            timestamp_check = obj_timestamp <= max_timestamp_float
-                        except (ValueError, TypeError):
-                            # skip entries with invalid timestamp format
-                            timestamp_check = False
-                
-                if value in line and timestamp_check:
+                if value in line:
                     results.append(line)
         return results
     
-    def scan_window_properties_for_value(self, value: str) -> dict:
+    def scan_window_properties_for_value(self, value: str) -> list[dict]:
         """
         Scan the window properties for a value.
         Args:
             value: The value to scan for in the window properties.
         Returns:
-            A dictionary of window properties that contain the value.
+            A list of window properties that contain the value.
         """
-        result = {}
+        result = []
         with open(self.window_properties_path, mode="r", encoding='utf-8', errors='replace') as f:
             window_properties = json.load(f)
-            
+
             for key, window_property_value in window_properties.items():
                 if value in str(window_property_value):
-                    result[key] = window_property_value
-                    
+                    result.append({key: window_property_value})
+
         return result
 
     def get_response_body_file_extension(self, transaction_id: str) -> str:

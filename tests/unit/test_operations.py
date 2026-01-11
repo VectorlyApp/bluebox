@@ -73,6 +73,82 @@ class TestRoutineJsEvaluateOperationValidation:
         )
         assert operation.js == "(() => { return document.title; })();"
 
+    def test_valid_async_iife_function_format(self) -> None:
+        """Test that valid async IIFE with function() syntax is accepted."""
+        operation = RoutineJsEvaluateOperation(
+            js="(async function() { return await Promise.resolve('test'); })()"
+        )
+        assert operation.js == "(async function() { return await Promise.resolve('test'); })()"
+        assert operation.type == RoutineOperationTypes.JS_EVALUATE
+
+    def test_valid_async_iife_arrow_function_format(self) -> None:
+        """Test that valid async IIFE with arrow function syntax is accepted."""
+        operation = RoutineJsEvaluateOperation(
+            js="(async () => { return await Promise.resolve('test'); })()"
+        )
+        assert operation.js == "(async () => { return await Promise.resolve('test'); })()"
+
+    def test_valid_async_iife_with_whitespace(self) -> None:
+        """Test that async IIFE with extra whitespace is accepted."""
+        operation = RoutineJsEvaluateOperation(
+            js="  (async function() { return 'test'; })()  "
+        )
+        assert operation.js == "  (async function() { return 'test'; })()  "
+
+    def test_valid_async_iife_with_parameters(self) -> None:
+        """Test that async IIFE with function parameters is accepted."""
+        operation = RoutineJsEvaluateOperation(
+            js="(async function(x, y) { return await Promise.resolve(x + y); })()"
+        )
+        assert operation.js == "(async function(x, y) { return await Promise.resolve(x + y); })()"
+
+    def test_valid_async_iife_multiline(self) -> None:
+        """Test that multiline async IIFE is accepted."""
+        js_code = """(async function() {
+            const result = await Promise.resolve('test');
+            return result.toUpperCase();
+        })()"""
+        operation = RoutineJsEvaluateOperation(js=js_code)
+        assert operation.js == js_code
+
+    def test_valid_async_iife_with_semicolon(self) -> None:
+        """Test that async IIFE with semicolon at the end is accepted."""
+        operation = RoutineJsEvaluateOperation(
+            js="(async function() { return await Promise.resolve('test'); })();"
+        )
+        assert operation.js == "(async function() { return await Promise.resolve('test'); })();"
+
+    def test_valid_async_iife_arrow_function_with_semicolon(self) -> None:
+        """Test that async arrow function IIFE with semicolon at the end is accepted."""
+        operation = RoutineJsEvaluateOperation(
+            js="(async () => { return await Promise.resolve('test'); })();"
+        )
+        assert operation.js == "(async () => { return await Promise.resolve('test'); })();"
+
+    def test_valid_async_iife_with_await(self) -> None:
+        """Test that async IIFE with await is accepted."""
+        operation = RoutineJsEvaluateOperation(
+            js="(async () => { const data = await new Promise(r => setTimeout(() => r('done'), 100)); return data; })()"
+        )
+        assert operation.js is not None
+
+    def test_valid_async_iife_with_polling(self) -> None:
+        """Test that async IIFE with polling pattern is accepted."""
+        js_code = """(async () => {
+            const maxWait = 5000;
+            const start = Date.now();
+            while (Date.now() - start < maxWait) {
+                const items = document.querySelectorAll('.item');
+                if (items.length > 0) {
+                    return items.length;
+                }
+                await new Promise(r => setTimeout(r, 100));
+            }
+            return 0;
+        })()"""
+        operation = RoutineJsEvaluateOperation(js=js_code)
+        assert operation.js == js_code
+
     def test_invalid_not_iife(self) -> None:
         """Test that non-IIFE code is rejected."""
         with pytest.raises(ValidationError) as exc_info:
@@ -150,6 +226,26 @@ class TestRoutineJsEvaluateOperationValidation:
         
         errors = exc_info.value.errors()
         assert any("fetch" in str(e.get("msg", "")) for e in errors)
+
+    def test_blocked_fetch_in_async_iife(self) -> None:
+        """Test that fetch() is blocked even in async IIFE."""
+        with pytest.raises(ValidationError) as exc_info:
+            RoutineJsEvaluateOperation(
+                js="(async function() { return await fetch('https://example.com'); })()"
+            )
+        
+        errors = exc_info.value.errors()
+        assert any("fetch" in str(e.get("msg", "")) for e in errors)
+
+    def test_blocked_eval_in_async_iife(self) -> None:
+        """Test that eval() is blocked even in async IIFE."""
+        with pytest.raises(ValidationError) as exc_info:
+            RoutineJsEvaluateOperation(
+                js="(async () => { return await eval('1+1'); })()"
+            )
+        
+        errors = exc_info.value.errors()
+        assert any("eval" in str(e.get("msg", "")) for e in errors)
 
     def test_blocked_xmlhttprequest(self) -> None:
         """Test that XMLHttpRequest is blocked."""
@@ -262,6 +358,13 @@ class TestRoutineJsEvaluateOperationValidation:
         """Test that setTimeout is allowed."""
         operation = RoutineJsEvaluateOperation(
             js="(function() { setTimeout(() => {}, 100); })()"
+        )
+        assert operation.js is not None
+
+    def test_allowed_settimeout_in_async_iife(self) -> None:
+        """Test that setTimeout is allowed in async IIFE."""
+        operation = RoutineJsEvaluateOperation(
+            js="(async () => { await new Promise(r => setTimeout(r, 100)); return 'done'; })()"
         )
         assert operation.js is not None
 

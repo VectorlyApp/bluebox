@@ -23,7 +23,7 @@ from web_hacker.data_models.routine.parameter import (
     BUILTIN_PARAMETERS,
     VALID_PLACEHOLDER_PREFIXES,
 )
-from web_hacker.cdp.connection import cdp_new_tab, dispose_context
+from web_hacker.cdp.connection import cdp_new_tab, cdp_attach_to_existing_tab, dispose_context
 from web_hacker.data_models.routine.placeholder import (
     PlaceholderQuoteType,
     extract_placeholders_from_json_str,
@@ -182,6 +182,7 @@ class Routine(BaseModel):
         remote_debugging_address: str = "http://127.0.0.1:9222",
         timeout: float = 180.0,
         close_tab_when_done: bool = True,
+        tab_id: str | None = None,
     ) -> RoutineExecutionResult:
         """
         Execute this routine using Chrome DevTools Protocol.
@@ -194,6 +195,7 @@ class Routine(BaseModel):
             remote_debugging_address: Chrome debugging server address.
             timeout: Operation timeout in seconds.
             close_tab_when_done: Whether to close the tab when finished.
+            tab_id: If provided, attach to this existing tab. If None, create a new tab.
 
         Returns:
             RoutineExecutionResult: Result of the routine execution.
@@ -201,17 +203,23 @@ class Routine(BaseModel):
         if parameters_dict is None:
             parameters_dict = {}
 
-        # Create a new tab for the routine (returns browser-level WebSocket)
+        # Get a tab for the routine (returns browser-level WebSocket)
         try:
-            target_id, browser_context_id, browser_ws = cdp_new_tab(
-                remote_debugging_address=remote_debugging_address,
-                incognito=self.incognito,
-                url="about:blank",
-            )
+            if tab_id is not None:
+                target_id, browser_context_id, browser_ws = cdp_attach_to_existing_tab(
+                    remote_debugging_address=remote_debugging_address,
+                    target_id=tab_id,
+                )
+            else:
+                target_id, browser_context_id, browser_ws = cdp_new_tab(
+                    remote_debugging_address=remote_debugging_address,
+                    incognito=self.incognito,
+                    url="about:blank",
+                )
         except Exception as e:
             return RoutineExecutionResult(
                 ok=False,
-                error=f"Failed to create tab: {e}"
+                error=f"Failed to {'attach to' if tab_id else 'create'} tab: {e}"
             )
 
         try:

@@ -10,6 +10,7 @@ from typing import Type
 from openai import OpenAI
 from openai.types.responses import Response
 from pydantic import BaseModel
+from toon import encode
 
 from web_hacker.config import Config
 from web_hacker.utils.exceptions import LLMStructuredOutputError
@@ -20,9 +21,9 @@ logger = get_logger(__name__)
 
 def manual_llm_parse_text_to_model(
     text: str,
-    context: str,
     pydantic_model: Type[BaseModel],
     client: OpenAI,
+    context: str | None = None,
     llm_model: str = "gpt-5-nano",
     n_tries: int = 3,
 ) -> BaseModel:
@@ -47,9 +48,9 @@ def manual_llm_parse_text_to_model(
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Context: {context}"},
+        {"role": "user", "content": f"Context:\n{context}"},
         {"role": "user", "content": f"Text to parse: {text}"},
-        {"role": "user", "content": f"Target Model JSON Schema: {json.dumps(pydantic_model.model_json_schema())}"},
+        {"role": "user", "content": f"Target Model Schema (TOON format):\n{encode(pydantic_model.model_json_schema())}"},
         {"role": "user", "content": "Extract the data and return a JSON object that validates against the schema above."}
     ]
 

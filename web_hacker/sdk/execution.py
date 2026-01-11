@@ -32,6 +32,7 @@ class RoutineExecutor:
         parameters: dict[str, Any],
         timeout: float = 180.0,
         close_tab_when_done: bool = True,
+        tab_id: str | None = None,
     ) -> RoutineExecutionResult:
         """
         Execute a routine.
@@ -41,6 +42,7 @@ class RoutineExecutor:
             parameters: Parameters for URL/header/body interpolation.
             timeout: Operation timeout in seconds.
             close_tab_when_done: Whether to close the tab when finished.
+            tab_id: If provided, attach to this existing tab. If None, create a new tab.
 
         Returns:
             RoutineExecutionResult with execution status and data.
@@ -50,4 +52,5 @@ class RoutineExecutor:
             remote_debugging_address=self.remote_debugging_address,
             timeout=timeout,
             close_tab_when_done=close_tab_when_done,
+            tab_id=tab_id,
         )

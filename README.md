@@ -277,7 +277,7 @@ The fastest way to get started is using the quickstart script, which automates t
 
 ```bash
 # Make sure web-hacker is installed
-pip install web-hacker
+pip install web-hacker # Or install from the latest code
 
 # Set your OpenAI API key
 export OPENAI_API_KEY="sk-..."

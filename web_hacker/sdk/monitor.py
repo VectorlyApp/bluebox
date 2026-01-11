@@ -24,7 +24,7 @@ logger = get_logger(__name__)
 class BrowserMonitor:
     """
     High-level interface for monitoring browser activity.
-    
+
     Example:
         >>> monitor = BrowserMonitor(output_dir="./captures")
         >>> with monitor:
@@ -32,7 +32,7 @@ class BrowserMonitor:
         ...     pass
         >>> summary = monitor.get_summary()
     """
-    
+
     def __init__(
         self,
         remote_debugging_address: str = "http://127.0.0.1:9222",
@@ -61,13 +61,14 @@ class BrowserMonitor:
         self.create_tab = create_tab
         self.clear_cookies = clear_cookies
         self.clear_storage = clear_storage
-        
+
         self.session: Optional[CDPSession] = None
         self.context_id: Optional[str] = None
         self.created_tab = False
         self.start_time: Optional[float] = None
         self._run_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._finalized = False  # Track if finalization already happened
     
     def start(self) -> None:
         """Start monitoring session."""
@@ -158,24 +159,47 @@ class BrowserMonitor:
         
         logger.info(f"Browser monitoring started. Output directory: {self.output_dir}")
     
+    def _is_browser_connected(self) -> bool:
+        """Check if browser is still connected and responsive."""
+        try:
+            response = requests.get(
+                f"{self.remote_debugging_address}/json/version",
+                timeout=1
+            )
+            return response.status_code == 200
+        except Exception:
+            return False
+
     def _finalize_session(self):
         """Finalize session: sync cookies, collect window properties, and consolidate data."""
+        # Prevent double finalization
+        if self._finalized:
+            return
+        self._finalized = True
+
         logger.info("Finalizing session...")
         if not self.session:
             logger.warning("No session to finalize!")
             return
-        
-        # Final cookie sync
-        try:
-            self.session.storage_monitor.monitor_cookie_changes(self.session)
-        except Exception as e:
-            logger.error(f"Failed to sync cookies: {e}", exc_info=True)
-        
-        # Force final window property collection
-        try:
-            self.session.window_property_monitor.force_collect(self.session)
-        except Exception as e:
-            logger.error(f"Failed to force collect window properties: {e}", exc_info=True)
+
+        # Check if browser is still connected before attempting CDP calls
+        browser_connected = self._is_browser_connected()
+
+        # Final cookie sync (only if browser is connected)
+        if browser_connected:
+            try:
+                self.session.storage_monitor.monitor_cookie_changes(self.session)
+            except Exception as e:
+                logger.debug(f"Could not sync cookies (browser may have disconnected): {e}")
+        else:
+            logger.debug("Skipping cookie sync - browser not connected")
+
+        # Force final window property collection (only if browser is connected)
+        if browser_connected:
+            try:
+                self.session.window_property_monitor.force_collect(self.session)
+            except Exception as e:
+                logger.debug(f"Could not collect window properties (browser may have disconnected): {e}")
         
         # Consolidate transactions
         try:
@@ -245,32 +269,32 @@ class BrowserMonitor:
         """Stop monitoring and return summary."""
         if not self.session:
             return {}
-        
+
         # Signal stop
         self._stop_event.set()
-        
+
         # Wait for thread to finish (with timeout)
         if self._run_thread and self._run_thread.is_alive():
             self._run_thread.join(timeout=5.0)
-        
+
         # Ensure consolidation happens even if thread didn't finish cleanly
         self._finalize_session()
-        
-        # Close WebSocket
+
+        # Close WebSocket gracefully
         try:
             if self.session.ws:
                 self.session.ws.close()
-        except Exception as e:
-            logger.warning(f"Error closing WebSocket: {e}")
-        
+        except Exception:
+            pass  # WebSocket may already be closed
+
         summary = self.get_summary()
-        
-        # Cleanup
-        if self.created_tab and self.context_id:
+
+        # Cleanup browser context only if browser is still connected
+        if self.created_tab and self.context_id and self._is_browser_connected():
             try:
                 dispose_context(self.remote_debugging_address, self.context_id)
             except Exception as e:
-                logger.warning(f"Could not dispose browser context: {e}")
+                logger.debug(f"Could not dispose browser context: {e}")
         
         end_time = time.time()
         summary["duration"] = end_time - (self.start_time or end_time)

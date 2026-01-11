@@ -9,7 +9,7 @@ from openai import OpenAI
 from ..config import Config
 from ..utils.exceptions import ApiKeyNotFoundError
 from .monitor import BrowserMonitor
-from .discovery import RoutineDiscovery
+from .discovery import RoutineDiscovery, RoutineDiscoveryResult
 from .execution import RoutineExecutor
 from ..data_models.routine.routine import Routine
 
@@ -17,19 +17,21 @@ from ..data_models.routine.routine import Routine
 class WebHacker:
     """
     Main SDK client for Web Hacker.
-    
+
     Provides a simple, high-level interface for monitoring browsers,
     discovering routines, and executing automation.
-    
+
     Example:
         >>> hacker = WebHacker(openai_api_key="sk-...")
         >>> with hacker.monitor_browser(output_dir="./captures"):
         ...     # User performs actions in browser
         ...     pass
-        >>> routine = hacker.discover_routine(
+        >>> discovery_result = hacker.discover_routine(
         ...     task="Search for flights",
         ...     cdp_captures_dir="./captures"
         ... )
+        >>> routine = discovery_result.routine
+        >>> test_params = discovery_result.test_parameters
         >>> result = hacker.execute_routine(
         ...     routine=routine,
         ...     parameters={"origin": "NYC", "destination": "LAX"}
@@ -102,18 +104,18 @@ class WebHacker:
         cdp_captures_dir: str = "./cdp_captures",
         output_dir: str = "./routine_discovery_output",
         llm_model: Optional[str] = None,
-    ) -> Routine:
+    ) -> RoutineDiscoveryResult:
         """
         Discover a routine from captured browser data.
-        
+
         Args:
             task: Description of the task to automate.
             cdp_captures_dir: Directory containing CDP captures.
             output_dir: Directory to save discovery results.
             llm_model: LLM model to use (overrides default).
-        
+
         Returns:
-            Discovered Routine object.
+            RoutineDiscoveryResult containing the routine and test parameters.
         """
         self._discovery = RoutineDiscovery(
             client=self.client,
@@ -130,6 +132,7 @@ class WebHacker:
         parameters: Dict[str, Any],
         timeout: float = 180.0,
         close_tab_when_done: bool = True,
+        tab_id: str | None = None,
     ) -> Dict[str, Any]:
         """
         Execute a routine with given parameters.
@@ -139,6 +142,7 @@ class WebHacker:
             parameters: Parameters for the routine.
             timeout: Operation timeout in seconds.
             close_tab_when_done: Whether to close tab when finished.
+            tab_id: If provided, attach to this existing tab. If None, create a new tab.
         
         Returns:
             RoutineExecutionResult with "ok" status and "result" data.
@@ -151,5 +155,6 @@ class WebHacker:
             parameters=parameters,
             timeout=timeout,
             close_tab_when_done=close_tab_when_done,
+            tab_id=tab_id,
         )
 
