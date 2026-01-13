@@ -96,12 +96,16 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install uv
+        run: pip install uv
+
       - name: Wait for TestPyPI to index package
         run: sleep 60
 
       - name: Test install from TestPyPI
         run: |
-          pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ web-hacker
+          # Use uv with TestPyPI as extra index (PyPI is default, avoids malicious packages)
+          uv pip install --system --extra-index-url https://test.pypi.org/simple/ web-hacker
           python -c "import web_hacker; print('Successfully imported web_hacker')"
 
   publish-pypi:
@@ -135,10 +139,13 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install uv
+        run: pip install uv
+
       - name: Wait for PyPI to index package
         run: sleep 60
 
       - name: Test install from PyPI
         run: |
-          pip install web-hacker
+          uv pip install --system web-hacker
           python -c "import web_hacker; print('Successfully imported web_hacker from PyPI')"
