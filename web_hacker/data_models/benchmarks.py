@@ -180,17 +180,16 @@ def _check_path_exists(data: Any, path: str) -> bool:
 
 class PathReference(BaseModel):
     """
-    A reference to another path in the data, used for comparing two paths.
+    A reference to a path in the data, used in SimpleExpression to extract values dynamically.
 
-    When used as the `value` in a SimpleExpression, the expression will compare
-    the value at `path` with the value at `PathReference.path`.
+    Both value_1 and value_2 in SimpleExpression can be PathReferences.
 
-    Examples:
-        Compare session storage of last fetch vs return operation:
+    Example - compare two paths:
         {
-            "path": "steps[?type == 'fetch'] | [-1].session_storage",
+            "type": "simple",
+            "value_1": {"type": "path", "path": "generated_routine.operations[0].type"},
             "operator": "equals",
-            "value": {"type": "path", "path": "steps[?type == 'return'] | [-1].session_storage"}
+            "value_2": {"type": "path", "path": "ground_truth_routine.operations[0].type"}
         }
     """
 
@@ -479,8 +478,10 @@ class CompositeExpression(BaseModel):
         """
         if self.logic == "and":
             return all(evaluate_expression(expr, data) for expr in self.expressions)
-        else:  # or
+        elif self.logic == "or":
             return any(evaluate_expression(expr, data) for expr in self.expressions)
+        else:
+            raise ValueError(f"Invalid logic: {self.logic}")
 
 
 def evaluate_expression(expr: "SimpleExpression | CompositeExpression", data: Any) -> bool:
@@ -500,13 +501,15 @@ def evaluate_expression(expr: "SimpleExpression | CompositeExpression", data: An
 def stringify_expression(expr: "SimpleExpression | CompositeExpression") -> str:
     """
     Convert any expression to a human-readable string.
-    
+
     Examples:
-        >>> stringify_expression(SimpleExpression(path="user.name", operator="equals", value="John"))
-        'user.name == "John"'
-        
-        >>> stringify_expression(CompositeExpression(logic="and", expressions=[...]))
-        '(user.age > 18 AND user.verified == true)'
+        >>> expr = SimpleExpression(
+        ...     value_1={"type": "path", "path": "user.name"},
+        ...     operator="equals",
+        ...     value_2="John"
+        ... )
+        >>> stringify_expression(expr)
+        '${user.name} == "John"'
     """
     return expr.stringify()
 
@@ -526,20 +529,18 @@ class DeterministicTest(BaseModel):
     A deterministic test with a root expression that must pass.
 
     The expression can be:
-    - A simple expression (type: "simple", path + operator + value)
+    - A simple expression (type: "simple", value_1 + operator + value_2)
     - A composite expression (type: "composite", logic + expressions)
 
     Example JSON:
         {
-            "name": "user_is_adult_and_verified",
-            "description": "User must be 18+ and verified",
+            "name": "first_operation_is_navigate",
+            "description": "First operation should be navigate",
             "expression": {
-                "type": "composite",
-                "logic": "and",
-                "expressions": [
-                    {"type": "simple", "path": "user.age", "operator": "greater_than", "value": 18},
-                    {"type": "simple", "path": "user.verified", "operator": "equals", "value": true}
-                ]
+                "type": "simple",
+                "value_1": {"type": "path", "path": "generated_routine.operations[0].type"},
+                "operator": "equals",
+                "value_2": "navigate"
             }
         }
     """
