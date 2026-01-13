@@ -631,6 +631,28 @@ See `quickstart.py` for a complete interactive example.
 
 - **return_screenshot** — capture and return a screenshot of the page as base64
 
+## Running Benchmarks 📊
+
+Benchmarks validate the routine discovery pipeline against known ground-truth routines. They run both deterministic tests (checking routine structure) and LLM-based tests (evaluating semantic correctness).
+
+```bash
+# Run all benchmarks
+python web_hacker/scripts/run_benchmarks.py
+
+# With verbose output (shows each test result as it runs)
+python web_hacker/scripts/run_benchmarks.py -v
+
+# Use a specific model
+python web_hacker/scripts/run_benchmarks.py --model gpt-4.1
+
+# Custom output directory
+python web_hacker/scripts/run_benchmarks.py --output-dir ./my_benchmarks
+```
+
+Results are saved to the output directory:
+- `{benchmark_name}.json` — Full evaluation results for each benchmark
+- `_summary.json` — Aggregated summary of all benchmark runs
+
 ## Contributing 🤝
 
 We welcome contributions! Here's how to get started:

@@ -10,40 +10,17 @@ through functions in this module for consistency and maintainability.
 import json
 
 
-def generate_fetch_js(
-    fetch_url: str,
-    headers: dict,
-    body_js_literal: str,
-    endpoint_method: str,
-    endpoint_credentials: str,
-    session_storage_key: str | None = None,
-) -> str:
-    """Generate JavaScript code for fetch operation.
+def _get_placeholder_resolution_js_helpers() -> list[str]:
+    """Generate JavaScript helper functions for placeholder resolution.
 
-    Args:
-        fetch_url: The URL to fetch.
-        headers: Dictionary of HTTP headers.
-        body_js_literal: JavaScript literal for the request body.
-        endpoint_method: HTTP method (GET, POST, etc.).
-        endpoint_credentials: Credentials mode (same-origin, include, omit).
-        session_storage_key: Optional key to store result in session storage.
+    These helpers resolve placeholders like {{sessionStorage:key}}, {{localStorage:key}},
+    {{cookie:name}}, {{meta:name}}, {{windowProperty:path}}, {{epoch_milliseconds}}, {{uuid}}.
 
     Returns:
-        JavaScript code string that performs the fetch operation.
+        List of JavaScript code lines defining the helper functions.
     """
-    hdrs_json = json.dumps(
-        {str(k): (str(v) if not isinstance(v, str) else v) for k, v in headers.items()}
-    )
-
-    js_lines = [
-        "(async () => {",
-        "  const sleep = ms => new Promise(r => setTimeout(r, ms));",
-        "  await sleep(100);",
-        f"  const url = {json.dumps(fetch_url)};",
-        f"  const rawHeaders = {hdrs_json};",
-        f"  const BODY_LITERAL = {body_js_literal};",
+    return [
         "  const resolvedValues = {};",
-        "",
         "  // Simple tokens (computed locally, no source lookup)",
         "  function replaceSimpleTokens(str){",
         "    if (typeof str !== 'string') return str;",
@@ -179,11 +156,51 @@ def generate_fetch_js(
         "    if (Array.isArray(val)) return val.map(deepResolve);",
         "    if (val && typeof val === 'object') {",
         "      const out = {};",
-        "      for (const [k, v] of Object.entries(val)) out[k] = deepResolve(v);",
+        "      for (const [k, v] of Object.entries(val)) {",
+        "        const resolvedKey = (typeof k === 'string') ? resolvePlaceholders(k) : k;",
+        "        out[resolvedKey] = deepResolve(v);",
+        "      }",
         "      return out;",
         "    }",
         "    return val;",
         "  }",
+    ]
+
+
+def generate_fetch_js(
+    fetch_url: str,
+    headers: dict,
+    body_js_literal: str,
+    endpoint_method: str,
+    endpoint_credentials: str,
+    session_storage_key: str | None = None,
+) -> str:
+    """Generate JavaScript code for fetch operation.
+
+    Args:
+        fetch_url: The URL to fetch.
+        headers: Dictionary of HTTP headers.
+        body_js_literal: JavaScript literal for the request body.
+        endpoint_method: HTTP method (GET, POST, etc.).
+        endpoint_credentials: Credentials mode (same-origin, include, omit).
+        session_storage_key: Optional key to store result in session storage.
+
+    Returns:
+        JavaScript code string that performs the fetch operation.
+    """
+    hdrs_json = json.dumps(
+        {str(k): (str(v) if not isinstance(v, str) else v) for k, v in headers.items()}
+    )
+
+    js_lines = [
+        "(async () => {",
+        "  const sleep = ms => new Promise(r => setTimeout(r, ms));",
+        "  await sleep(100);",
+        f"  const url = {json.dumps(fetch_url)};",
+        f"  const rawHeaders = {hdrs_json};",
+        f"  const BODY_LITERAL = {body_js_literal};",
+        "",
+        *_get_placeholder_resolution_js_helpers(),
         "",
         "  // Resolve headers",
         "  const headers = {};",
@@ -265,9 +282,20 @@ def generate_download_js(
     js_lines = [
         "(async () => {",
         f"  const url = {json.dumps(download_url)};",
-        f"  const headers = {headers_json};",
+        f"  const rawHeaders = {headers_json};",
         f"  const body = {body_js_literal};",
         f"  const filename = {json.dumps(filename)};",
+        "",
+        *_get_placeholder_resolution_js_helpers(),
+        "",
+        "  // Resolve URL placeholders",
+        "  const resolvedUrl = resolvePlaceholders(url);",
+        "",
+        "  // Resolve headers",
+        "  const headers = {};",
+        "  for (const [k, v] of Object.entries(rawHeaders || {})) {",
+        "    headers[k] = (typeof v === 'string') ? resolvePlaceholders(v) : v;",
+        "  }",
         "",
         "  const opts = {",
         f"    method: {json.dumps(endpoint_method)},",
@@ -280,7 +308,7 @@ def generate_download_js(
         "  }",
         "",
         "  try {",
-        "    const resp = await fetch(url, opts);",
+        "    const resp = await fetch(resolvedUrl, opts);",
         "",
         "    if (!resp.ok) {",
         "      return { __err: 'Download failed with status ' + resp.status };",

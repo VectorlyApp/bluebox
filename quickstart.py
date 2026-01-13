@@ -27,6 +27,7 @@ from web_hacker.utils.terminal_utils import (
     GREEN, YELLOW, BLUE, CYAN,
     print_colored, print_header, ask_yes_no,
 )
+from web_hacker.utils.infra_utils import clear_directory
 
 # Configuration
 PORT = 9222
@@ -137,16 +138,6 @@ def launch_chrome(port: int) -> Optional[subprocess.Popen]:
         print_colored(f"⚠️  Error launching Chrome: {e}", YELLOW)
         input("Press Enter when Chrome is running in debug mode...")
         return None
-
-
-def clear_directory(path: Path) -> None:
-    """Clear all files and subdirectories in a directory."""
-    if path.exists():
-        for item in path.iterdir():
-            if item.is_file():
-                item.unlink()
-            elif item.is_dir():
-                shutil.rmtree(item)
 
 
 def step_1_monitor_browser(cdp_captures_dir: Path) -> bool:

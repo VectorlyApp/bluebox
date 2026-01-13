@@ -133,7 +133,7 @@ class RoutineDiscoveryAgent(BaseModel):
         # Push initial message
         self.emit_message_callable(RoutineDiscoveryMessage(
             type=RoutineDiscoveryMessageType.INITIATED,
-            content=f"Discovery initiated for task: {self.task}"
+            content=f"Discovery initiated"
         ))
 
         # construct the tools
