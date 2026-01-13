@@ -69,13 +69,18 @@ jobs:
           python -m venv test-venv
           source test-venv/bin/activate
           
+          # Count packages before install (pip is pre-installed)
+          BEFORE_COUNT=$(pip list --format=freeze | wc -l)
+          
           # Install with --no-deps
           uv pip install dist/*.whl --no-deps
           
-          # Count installed packages (should be exactly 1: web-hacker)
-          PACKAGE_COUNT=$(pip list --format=freeze | wc -l)
-          if [[ "$PACKAGE_COUNT" -ne 1 ]]; then
-            echo "ERROR: Expected 1 package, got $PACKAGE_COUNT"
+          # Count packages after install (should be exactly 1 more: web-hacker)
+          AFTER_COUNT=$(pip list --format=freeze | wc -l)
+          INSTALLED=$((AFTER_COUNT - BEFORE_COUNT))
+          
+          if [[ "$INSTALLED" -ne 1 ]]; then
+            echo "ERROR: Expected 1 new package, got $INSTALLED"
             pip list
             exit 1
           fi
