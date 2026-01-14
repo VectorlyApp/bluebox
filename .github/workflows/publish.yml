@@ -9,16 +9,13 @@ on:
       - 'web_hacker/**'
       - '.github/workflows/publish.yml'
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Dry run (build only, no publish)'
-        required: false
-        default: false
-        type: boolean
 
 jobs:
+  # -------------------------
+  # PR + Release: build & test
+  # -------------------------
   build:
-    name: Build distribution
+    name: Build & test wheel
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get-version.outputs.version }}
@@ -29,7 +26,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install build dependencies
+      - name: Install build deps
         run: |
           python -m pip install --upgrade pip
           pip install build hatchling
@@ -37,71 +34,38 @@ jobs:
       - name: Build package
         run: python -m build
 
-      - name: Get version from built package
+      - name: Extract version
         id: get-version
         run: |
           VERSION=$(ls dist/*.whl | sed 's/.*web_hacker-\(.*\)-py3.*/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Package version: $VERSION"
 
-      - name: Test local wheel
+      - name: Verify wheel installs
         run: |
           pip install dist/*.whl
           python -c "import web_hacker"
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: pypi-dist
-          path: dist/
-
-  build-testpypi:
-    name: Build TestPyPI distribution
-    if: >
-      github.event_name == 'release' ||
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install build dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install build hatchling
-
-      - name: Add dev suffix
-        run: |
-          TIMESTAMP=$(date +%Y%m%d%H%M%S)
-          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          NEW_VERSION="${VERSION}.dev${TIMESTAMP}"
-          sed -i "s/version = \"$VERSION\"/version = \"$NEW_VERSION\"/" pyproject.toml
-          echo "TESTPYPI_VERSION=$NEW_VERSION" >> $GITHUB_ENV
-
-      - name: Build
-        run: python -m build
-
       - uses: actions/upload-artifact@v4
         with:
-          name: testpypi-dist
+          name: dist
           path: dist/
 
+  # -------------------------
+  # Release only: TestPyPI
+  # -------------------------
   publish-testpypi:
     name: Publish to TestPyPI
-    needs: build-testpypi
+    if: github.event_name == 'release'
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       id-token: write
     outputs:
-      version: ${{ steps.get-version.outputs.version }}
+      test_version: ${{ steps.get-version.outputs.version }}
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: testpypi-dist
+          name: dist
           path: dist/
 
       - id: get-version
@@ -114,7 +78,8 @@ jobs:
           repository-url: https://test.pypi.org/legacy/
 
   test-install-testpypi:
-    name: Verify TestPyPI install
+    name: Verify install from TestPyPI
+    if: github.event_name == 'release'
     needs: publish-testpypi
     runs-on: ubuntu-latest
     steps:
@@ -125,11 +90,9 @@ jobs:
       - name: Install uv
         run: pip install uv
 
-      - name: Install from TestPyPI ONLY
+      - name: Install exact TestPyPI version
         run: |
-          VERSION="${{ needs.publish-testpypi.outputs.version }}"
-          echo "Installing web-hacker==$VERSION"
-
+          VERSION="${{ needs.publish-testpypi.outputs.test_version }}"
           for i in {1..10}; do
             if uv pip install --system --pre \
               --index-url https://test.pypi.org/simple/ \
@@ -140,27 +103,28 @@ jobs:
             fi
             sleep 30
           done
-
-          echo "TestPyPI install failed"
           exit 1
 
+  # -------------------------
+  # Release only: PyPI
+  # -------------------------
   publish-pypi:
     name: Publish to PyPI
     if: github.event_name == 'release'
-    needs: [build, test-install-testpypi]
+    needs: test-install-testpypi
     runs-on: ubuntu-latest
     permissions:
       id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: pypi-dist
+          name: dist
           path: dist/
 
       - uses: pypa/gh-action-pypi-publish@release/v1
 
   test-install-pypi:
-    name: Verify PyPI install
+    name: Verify install from PyPI
     if: github.event_name == 'release'
     needs: publish-pypi
     runs-on: ubuntu-latest
