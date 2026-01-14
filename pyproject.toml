@@ -46,7 +46,7 @@ dependencies = [
     "beautifulsoup4>=4.14.2",
     "pylint>=3.0.0",
     "pytest>=8.3.5",
-    "jmespath>=1.0.1",
+    "jmespath>=1.0.1,<2",
 ]
 
 [project.optional-dependencies]
