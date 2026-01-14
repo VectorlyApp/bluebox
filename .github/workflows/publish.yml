@@ -3,11 +3,20 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
+
   pull_request:
     paths:
       - 'pyproject.toml'
       - 'web_hacker/**'
       - '.github/workflows/publish.yml'
+
+  push:
+    branches: [main]
+    paths:
+      - 'pyproject.toml'
+      - 'web_hacker/**'
+      - '.github/workflows/publish.yml'
+
   workflow_dispatch:
 
 jobs:
