@@ -133,6 +133,7 @@ jobs:
             if uv pip install --system --pre \
               --index-url https://test.pypi.org/simple/ \
               --extra-index-url https://pypi.org/simple/ \
+              --index-strategy unsafe-best-match \
               "web-hacker==$VERSION"; then
               python -c "import web_hacker"
               exit 0
