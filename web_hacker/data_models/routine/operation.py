@@ -33,7 +33,7 @@ from web_hacker.utils.js_utils import (
     generate_get_download_chunk_js,
     generate_get_html_js,
     generate_download_js,
-    generate_js_evaluate_with_storage_js,
+    generate_js_evaluate_wrapper_js,
 )
 from web_hacker.utils.web_socket_utils import send_cmd, recv_until
 
@@ -110,6 +110,18 @@ class RoutineOperation(BaseModel):
                 routine_execution_context.current_operation_metadata
             )
             routine_execution_context.current_operation_metadata = None
+
+    def _store_request_response_metadata(
+        self,
+        routine_execution_context: RoutineExecutionContext,
+        payload: dict,
+    ) -> None:
+        """Store request/response metadata from JS payload into operation metadata."""
+        if routine_execution_context.current_operation_metadata is not None:
+            if payload.get("request"):
+                routine_execution_context.current_operation_metadata.details["request"] = payload["request"]
+            if payload.get("response"):
+                routine_execution_context.current_operation_metadata.details["response"] = payload["response"]
 
     def _execute_operation(self, routine_execution_context: RoutineExecutionContext) -> None:
         """
@@ -259,6 +271,10 @@ class RoutineFetchOperation(RoutineOperation):
             return FetchExecutionResult(ok=False, error=reply["error"])
 
         payload = reply["result"]["result"].get("value")
+
+        # Store request/response metadata (returned from JS)
+        if isinstance(payload, dict):
+            self._store_request_response_metadata(routine_execution_context, payload)
 
         if isinstance(payload, dict) and payload.get("__err"):
             logger.error(f"Error in _execute_fetch (JS error): {payload.get('__err')}")
@@ -1021,6 +1037,10 @@ class RoutineDownloadOperation(RoutineOperation):
 
         payload = reply["result"]["result"].get("value", {})
 
+        # Store request/response metadata (returned from JS)
+        if isinstance(payload, dict):
+            self._store_request_response_metadata(routine_execution_context, payload)
+
         if isinstance(payload, dict) and payload.get("__err"):
             raise RuntimeError(f"Download failed: {payload.get('__err')}")
 
@@ -1216,21 +1236,17 @@ class RoutineJsEvaluateOperation(RoutineOperation):
         # Validate again after parameter interpolation to prevent injection attacks
         RoutineJsEvaluateOperation.validate_js_code(js_code)
 
-        # If session_storage_key is set, wrap in outer IIFE to handle storage in one injection
-        if self.session_storage_key:
-            expression = generate_js_evaluate_with_storage_js(
-                iife=js_code,
-                session_storage_key=self.session_storage_key,
-            )
-        else:
-            expression = js_code
+        # Always wrap in outer IIFE to capture console logs and handle storage
+        expression = generate_js_evaluate_wrapper_js(
+            iife=js_code,
+            session_storage_key=self.session_storage_key,
+        )
 
         logger.info(
             f"Executing JS evaluation: {len(expression)} chars, "
             f"timeout={self.timeout_seconds}s, session_storage_key={self.session_storage_key}"
         )
 
-        # Code is validated to be in IIFE format and safe, execute as-is
         eval_id = routine_execution_context.send_cmd(
             "Runtime.evaluate",
             {
@@ -1257,10 +1273,19 @@ class RoutineJsEvaluateOperation(RoutineOperation):
         result_value = reply["result"]["result"].get("value")
 
         logger.info(f"JS evaluation result: {result_value}")
-        
-        # Check for storage error from our wrapper (only applicable when session_storage_key is set)
-        if self.session_storage_key and isinstance(result_value, dict) and result_value.get("__err"):
-            raise RuntimeError(f"JS evaluation failed: {result_value['__err']}")
+
+        # Store console logs and errors in metadata (not result - that goes in routine return value)
+        if routine_execution_context.current_operation_metadata is not None and isinstance(result_value, dict):
+            routine_execution_context.current_operation_metadata.details["console_logs"] = result_value.get("console_logs")
+            routine_execution_context.current_operation_metadata.details["execution_error"] = result_value.get("execution_error")
+            routine_execution_context.current_operation_metadata.details["storage_error"] = result_value.get("storage_error")
+
+        # Check for errors from our wrapper and raise
+        if isinstance(result_value, dict):
+            if result_value.get("execution_error"):
+                raise RuntimeError(f"JS evaluation failed: {result_value['execution_error']}")
+            if result_value.get("storage_error"):
+                raise RuntimeError(f"JS evaluation failed: {result_value['storage_error']}")
 
 
 # Routine operation unions ________________________________________________________________________

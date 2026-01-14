@@ -240,14 +240,33 @@ def generate_fetch_js(
         "    }",
         "  }",
         "",
+        "  // Build request metadata for debugging",
+        "  const requestMeta = {",
+        "    url: resolvedUrl,",
+        f"    method: {json.dumps(endpoint_method)},",
+        "    headers: headers,",
+        "    body: opts.body || null,",
+        "  };",
+        "",
         "  try {",
         "    const resp = await fetch(resolvedUrl, opts);",
         "    const status = resp.status;",
+        "    const statusText = resp.statusText;",
+        "    const responseHeaders = {};",
+        "    resp.headers.forEach((v, k) => { responseHeaders[k] = v; });",
         "    const val = await resp.text();",
+        "",
+        "    // Build response metadata for debugging",
+        "    const responseMeta = {",
+        "      status: status,",
+        "      statusText: statusText,",
+        "      headers: responseHeaders,",
+        "    };",
+        "",
         f"    if ({'true' if session_storage_key else 'false'}) {{ try {{ window.sessionStorage.setItem({json.dumps(session_storage_key) if session_storage_key else 'null'}, JSON.stringify(val)); }} catch(e) {{ return {{ __err: 'SessionStorage Error: ' + String(e), resolvedValues }}; }} }}",
-        "    return {status, value: 'success', resolvedValues};",
+        "    return {status, value: 'success', resolvedValues, request: requestMeta, response: responseMeta};",
         "  } catch(e) {",
-        "    return { __err: 'fetch failed: ' + String(e), resolvedValues };",
+        "    return { __err: 'fetch failed: ' + String(e), resolvedValues, request: requestMeta };",
         "  }",
         "})()",
     ]
@@ -307,11 +326,24 @@ def generate_download_js(
         "    opts.body = typeof body === 'string' ? body : JSON.stringify(body);",
         "  }",
         "",
+        "  // Build request metadata for debugging",
+        "  const requestMeta = {",
+        "    url: resolvedUrl,",
+        f"    method: {json.dumps(endpoint_method)},",
+        "    headers: headers,",
+        "    body: opts.body || null,",
+        "  };",
+        "",
         "  try {",
         "    const resp = await fetch(resolvedUrl, opts);",
+        "    const status = resp.status;",
+        "    const statusText = resp.statusText;",
+        "    const responseHeaders = {};",
+        "    resp.headers.forEach((v, k) => { responseHeaders[k] = v; });",
         "",
         "    if (!resp.ok) {",
-        "      return { __err: 'Download failed with status ' + resp.status };",
+        "      const responseMeta = { status, statusText, headers: responseHeaders };",
+        "      return { __err: 'Download failed with status ' + resp.status, request: requestMeta, response: responseMeta };",
         "    }",
         "",
         "    const contentType = resp.headers.get('content-type') || 'application/octet-stream';",
@@ -332,15 +364,24 @@ def generate_download_js(
         "    // Store base64 data in window for chunked retrieval",
         "    window.__downloadData = base64Data;",
         "",
+        "    // Build response metadata for debugging",
+        "    const responseMeta = {",
+        "      status: status,",
+        "      statusText: statusText,",
+        "      headers: responseHeaders,",
+        "    };",
+        "",
         "    return {",
         "      ok: true,",
         "      contentType: contentType,",
         "      filename: filename,",
         "      size: buffer.byteLength,",
-        "      base64Length: base64Data.length",
+        "      base64Length: base64Data.length,",
+        "      request: requestMeta,",
+        "      response: responseMeta",
         "    };",
         "  } catch(e) {",
-        "    return { __err: 'Download failed: ' + String(e) };",
+        "    return { __err: 'Download failed: ' + String(e), request: requestMeta };",
         "  }",
         "})()",
     ]
@@ -646,34 +687,80 @@ def generate_get_html_js(selector: str | None = None) -> str:
     return f"document.querySelector({json.dumps(selector)})?.outerHTML || ''"
 
 
-def generate_js_evaluate_with_storage_js(
+def generate_js_evaluate_wrapper_js(
     iife: str,
-    session_storage_key: str,
+    session_storage_key: str | None = None,
 ) -> str:
     """
-    Wrap IIFE in an outer async IIFE that executes it and stores result in session storage.
-    
-    This allows executing JavaScript AND storing the result in session storage
-    with a SINGLE CDP Runtime.evaluate call.
-    
+    Wrap IIFE in an outer async IIFE that:
+    1. Captures all console.log() calls with timestamps
+    2. Executes the IIFE
+    3. Optionally stores result in session storage
+    4. Returns the result along with captured console logs
+
     Args:
         iife: The IIFE code (already validated to be in IIFE format).
-        session_storage_key: Key to store result in session storage.
-    
+        session_storage_key: Optional key to store result in session storage.
+
     Returns:
-        JavaScript code that executes the IIFE and stores the result.
+        JavaScript code that executes the IIFE and returns:
+        {{
+            result: <IIFE return value>,
+            console_logs: [{{ timestamp: <ms>, message: <string> }}, ...],
+            storage_error: <string or null>
+        }}
     """
-    return f"""(async () => {{
-    // Execute IIFE and await if it returns a promise
-    const __result = await Promise.resolve({iife});
+    storage_code = ""
+    if session_storage_key:
+        storage_code = f"""
+    // Store result in session storage if key provided
     if (__result !== undefined) {{
         try {{
             window.sessionStorage.setItem({json.dumps(session_storage_key)}, JSON.stringify(__result));
         }} catch(e) {{
-            return {{ __err: 'SessionStorage Error: ' + String(e) }};
+            __storageError = 'SessionStorage Error: ' + String(e);
         }}
+    }}"""
+
+    return f"""(async () => {{
+    // Console log capture
+    const __consoleLogs = [];
+    const __originalConsoleLog = console.log;
+    console.log = (...args) => {{
+        __consoleLogs.push({{
+            timestamp: Date.now(),
+            message: args.map(a => {{
+                try {{
+                    return typeof a === 'object' ? JSON.stringify(a) : String(a);
+                }} catch(e) {{
+                    return String(a);
+                }}
+            }}).join(' ')
+        }});
+        __originalConsoleLog.apply(console, args);
+    }};
+
+    let __result;
+    let __storageError = null;
+    let __executionError = null;
+
+    try {{
+        // Execute IIFE and await if it returns a promise
+        __result = await Promise.resolve({iife});
+        {storage_code}
+    }} catch(e) {{
+        __executionError = String(e);
+    }} finally {{
+        // Restore original console.log
+        console.log = __originalConsoleLog;
     }}
-    return true;
+
+    return {{
+        result: __result,
+        console_logs: __consoleLogs,
+        storage_error: __storageError,
+        execution_error: __executionError
+    }};
 }})()"""
 
 
