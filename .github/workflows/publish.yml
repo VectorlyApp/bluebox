@@ -67,6 +67,7 @@ jobs:
     if: github.event_name == 'release'
     needs: build
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       id-token: write
     outputs:
@@ -148,6 +149,7 @@ jobs:
     if: github.event_name == 'release'
     needs: test-install-testpypi
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       id-token: write
     steps:
