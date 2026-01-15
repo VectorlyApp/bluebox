@@ -31,6 +31,8 @@ from utils.logger import get_logger
 
 logger = get_logger(name=__name__)
 
+# TODO: guide agent should be given path to CDP assets
+
 
 class GuideAgent:
     """

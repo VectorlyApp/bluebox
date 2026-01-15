@@ -32,7 +32,7 @@ class ConversationMessage(BaseModel):
         description="The content of the message",
     )
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(tz=timezone.utc),
         description="When the message was created",
     )
     metadata: dict[str, Any] = Field(
@@ -71,7 +71,7 @@ class PendingToolInvocation(BaseModel):
         description="Current status of the invocation",
     )
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(tz=timezone.utc),
         description="When the invocation was created",
     )
 
@@ -94,10 +94,10 @@ class GuideAgentConversationState(BaseModel):
         description="Tool invocation awaiting confirmation, if any",
     )
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(tz=timezone.utc),
         description="When the session was created",
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(tz=timezone.utc),
         description="When the session was last updated",
     )
