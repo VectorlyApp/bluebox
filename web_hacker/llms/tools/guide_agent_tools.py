@@ -1,52 +1,39 @@
 """
 web_hacker/llms/tools/guide_agent_tools.py
 
-Tools and tool parameter models for the guide agent.
+Tool functions for the guide agent.
 """
 
-from pydantic import BaseModel, Field
+from typing import Any
 
 
-class StartRoutineDiscoveryJobCreationParams(BaseModel):
+def start_routine_discovery_job_creation(
+    task_description: str,
+    expected_output_description: str,
+    input_parameters: list[dict[str, str]] | None = None,
+    filters_or_constraints: list[str] | None = None,
+    target_website: str | None = None,
+) -> dict[str, Any]:
     """
-    Parameters for the start_routine_discovery_job_creation tool.
+    Initiates the routine discovery process.
 
-    This model defines what information the LLM should extract from
-    the conversation before handing off to routine discovery.
+    Call this when you have gathered enough information about:
+    1) What task the user wants to automate
+    2) What data/output they expect
+    3) What input parameters the routine should accept
+    4) Any filters or constraints
+
+    This tool requests user confirmation before executing.
+
+    Args:
+        task_description: Description of the task/routine the user wants to create
+        expected_output_description: Description of what data the routine should return
+        input_parameters: List of input parameters with 'name' and 'description' keys
+        filters_or_constraints: Any filters or constraints the user mentioned
+        target_website: Target website/URL if mentioned by user
+
+    Returns:
+        Result dict to be passed to routine discovery agent
     """
-
-    task_description: str = Field(
-        ...,
-        description="Description of the task/routine the user wants to create",
-    )
-    expected_output_description: str = Field(
-        ...,
-        description="Description of what data the routine should return",
-    )
-    input_parameters: list[dict[str, str]] = Field(
-        default_factory=list,
-        description="List of input parameters with 'name' and 'description' keys",
-    )
-    filters_or_constraints: list[str] = Field(
-        default_factory=list,
-        description="Any filters or constraints the user mentioned",
-    )
-    target_website: str | None = Field(
-        default=None,
-        description="Target website/URL if mentioned by user",
-    )
-
-
-# Tool metadata constants
-START_ROUTINE_DISCOVERY_TOOL_NAME = "start_routine_discovery_job_creation"
-START_ROUTINE_DISCOVERY_TOOL_DESCRIPTION = """
-Initiates the routine discovery process by passing control to the routine discovery agent.
-
-Call this tool when you have gathered enough information about:
-1. What task the user wants to automate
-2. What data/output they expect from the routine
-3. What input parameters the routine should accept
-4. Any filters or constraints on the data
-
-This tool does NOT execute immediately - it will request user confirmation first.
-""".strip()
+    # TODO: implement the actual handoff logic
+    raise NotImplementedError("start_routine_discovery_job_creation not yet implemented")

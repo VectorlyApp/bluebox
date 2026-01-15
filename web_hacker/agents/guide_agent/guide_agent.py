@@ -20,11 +20,7 @@ from data_models.guide_agent.message import (
 )
 from data_models.llms import LLMModel, OpenAIModel
 from llms.llm_client import LLMClient
-from llms.tools.guide_agent_tools import (
-    START_ROUTINE_DISCOVERY_TOOL_DESCRIPTION,
-    START_ROUTINE_DISCOVERY_TOOL_NAME,
-    StartRoutineDiscoveryJobCreationParams,
-)
+from llms.tools.guide_agent_tools import start_routine_discovery_job_creation
 from utils.exceptions import UnknownToolError
 from utils.logger import get_logger
 
@@ -112,11 +108,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
 
     def _register_tools(self) -> None:
         """Register all tools with the LLM client."""
-        self.llm_client.register_tool(
-            name=START_ROUTINE_DISCOVERY_TOOL_NAME,
-            description=START_ROUTINE_DISCOVERY_TOOL_DESCRIPTION,
-            parameters=StartRoutineDiscoveryJobCreationParams.model_json_schema(),
-        )
+        self.llm_client.register_tool_from_function(start_routine_discovery_job_creation)
 
     def _emit_message(self, message: GuideAgentMessage) -> None:
         """Emit a message via the callback."""
@@ -214,16 +206,16 @@ Ask clarifying questions if needed. Be conversational and helpful."""
         Raises:
             UnknownToolError: If tool_name is unknown
         """
-        if tool_name == START_ROUTINE_DISCOVERY_TOOL_NAME:
+        if tool_name == start_routine_discovery_job_creation.__name__:
             logger.info(
                 "Executing tool %s with args: %s",
                 tool_name,
                 tool_arguments,
             )
-            # Return data for handoff to routine discovery
+            result = start_routine_discovery_job_creation(**tool_arguments)
             return {
                 "guide_chat_id": self._state.guide_chat_id,
-                **tool_arguments,
+                **result,
             }
 
         logger.error("Unknown tool \"%s\" with arguments: %s", tool_name, tool_arguments)
