@@ -12,9 +12,7 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, Field
 
 
-# ==================================================================================================
-# Base response type enums
-# ==================================================================================================
+# Base response type enums ________________________________________________________________________
 
 class WebSocketBaseCommandResponseType(StrEnum):
     """
@@ -38,9 +36,7 @@ class WebSocketBaseStreamResponseType(StrEnum):
     TOOL_INVOCATION_REQUEST = "tool_invocation_request"
 
 
-# ==================================================================================================
-# Base response classes
-# ==================================================================================================
+# Base response classes ___________________________________________________________________________
 
 class WebSocketResponseBase(BaseModel):
     """
@@ -55,9 +51,7 @@ class WebSocketResponseBase(BaseModel):
     )
 
 
-# ==================================================================================================
-# Common command responses
-# ==================================================================================================
+# Common command responses ________________________________________________________________________
 
 class WebSocketPongResponse(WebSocketResponseBase):
     """Response to the ping command."""
@@ -100,9 +94,7 @@ class WebSocketErrorResponse(WebSocketResponseBase):
     )
 
 
-# ==================================================================================================
-# Common stream responses
-# ==================================================================================================
+# Common stream responses _________________________________________________________________________
 
 class WebSocketSessionEndedResponse(WebSocketResponseBase):
     """
@@ -147,11 +139,9 @@ class WebSocketToolInvocationRequestResponse(WebSocketResponseBase):
     )
 
 
-# ==================================================================================================
-# Browser WebSocket types
-# ==================================================================================================
+# Browser WebSocket types _________________________________________________________________________
 
-# Browser commands from client ____________________________________________________________________
+## Browser commands from client
 
 class WebSocketClientCommandType(StrEnum):
     """
@@ -306,7 +296,7 @@ class ParsedWebSocketClientCommand(BaseModel):
         )
 
 
-# Browser response type enums _____________________________________________________________________
+## Browser response type enums
 
 class WebSocketCommandResponseType(StrEnum):
     """
@@ -336,7 +326,7 @@ class WebSocketStreamResponseType(StrEnum):
     UPDATE = "update"
 
 
-# Browser-specific command responses ______________________________________________________________
+## Browser-specific command responses
 
 class WebSocketStatsResponse(WebSocketResponseBase):
     """
@@ -374,7 +364,7 @@ class WebSocketCurrentUrlResponse(WebSocketResponseBase):
     )
 
 
-# Browser-specific streamed responses _____________________________________________________________
+## Browser-specific streamed responses
 
 class WebSocketUpdateEvent(BaseModel):
     """
@@ -418,7 +408,7 @@ class WebSocketUpdateResponse(WebSocketResponseBase):
     )
 
 
-# Browser server response union ___________________________________________________________________
+## Browser server response union
 
 WebSocketServerResponse = (
     # command responses (from base)
@@ -438,11 +428,9 @@ WebSocketServerResponse = (
 )
 
 
-# ==================================================================================================
-# Guide WebSocket types
-# ==================================================================================================
+# Guide WebSocket types ___________________________________________________________________________
 
-# Guide commands from client ______________________________________________________________________
+## Guide commands from client
 
 class GuideWebSocketClientCommandType(StrEnum):
     """Commands that can be sent from the client to the guide agent."""
@@ -649,7 +637,7 @@ class ParsedGuideWebSocketClientCommand(BaseModel):
         )
 
 
-# Guide response type enums _______________________________________________________________________
+## Guide response type enums
 
 class GuideWebSocketCommandResponseType(StrEnum):
     """
@@ -680,7 +668,7 @@ class GuideWebSocketStreamResponseType(StrEnum):
     TOOL_INVOCATION_RESULT = "tool_invocation_result"
 
 
-# Guide-specific command responses ________________________________________________________________
+## Guide-specific command responses
 
 class GuideWebSocketMessageResponse(WebSocketResponseBase):
     """Agent chat message response."""
@@ -714,7 +702,7 @@ class GuideWebSocketStateResponse(WebSocketResponseBase):
     )
 
 
-# Guide-specific streamed responses _______________________________________________________________
+## Guide-specific streamed responses
 
 class GuideWebSocketToolInvocationResultResponse(WebSocketResponseBase):
     """Result after tool confirmation/denial/execution."""
@@ -738,7 +726,7 @@ class GuideWebSocketToolInvocationResultResponse(WebSocketResponseBase):
     )
 
 
-# Guide server response union _____________________________________________________________________
+## Guide server response union
 
 GuideWebSocketServerResponse = (
     # command responses (from base)
