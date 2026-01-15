@@ -81,3 +81,9 @@ class WebHackerError(Exception):
     """
     Base exception for all Web Hacker errors.
     """
+
+
+class UnknownToolError(Exception):
+    """
+    Raised when attempting to execute a tool that does not exist.
+    """

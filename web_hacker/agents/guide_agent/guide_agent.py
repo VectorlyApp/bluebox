@@ -25,6 +25,7 @@ from llms.tools.guide_agent_tools import (
     START_ROUTINE_DISCOVERY_TOOL_NAME,
     StartRoutineDiscoveryJobCreationParams,
 )
+from utils.exceptions import UnknownToolError
 from utils.logger import get_logger
 
 
@@ -209,7 +210,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             Tool execution result with guide_chat_id and params
 
         Raises:
-            ValueError: If tool_name is unknown
+            UnknownToolError: If tool_name is unknown
         """
         if tool_name == START_ROUTINE_DISCOVERY_TOOL_NAME:
             logger.info(
@@ -223,7 +224,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
                 **tool_arguments,
             }
 
-        raise ValueError(f"Unknown tool: {tool_name}")
+        raise UnknownToolError(f"Unknown tool: {tool_name}")
 
     # Public methods _______________________________________________________________________________________________________
 
