@@ -144,17 +144,22 @@ class WebSocketToolInvocationRequestResponse(WebSocketResponseBase):
 
 class WebSocketClientCommandType(StrEnum):
     """
-    Commands that can be sent from the client to /stream-cdp.
+    Commands that can be sent from the client to WebSocket endpoints.
     """
     # simple commands
     PING = "ping"
     GET_STATS = "get_stats"
     BACK = "back"
     GET_CURRENT_URL = "get_current_url"
+    GET_STATE = "get_state"
+    RESET = "reset"
 
     # commands that expect arguments in the message payload
     SUBSCRIBE = "subscribe"  # client sends "subscribe:<comma-separated categories>" OR "subscribe:all" OR "subscribe" (all)
     NAVIGATE = "navigate"  # client sends "navigate:<url>"
+    SEND_MESSAGE = "send_message"  # client sends "send_message:<content>"
+    CONFIRM_TOOL = "confirm_tool"  # client sends "confirm_tool:<invocation_id>"
+    DENY_TOOL = "deny_tool"  # client sends "deny_tool:<invocation_id>" or "deny_tool:<invocation_id>:<reason>"
 
 
 class ParsedWebSocketClientCommand(BaseModel):
@@ -205,6 +210,55 @@ class ParsedWebSocketClientCommand(BaseModel):
             return None
         return self.args
 
+    @property
+    def message_content(self) -> str | None:
+        """
+        Extract message content from send_message command.
+
+        Returns:
+            - None if not a send_message command
+            - Empty string if send_message with no content
+            - Content string if send_message with content
+        """
+        if self.command != WebSocketClientCommandType.SEND_MESSAGE:
+            return None
+        return self.args or ""
+
+    @property
+    def invocation_id(self) -> str | None:
+        """
+        Extract invocation ID from confirm_tool or deny_tool command.
+
+        Returns:
+            - None if not a confirm/deny command
+            - Invocation ID string if confirm/deny command
+        """
+        if self.command not in (
+            WebSocketClientCommandType.CONFIRM_TOOL,
+            WebSocketClientCommandType.DENY_TOOL,
+        ):
+            return None
+        if not self.args:
+            return None
+        # For deny_tool, args could be "invocation_id:reason"
+        return self.args.split(":")[0]
+
+    @property
+    def deny_reason(self) -> str | None:
+        """
+        Extract denial reason from deny_tool command.
+
+        Returns:
+            - None if not a deny_tool command or no reason provided
+            - Reason string if deny_tool with reason
+        """
+        if self.command != WebSocketClientCommandType.DENY_TOOL:
+            return None
+        if not self.args or ":" not in self.args:
+            return None
+        parts = self.args.split(":", 1)
+        return parts[1] if len(parts) > 1 else None
+
     @classmethod
     def parse_raw_websocket_command(cls, raw_message: str) -> Self:
         """
@@ -243,6 +297,12 @@ class ParsedWebSocketClientCommand(BaseModel):
 
         if message == WebSocketClientCommandType.GET_CURRENT_URL:
             return cls(command=WebSocketClientCommandType.GET_CURRENT_URL)
+
+        if message == WebSocketClientCommandType.GET_STATE:
+            return cls(command=WebSocketClientCommandType.GET_STATE)
+
+        if message == WebSocketClientCommandType.RESET:
+            return cls(command=WebSocketClientCommandType.RESET)
 
         # subscribe command (with optional arguments)
         if message.startswith(WebSocketClientCommandType.SUBSCRIBE):
@@ -288,6 +348,88 @@ class ParsedWebSocketClientCommand(BaseModel):
                 args=url,
             )
 
+        # send_message command (with optional content, preserves case)
+        if message.startswith(WebSocketClientCommandType.SEND_MESSAGE):
+            remainder = message[len(WebSocketClientCommandType.SEND_MESSAGE):]
+
+            if remainder == "":
+                return cls(command=WebSocketClientCommandType.SEND_MESSAGE, args=None)
+
+            if remainder.startswith(":"):
+                # preserve original case for message content
+                original_remainder = raw_message.strip()[
+                    len(WebSocketClientCommandType.SEND_MESSAGE) + 1:
+                ]
+                return cls(
+                    command=WebSocketClientCommandType.SEND_MESSAGE,
+                    args=original_remainder.strip() if original_remainder.strip() else None,
+                )
+
+            return cls(
+                command=None,
+                error=f'Invalid send_message command: "{raw_message}" (must be "send_message" or "send_message:<content>")',
+            )
+
+        # confirm_tool command (requires invocation_id)
+        if message.startswith(WebSocketClientCommandType.CONFIRM_TOOL):
+            remainder = message[len(WebSocketClientCommandType.CONFIRM_TOOL):]
+
+            if remainder == "":
+                return cls(
+                    command=None,
+                    error='confirm_tool requires an invocation_id (e.g., "confirm_tool:<invocation_id>")',
+                )
+
+            if remainder.startswith(":"):
+                original_remainder = raw_message.strip()[
+                    len(WebSocketClientCommandType.CONFIRM_TOOL) + 1:
+                ]
+                invocation_id = original_remainder.strip()
+                if not invocation_id:
+                    return cls(
+                        command=None,
+                        error='confirm_tool requires an invocation_id',
+                    )
+                return cls(
+                    command=WebSocketClientCommandType.CONFIRM_TOOL,
+                    args=invocation_id,
+                )
+
+            return cls(
+                command=None,
+                error=f'Invalid confirm_tool command: "{raw_message}"',
+            )
+
+        # deny_tool command (requires invocation_id, optional reason)
+        if message.startswith(WebSocketClientCommandType.DENY_TOOL):
+            remainder = message[len(WebSocketClientCommandType.DENY_TOOL):]
+
+            if remainder == "":
+                return cls(
+                    command=None,
+                    error='deny_tool requires an invocation_id (e.g., "deny_tool:<invocation_id>" or "deny_tool:<invocation_id>:<reason>")',
+                )
+
+            if remainder.startswith(":"):
+                original_remainder = raw_message.strip()[
+                    len(WebSocketClientCommandType.DENY_TOOL) + 1:
+                ]
+                args = original_remainder.strip()
+                if not args:
+                    return cls(
+                        command=None,
+                        error='deny_tool requires an invocation_id',
+                    )
+                return cls(
+                    command=WebSocketClientCommandType.DENY_TOOL,
+                    args=args,
+                )
+
+            return cls(
+                command=None,
+                error=f'Invalid deny_tool command: "{raw_message}"',
+            )
+
         # unknown command
         return cls(
             command=None,
@@ -300,29 +442,31 @@ class ParsedWebSocketClientCommand(BaseModel):
 class WebSocketCommandResponseType(StrEnum):
     """
     Response envelope types the server sends back to the client for direct commands.
-    Extends base types with browser-specific response types.
     """
     # inherited from base
     PONG = WebSocketBaseCommandResponseType.PONG
     SUCCESS = WebSocketBaseCommandResponseType.SUCCESS
     WARNING = WebSocketBaseCommandResponseType.WARNING
     ERROR = WebSocketBaseCommandResponseType.ERROR
-    # browser-specific
+    # endpoint-specific
     STATS = "stats"
     SUBSCRIBED = "subscribed"
     CURRENT_URL = "current_url"
+    MESSAGE = "message"
+    STATE = "state"
 
 
 class WebSocketStreamResponseType(StrEnum):
     """
-    Message types used when the server streams CDP monitor data.
-    Extends base types with browser-specific stream types.
+    Message types used when the server streams data to clients.
     """
     # inherited from base
     SESSION_ENDED = WebSocketBaseStreamResponseType.SESSION_ENDED
-    # browser-specific
+    TOOL_INVOCATION_REQUEST = WebSocketBaseStreamResponseType.TOOL_INVOCATION_REQUEST
+    # endpoint-specific
     SNAPSHOT = "snapshot"
     UPDATE = "update"
+    TOOL_INVOCATION_RESULT = "tool_invocation_result"
 
 
 ## Browser-specific command responses
@@ -407,284 +551,24 @@ class WebSocketUpdateResponse(WebSocketResponseBase):
     )
 
 
-## Browser server response union
+## Agent/guide command responses
 
-WebSocketServerResponse = (
-    # command responses (from base)
-    WebSocketPongResponse
-    | WebSocketSuccessResponse
-    | WebSocketWarningResponse
-    | WebSocketErrorResponse
-    # command responses (browser-specific)
-    | WebSocketStatsResponse
-    | WebSocketSubscribedResponse
-    | WebSocketCurrentUrlResponse
-    # streamed responses (from base)
-    | WebSocketSessionEndedResponse
-    # streamed responses (browser-specific)
-    | WebSocketSnapshotResponse
-    | WebSocketUpdateResponse
-)
-
-
-# Guide WebSocket types ___________________________________________________________________________
-
-## Guide commands from client
-
-class GuideWebSocketClientCommandType(StrEnum):
-    """Commands that can be sent from the client to the guide agent."""
-
-    # simple commands
-    PING = "ping"
-    GET_STATE = "get_state"
-    RESET = "reset"
-
-    # commands that expect arguments in the message payload
-    SEND_MESSAGE = "send_message"  # client sends "send_message:<content>"
-    CONFIRM_TOOL = "confirm_tool"  # client sends "confirm_tool:<invocation_id>"
-    DENY_TOOL = "deny_tool"  # client sends "deny_tool:<invocation_id>" or "deny_tool:<invocation_id>:<reason>"
-
-
-class ParsedGuideWebSocketClientCommand(BaseModel):
-    """Parsed websocket command with normalized command type and extracted arguments."""
-
-    command: GuideWebSocketClientCommandType | None = Field(
-        description="The parsed command type, or None if the command was invalid",
-    )
-    args: str | None = Field(
-        default=None,
-        description="Raw argument string extracted from the command",
-    )
-    error: str | None = Field(
-        default=None,
-        description="Error message if the command could not be parsed, or None if parsing succeeded",
-    )
-
-    @property
-    def is_valid(self) -> bool:
-        """Whether the command was successfully parsed."""
-        return self.command is not None and self.error is None
-
-    @property
-    def message_content(self) -> str | None:
-        """
-        Extract message content from send_message command.
-
-        Returns:
-            - None if not a send_message command
-            - Empty string if send_message with no content
-            - Content string if send_message with content
-        """
-        if self.command != GuideWebSocketClientCommandType.SEND_MESSAGE:
-            return None
-        return self.args or ""
-
-    @property
-    def invocation_id(self) -> str | None:
-        """
-        Extract invocation ID from confirm_tool or deny_tool command.
-
-        Returns:
-            - None if not a confirm/deny command
-            - Invocation ID string if confirm/deny command
-        """
-        if self.command not in (
-            GuideWebSocketClientCommandType.CONFIRM_TOOL,
-            GuideWebSocketClientCommandType.DENY_TOOL,
-        ):
-            return None
-        if not self.args:
-            return None
-        # For deny_tool, args could be "invocation_id:reason"
-        return self.args.split(":")[0]
-
-    @property
-    def deny_reason(self) -> str | None:
-        """
-        Extract denial reason from deny_tool command.
-
-        Returns:
-            - None if not a deny_tool command or no reason provided
-            - Reason string if deny_tool with reason
-        """
-        if self.command != GuideWebSocketClientCommandType.DENY_TOOL:
-            return None
-        if not self.args or ":" not in self.args:
-            return None
-        parts = self.args.split(":", 1)
-        return parts[1] if len(parts) > 1 else None
-
-    @classmethod
-    def parse_raw_websocket_command(cls, raw_message: str) -> Self:
-        """
-        Parse a raw websocket message into a structured command with arguments.
-
-        Args:
-            raw_message: The raw message string from the client
-
-        Returns:
-            ParsedGuideWebSocketClientCommand with normalized command type and extracted arguments
-
-        Examples:
-            >>> ParsedGuideWebSocketClientCommand.parse_raw_websocket_command("ping")
-            ParsedGuideWebSocketClientCommand(command="ping", args=None, error=None)
-
-            >>> ParsedGuideWebSocketClientCommand.parse_raw_websocket_command("send_message:Hello")
-            ParsedGuideWebSocketClientCommand(command="send_message", args="Hello", error=None)
-
-            >>> ParsedGuideWebSocketClientCommand.parse_raw_websocket_command("confirm_tool:abc-123")
-            ParsedGuideWebSocketClientCommand(command="confirm_tool", args="abc-123", error=None)
-        """
-        message = raw_message.strip().lower()
-
-        # simple commands (no arguments)
-        if message == GuideWebSocketClientCommandType.PING:
-            return cls(command=GuideWebSocketClientCommandType.PING)
-
-        if message == GuideWebSocketClientCommandType.GET_STATE:
-            return cls(command=GuideWebSocketClientCommandType.GET_STATE)
-
-        if message == GuideWebSocketClientCommandType.RESET:
-            return cls(command=GuideWebSocketClientCommandType.RESET)
-
-        # send_message command (preserve original case for content)
-        if message.startswith(GuideWebSocketClientCommandType.SEND_MESSAGE):
-            remainder = message[len(GuideWebSocketClientCommandType.SEND_MESSAGE):]
-
-            if remainder == "":
-                return cls(command=GuideWebSocketClientCommandType.SEND_MESSAGE, args=None)
-
-            if remainder.startswith(":"):
-                # preserve original case for message content
-                original_remainder = raw_message.strip()[
-                    len(GuideWebSocketClientCommandType.SEND_MESSAGE) + 1:
-                ]
-                return cls(
-                    command=GuideWebSocketClientCommandType.SEND_MESSAGE,
-                    args=original_remainder.strip() if original_remainder.strip() else None,
-                )
-
-            return cls(
-                command=None,
-                error=f'Invalid send_message command: "{raw_message}" (must be "send_message" or "send_message:<content>")',
-            )
-
-        # confirm_tool command
-        if message.startswith(GuideWebSocketClientCommandType.CONFIRM_TOOL):
-            remainder = message[len(GuideWebSocketClientCommandType.CONFIRM_TOOL):]
-
-            if remainder == "":
-                return cls(
-                    command=None,
-                    error='confirm_tool requires an invocation_id (e.g., "confirm_tool:<invocation_id>")',
-                )
-
-            if remainder.startswith(":"):
-                original_remainder = raw_message.strip()[
-                    len(GuideWebSocketClientCommandType.CONFIRM_TOOL) + 1:
-                ]
-                invocation_id = original_remainder.strip()
-                if not invocation_id:
-                    return cls(
-                        command=None,
-                        error='confirm_tool requires an invocation_id',
-                    )
-                return cls(
-                    command=GuideWebSocketClientCommandType.CONFIRM_TOOL,
-                    args=invocation_id,
-                )
-
-            return cls(
-                command=None,
-                error=f'Invalid confirm_tool command: "{raw_message}"',
-            )
-
-        # deny_tool command
-        if message.startswith(GuideWebSocketClientCommandType.DENY_TOOL):
-            remainder = message[len(GuideWebSocketClientCommandType.DENY_TOOL):]
-
-            if remainder == "":
-                return cls(
-                    command=None,
-                    error='deny_tool requires an invocation_id (e.g., "deny_tool:<invocation_id>" or "deny_tool:<invocation_id>:<reason>")',
-                )
-
-            if remainder.startswith(":"):
-                original_remainder = raw_message.strip()[
-                    len(GuideWebSocketClientCommandType.DENY_TOOL) + 1:
-                ]
-                args = original_remainder.strip()
-                if not args:
-                    return cls(
-                        command=None,
-                        error='deny_tool requires an invocation_id',
-                    )
-                return cls(
-                    command=GuideWebSocketClientCommandType.DENY_TOOL,
-                    args=args,
-                )
-
-            return cls(
-                command=None,
-                error=f'Invalid deny_tool command: "{raw_message}"',
-            )
-
-        # unknown command
-        return cls(
-            command=None,
-            error=f'Unknown command: "{raw_message}"',
-        )
-
-
-## Guide response type enums
-
-class GuideWebSocketCommandResponseType(StrEnum):
-    """
-    Response envelope types the server sends back to the client for direct commands.
-    Extends base types with guide-specific response types.
-    """
-
-    # inherited from base
-    PONG = WebSocketBaseCommandResponseType.PONG
-    SUCCESS = WebSocketBaseCommandResponseType.SUCCESS
-    WARNING = WebSocketBaseCommandResponseType.WARNING
-    ERROR = WebSocketBaseCommandResponseType.ERROR
-    # guide-specific
-    MESSAGE = "message"
-    STATE = "state"
-
-
-class GuideWebSocketStreamResponseType(StrEnum):
-    """
-    Message types used when the server streams guide agent updates.
-    Extends base types with guide-specific stream types.
-    """
-
-    # inherited from base
-    SESSION_ENDED = WebSocketBaseStreamResponseType.SESSION_ENDED
-    TOOL_INVOCATION_REQUEST = WebSocketBaseStreamResponseType.TOOL_INVOCATION_REQUEST
-    # guide-specific
-    TOOL_INVOCATION_RESULT = "tool_invocation_result"
-
-
-## Guide-specific command responses
-
-class GuideWebSocketMessageResponse(WebSocketResponseBase):
+class WebSocketMessageResponse(WebSocketResponseBase):
     """Agent chat message response."""
 
-    type: Literal[GuideWebSocketCommandResponseType.MESSAGE] = (
-        GuideWebSocketCommandResponseType.MESSAGE
+    type: Literal[WebSocketCommandResponseType.MESSAGE] = (
+        WebSocketCommandResponseType.MESSAGE
     )
     content: str = Field(
         description="The agent's message content",
     )
 
 
-class GuideWebSocketStateResponse(WebSocketResponseBase):
+class WebSocketStateResponse(WebSocketResponseBase):
     """Response to the get_state command with current conversation state."""
 
-    type: Literal[GuideWebSocketCommandResponseType.STATE] = (
-        GuideWebSocketCommandResponseType.STATE
+    type: Literal[WebSocketCommandResponseType.STATE] = (
+        WebSocketCommandResponseType.STATE
     )
     guide_chat_id: str = Field(
         description="Current session ID",
@@ -701,13 +585,13 @@ class GuideWebSocketStateResponse(WebSocketResponseBase):
     )
 
 
-## Guide-specific streamed responses
+## Agent/guide streamed responses
 
-class GuideWebSocketToolInvocationResultResponse(WebSocketResponseBase):
+class WebSocketToolInvocationResultResponse(WebSocketResponseBase):
     """Result after tool confirmation/denial/execution."""
 
-    type: Literal[GuideWebSocketStreamResponseType.TOOL_INVOCATION_RESULT] = (
-        GuideWebSocketStreamResponseType.TOOL_INVOCATION_RESULT
+    type: Literal[WebSocketStreamResponseType.TOOL_INVOCATION_RESULT] = (
+        WebSocketStreamResponseType.TOOL_INVOCATION_RESULT
     )
     invocation_id: str = Field(
         description="ID of the tool invocation",
@@ -725,20 +609,25 @@ class GuideWebSocketToolInvocationResultResponse(WebSocketResponseBase):
     )
 
 
-## Guide server response union
+## Server response unions
 
-GuideWebSocketServerResponse = (
+WebSocketServerResponse = (
     # command responses (from base)
     WebSocketPongResponse
     | WebSocketSuccessResponse
     | WebSocketWarningResponse
     | WebSocketErrorResponse
-    # command responses (guide-specific)
-    | GuideWebSocketMessageResponse
-    | GuideWebSocketStateResponse
+    # command responses (endpoint-specific)
+    | WebSocketStatsResponse
+    | WebSocketSubscribedResponse
+    | WebSocketCurrentUrlResponse
+    | WebSocketMessageResponse
+    | WebSocketStateResponse
     # streamed responses (from base)
     | WebSocketSessionEndedResponse
     | WebSocketToolInvocationRequestResponse
-    # streamed responses (guide-specific)
-    | GuideWebSocketToolInvocationResultResponse
+    # streamed responses (endpoint-specific)
+    | WebSocketSnapshotResponse
+    | WebSocketUpdateResponse
+    | WebSocketToolInvocationResultResponse
 )
