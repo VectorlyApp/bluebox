@@ -1,18 +1,315 @@
+#!/usr/bin/env python3
 """
-scripts/run
+scripts/run_guide_agent.py
 
-Run the guide agent on the terminal.
+Interactive terminal interface for the Guide Agent.
+Guides users through creating web automation routines.
 """
 
-import argparse
+import json
+import sys
+import textwrap
+from typing import Any
 
 from web_hacker.agents.guide_agent.guide_agent import GuideAgent
+from web_hacker.data_models.chat import (
+    ChatMessageType,
+    EmittedChatMessage,
+    PendingToolInvocation,
+    ToolInvocationStatus,
+)
+
+
+# ANSI color codes
+class Colors:
+    """ANSI escape codes for terminal colors."""
+
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    ITALIC = "\033[3m"
+    UNDERLINE = "\033[4m"
+
+    # Foreground colors
+    BLACK = "\033[30m"
+    RED = "\033[31m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    BLUE = "\033[34m"
+    MAGENTA = "\033[35m"
+    CYAN = "\033[36m"
+    WHITE = "\033[37m"
+
+    # Bright foreground
+    BRIGHT_BLACK = "\033[90m"
+    BRIGHT_RED = "\033[91m"
+    BRIGHT_GREEN = "\033[92m"
+    BRIGHT_YELLOW = "\033[93m"
+    BRIGHT_BLUE = "\033[94m"
+    BRIGHT_MAGENTA = "\033[95m"
+    BRIGHT_CYAN = "\033[96m"
+    BRIGHT_WHITE = "\033[97m"
+
+    # Background colors
+    BG_BLACK = "\033[40m"
+    BG_RED = "\033[41m"
+    BG_GREEN = "\033[42m"
+    BG_YELLOW = "\033[43m"
+    BG_BLUE = "\033[44m"
+    BG_MAGENTA = "\033[45m"
+    BG_CYAN = "\033[46m"
+    BG_WHITE = "\033[47m"
+
+
+def colorize(text: str, *codes: str) -> str:
+    """Apply ANSI color codes to text."""
+    return "".join(codes) + text + Colors.RESET
+
+
+def print_wrapped(text: str, indent: str = "  ", width: int = 80) -> None:
+    """Print text with word wrapping and indentation."""
+    lines = text.split("\n")
+    for line in lines:
+        if line.strip():
+            wrapped = textwrap.fill(line, width=width, initial_indent=indent, subsequent_indent=indent)
+            print(wrapped)
+        else:
+            print()
+
+
+class TerminalGuideChat:
+    """Interactive terminal chat interface for the Guide Agent."""
+
+    BANNER = r"""
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║                                                                  ║
+    ║  ██╗   ██╗███████╗ ██████╗████████╗ ██████╗ ██████╗ ██╗  ██╗   ██╗║
+    ║  ██║   ██║██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██╔══██╗██║  ╚██╗ ██╔╝║
+    ║  ██║   ██║█████╗  ██║        ██║   ██║   ██║██████╔╝██║   ╚████╔╝ ║
+    ║  ╚██╗ ██╔╝██╔══╝  ██║        ██║   ██║   ██║██╔══██╗██║    ╚██╔╝  ║
+    ║   ╚████╔╝ ███████╗╚██████╗   ██║   ╚██████╔╝██║  ██║███████╗██║   ║
+    ║    ╚═══╝  ╚══════╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝   ║
+    ║                                                                  ║
+    ║                      Guide Agent Terminal                        ║
+    ║                                                                  ║
+    ╚══════════════════════════════════════════════════════════════════╝
+    """
+
+    WELCOME_MESSAGE = """
+    Welcome! I'll help you create a web automation routine.
+
+    Just describe the task you want to automate (e.g., "Search for flights
+    from NYC to LA"), and I'll guide you through defining the parameters
+    and constraints.
+
+    Commands:
+      • Type your message and press Enter to chat
+      • Type 'quit' or 'exit' to leave
+      • Type 'reset' to start a new conversation
+    """
+
+    def __init__(self) -> None:
+        """Initialize the terminal chat interface."""
+        self._pending_invocation: PendingToolInvocation | None = None
+        self._agent = GuideAgent(
+            emit_message_callable=self._handle_message,
+        )
+
+    def _handle_message(self, message: EmittedChatMessage) -> None:
+        """
+        Handle messages emitted by the Guide Agent.
+
+        Args:
+            message: The emitted message from the agent.
+        """
+        if message.type == ChatMessageType.CHAT_RESPONSE:
+            self._print_assistant_message(message.content or "")
+
+        elif message.type == ChatMessageType.TOOL_INVOCATION_REQUEST:
+            if message.tool_invocation:
+                self._pending_invocation = message.tool_invocation
+                self._print_tool_request(message.tool_invocation)
+
+        elif message.type == ChatMessageType.TOOL_INVOCATION_RESULT:
+            if message.tool_invocation:
+                self._print_tool_result(
+                    message.tool_invocation,
+                    message.tool_result,
+                    message.error,
+                )
+
+        elif message.type == ChatMessageType.ERROR:
+            self._print_error(message.error or "Unknown error")
+
+    def _print_assistant_message(self, content: str) -> None:
+        """Print an assistant response."""
+        print()
+        print(colorize("  Assistant", Colors.BOLD, Colors.CYAN) + colorize(":", Colors.DIM))
+        print()
+        print_wrapped(content, indent="    ")
+        print()
+
+    def _print_tool_request(self, invocation: PendingToolInvocation) -> None:
+        """Print a tool invocation request with formatted arguments."""
+        print()
+        print(colorize("  ┌─────────────────────────────────────────────────────────────────┐", Colors.YELLOW))
+        print(colorize("  │", Colors.YELLOW) + colorize("  TOOL INVOCATION REQUEST", Colors.BOLD, Colors.YELLOW) + colorize("                                       │", Colors.YELLOW))
+        print(colorize("  ├─────────────────────────────────────────────────────────────────┤", Colors.YELLOW))
+        print(colorize("  │", Colors.YELLOW))
+
+        # Tool name
+        print(colorize("  │  ", Colors.YELLOW) + colorize("Tool: ", Colors.DIM) + colorize(invocation.tool_name, Colors.BRIGHT_WHITE, Colors.BOLD))
+
+        # Arguments
+        print(colorize("  │", Colors.YELLOW))
+        print(colorize("  │  ", Colors.YELLOW) + colorize("Arguments:", Colors.DIM))
+
+        args_json = json.dumps(invocation.tool_arguments, indent=4)
+        for line in args_json.split("\n"):
+            print(colorize("  │    ", Colors.YELLOW) + colorize(line, Colors.WHITE))
+
+        print(colorize("  │", Colors.YELLOW))
+        print(colorize("  └─────────────────────────────────────────────────────────────────┘", Colors.YELLOW))
+        print()
+        print(colorize("  Do you want to proceed? ", Colors.BRIGHT_YELLOW) + colorize("[y/n]", Colors.DIM) + ": ", end="")
+
+    def _print_tool_result(
+        self,
+        invocation: PendingToolInvocation,
+        result: dict[str, Any] | None,
+        error: str | None,
+    ) -> None:
+        """Print a tool invocation result."""
+        print()
+
+        if invocation.status == ToolInvocationStatus.DENIED:
+            print(colorize("  ✗ Tool invocation denied", Colors.YELLOW))
+
+        elif invocation.status == ToolInvocationStatus.EXECUTED:
+            print(colorize("  ✓ Tool executed successfully", Colors.GREEN, Colors.BOLD))
+            if result:
+                print()
+                print(colorize("  Result:", Colors.DIM))
+                result_json = json.dumps(result, indent=4)
+                for line in result_json.split("\n"):
+                    print(colorize("    " + line, Colors.GREEN))
+
+        elif invocation.status == ToolInvocationStatus.FAILED:
+            print(colorize("  ✗ Tool execution failed", Colors.RED, Colors.BOLD))
+            if error:
+                print(colorize(f"    Error: {error}", Colors.RED))
+
+        print()
+
+    def _print_error(self, error: str) -> None:
+        """Print an error message."""
+        print()
+        print(colorize("  ⚠ Error: ", Colors.RED, Colors.BOLD) + colorize(error, Colors.RED))
+        print()
+
+    def _print_user_prompt(self) -> None:
+        """Print the user input prompt."""
+        print(colorize("  You", Colors.BOLD, Colors.GREEN) + colorize(": ", Colors.DIM), end="")
+
+    def _handle_tool_confirmation(self, user_input: str) -> bool:
+        """
+        Handle yes/no confirmation for pending tool invocation.
+
+        Args:
+            user_input: The user's input.
+
+        Returns:
+            True if the confirmation was handled, False otherwise.
+        """
+        if not self._pending_invocation:
+            return False
+
+        normalized = user_input.strip().lower()
+
+        if normalized in ("y", "yes"):
+            invocation_id = self._pending_invocation.invocation_id
+            self._pending_invocation = None
+            self._agent.confirm_tool_invocation(invocation_id)
+            return True
+
+        elif normalized in ("n", "no"):
+            invocation_id = self._pending_invocation.invocation_id
+            self._pending_invocation = None
+            self._agent.deny_tool_invocation(invocation_id, reason="User declined")
+            return True
+
+        else:
+            print(colorize("  Please enter 'y' or 'n': ", Colors.YELLOW), end="")
+            return True  # Still in confirmation mode
+
+    def run(self) -> None:
+        """Run the interactive chat loop."""
+        # Print banner and welcome
+        print(colorize(self.BANNER, Colors.CYAN, Colors.BOLD))
+        print(colorize(self.WELCOME_MESSAGE, Colors.DIM))
+        print(colorize("  " + "─" * 67, Colors.DIM))
+        print()
+
+        while True:
+            try:
+                # Handle pending tool confirmation
+                if self._pending_invocation:
+                    user_input = input()
+                    if self._handle_tool_confirmation(user_input):
+                        if not self._pending_invocation:
+                            # Confirmation was processed, continue to next iteration
+                            continue
+                        else:
+                            # Still waiting for valid y/n
+                            continue
+                else:
+                    self._print_user_prompt()
+                    user_input = input()
+
+                # Check for commands
+                normalized = user_input.strip().lower()
+
+                if normalized in ("quit", "exit", "q"):
+                    print()
+                    print(colorize("  Goodbye! 👋", Colors.CYAN, Colors.BOLD))
+                    print()
+                    break
+
+                if normalized == "reset":
+                    self._agent.reset()
+                    self._pending_invocation = None
+                    print()
+                    print(colorize("  ↺ Conversation reset", Colors.YELLOW))
+                    print()
+                    continue
+
+                if not user_input.strip():
+                    continue
+
+                # Process the message
+                self._agent.process_user_message(user_input)
+
+            except KeyboardInterrupt:
+                print()
+                print(colorize("\n  Interrupted. Goodbye! 👋", Colors.CYAN))
+                print()
+                break
+
+            except EOFError:
+                print()
+                print(colorize("\n  Goodbye! 👋", Colors.CYAN))
+                print()
+                break
 
 
 def main() -> None:
-    """Run the guide agent."""
-    guide_agent = GuideAgent()
-    guide_agent.run()
+    """Entry point for the guide agent terminal."""
+    try:
+        chat = TerminalGuideChat()
+        chat.run()
+    except Exception as e:
+        print(colorize(f"\n  Fatal error: {e}", Colors.RED, Colors.BOLD), file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
