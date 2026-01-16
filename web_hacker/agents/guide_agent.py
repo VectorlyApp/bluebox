@@ -88,8 +88,8 @@ Your job is to help users define their automation needs by gathering:
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedChatMessage], None],
-        persist_chat_callable: Callable[[Chat], None] | None = None,
-        persist_chat_thread_callable: Callable[[ChatThread], None] | None = None,
+        persist_chat_callable: Callable[[Chat], Chat] | None = None,
+        persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_MINI,
         chat_thread: ChatThread | None = None,
@@ -101,7 +101,9 @@ Your job is to help users define their automation needs by gathering:
         Args:
             emit_message_callable: Callback function to emit messages to the host.
             persist_chat_callable: Optional callback to persist Chat objects (for DynamoDB).
+                Returns the Chat with the final ID assigned by the persistence layer.
             persist_chat_thread_callable: Optional callback to persist ChatThread (for DynamoDB).
+                Returns the ChatThread with the final ID assigned by the persistence layer.
             stream_chunk_callable: Optional callback for streaming text chunks as they arrive.
             llm_model: The LLM model to use for conversation.
             chat_thread: Existing ChatThread to continue, or None for new conversation.
@@ -127,7 +129,7 @@ Your job is to help users define their automation needs by gathering:
 
         # Persist initial thread if callback provided
         if self._persist_chat_thread_callable and chat_thread is None:
-            self._persist_chat_thread_callable(self._thread)
+            self._thread = self._persist_chat_thread_callable(self._thread)
 
         logger.info(
             "Instantiated GuideAgent with model: %s, thread_id: %s",
@@ -168,22 +170,26 @@ Your job is to help users define their automation needs by gathering:
             content: The content of the message.
 
         Returns:
-            The created Chat object.
+            The created Chat object (with final ID from persistence layer if callback provided).
         """
         chat = Chat(
             thread_id=self._thread.id,
             role=role,
             content=content,
         )
+
+        # Persist chat first if callback provided (may assign new ID)
+        if self._persist_chat_callable:
+            chat = self._persist_chat_callable(chat)
+
+        # Store with final ID
         self._chats[chat.id] = chat
         self._thread.message_ids.append(chat.id)
         self._thread.updated_at = int(datetime.now().timestamp())
 
-        # Persist if callbacks provided
-        if self._persist_chat_callable:
-            self._persist_chat_callable(chat)
+        # Persist thread if callback provided
         if self._persist_chat_thread_callable:
-            self._persist_chat_thread_callable(self._thread)
+            self._thread = self._persist_chat_thread_callable(self._thread)
 
         return chat
 
@@ -231,7 +237,7 @@ Your job is to help users define their automation needs by gathering:
         self._thread.updated_at = int(datetime.now().timestamp())
 
         if self._persist_chat_thread_callable:
-            self._persist_chat_thread_callable(self._thread)
+            self._thread = self._persist_chat_thread_callable(self._thread)
 
         logger.info(
             "Created tool invocation request: %s (tool: %s)",
@@ -419,7 +425,7 @@ Your job is to help users define their automation needs by gathering:
             self._thread.updated_at = int(datetime.now().timestamp())
 
             if self._persist_chat_thread_callable:
-                self._persist_chat_thread_callable(self._thread)
+                self._thread = self._persist_chat_thread_callable(self._thread)
 
             self._emit_message(
                 EmittedChatMessage(
@@ -493,7 +499,7 @@ Your job is to help users define their automation needs by gathering:
         self._thread.updated_at = int(datetime.now().timestamp())
 
         if self._persist_chat_thread_callable:
-            self._persist_chat_thread_callable(self._thread)
+            self._thread = self._persist_chat_thread_callable(self._thread)
 
         # Add denial to conversation history
         denial_message = "Tool invocation denied"
@@ -544,7 +550,7 @@ Your job is to help users define their automation needs by gathering:
         self._chats = {}
 
         if self._persist_chat_thread_callable:
-            self._persist_chat_thread_callable(self._thread)
+            self._thread = self._persist_chat_thread_callable(self._thread)
 
         logger.info(
             "Reset conversation from %s to %s",
