@@ -132,11 +132,9 @@ class LLMChatResponse(BaseModel):
     )
 
 
-class ChatLite(BaseModel):
+class Chat(BaseModel):
     """
     A single message in a conversation.
-
-    Lightweight model for internal agent use.
     """
     id: str = Field(
         default_factory=lambda: str(uuid4()),
@@ -156,11 +154,9 @@ class ChatLite(BaseModel):
     )
 
 
-class ChatThreadLite(BaseModel):
+class ChatThread(BaseModel):
     """
     Container for a conversation thread.
-
-    Lightweight model for internal agent use.
     """
     id: str = Field(
         default_factory=lambda: str(uuid4()),

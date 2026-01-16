@@ -9,10 +9,10 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from web_hacker.data_models.llms.interaction import (
-    ChatLite,
+    Chat,
     ChatMessageType,
     ChatRole,
-    ChatThreadLite,
+    ChatThread,
     EmittedChatMessage,
     LLMChatResponse,
     PendingToolInvocation,
@@ -32,7 +32,7 @@ class GuideAgent:
     """
     Guide agent that guides the user through the process of creating or editing a routine.
 
-    The agent maintains a ChatThreadLite with ChatLite messages and uses LLM tool-calling to determine
+    The agent maintains a ChatThread with Chat messages and uses LLM tool-calling to determine
     when to initiate routine discovery. Tool invocations require user confirmation
     via callback before execution.
 
@@ -88,24 +88,24 @@ Your job is to help users define their automation needs by gathering:
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedChatMessage], None],
-        persist_chat_callable: Callable[[ChatLite], None] | None = None,
-        persist_chat_thread_callable: Callable[[ChatThreadLite], None] | None = None,
+        persist_chat_callable: Callable[[Chat], None] | None = None,
+        persist_chat_thread_callable: Callable[[ChatThread], None] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_MINI,
-        chat_thread: ChatThreadLite | None = None,
-        existing_chats: list[ChatLite] | None = None,
+        chat_thread: ChatThread | None = None,
+        existing_chats: list[Chat] | None = None,
     ) -> None:
         """
         Initialize the guide agent.
 
         Args:
             emit_message_callable: Callback function to emit messages to the host.
-            persist_chat_callable: Optional callback to persist ChatLite objects (for DynamoDB).
-            persist_chat_thread_callable: Optional callback to persist ChatThreadLite (for DynamoDB).
+            persist_chat_callable: Optional callback to persist Chat objects (for DynamoDB).
+            persist_chat_thread_callable: Optional callback to persist ChatThread (for DynamoDB).
             stream_chunk_callable: Optional callback for streaming text chunks as they arrive.
             llm_model: The LLM model to use for conversation.
-            chat_thread: Existing ChatThreadLite to continue, or None for new conversation.
-            existing_chats: Existing ChatLite messages if loading from persistence.
+            chat_thread: Existing ChatThread to continue, or None for new conversation.
+            existing_chats: Existing Chat messages if loading from persistence.
         """
         self._emit_message_callable = emit_message_callable
         self._persist_chat_callable = persist_chat_callable
@@ -119,8 +119,8 @@ Your job is to help users define their automation needs by gathering:
         self._register_tools()
 
         # Initialize or load conversation state
-        self._thread = chat_thread or ChatThreadLite()
-        self._chats: dict[str, ChatLite] = {}
+        self._thread = chat_thread or ChatThread()
+        self._chats: dict[str, Chat] = {}
         if existing_chats:
             for chat in existing_chats:
                 self._chats[chat.id] = chat
@@ -159,18 +159,18 @@ Your job is to help users define their automation needs by gathering:
         """Emit a message via the callback."""
         self._emit_message_callable(message)
 
-    def _add_chat(self, role: ChatRole, content: str) -> ChatLite:
+    def _add_chat(self, role: ChatRole, content: str) -> Chat:
         """
-        Create and store a new ChatLite, update thread, persist if callbacks set.
+        Create and store a new Chat, update thread, persist if callbacks set.
 
         Args:
             role: The role of the message sender.
             content: The content of the message.
 
         Returns:
-            The created ChatLite object.
+            The created Chat object.
         """
-        chat = ChatLite(
+        chat = Chat(
             thread_id=self._thread.id,
             role=role,
             content=content,
@@ -189,7 +189,7 @@ Your job is to help users define their automation needs by gathering:
 
     def _build_messages_for_llm(self) -> list[dict[str, str]]:
         """
-        Build messages list for LLM from ChatLite objects.
+        Build messages list for LLM from Chat objects.
 
         Returns:
             List of message dicts with 'role' and 'content' keys.
@@ -220,7 +220,6 @@ Your job is to help users define their automation needs by gathering:
             PendingToolInvocation stored in state and ready to emit
         """
         invocation_id = str(uuid4())
-
         pending = PendingToolInvocation(
             invocation_id=invocation_id,
             tool_name=tool_name,
@@ -514,21 +513,21 @@ Your job is to help users define their automation needs by gathering:
             reason or "no reason provided",
         )
 
-    def get_thread(self) -> ChatThreadLite:
+    def get_thread(self) -> ChatThread:
         """
         Get the current conversation thread.
 
         Returns:
-            Current ChatThreadLite
+            Current ChatThread
         """
         return self._thread
 
-    def get_chats(self) -> list[ChatLite]:
+    def get_chats(self) -> list[Chat]:
         """
-        Get all ChatLite messages in order.
+        Get all Chat messages in order.
 
         Returns:
-            List of ChatLite objects in conversation order.
+            List of Chat objects in conversation order.
         """
         return [self._chats[chat_id] for chat_id in self._thread.message_ids if chat_id in self._chats]
 
@@ -539,7 +538,7 @@ Your job is to help users define their automation needs by gathering:
         Generates a new thread and clears all messages.
         """
         old_thread_id = self._thread.id
-        self._thread = ChatThreadLite()
+        self._thread = ChatThread()
         self._chats = {}
 
         if self._persist_chat_thread_callable:
