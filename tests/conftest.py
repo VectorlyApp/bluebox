@@ -6,11 +6,30 @@ Configuration for pytest.
 
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from web_hacker.data_models.routine.routine import Routine
 from web_hacker.data_models.routine.operation import RoutineOperationUnion
+
+
+@pytest.fixture(autouse=True)
+def mock_openai_clients() -> dict[str, MagicMock]:
+    """
+    Mock OpenAI clients to avoid needing real API keys in tests.
+
+    This fixture automatically patches the OpenAI and AsyncOpenAI classes
+    wherever they're imported in the openai_client module, so tests can
+    instantiate OpenAIClient without a valid API key.
+    """
+    with (
+        patch("web_hacker.llms.openai_client.OpenAI") as mock_openai,
+        patch("web_hacker.llms.openai_client.AsyncOpenAI") as mock_async_openai,
+    ):
+        mock_openai.return_value = MagicMock()
+        mock_async_openai.return_value = MagicMock()
+        yield {"openai": mock_openai, "async_openai": mock_async_openai}
 
 
 @pytest.fixture(scope="session")
