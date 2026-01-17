@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from toon import encode
 
 from llm_context_manager_v3 import LLMContextManagerV3
-from web_hacker.routine_discovery.context_manager import ContextManager
+from web_hacker.routine_discovery.context_manager import DiscoveryDataStore
 from web_hacker.utils.llm_utils import collect_text_from_response, manual_llm_parse_text_to_model
 from web_hacker.data_models.routine_discovery.llm_responses import (
     TransactionIdentificationResponse,
@@ -42,7 +42,7 @@ class RoutineDiscoveryAgent(BaseModel):
     Agent for discovering routines from the network transactions.
     """
     client: OpenAI
-    context_manager: ContextManager
+    context_manager: DiscoveryDataStore
     task: str
     emit_message_callable: Callable[[RoutineDiscoveryMessage], None]
     llm_model: str = Field(default="gpt-5.1")

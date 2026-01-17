@@ -9,8 +9,8 @@ import shutil
 from web_hacker.utils.data_utils import get_text_from_html
 
 
-class ContextManager(BaseModel, ABC):
-    """Abstract base class for managing context data."""
+class DiscoveryDataStore(BaseModel, ABC):
+    """Abstract base class for managing discovery data (captures, docs, etc.)."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -70,7 +70,7 @@ class ContextManager(BaseModel, ABC):
         pass
 
 
-class LocalContextManager(ContextManager):
+class LocalDiscoveryDataStore(DiscoveryDataStore):
 
     client: OpenAI
     tmp_dir: str

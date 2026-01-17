@@ -10,7 +10,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from ..routine_discovery.agent import RoutineDiscoveryAgent
-from ..routine_discovery.context_manager import LocalContextManager
+from ..routine_discovery.context_manager import LocalDiscoveryDataStore
 from ..data_models.routine.routine import Routine
 from ..data_models.routine_discovery.message import RoutineDiscoveryMessage
 from ..data_models.routine_discovery.llm_responses import TestParametersResponse
@@ -68,7 +68,7 @@ class RoutineDiscovery:
         self.message_callback = message_callback or self._default_message_handler
 
         self.agent: Optional[RoutineDiscoveryAgent] = None
-        self.context_manager: Optional[LocalContextManager] = None
+        self.context_manager: Optional[LocalDiscoveryDataStore] = None
 
     def _default_message_handler(self, message: RoutineDiscoveryMessage) -> None:
         """Default message handler that logs to console."""
@@ -97,7 +97,7 @@ class RoutineDiscovery:
             os.makedirs(self.output_dir, exist_ok=True)
 
             # Initialize context manager
-            self.context_manager = LocalContextManager(
+            self.context_manager = LocalDiscoveryDataStore(
                 client=self.client,
                 tmp_dir=str(Path(self.output_dir) / "tmp"),
                 transactions_dir=str(Path(self.cdp_captures_dir) / "network" / "transactions"),

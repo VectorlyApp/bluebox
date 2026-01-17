@@ -1,7 +1,7 @@
 """
 Chat Agent - Interactive Q&A about routines and browser captures.
 
-Uses LocalContextManagerV2 to access:
+Uses LocalDiscoveryDataStoreV2 to access:
 - Agent documentation (routines, operations, parameters, placeholders)
 - CDP captures (network transactions, storage, window properties)
 
@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, ConfigDict, ValidationError
 from llm_context_manager_v3 import LLMContextManagerV3
 from web_hacker.data_models.routine.routine import Routine
 from web_hacker.data_models.routine.execution import RoutineExecutionResult
-from web_hacker.routine_discovery.context_manager_v2 import LocalContextManagerV2
+from web_hacker.routine_discovery.context_manager_v2 import LocalDiscoveryDataStoreV2
 from web_hacker.utils.logger import get_logger
 
 # Max result size to include directly in response (50KB)
@@ -219,7 +219,7 @@ class ChatAgent(BaseModel):
     """
 
     client: OpenAI
-    context_manager: LocalContextManagerV2
+    context_manager: LocalDiscoveryDataStoreV2
     llm_model: str = Field(default="gpt-5.1")
     llm_context: LLMContextManagerV3 | None = Field(default=None)
     output_dir: str | None = Field(default=None)
@@ -633,7 +633,7 @@ def create_chat_agent(
     # Build paths from captures dir
     cdp_path = Path(cdp_captures_dir)
 
-    context_manager = LocalContextManagerV2(
+    context_manager = LocalDiscoveryDataStoreV2(
         client=client,
         tmp_dir=str(cdp_path / "tmp"),
         transactions_dir=str(cdp_path / "network" / "transactions"),

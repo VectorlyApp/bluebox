@@ -1,5 +1,5 @@
 """
-LocalContextManager V2 - With Agent Documentation
+LocalDiscoveryDataStore V2 - With Agent Documentation
 
 Key difference from V1: Loads agent_docs/*.md files into the vectorstore
 so the LLM has access to documentation about routines, operations, parameters, etc.
@@ -14,16 +14,16 @@ import time
 import shutil
 
 from web_hacker.utils.data_utils import get_text_from_html
-from web_hacker.routine_discovery.context_manager import ContextManager
+from web_hacker.routine_discovery.context_manager import DiscoveryDataStore
 
 
 # Default path to agent_docs (relative to repo root)
 DEFAULT_AGENT_DOCS_DIR = Path(__file__).parent.parent.parent / "agent_docs"
 
 
-class LocalContextManagerV2(ContextManager):
+class LocalDiscoveryDataStoreV2(DiscoveryDataStore):
     """
-    LocalContextManager with agent documentation support.
+    LocalDiscoveryDataStore with agent documentation support.
 
     Loads agent_docs/*.md files into the vectorstore so the LLM has
     documentation about routines, operations, parameters, placeholders, etc.
