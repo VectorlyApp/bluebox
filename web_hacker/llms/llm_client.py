@@ -1,7 +1,7 @@
 """
 web_hacker/llms/llm_client.py
 
-Unified LLM client supporting OpenAI and Anthropic models.
+Unified LLM client supporting OpenAI models.
 """
 
 from collections.abc import Generator
@@ -10,16 +10,9 @@ from typing import Any, Callable, TypeVar
 from pydantic import BaseModel
 
 from web_hacker.data_models.llms.interaction import LLMChatResponse
-from web_hacker.data_models.llms.vendors import (
-    LLMModel,
-    LLMVendor,
-    OpenAIModel,
-    get_model_vendor,
-)
-from web_hacker.llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
-from web_hacker.llms.abstract_llm_vendor_client import AbstractLLMVendorClient
-from web_hacker.llms.anthropic_client import AnthropicClient
+from web_hacker.data_models.llms.vendors import OpenAIAPIType, OpenAIModel
 from web_hacker.llms.openai_client import OpenAIClient
+from web_hacker.llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
 from web_hacker.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -30,37 +23,25 @@ T = TypeVar("T", bound=BaseModel)
 
 class LLMClient:
     """
-    Unified LLM client class for interacting with OpenAI and Anthropic APIs.
+    Unified LLM client class for interacting with OpenAI APIs.
 
-    This is a facade that delegates to vendor-specific clients (OpenAIClient,
-    AnthropicClient) based on the selected model.
+    This is a facade that delegates to OpenAIClient and provides
+    a convenient interface for tool registration.
 
     Supports:
-    - Sync and async text generation
+    - Sync and async API calls
+    - Streaming responses
     - Structured responses using Pydantic models
     - Tool/function registration
+    - Both Chat Completions and Responses APIs
     """
 
     # Magic methods ________________________________________________________________________________________________________
 
-    def __init__(
-        self,
-        llm_model: LLMModel,
-    ) -> None:
+    def __init__(self, llm_model: OpenAIModel) -> None:
         self.llm_model = llm_model
-        self.vendor = get_model_vendor(llm_model)
-
-        # initialize the appropriate vendor client
-        self._vendor_client: AbstractLLMVendorClient
-        if self.vendor == LLMVendor.OPENAI:
-            self._vendor_client = OpenAIClient(model=llm_model)
-        elif self.vendor == LLMVendor.ANTHROPIC:
-            self._vendor_client = AnthropicClient(model=llm_model)
-        else:
-            raise ValueError(f"Unsupported vendor: {self.vendor}")
-
-        logger.info("Instantiated LLMClient with model: %s (vendor: %s)", llm_model, self.vendor)
-
+        self._client = OpenAIClient(model=llm_model)
+        logger.info("Instantiated LLMClient with model: %s", llm_model)
 
     # Public methods _______________________________________________________________________________________________________
 
@@ -81,7 +62,7 @@ class LLMClient:
             parameters: JSON Schema describing the tool's parameters.
         """
         logger.debug("Registering tool %s (description: %s) with parameters: %s", name, description, parameters)
-        self._vendor_client.register_tool(name, description, parameters)
+        self._client.register_tool(name, description, parameters)
 
     def register_tool_from_function(self, func: Callable[..., Any]) -> None:
         """
@@ -102,174 +83,139 @@ class LLMClient:
 
     def clear_tools(self) -> None:
         """Clear all registered tools."""
-        self._vendor_client.clear_tools()
+        self._client.clear_tools()
         logger.debug("Cleared all registered tools")
 
-    ## Text generation
+    ## Unified API methods
 
-    def get_text_sync(
+    def call_sync(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, str]] | None = None,
+        input: str | None = None,
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
-    ) -> str:
+        response_model: type[T] | None = None,
+        extended_reasoning: bool = False,
+        stateful: bool = False,
+        previous_response_id: str | None = None,
+        api_type: OpenAIAPIType | None = None,
+    ) -> LLMChatResponse | T:
         """
-        Get a text response synchronously.
+        Unified sync call to OpenAI.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
+            input: Input string (Responses API shorthand).
             system_prompt: Optional system prompt for context.
-            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
-            temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
+            max_tokens: Maximum tokens in the response.
+            temperature: Sampling temperature (0.0-1.0).
+            response_model: Pydantic model class for structured response.
+            extended_reasoning: Enable extended reasoning (Responses API only).
+            stateful: Enable stateful conversation (Responses API only).
+            previous_response_id: Previous response ID for chaining (Responses API only).
+            api_type: Explicit API type, or None for auto-resolution.
 
         Returns:
-            The generated text response.
+            LLMChatResponse or parsed Pydantic model if response_model is provided.
         """
-        return self._vendor_client.get_text_sync(
-            messages,
-            system_prompt,
-            max_tokens,
-            temperature,
+        return self._client.call_sync(
+            messages=messages,
+            input=input,
+            system_prompt=system_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            response_model=response_model,
+            extended_reasoning=extended_reasoning,
+            stateful=stateful,
+            previous_response_id=previous_response_id,
+            api_type=api_type,
         )
 
-    async def get_text_async(
+    async def call_async(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, str]] | None = None,
+        input: str | None = None,
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
-    ) -> str:
+        response_model: type[T] | None = None,
+        extended_reasoning: bool = False,
+        stateful: bool = False,
+        previous_response_id: str | None = None,
+        api_type: OpenAIAPIType | None = None,
+    ) -> LLMChatResponse | T:
         """
-        Get a text response asynchronously.
+        Unified async call to OpenAI.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
+            input: Input string (Responses API shorthand).
             system_prompt: Optional system prompt for context.
-            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
-            temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
+            max_tokens: Maximum tokens in the response.
+            temperature: Sampling temperature (0.0-1.0).
+            response_model: Pydantic model class for structured response.
+            extended_reasoning: Enable extended reasoning (Responses API only).
+            stateful: Enable stateful conversation (Responses API only).
+            previous_response_id: Previous response ID for chaining (Responses API only).
+            api_type: Explicit API type, or None for auto-resolution.
 
         Returns:
-            The generated text response.
+            LLMChatResponse or parsed Pydantic model if response_model is provided.
         """
-        return await self._vendor_client.get_text_async(
-            messages,
-            system_prompt,
-            max_tokens,
-            temperature,
+        return await self._client.call_async(
+            messages=messages,
+            input=input,
+            system_prompt=system_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            response_model=response_model,
+            extended_reasoning=extended_reasoning,
+            stateful=stateful,
+            previous_response_id=previous_response_id,
+            api_type=api_type,
         )
 
-    ## Structured responses
-
-    def get_structured_response_sync(
+    def call_stream_sync(
         self,
-        messages: list[dict[str, str]],
-        response_model: type[T],
+        messages: list[dict[str, str]] | None = None,
+        input: str | None = None,
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
-    ) -> T:
-        """
-        Get a structured response as a Pydantic model synchronously.
-
-        Args:
-            messages: List of message dicts with 'role' and 'content' keys.
-            response_model: Pydantic model class for the response structure.
-            system_prompt: Optional system prompt for context.
-            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
-            temperature: Sampling temperature. Defaults to DEFAULT_STRUCTURED_TEMPERATURE.
-
-        Returns:
-            Parsed response as the specified Pydantic model.
-        """
-        return self._vendor_client.get_structured_response_sync(
-            messages,
-            response_model,
-            system_prompt,
-            max_tokens,
-            temperature,
-        )
-
-    async def get_structured_response_async(
-        self,
-        messages: list[dict[str, str]],
-        response_model: type[T],
-        system_prompt: str | None = None,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
-    ) -> T:
-        """
-        Get a structured response as a Pydantic model asynchronously.
-
-        Args:
-            messages: List of message dicts with 'role' and 'content' keys.
-            response_model: Pydantic model class for the response structure.
-            system_prompt: Optional system prompt for context.
-            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
-            temperature: Sampling temperature. Defaults to DEFAULT_STRUCTURED_TEMPERATURE.
-
-        Returns:
-            Parsed response as the specified Pydantic model.
-        """
-        return await self._vendor_client.get_structured_response_async(
-            messages,
-            response_model,
-            system_prompt,
-            max_tokens,
-            temperature,
-        )
-
-    ## Chat with tools
-
-    def chat_sync(
-        self,
-        messages: list[dict[str, str]],
-        system_prompt: str | None = None,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
-    ) -> LLMChatResponse:
-        """
-        Chat with the LLM using a message history, with tool calling support.
-
-        Args:
-            messages: List of message dicts with 'role' and 'content' keys.
-            system_prompt: Optional system prompt for context.
-            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
-            temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
-
-        Returns:
-            LLMChatResponse with text content and optional tool call.
-        """
-        return self._vendor_client.chat_sync(
-            messages,
-            system_prompt,
-            max_tokens,
-            temperature,
-        )
-
-    def chat_stream_sync(
-        self,
-        messages: list[dict[str, str]],
-        system_prompt: str | None = None,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
+        extended_reasoning: bool = False,
+        stateful: bool = False,
+        previous_response_id: str | None = None,
+        api_type: OpenAIAPIType | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
-        Chat with streaming, yielding text chunks and final LLMChatResponse.
+        Unified streaming call to OpenAI.
+
+        Yields text chunks as they arrive, then yields the final LLMChatResponse.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
+            input: Input string (Responses API shorthand).
             system_prompt: Optional system prompt for context.
-            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
-            temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
+            max_tokens: Maximum tokens in the response.
+            temperature: Sampling temperature (0.0-1.0).
+            extended_reasoning: Enable extended reasoning (Responses API only).
+            stateful: Enable stateful conversation (Responses API only).
+            previous_response_id: Previous response ID for chaining (Responses API only).
+            api_type: Explicit API type, or None for auto-resolution.
 
         Yields:
             str: Text chunks as they arrive.
             LLMChatResponse: Final response with complete content and optional tool call.
         """
-        yield from self._vendor_client.chat_stream_sync(
-            messages,
-            system_prompt,
-            max_tokens,
-            temperature,
+        yield from self._client.call_stream_sync(
+            messages=messages,
+            input=input,
+            system_prompt=system_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            extended_reasoning=extended_reasoning,
+            stateful=stateful,
+            previous_response_id=previous_response_id,
+            api_type=api_type,
         )

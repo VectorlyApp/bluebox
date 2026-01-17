@@ -11,7 +11,7 @@ from typing import Any, ClassVar, TypeVar
 from pydantic import BaseModel
 
 from web_hacker.data_models.llms.interaction import LLMChatResponse
-from web_hacker.data_models.llms.vendors import LLMModel
+from web_hacker.data_models.llms.vendors import OpenAIModel
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -21,20 +21,19 @@ class AbstractLLMVendorClient(ABC):
     """
     Abstract base class defining the interface for LLM vendor clients.
 
-    All vendor-specific clients (OpenAI, Anthropic, etc.) must implement
-    this interface to ensure consistent behavior across the LLMClient.
+    All vendor-specific clients must implement this interface to ensure
+    consistent behavior across the LLMClient.
     """
 
     # Class attributes ____________________________________________________________________________________________________
 
     DEFAULT_MAX_TOKENS: ClassVar[int] = 4_096
     DEFAULT_TEMPERATURE: ClassVar[float] = 0.7
-    DEFAULT_STRUCTURED_TEMPERATURE: ClassVar[float] = 0.0  # deterministic for structured outputs
-
+    DEFAULT_STRUCTURED_TEMPERATURE: ClassVar[float] = 0.0
 
     # Magic methods ________________________________________________________________________________________________________
 
-    def __init__(self, model: LLMModel) -> None:
+    def __init__(self, model: OpenAIModel) -> None:
         """
         Initialize the vendor client.
 
@@ -44,27 +43,7 @@ class AbstractLLMVendorClient(ABC):
         self.model = model
         self._tools: list[dict[str, Any]] = []
 
-
-    # Private methods ______________________________________________________________________________________________________
-
-    def _resolve_max_tokens(self, max_tokens: int | None) -> int:
-        """Resolve max_tokens, using default if None."""
-        return max_tokens if max_tokens is not None else self.DEFAULT_MAX_TOKENS
-
-    def _resolve_temperature(
-        self,
-        temperature: float | None,
-        structured: bool = False,
-    ) -> float:
-        """Resolve temperature, using appropriate default if None."""
-        if temperature is not None:
-            return temperature
-        return self.DEFAULT_STRUCTURED_TEMPERATURE if structured else self.DEFAULT_TEMPERATURE
-
-
-    # Public methods _______________________________________________________________________________________________________
-
-    ### Tool management
+    # Tool management ______________________________________________________________________________________________________
 
     @abstractmethod
     def register_tool(
@@ -92,145 +71,98 @@ class AbstractLLMVendorClient(ABC):
         """Return the list of registered tools."""
         return self._tools
 
-    ## Text generation
+    # Unified API methods __________________________________________________________________________________________________
 
     @abstractmethod
-    def get_text_sync(
+    def call_sync(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, str]] | None = None,
+        input: str | None = None,
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
-    ) -> str:
+        response_model: type[T] | None = None,
+        extended_reasoning: bool = False,
+        stateful: bool = False,
+        previous_response_id: str | None = None,
+    ) -> LLMChatResponse | T:
         """
-        Get a text response synchronously.
+        Unified sync call to the LLM.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
+            input: Input string (shorthand for simple prompts).
             system_prompt: Optional system prompt for context.
-            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
-            temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
+            max_tokens: Maximum tokens in the response.
+            temperature: Sampling temperature (0.0-1.0).
+            response_model: Pydantic model class for structured response.
+            extended_reasoning: Enable extended reasoning (if supported).
+            stateful: Enable stateful conversation (if supported).
+            previous_response_id: Previous response ID for chaining (if supported).
 
         Returns:
-            The generated text response.
+            LLMChatResponse or parsed Pydantic model if response_model is provided.
         """
         pass
 
     @abstractmethod
-    async def get_text_async(
+    async def call_async(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, str]] | None = None,
+        input: str | None = None,
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
-    ) -> str:
+        response_model: type[T] | None = None,
+        extended_reasoning: bool = False,
+        stateful: bool = False,
+        previous_response_id: str | None = None,
+    ) -> LLMChatResponse | T:
         """
-        Get a text response asynchronously.
+        Unified async call to the LLM.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
+            input: Input string (shorthand for simple prompts).
             system_prompt: Optional system prompt for context.
-            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
-            temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
+            max_tokens: Maximum tokens in the response.
+            temperature: Sampling temperature (0.0-1.0).
+            response_model: Pydantic model class for structured response.
+            extended_reasoning: Enable extended reasoning (if supported).
+            stateful: Enable stateful conversation (if supported).
+            previous_response_id: Previous response ID for chaining (if supported).
 
         Returns:
-            The generated text response.
-        """
-        pass
-
-    ## Structured responses
-
-    @abstractmethod
-    def get_structured_response_sync(
-        self,
-        messages: list[dict[str, str]],
-        response_model: type[T],
-        system_prompt: str | None = None,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
-    ) -> T:
-        """
-        Get a structured response as a Pydantic model synchronously.
-
-        Args:
-            messages: List of message dicts with 'role' and 'content' keys.
-            response_model: Pydantic model class for the response structure.
-            system_prompt: Optional system prompt for context.
-            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
-            temperature: Sampling temperature. Defaults to DEFAULT_STRUCTURED_TEMPERATURE.
-
-        Returns:
-            Parsed response as the specified Pydantic model.
+            LLMChatResponse or parsed Pydantic model if response_model is provided.
         """
         pass
 
     @abstractmethod
-    async def get_structured_response_async(
+    def call_stream_sync(
         self,
-        messages: list[dict[str, str]],
-        response_model: type[T],
+        messages: list[dict[str, str]] | None = None,
+        input: str | None = None,
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
-    ) -> T:
-        """
-        Get a structured response as a Pydantic model asynchronously.
-
-        Args:
-            messages: List of message dicts with 'role' and 'content' keys.
-            response_model: Pydantic model class for the response structure.
-            system_prompt: Optional system prompt for context.
-            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
-            temperature: Sampling temperature. Defaults to DEFAULT_STRUCTURED_TEMPERATURE.
-
-        Returns:
-            Parsed response as the specified Pydantic model.
-        """
-        pass
-
-    ## Chat with tools
-
-    @abstractmethod
-    def chat_sync(
-        self,
-        messages: list[dict[str, str]],
-        system_prompt: str | None = None,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
-    ) -> LLMChatResponse:
-        """
-        Chat with the LLM using a message history, with tool calling support.
-
-        Args:
-            messages: List of message dicts with 'role' and 'content' keys.
-            system_prompt: Optional system prompt for context.
-            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
-            temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
-
-        Returns:
-            LLMChatResponse with text content and optional tool call.
-        """
-        pass
-
-    @abstractmethod
-    def chat_stream_sync(
-        self,
-        messages: list[dict[str, str]],
-        system_prompt: str | None = None,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
+        extended_reasoning: bool = False,
+        stateful: bool = False,
+        previous_response_id: str | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
-        Chat with streaming, yielding text chunks and final LLMChatResponse.
+        Unified streaming call to the LLM.
 
-        Yields text chunks as they arrive, then yields the final LLMChatResponse
-        with the complete content and any tool call.
+        Yields text chunks as they arrive, then yields the final LLMChatResponse.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
+            input: Input string (shorthand for simple prompts).
             system_prompt: Optional system prompt for context.
-            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
-            temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
+            max_tokens: Maximum tokens in the response.
+            temperature: Sampling temperature (0.0-1.0).
+            extended_reasoning: Enable extended reasoning (if supported).
+            stateful: Enable stateful conversation (if supported).
+            previous_response_id: Previous response ID for chaining (if supported).
 
         Yields:
             str: Text chunks as they arrive.

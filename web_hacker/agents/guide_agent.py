@@ -18,7 +18,7 @@ from web_hacker.data_models.llms.interaction import (
     PendingToolInvocation,
     ToolInvocationStatus,
 )
-from web_hacker.data_models.llms.vendors import LLMModel, OpenAIModel
+from web_hacker.data_models.llms.vendors import OpenAIModel
 from web_hacker.llms.llm_client import LLMClient
 from web_hacker.llms.tools.guide_agent_tools import start_routine_discovery_job_creation
 from web_hacker.utils.exceptions import UnknownToolError
@@ -91,7 +91,7 @@ Your job is to help users define their automation needs by gathering:
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
-        llm_model: LLMModel = OpenAIModel.GPT_5_MINI,
+        llm_model: OpenAIModel = OpenAIModel.GPT_5_MINI,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
     ) -> None:
@@ -315,7 +315,7 @@ Your job is to help users define their automation needs by gathering:
             if self._stream_chunk_callable:
                 response = self._process_streaming_response(messages)
             else:
-                response = self.llm_client.chat_sync(
+                response = self.llm_client.call_sync(
                     messages=messages,
                     system_prompt=self.SYSTEM_PROMPT,
                 )
@@ -367,7 +367,7 @@ Your job is to help users define their automation needs by gathering:
         """
         response: LLMChatResponse | None = None
 
-        for item in self.llm_client.chat_stream_sync(
+        for item in self.llm_client.call_stream_sync(
             messages=messages,
             system_prompt=self.SYSTEM_PROMPT,
         ):

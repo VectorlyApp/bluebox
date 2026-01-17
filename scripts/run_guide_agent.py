@@ -13,7 +13,7 @@ import textwrap
 from typing import Any
 
 from web_hacker.agents.guide_agent import GuideAgent
-from web_hacker.data_models.llms.vendors import LLMModel, OpenAIModel, AnthropicModel
+from web_hacker.data_models.llms.vendors import OpenAIModel
 from web_hacker.data_models.llms.interaction import (
     ChatMessageType,
     EmittedChatMessage,
@@ -115,7 +115,7 @@ class TerminalGuideChat:
       • Console: https://console.vectorly.app
     """
 
-    def __init__(self, llm_model: LLMModel | None = None) -> None:
+    def __init__(self, llm_model: OpenAIModel | None = None) -> None:
         """Initialize the terminal chat interface."""
         self._pending_invocation: PendingToolInvocation | None = None
         self._streaming_started: bool = False
@@ -338,14 +338,9 @@ class TerminalGuideChat:
                 break
 
 
-def parse_model(model_str: str) -> LLMModel:
-    """Parse a model string into an LLMModel enum value."""
-    # Try OpenAI models
+def parse_model(model_str: str) -> OpenAIModel:
+    """Parse a model string into an OpenAIModel enum value."""
     for model in OpenAIModel:
-        if model.value == model_str or model.name == model_str:
-            return model
-    # Try Anthropic models
-    for model in AnthropicModel:
         if model.value == model_str or model.name == model_str:
             return model
     raise ValueError(f"Unknown model: {model_str}")

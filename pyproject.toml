@@ -35,7 +35,6 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 dependencies = [
-    "anthropic>=0.76.0",
     "openai>=2.6.1",
     "jmespath>=1.0.1,<2",
     "pydantic>=2.11.4",

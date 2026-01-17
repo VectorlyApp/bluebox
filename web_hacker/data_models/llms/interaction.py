@@ -138,6 +138,14 @@ class LLMChatResponse(BaseModel):
         default=None,
         description="Tool call requested by the LLM, if any",
     )
+    response_id: str | None = Field(
+        default=None,
+        description="Response ID for chaining (Responses API)",
+    )
+    reasoning_content: str | None = Field(
+        default=None,
+        description="Extended reasoning content",
+    )
 
 
 class Chat(BaseModel):
