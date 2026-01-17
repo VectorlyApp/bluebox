@@ -13,7 +13,7 @@ from openai import OpenAI
 from pydantic import BaseModel, Field, ConfigDict
 from toon import encode
 
-from web_hacker.routine_discovery.context_manager import ContextManager
+from web_hacker.routine_discovery.data_store import DiscoveryDataStore
 from web_hacker.utils.llm_utils import collect_text_from_response, manual_llm_parse_text_to_model
 from web_hacker.data_models.routine_discovery.llm_responses import (
     TransactionIdentificationResponse,
@@ -40,7 +40,7 @@ class RoutineDiscoveryAgent(BaseModel):
     Agent for discovering routines from the network transactions.
     """
     client: OpenAI
-    context_manager: ContextManager
+    data_store: DiscoveryDataStore
     task: str
     emit_message_callable: Callable[[RoutineDiscoveryMessage], None]
     llm_model: str = Field(default="gpt-5.1")
@@ -128,8 +128,8 @@ class RoutineDiscoveryAgent(BaseModel):
         Returns:
             Routine: The discovered and productionized routine.
         """
-        # validate the context manager
-        assert self.context_manager.vectorstore_id is not None, "Vectorstore ID is not set"
+        # validate the data store
+        assert self.data_store.vectorstore_id is not None, "Vectorstore ID is not set"
 
         # Push initial message
         self.emit_message_callable(RoutineDiscoveryMessage(
@@ -141,7 +141,7 @@ class RoutineDiscoveryAgent(BaseModel):
         self.tools = [
             {
                 "type": "file_search",
-                "vector_store_ids": [self.context_manager.vectorstore_id],
+                "vector_store_ids": [self.data_store.vectorstore_id],
             }
         ]
 
@@ -150,7 +150,7 @@ class RoutineDiscoveryAgent(BaseModel):
 
         # add the user prompt to the message history
         self._add_to_message_history("user", f"Task description: {self.task}")
-        self._add_to_message_history("user", f"These are the possible network transaction ids you can choose from:\n{encode(self.context_manager.get_all_transaction_ids())}")
+        self._add_to_message_history("user", f"These are the possible network transaction ids you can choose from:\n{encode(self.data_store.get_all_transaction_ids())}")
 
         self.emit_message_callable(RoutineDiscoveryMessage(
             type=RoutineDiscoveryMessageType.PROGRESS_THINKING,
@@ -171,9 +171,9 @@ class RoutineDiscoveryAgent(BaseModel):
                 identified_transaction = None
                 continue
 
-            # ensure the identified transaction is in the context manager (not hallucinated)
-            if identified_transaction.transaction_id not in self.context_manager.get_all_transaction_ids():
-                logger.error(f"Identified transaction: {identified_transaction.transaction_id} is not in the context manager.")
+            # ensure the identified transaction is in the data store (not hallucinated)
+            if identified_transaction.transaction_id not in self.data_store.get_all_transaction_ids():
+                logger.error(f"Identified transaction: {identified_transaction.transaction_id} is not in the data store.")
                 self._handle_transaction_identification_failure()
                 identified_transaction = None
                 continue
@@ -268,7 +268,7 @@ class RoutineDiscoveryAgent(BaseModel):
 
             # adding transaction data to the routine transactions
             routine_transactions[transaction_id] = {
-                "request": self.context_manager.get_transaction_by_id(transaction_id)['request'],
+                "request": self.data_store.get_transaction_by_id(transaction_id)['request'],
                 "extracted_variables": extracted_variables.model_dump(),
                 "resolved_variables": [resolved_variable.model_dump() for resolved_variable in resolved_variables]
             }
@@ -337,7 +337,7 @@ class RoutineDiscoveryAgent(BaseModel):
         if not is_first_attempt:
             message = (
                 "Try again. The transaction id you provided does not exist or was not relevant. "
-                f"Choose from: {encode(self.context_manager.get_all_transaction_ids())}"
+                f"Choose from: {encode(self.data_store.get_all_transaction_ids())}"
             )
             self._add_to_message_history("user", message)
 
@@ -375,7 +375,7 @@ class RoutineDiscoveryAgent(BaseModel):
 
         # add the transaction to the vectorstore
         metadata = {"uuid": str(uuid4())}
-        self.context_manager.add_transaction_to_vectorstore(
+        self.data_store.add_transaction_to_vectorstore(
             transaction_id=identified_transaction.transaction_id, metadata=metadata
         )
 
@@ -383,7 +383,7 @@ class RoutineDiscoveryAgent(BaseModel):
         tools = [
             {
                 "type": "file_search",
-                "vector_store_ids": [self.context_manager.vectorstore_id],
+                "vector_store_ids": [self.data_store.vectorstore_id],
                 "filters": {
                     "type": "eq",
                     "key": "uuid",
@@ -426,7 +426,7 @@ class RoutineDiscoveryAgent(BaseModel):
         original_transaction_id = transaction_id
 
         # get the transaction
-        transaction = self.context_manager.get_transaction_by_id(transaction_id)
+        transaction = self.data_store.get_transaction_by_id(transaction_id)
         
         # add message to the message history
         message = (
@@ -475,7 +475,7 @@ class RoutineDiscoveryAgent(BaseModel):
         Resolve the variables from the extracted variables.
         """
         # get the latest timestamp
-        max_timestamp = self.context_manager.get_transaction_timestamp(extracted_variables.transaction_id)
+        max_timestamp = self.data_store.get_transaction_timestamp(extracted_variables.transaction_id)
 
         # get a list of cookies and tokens that require resolution
         variables_to_resolve = [
@@ -495,7 +495,7 @@ class RoutineDiscoveryAgent(BaseModel):
             # get the storage objects that contain the value and are before the latest timestamp
             storage_objects: list[dict] = []
             for value in variable.values_to_scan_for:
-                storage_sources_found = self.context_manager.scan_storage_for_value(
+                storage_sources_found = self.data_store.scan_storage_for_value(
                     value=value,
                 )
                 # scan_storage_for_value returns list[str], so we can use it directly
@@ -507,7 +507,7 @@ class RoutineDiscoveryAgent(BaseModel):
             # get the window properties that contain the value and are before the latest timestamp
             window_properties: list[dict] = []
             for value in variable.values_to_scan_for:
-                window_properties_found = self.context_manager.scan_window_properties_for_value(value)
+                window_properties_found = self.data_store.scan_window_properties_for_value(value)
                 # scan_window_properties_for_value returns list[dict], so we can use it directly
                 window_properties.extend(window_properties_found)
                 
@@ -517,7 +517,7 @@ class RoutineDiscoveryAgent(BaseModel):
             # get the transaction ids that contain the value and are before the latest timestamp
             transaction_ids: list[str] = []
             for value in variable.values_to_scan_for:
-                transaction_ids_found = self.context_manager.scan_transaction_responses(
+                transaction_ids_found = self.data_store.scan_transaction_responses(
                     value=value,
                     max_timestamp=max_timestamp
                 )
@@ -532,7 +532,7 @@ class RoutineDiscoveryAgent(BaseModel):
             # add the transactions to the vectorstore
             uuid = str(uuid4())
             for transaction_id in transaction_ids:
-                self.context_manager.add_transaction_to_vectorstore(
+                self.data_store.add_transaction_to_vectorstore(
                     transaction_id=transaction_id,
                     metadata={"uuid": uuid}
                 )
@@ -553,7 +553,7 @@ class RoutineDiscoveryAgent(BaseModel):
             tools = [
                 {
                     "type": "file_search",
-                    "vector_store_ids": [self.context_manager.vectorstore_id],
+                    "vector_store_ids": [self.data_store.vectorstore_id],
                     "filters": {
                         "type": "eq",
                         "key": "uuid",

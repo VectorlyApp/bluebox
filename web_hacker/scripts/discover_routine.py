@@ -13,7 +13,7 @@ from openai import OpenAI
 from web_hacker.config import Config
 from web_hacker.utils.exceptions import ApiKeyNotFoundError
 from web_hacker.routine_discovery.agent import RoutineDiscoveryAgent
-from web_hacker.routine_discovery.context_manager import LocalContextManager
+from web_hacker.routine_discovery.data_store import LocalDiscoveryDataStore
 from web_hacker.data_models.routine_discovery.message import (
     RoutineDiscoveryMessage,
     RoutineDiscoveryMessageType,
@@ -48,7 +48,7 @@ def main() -> None:
     os.makedirs(args.output_dir, exist_ok=True)
 
     # initialize context manager
-    context_manager = LocalContextManager(
+    data_store = LocalDiscoveryDataStore(
         client=openai_client,
         tmp_dir=os.path.join(args.output_dir, "tmp"),
         transactions_dir=os.path.join(args.cdp_captures_dir, "network/transactions"),
@@ -56,11 +56,11 @@ def main() -> None:
         storage_jsonl_path=os.path.join(args.cdp_captures_dir, "storage/events.jsonl"),
         window_properties_path=os.path.join(args.cdp_captures_dir, "window_properties/window_properties.json"),
     )
-    logger.info("Context manager initialized.")
+    logger.info("Data store initialized.")
 
     # make the vectorstore
-    context_manager.make_vectorstore()
-    logger.info("Vectorstore created: %s", context_manager.vectorstore_id)
+    data_store.make_vectorstore()
+    logger.info("Vectorstore created: %s", data_store.vectorstore_id)
 
     # define message handler for progress updates
     def handle_discovery_message(message: RoutineDiscoveryMessage) -> None:
@@ -79,7 +79,7 @@ def main() -> None:
     # initialize routine discovery agent
     routine_discovery_agent = RoutineDiscoveryAgent(
         client=openai_client,
-        context_manager=context_manager,
+        data_store=data_store,
         task=args.task,
         emit_message_callable=handle_discovery_message,
         llm_model=args.llm_model,

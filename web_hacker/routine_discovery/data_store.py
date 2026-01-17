@@ -1,7 +1,7 @@
 """
-web_hacker/routine_discovery/context_manager.py
+web_hacker/routine_discovery/data_store.py
 
-Context management abstractions and utilities for routine discovery.
+Data store abstractions and utilities for routine discovery.
 """
 
 import json
@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from web_hacker.utils.data_utils import get_text_from_html
 
 
-class ContextManager(BaseModel, ABC):
+class DiscoveryDataStore(BaseModel, ABC):
     """Abstract base class for managing context data."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -28,12 +28,12 @@ class ContextManager(BaseModel, ABC):
 
     @abstractmethod
     def get_all_transaction_ids(self) -> list[str]:
-        """Get all transaction ids from the context manager."""
+        """Get all transaction ids from the data store."""
         pass
 
     @abstractmethod
     def get_transaction_by_id(self, transaction_id: str, clean_response_body: bool = False) -> dict:
-        """Get a transaction by id from the context manager."""
+        """Get a transaction by id from the data store."""
         pass
 
     @abstractmethod
@@ -73,11 +73,11 @@ class ContextManager(BaseModel, ABC):
 
     @abstractmethod
     def clean_up(self) -> None:
-        """Clean up the context manager resources."""
+        """Clean up the data store resources."""
         pass
 
 
-class LocalContextManager(ContextManager):
+class LocalDiscoveryDataStore(DiscoveryDataStore):
 
     client: OpenAI
     tmp_dir: str
@@ -148,7 +148,7 @@ class LocalContextManager(ContextManager):
 
     def get_all_transaction_ids(self) -> list[str]:
         """
-        Get all transaction ids from the context manager that have a response body file with a supported extension.
+        Get all transaction ids from the data store that have a response body file with a supported extension.
         Cached per instance to avoid repeated filesystem operations.
         """
         if self.cached_transaction_ids is not None:
@@ -166,7 +166,7 @@ class LocalContextManager(ContextManager):
 
     def get_transaction_by_id(self, transaction_id: str, clean_response_body: bool = False) -> dict:
         """
-        Get a transaction by id from the context manager.
+        Get a transaction by id from the data store.
         {
             "request": ...
             "response": ...
@@ -217,7 +217,7 @@ class LocalContextManager(ContextManager):
 
     def clean_up(self) -> None:
         """
-        Clean up the context manager resources.
+        Clean up the data store resources.
         """
         if self.vectorstore_id is None:
             raise ValueError("Vectorstore ID is not set")
