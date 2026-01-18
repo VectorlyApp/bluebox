@@ -20,7 +20,7 @@ from web_hacker.data_models.llms.interaction import (
 )
 from web_hacker.data_models.llms.vendors import OpenAIModel
 from web_hacker.llms.llm_client import LLMClient
-from web_hacker.llms.tools.guide_agent_tools import start_routine_discovery_job_creation
+from web_hacker.routine_discovery.data_store import DiscoveryDataStore
 from web_hacker.utils.exceptions import UnknownToolError
 from web_hacker.utils.logger import get_logger
 
@@ -94,6 +94,7 @@ Your job is to help users define their automation needs by gathering:
         llm_model: OpenAIModel = OpenAIModel.GPT_5_MINI,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
+        data_store: DiscoveryDataStore | None = None,
     ) -> None:
         """
         Initialize the guide agent.
@@ -108,11 +109,13 @@ Your job is to help users define their automation needs by gathering:
             llm_model: The LLM model to use for conversation.
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
+            data_store: Optional data store for accessing CDP captures and documentation.
         """
         self._emit_message_callable = emit_message_callable
         self._persist_chat_callable = persist_chat_callable
         self._persist_chat_thread_callable = persist_chat_thread_callable
         self._stream_chunk_callable = stream_chunk_callable
+        self._data_store = data_store
 
         self.llm_model = llm_model
         self.llm_client = LLMClient(llm_model)
@@ -149,13 +152,40 @@ Your job is to help users define their automation needs by gathering:
         """Check if there's a pending tool invocation awaiting confirmation."""
         return self._thread.pending_tool_invocation is not None
 
+    @property
+    def data_store(self) -> DiscoveryDataStore | None:
+        """Return the data store if available."""
+        return self._data_store
+
     # Private methods ______________________________________________________________________________________________________
+
+    def _build_file_search_tools(self) -> list[dict[str, Any]]:
+        """Build file_search tools from data store vectorstores."""
+        if not self._data_store:
+            return []
+
+        vector_store_ids = self._data_store.get_vectorstore_ids()
+        if not vector_store_ids:
+            return []
+
+        return [{
+            "type": "file_search",
+            "vector_store_ids": vector_store_ids,
+        }]
+
+    def _get_system_prompt(self) -> str:
+        """Get system prompt with data store context if available."""
+        system_prompt = self.SYSTEM_PROMPT
+        if self._data_store:
+            context = self._data_store.generate_data_store_prompt()
+            if context:
+                system_prompt = f"{system_prompt}\n\n{context}"
+        return system_prompt
 
     def _register_tools(self) -> None:
         """Register all tools with the LLM client."""
-        self.llm_client.register_tool_from_function(
-            func=start_routine_discovery_job_creation,
-        )
+        # TODO: Register tools when implemented
+        pass
 
     def _emit_message(self, message: EmittedChatMessage) -> None:
         """Emit a message via the callback."""
@@ -317,7 +347,8 @@ Your job is to help users define their automation needs by gathering:
             else:
                 response = self.llm_client.call_sync(
                     messages=messages,
-                    system_prompt=self.SYSTEM_PROMPT,
+                    system_prompt=self._get_system_prompt(),
+                    additional_tools=self._build_file_search_tools(),
                 )
 
             # Handle text response
@@ -369,7 +400,8 @@ Your job is to help users define their automation needs by gathering:
 
         for item in self.llm_client.call_stream_sync(
             messages=messages,
-            system_prompt=self.SYSTEM_PROMPT,
+            system_prompt=self._get_system_prompt(),
+            additional_tools=self._build_file_search_tools(),
         ):
             if isinstance(item, str):
                 # Text chunk - call the callback

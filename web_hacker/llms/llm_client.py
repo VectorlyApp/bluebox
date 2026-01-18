@@ -100,6 +100,7 @@ class LLMClient:
         stateful: bool = False,
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        additional_tools: list[dict[str, Any]] | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified sync call to OpenAI.
@@ -115,6 +116,7 @@ class LLMClient:
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            additional_tools: Additional tools to include (e.g., file_search).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -130,6 +132,7 @@ class LLMClient:
             stateful=stateful,
             previous_response_id=previous_response_id,
             api_type=api_type,
+            additional_tools=additional_tools,
         )
 
     async def call_async(
@@ -144,6 +147,7 @@ class LLMClient:
         stateful: bool = False,
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        additional_tools: list[dict[str, Any]] | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified async call to OpenAI.
@@ -159,6 +163,7 @@ class LLMClient:
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            additional_tools: Additional tools to include (e.g., file_search).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -174,6 +179,7 @@ class LLMClient:
             stateful=stateful,
             previous_response_id=previous_response_id,
             api_type=api_type,
+            additional_tools=additional_tools,
         )
 
     def call_stream_sync(
@@ -187,6 +193,7 @@ class LLMClient:
         stateful: bool = False,
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        additional_tools: list[dict[str, Any]] | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
         Unified streaming call to OpenAI.
@@ -203,6 +210,7 @@ class LLMClient:
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            additional_tools: Additional tools to include (e.g., file_search).
 
         Yields:
             str: Text chunks as they arrive.
@@ -218,4 +226,5 @@ class LLMClient:
             stateful=stateful,
             previous_response_id=previous_response_id,
             api_type=api_type,
+            additional_tools=additional_tools,
         )

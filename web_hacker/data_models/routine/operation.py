@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 from web_hacker.data_models.routine.endpoint import Endpoint
 from web_hacker.data_models.routine.execution import RoutineExecutionContext, FetchExecutionResult, OperationExecutionMetadata
 from web_hacker.data_models.routine.parameter import VALID_PLACEHOLDER_PREFIXES, BUILTIN_PARAMETERS
-from web_hacker.data_models.ui_elements import MouseButton, ElementState, ScrollBehavior, HTMLScope
+from web_hacker.data_models.ui_elements import MouseButton, ScrollBehavior, HTMLScope
 from web_hacker.utils.data_utils import apply_params, assert_balanced_js_delimiters
 from web_hacker.utils.logger import get_logger
 from web_hacker.utils.js_utils import (
@@ -58,15 +58,10 @@ class RoutineOperationTypes(StrEnum):
     CLICK = "click"
     INPUT_TEXT = "input_text"
     PRESS = "press"
-    HOVER = "hover"
-    WAIT_FOR_SELECTOR = "wait_for_selector"
     WAIT_FOR_URL = "wait_for_url"
-    WAIT_FOR_TITLE = "wait_for_title"
     SCROLL = "scroll"
-    SET_FILES = "set_files"
 
     RETURN_HTML = "return_html"
-    RETURN_SCREENSHOT = "return_screenshot"
     JS_EVALUATE = "js_evaluate"
 
 # Base operation class ____________________________________________________________________________
@@ -403,46 +398,6 @@ class RoutineReturnOperation(RoutineOperation):
                     routine_execution_context.result.data = stored_value
 
 
-class NetworkTransactionElement(StrEnum):
-    """
-    Network transaction element for routine.
-    """
-    REQUEST = "request"
-    RESPONSE = "response"
-    BODY = "body"
-
-
-class NetworkSniffingMethod(StrEnum):
-    """
-    Network sniffing method for routine.
-    LIST: Store all sniffed items in an array
-    FIRST: Only store the first sniffed item
-    LAST: Overwrite values as new items are sniffed
-    """
-    LIST = "list"
-    FIRST = "first"
-    LAST = "last"
-
-class RoutineNetworkSniffingOperation(RoutineOperation):
-    """
-    Network interception operation for routine.
-
-    Args:
-        type (Literal[RoutineOperationTypes.NETWORK_SNIFFING]): The type of operation.
-        url_pattern (str): regex pattern for the url to intercept.
-        session_storage_key (str): The session storage key to save the result to.
-        element (NetworkTransactionElement | None): The element to save the result to.
-        method (NetworkSniffingMethod): The method to save the result to.
-
-    Returns:
-        RoutineNetworkSniffingOperation: The interpolated operation.
-    """
-    type: Literal[RoutineOperationTypes.NETWORK_SNIFFING] = RoutineOperationTypes.NETWORK_SNIFFING
-    url_pattern: str
-    session_storage_key: str
-    element: NetworkTransactionElement | None = None
-    method: NetworkSniffingMethod = NetworkSniffingMethod.LIST
-
 class RoutineGetCookiesOperation(RoutineOperation):
     """
     Get all cookies (including HttpOnly) via CDP and store them in session storage.
@@ -740,46 +695,6 @@ class RoutinePressOperation(RoutineOperation):
         )
 
 
-class RoutineHoverOperation(RoutineOperation):
-    """
-    Hover operation for routine - moves mouse over an element.
-
-    Important: This operation automatically validates element visibility to avoid hovering
-    over hidden honeypot elements. Only visible, interactable elements will receive hover.
-
-    Args:
-        type (Literal[RoutineOperationTypes.HOVER]): The type of operation.
-        selector (str): CSS selector to find the element to hover over.
-        timeout_ms (int): Maximum time to wait for element in milliseconds. Defaults to 20_000.
-        ensure_visible (bool): Whether to scroll element into view before hovering. Defaults to True.
-    """
-    type: Literal[RoutineOperationTypes.HOVER] = RoutineOperationTypes.HOVER
-    selector: str
-    timeout_ms: int = 20_000
-    ensure_visible: bool = True
-
-
-class RoutineWaitForSelectorOperation(RoutineOperation):
-    """
-    Wait for selector operation for routine - waits for an element to reach a specific state.
-    Args:
-        type (Literal[RoutineOperationTypes.WAIT_FOR_SELECTOR]): The type of operation.
-        selector (str): CSS selector to wait for.
-        state (Literal["visible", "hidden", "attached", "detached"]): Desired state. Defaults to "visible".
-        timeout_ms (int): Maximum time to wait in milliseconds. Defaults to 20_000.
-
-    Note:
-        - "visible": Element exists and is visible in viewport
-        - "hidden": Element exists but is hidden (display:none, visibility:hidden, or outside viewport)
-        - "attached": Element exists in DOM (visible or hidden)
-        - "detached": Element does not exist in DOM
-    """
-    type: Literal[RoutineOperationTypes.WAIT_FOR_SELECTOR] = RoutineOperationTypes.WAIT_FOR_SELECTOR
-    selector: str
-    state: ElementState = ElementState.VISIBLE
-    timeout_ms: int = 20_000
-
-
 class RoutineWaitForUrlOperation(RoutineOperation):
     """
     Wait for URL operation for routine - waits for the current URL to match a regex pattern.
@@ -826,19 +741,6 @@ class RoutineWaitForUrlOperation(RoutineOperation):
                 f"Timeout waiting for URL to match pattern '{self.url_regex}'. "
                 f"Current URL: {wait_data.get('currentUrl', 'unknown')}"
             )
-
-
-class RoutineWaitForTitleOperation(RoutineOperation):
-    """
-    Wait for title operation for routine - waits for the page title to match a regex pattern.
-    Args:
-        type (Literal[RoutineOperationTypes.WAIT_FOR_TITLE]): The type of operation.
-        title_regex (str): Regex pattern to match against document.title.
-        timeout_ms (int): Maximum time to wait in milliseconds. Defaults to 20_000.
-    """
-    type: Literal[RoutineOperationTypes.WAIT_FOR_TITLE] = RoutineOperationTypes.WAIT_FOR_TITLE
-    title_regex: str
-    timeout_ms: int = 20_000
 
 
 class RoutineScrollOperation(RoutineOperation):
@@ -907,21 +809,6 @@ class RoutineScrollOperation(RoutineOperation):
         time.sleep(0.1)
 
 
-class RoutineSetFilesOperation(RoutineOperation):
-    """
-    Set files operation for routine - sets file paths for a file input element.
-    Args:
-        type (Literal[RoutineOperationTypes.SET_FILES]): The type of operation.
-        selector (str): CSS selector to find the file input element.
-        files (list[str]): List of file paths to set for the input.
-        timeout_ms (int): Maximum time to wait for element in milliseconds. Defaults to 20_000.
-    """
-    type: Literal[RoutineOperationTypes.SET_FILES] = RoutineOperationTypes.SET_FILES
-    selector: str
-    files: list[str]
-    timeout_ms: int = 20_000
-
-
 class RoutineReturnHTMLOperation(RoutineOperation):
     """
     Return HTML operation for routine - returns HTML content from the page or element.
@@ -962,19 +849,6 @@ class RoutineReturnHTMLOperation(RoutineOperation):
             routine_execution_context.result.data = None
         else:
             routine_execution_context.result.data = reply["result"]["result"].get("value", "")
-
-
-class RoutineReturnScreenshotOperation(RoutineOperation):
-    """
-    Return screenshot operation for routine - captures and returns a screenshot of the page.
-    Args:
-        type (Literal[RoutineOperationTypes.RETURN_SCREENSHOT]): The type of operation.
-        full_page (bool): Whether to capture the full page (beyond viewport). Defaults to False.
-        timeout_ms (int): Maximum time to wait in milliseconds. Defaults to 20_000.
-    """
-    type: Literal[RoutineOperationTypes.RETURN_SCREENSHOT] = RoutineOperationTypes.RETURN_SCREENSHOT
-    full_page: bool = False
-    timeout_ms: int = 20_000
 
 
 class RoutineDownloadOperation(RoutineOperation):
@@ -1317,26 +1191,16 @@ RoutineOperationUnion = Annotated[
         RoutineTypeOperation,
         RoutinePressOperation,
         RoutineGetCookiesOperation,
-        ##TODO:RoutineHoverOperation,
-        ##TODO:RoutineWaitForSelectorOperation,
         RoutineWaitForUrlOperation,
-        ##TODO:RoutineWaitForTitleOperation,
         RoutineScrollOperation,
-        ##TODO:RoutineSetFilesOperation,
         RoutineReturnHTMLOperation,
-        ##TODO:RoutineReturnScreenshotOperation,
         RoutineDownloadOperation,
         RoutineJsEvaluateOperation,
-        # NOTE: Future sequential (blocking) operations go here
+        # TODO: RoutineHoverOperation
+        # TODO: RoutineWaitForSelectorOperation
+        # TODO: RoutineWaitForTitleOperation
+        # TODO: RoutineSetFilesOperation
+        # TODO: RoutineReturnScreenshotOperation
     ],
     Field(discriminator="type"),
 ]
-
-RoutineBackgroundOperationUnion = Annotated[
-    Union[
-        RoutineNetworkSniffingOperation,
-        # NOTE: Future background operations go here
-    ],
-    Field(discriminator="type"),
-]
-

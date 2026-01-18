@@ -10,9 +10,13 @@ import argparse
 import json
 import sys
 import textwrap
+from pathlib import Path
 from typing import Any
 
+from openai import OpenAI
+
 from web_hacker.agents.guide_agent import GuideAgent
+from web_hacker.config import Config
 from web_hacker.data_models.llms.vendors import OpenAIModel
 from web_hacker.data_models.llms.interaction import (
     ChatMessageType,
@@ -20,6 +24,7 @@ from web_hacker.data_models.llms.interaction import (
     PendingToolInvocation,
     ToolInvocationStatus,
 )
+from web_hacker.routine_discovery.data_store import DiscoveryDataStore, LocalDiscoveryDataStore
 
 
 # ANSI color codes
@@ -115,14 +120,20 @@ class TerminalGuideChat:
       • Console: https://console.vectorly.app
     """
 
-    def __init__(self, llm_model: OpenAIModel | None = None) -> None:
+    def __init__(
+        self,
+        llm_model: OpenAIModel | None = None,
+        data_store: DiscoveryDataStore | None = None,
+    ) -> None:
         """Initialize the terminal chat interface."""
         self._pending_invocation: PendingToolInvocation | None = None
         self._streaming_started: bool = False
+        self._data_store = data_store
         self._agent = GuideAgent(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=llm_model if llm_model else OpenAIModel.GPT_5_MINI,
+            data_store=data_store,
         )
 
     def _handle_stream_chunk(self, chunk: str) -> None:
@@ -355,18 +366,87 @@ def main() -> None:
         default=OpenAIModel.GPT_5_MINI.value,
         help=f"LLM model to use (default: {OpenAIModel.GPT_5_MINI.value})",
     )
+    parser.add_argument(
+        "--cdp-captures-dir",
+        type=str,
+        default=None,
+        help="Path to CDP captures directory (optional)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="./guide_agent_output",
+        help="Output directory for temporary files (default: ./guide_agent_output)",
+    )
+    parser.add_argument(
+        "--docs-dir",
+        type=str,
+        default="./agent_docs",
+        help="Documentation directory (default: ./agent_docs)",
+    )
     args = parser.parse_args()
+
+    # Validate API key
+    if Config.OPENAI_API_KEY is None:
+        print(colorize("\n  Error: OPENAI_API_KEY environment variable is not set", Colors.RED, Colors.BOLD), file=sys.stderr)
+        sys.exit(1)
+
+    data_store: LocalDiscoveryDataStore | None = None
 
     try:
         llm_model = parse_model(args.model)
-        chat = TerminalGuideChat(llm_model=llm_model)
+
+        # Initialize OpenAI client for data store
+        openai_client = OpenAI(api_key=Config.OPENAI_API_KEY)
+
+        # Build data store kwargs - CDP paths are optional
+        data_store_kwargs: dict[str, Any] = {
+            "client": openai_client,
+            "documentation_dirs": [args.docs_dir],
+            "code_dirs": ["./web_hacker/data_models"],
+        }
+
+        # Add CDP captures paths if provided
+        if args.cdp_captures_dir:
+            data_store_kwargs.update({
+                "tmp_dir": str(Path(args.output_dir) / "tmp"),
+                "transactions_dir": str(Path(args.cdp_captures_dir) / "network" / "transactions"),
+                "consolidated_transactions_path": str(Path(args.cdp_captures_dir) / "network" / "consolidated_transactions.json"),
+                "storage_jsonl_path": str(Path(args.cdp_captures_dir) / "storage" / "events.jsonl"),
+                "window_properties_path": str(Path(args.cdp_captures_dir) / "window_properties" / "window_properties.json"),
+            })
+
+        # Create data store
+        print(colorize("  Initializing data store...", Colors.DIM))
+        data_store = LocalDiscoveryDataStore(**data_store_kwargs)
+
+        # Create vectorstores
+        if args.cdp_captures_dir:
+            print(colorize("  Creating CDP captures vectorstore...", Colors.DIM))
+            data_store.make_cdp_captures_vectorstore()
+        print(colorize("  Creating documentation vectorstore...", Colors.DIM))
+        data_store.make_documentation_vectorstore()
+        print(colorize("  Vectorstores ready!", Colors.GREEN))
+        print()
+
+        chat = TerminalGuideChat(llm_model=llm_model, data_store=data_store)
         chat.run()
+
     except ValueError as e:
         print(colorize(f"\n  Error: {e}", Colors.RED, Colors.BOLD), file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(colorize(f"\n  Fatal error: {e}", Colors.RED, Colors.BOLD), file=sys.stderr)
         sys.exit(1)
+    finally:
+        # Clean up vectorstores
+        if data_store is not None:
+            print(colorize("\n  Cleaning up vectorstores...", Colors.DIM))
+            try:
+                data_store.clean_up()
+                print(colorize("  Cleanup complete!", Colors.GREEN))
+            except Exception as e:
+                print(colorize(f"  Warning: Cleanup failed: {e}", Colors.YELLOW), file=sys.stderr)
 
 
 if __name__ == "__main__":

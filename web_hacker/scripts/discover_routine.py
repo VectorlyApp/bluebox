@@ -55,7 +55,7 @@ def main() -> None:
         consolidated_transactions_path=os.path.join(args.cdp_captures_dir, "network/consolidated_transactions.json"),
         storage_jsonl_path=os.path.join(args.cdp_captures_dir, "storage/events.jsonl"),
         window_properties_path=os.path.join(args.cdp_captures_dir, "window_properties/window_properties.json"),
-        documentation_dirs=["./"],
+        documentation_dirs=["./agent_docs"],
         code_dirs=["./web_hacker/data_models"],
     )
     logger.info("Data store initialized.")

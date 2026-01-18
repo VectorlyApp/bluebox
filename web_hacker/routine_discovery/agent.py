@@ -138,9 +138,7 @@ class RoutineDiscoveryAgent(BaseModel):
         ))
 
         # construct the tools with all available vectorstores
-        vector_store_ids = [self.data_store.cdp_captures_vectorstore_id]
-        if self.data_store.documentation_vectorstore_id is not None:
-            vector_store_ids.append(self.data_store.documentation_vectorstore_id)
+        vector_store_ids = self.data_store.get_vectorstore_ids()
 
         self.tools = [
             {

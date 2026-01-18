@@ -66,11 +66,18 @@ class OpenAIClient(AbstractLLMVendorClient):
             return [{"role": "system", "content": system_prompt}] + messages
         return messages
 
+    def _has_file_search_tools(self, additional_tools: list[dict[str, Any]] | None) -> bool:
+        """Check if additional_tools contains file_search tools (Responses API only)."""
+        if not additional_tools:
+            return False
+        return any(tool.get("type") == "file_search" for tool in additional_tools)
+
     def _validate_and_resolve_api_type(
         self,
         api_type: OpenAIAPIType | None,
         extended_reasoning: bool,
         previous_response_id: str | None,
+        additional_tools: list[dict[str, Any]] | None = None,
     ) -> OpenAIAPIType:
         """
         Validate params and resolve API type. Raises ValueError for invalid combos.
@@ -79,6 +86,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             api_type: Explicit API type, or None for auto-resolution.
             extended_reasoning: Whether extended reasoning is requested.
             previous_response_id: Previous response ID for chaining.
+            additional_tools: Additional tools that may require specific API type.
 
         Returns:
             The resolved API type.
@@ -86,14 +94,18 @@ class OpenAIClient(AbstractLLMVendorClient):
         Raises:
             ValueError: If incompatible parameters are combined.
         """
+        has_file_search = self._has_file_search_tools(additional_tools)
+
         if extended_reasoning and api_type == OpenAIAPIType.CHAT_COMPLETIONS:
             raise ValueError("extended_reasoning=True requires Responses API")
         if previous_response_id and api_type == OpenAIAPIType.CHAT_COMPLETIONS:
             raise ValueError("previous_response_id requires Responses API")
+        if has_file_search and api_type == OpenAIAPIType.CHAT_COMPLETIONS:
+            raise ValueError("file_search tools require Responses API")
 
         # Auto-resolve
         if api_type is None:
-            if extended_reasoning or previous_response_id:
+            if extended_reasoning or previous_response_id or has_file_search:
                 resolved = OpenAIAPIType.RESPONSES
             else:
                 resolved = OpenAIAPIType.CHAT_COMPLETIONS
@@ -110,6 +122,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         max_tokens: int | None,
         response_model: type[T] | None,
         stream: bool = False,
+        additional_tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Build kwargs for Chat Completions API call."""
         all_messages = self._prepend_system_prompt(messages, system_prompt)
@@ -123,10 +136,34 @@ class OpenAIClient(AbstractLLMVendorClient):
         if stream:
             kwargs["stream"] = True
 
-        if self._tools and response_model is None:
-            kwargs["tools"] = self._tools
+        # Merge registered tools with additional tools
+        all_tools = self._tools.copy()
+        if additional_tools:
+            all_tools.extend(additional_tools)
+
+        if all_tools and response_model is None:
+            kwargs["tools"] = all_tools
 
         return kwargs
+
+    def _convert_tool_to_responses_api_format(self, tool: dict[str, Any]) -> dict[str, Any]:
+        """
+        Convert a tool from Chat Completions format to Responses API format if needed.
+
+        Chat Completions format: {"type": "function", "function": {"name": ..., "description": ..., "parameters": ...}}
+        Responses API format: {"type": "function", "name": ..., "description": ..., "parameters": ...}
+        """
+        if tool.get("type") == "function" and "function" in tool:
+            # Convert from Chat Completions format to Responses API format
+            func_def = tool["function"]
+            return {
+                "type": "function",
+                "name": func_def.get("name"),
+                "description": func_def.get("description"),
+                "parameters": func_def.get("parameters"),
+            }
+        # Already in Responses API format (file_search, or already flat function)
+        return tool
 
     def _build_responses_api_kwargs(
         self,
@@ -138,6 +175,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         previous_response_id: str | None,
         response_model: type[T] | None,
         stream: bool = False,
+        additional_tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Build kwargs for Responses API call."""
         kwargs: dict[str, Any] = {
@@ -175,8 +213,16 @@ class OpenAIClient(AbstractLLMVendorClient):
         if extended_reasoning:
             kwargs["reasoning"] = {"effort": "medium"}
 
-        if self._tools and response_model is None:
-            kwargs["tools"] = self._tools
+        # Merge registered tools with additional tools, converting to Responses API format
+        all_tools: list[dict[str, Any]] = []
+        for tool in self._tools:
+            all_tools.append(self._convert_tool_to_responses_api_format(tool))
+        if additional_tools:
+            for tool in additional_tools:
+                all_tools.append(self._convert_tool_to_responses_api_format(tool))
+
+        if all_tools and response_model is None:
+            kwargs["tools"] = all_tools
 
         return kwargs
 
@@ -304,6 +350,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        additional_tools: list[dict[str, Any]] | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified sync call to OpenAI.
@@ -319,6 +366,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            additional_tools: Additional tools to include (e.g., file_search).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -327,7 +375,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             ValueError: If incompatible parameters are combined.
         """
         resolved_api_type = self._validate_and_resolve_api_type(
-            api_type, extended_reasoning, previous_response_id
+            api_type, extended_reasoning, previous_response_id, additional_tools
         )
 
         if resolved_api_type == OpenAIAPIType.CHAT_COMPLETIONS:
@@ -337,7 +385,8 @@ class OpenAIClient(AbstractLLMVendorClient):
             if response_model is not None:
                 # Use beta.chat.completions.parse for structured output
                 kwargs = self._build_chat_completions_kwargs(
-                    messages, system_prompt, max_tokens, response_model
+                    messages, system_prompt, max_tokens, response_model,
+                    additional_tools=additional_tools,
                 )
                 response = self._client.beta.chat.completions.parse(
                     **kwargs,
@@ -345,7 +394,8 @@ class OpenAIClient(AbstractLLMVendorClient):
                 )
             else:
                 kwargs = self._build_chat_completions_kwargs(
-                    messages, system_prompt, max_tokens, response_model
+                    messages, system_prompt, max_tokens, response_model,
+                    additional_tools=additional_tools,
                 )
                 response = self._client.chat.completions.create(**kwargs)
 
@@ -354,7 +404,8 @@ class OpenAIClient(AbstractLLMVendorClient):
         else:  # Responses API
             kwargs = self._build_responses_api_kwargs(
                 messages, input, system_prompt, max_tokens,
-                extended_reasoning, previous_response_id, response_model
+                extended_reasoning, previous_response_id, response_model,
+                additional_tools=additional_tools,
             )
 
             if response_model is not None:
@@ -376,6 +427,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        additional_tools: list[dict[str, Any]] | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified async call to OpenAI.
@@ -391,6 +443,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            additional_tools: Additional tools to include (e.g., file_search).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -399,7 +452,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             ValueError: If incompatible parameters are combined.
         """
         resolved_api_type = self._validate_and_resolve_api_type(
-            api_type, extended_reasoning, previous_response_id
+            api_type, extended_reasoning, previous_response_id, additional_tools
         )
 
         if resolved_api_type == OpenAIAPIType.CHAT_COMPLETIONS:
@@ -408,7 +461,8 @@ class OpenAIClient(AbstractLLMVendorClient):
 
             if response_model is not None:
                 kwargs = self._build_chat_completions_kwargs(
-                    messages, system_prompt, max_tokens, response_model
+                    messages, system_prompt, max_tokens, response_model,
+                    additional_tools=additional_tools,
                 )
                 response = await self._async_client.beta.chat.completions.parse(
                     **kwargs,
@@ -416,7 +470,8 @@ class OpenAIClient(AbstractLLMVendorClient):
                 )
             else:
                 kwargs = self._build_chat_completions_kwargs(
-                    messages, system_prompt, max_tokens, response_model
+                    messages, system_prompt, max_tokens, response_model,
+                    additional_tools=additional_tools,
                 )
                 response = await self._async_client.chat.completions.create(**kwargs)
 
@@ -425,7 +480,8 @@ class OpenAIClient(AbstractLLMVendorClient):
         else:  # Responses API
             kwargs = self._build_responses_api_kwargs(
                 messages, input, system_prompt, max_tokens,
-                extended_reasoning, previous_response_id, response_model
+                extended_reasoning, previous_response_id, response_model,
+                additional_tools=additional_tools,
             )
 
             if response_model is not None:
@@ -445,6 +501,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        additional_tools: list[dict[str, Any]] | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
         Unified streaming call to OpenAI.
@@ -461,13 +518,14 @@ class OpenAIClient(AbstractLLMVendorClient):
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            additional_tools: Additional tools to include (e.g., file_search).
 
         Yields:
             str: Text chunks as they arrive.
             LLMChatResponse: Final response with complete content and optional tool call.
         """
         resolved_api_type = self._validate_and_resolve_api_type(
-            api_type, extended_reasoning, previous_response_id
+            api_type, extended_reasoning, previous_response_id, additional_tools
         )
 
         if resolved_api_type == OpenAIAPIType.CHAT_COMPLETIONS:
@@ -475,7 +533,8 @@ class OpenAIClient(AbstractLLMVendorClient):
                 raise ValueError("messages is required for Chat Completions API")
 
             kwargs = self._build_chat_completions_kwargs(
-                messages, system_prompt, max_tokens, response_model=None, stream=True
+                messages, system_prompt, max_tokens, response_model=None, stream=True,
+                additional_tools=additional_tools,
             )
             stream = self._client.chat.completions.create(**kwargs)
 
@@ -519,7 +578,8 @@ class OpenAIClient(AbstractLLMVendorClient):
         else:  # Responses API streaming
             kwargs = self._build_responses_api_kwargs(
                 messages, input, system_prompt, max_tokens,
-                extended_reasoning, previous_response_id, response_model=None, stream=True
+                extended_reasoning, previous_response_id, response_model=None, stream=True,
+                additional_tools=additional_tools,
             )
 
             stream = self._client.responses.create(**kwargs)

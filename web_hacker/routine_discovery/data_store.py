@@ -8,6 +8,7 @@ import json
 import shutil
 import time
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from openai import OpenAI
@@ -81,19 +82,24 @@ class DiscoveryDataStore(BaseModel, ABC):
         """Clean up the data store resources."""
         pass
 
+    @abstractmethod
+    def get_vectorstore_ids(self) -> list[str]:
+        """Get all available vectorstore IDs."""
+        pass
+
 
 class LocalDiscoveryDataStore(DiscoveryDataStore):
 
     # openai client for vector store management
     client: OpenAI
-    
-    # cdp captures related fields
+
+    # cdp captures related fields (all optional - only required if using CDP captures)
     cdp_captures_vectorstore_id: str | None = None
-    tmp_dir: str
-    transactions_dir: str
-    consolidated_transactions_path: str
-    storage_jsonl_path: str
-    window_properties_path: str
+    tmp_dir: str | None = None
+    transactions_dir: str | None = None
+    consolidated_transactions_path: str | None = None
+    storage_jsonl_path: str | None = None
+    window_properties_path: str | None = None
     cached_transaction_ids: list[str] | None = Field(default=None, exclude=True)
     uploaded_transaction_ids: set[str] = Field(default_factory=set, exclude=True)
     transaction_response_supported_file_extensions: list[str] = Field(default_factory=lambda: [
@@ -102,7 +108,7 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         ".html",
         ".xml",
     ])
-    
+
     # documentation and code related fields (both go into same vectorstore)
     documentation_vectorstore_id: str | None = None
     documentation_dirs: list[str] = Field(default_factory=list)
@@ -118,14 +124,26 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
 
     @field_validator('transactions_dir', 'consolidated_transactions_path', 'storage_jsonl_path', 'window_properties_path')
     @classmethod
-    def validate_paths(cls, v: str) -> str:
-        if not Path(v).exists():
+    def validate_paths(cls, v: str | None) -> str | None:
+        if v is not None and not Path(v).exists():
             raise ValueError(f"Path {v} does not exist")
         return v
     
     
     def make_cdp_captures_vectorstore(self) -> None:
         """Make a vectorstore from the CDP captures."""
+        # Validate required paths are set
+        if self.tmp_dir is None:
+            raise ValueError("tmp_dir is required for CDP captures vectorstore")
+        if self.transactions_dir is None:
+            raise ValueError("transactions_dir is required for CDP captures vectorstore")
+        if self.consolidated_transactions_path is None:
+            raise ValueError("consolidated_transactions_path is required for CDP captures vectorstore")
+        if self.storage_jsonl_path is None:
+            raise ValueError("storage_jsonl_path is required for CDP captures vectorstore")
+        if self.window_properties_path is None:
+            raise ValueError("window_properties_path is required for CDP captures vectorstore")
+
         tmp_path = Path(self.tmp_dir)
         tmp_path.mkdir(parents=True, exist_ok=True)
 
@@ -248,6 +266,14 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
                 raise ValueError(f"Failed to delete documentation vectorstore: {e}")
             self.documentation_vectorstore_id = None
 
+    def get_vectorstore_ids(self) -> list[str]:
+        """Get all available vectorstore IDs."""
+        ids = []
+        if self.cdp_captures_vectorstore_id is not None:
+            ids.append(self.cdp_captures_vectorstore_id)
+        if self.documentation_vectorstore_id is not None:
+            ids.append(self.documentation_vectorstore_id)
+        return ids
 
     def add_transaction_to_vectorstore(self, transaction_id: str, metadata: dict) -> None:
         """
@@ -427,7 +453,7 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         """
         Create a vectorstore and upload documentation (.md files) and code files.
         Both documentation_dirs and code_dirs contents go into the same vectorstore.
-        Uses batch upload for faster processing.
+        Uses parallel uploads for speed.
         """
         if self.documentation_vectorstore_id is not None:
             raise ValueError(f"Documentation vectorstore already exists: {self.documentation_vectorstore_id}")
@@ -439,8 +465,8 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         self.uploaded_docs_info = []
         self.uploaded_code_info = []
 
-        # Collect all files to upload
-        files_to_upload: list[Path] = []
+        # Collect all files to upload: (file_path, metadata, cache_info_type, cache_info)
+        upload_tasks: list[tuple[str, dict, str, dict]] = []
 
         # Collect documentation files
         for doc_dir in self.documentation_dirs:
@@ -449,12 +475,12 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
                 raise ValueError(f"Documentation directory does not exist: {doc_dir}")
 
             for file in doc_path.iterdir():
-                if file.is_file() and file.suffix == ".md" and file.stat().st_size > 0:
-                    # Parse summary for caching
+                if file.is_file() and file.suffix == ".md":
                     content = file.read_text(encoding="utf-8", errors="replace")[:500]
                     summary = self._parse_doc_summary(content)
-                    self.uploaded_docs_info.append({"filename": file.name, "summary": summary})
-                    files_to_upload.append(file)
+                    metadata = {"type": "documentation", "filename": file.name, "source_dir": doc_dir}
+                    cache_info = {"filename": file.name, "summary": summary}
+                    upload_tasks.append((str(file), metadata, "docs", cache_info))
 
         # Collect code files
         for code_dir in self.code_dirs:
@@ -463,33 +489,42 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
                 raise ValueError(f"Code directory does not exist: {code_dir}")
 
             for file in code_path.rglob("*"):
-                if file.is_file() and file.suffix.lower() in self.code_file_extensions and file.stat().st_size > 0:
+                if file.is_file() and file.suffix.lower() in self.code_file_extensions:
                     relative_path = file.relative_to(code_path)
-                    # Parse docstring for caching
                     docstring = self._parse_code_docstring(str(file))
-                    self.uploaded_code_info.append({"path": str(relative_path), "docstring": docstring})
-                    files_to_upload.append(file)
+                    metadata = {
+                        "type": "code",
+                        "filename": file.name,
+                        "path": str(relative_path),
+                        "source_dir": code_dir
+                    }
+                    cache_info = {"path": str(relative_path), "docstring": docstring}
+                    upload_tasks.append((str(file), metadata, "code", cache_info))
 
-        if not files_to_upload:
+        if not upload_tasks:
             raise ValueError("No files found to upload")
 
         # Create vectorstore
         vs = self.client.vector_stores.create(
-            name=f"documentation-code-{int(time.time())}",
+            name=f"documentation-context-{int(time.time())}",
             expires_after={"anchor": "last_active_at", "days": 1}
         )
         self.documentation_vectorstore_id = vs.id
 
-        # Batch upload all files at once using upload_and_poll
-        file_streams = [open(f, "rb") for f in files_to_upload]
-        try:
-            self.client.vector_stores.file_batches.upload_and_poll(
-                vector_store_id=self.documentation_vectorstore_id,
-                files=file_streams
-            )
-        finally:
-            for stream in file_streams:
-                stream.close()
+        # Upload all files in parallel
+        def upload_task(task: tuple[str, dict, str, dict]) -> tuple[str, dict]:
+            file_path, metadata, cache_type, cache_info = task
+            self._upload_file_to_vectorstore(self.documentation_vectorstore_id, file_path, metadata)
+            return cache_type, cache_info
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(upload_task, task) for task in upload_tasks]
+            for future in as_completed(futures):
+                cache_type, cache_info = future.result()
+                if cache_type == "docs":
+                    self.uploaded_docs_info.append(cache_info)
+                else:
+                    self.uploaded_code_info.append(cache_info)
 
     def _parse_doc_summary(self, content: str) -> str | None:
         """Parse summary from markdown content (blockquote after title)."""
@@ -516,7 +551,8 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
                         if end != -1:
                             docstring = content[start + 3:end].strip()
                             if docstring:
-                                return docstring
+                                # Replace newlines with semicolons for single-line display
+                                return docstring.replace("\n", "; ")
         except Exception:
             pass
         return None
