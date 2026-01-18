@@ -15,8 +15,8 @@ def validate_routine(routine_dict: dict) -> dict:
     """
     Validates a routine dictionary against the Routine schema.
 
-    IMPORTANT: You MUST construct and pass the COMPLETE routine JSON object as the
-    routine_dict argument. Do NOT call this with empty arguments {}.
+    IMPORTANT: You MUST pass the COMPLETE routine JSON object as routine_dict.
+    If you have a routine from get_current_routine_json, pass that exact JSON here.
 
     The routine_dict must be a JSON object containing:
     - "name" (string): The name of the routine
@@ -24,17 +24,18 @@ def validate_routine(routine_dict: dict) -> dict:
     - "parameters" (array): Parameter definitions with name, description, type, required fields
     - "operations" (array): Operation definitions
 
-    WORKFLOW:
-    1. First construct the complete routine JSON in your response
-    2. Then call this tool with that object
-    3. If validation fails, read the error, fix the issues, and retry up to 3 times
-
     Args:
         routine_dict: The complete routine JSON object with name, description, parameters, and operations
 
     Returns:
         Dict with 'valid' bool and either 'message' (success) or 'error' (failure)
     """
+    if not routine_dict:
+        return {
+            "valid": False,
+            "error": "routine_dict is empty. You must pass the complete routine JSON object. If you have a routine from get_current_routine_json, pass that exact routine_json here.",
+        }
+
     try:
         routine = Routine(**routine_dict)
         return {

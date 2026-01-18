@@ -68,6 +68,8 @@ class GuideAgentRoutineState:
             message = "Routine added to context. Use get_current_routine_json to see the routine."
         else:
             message = "Routine has been updated. Use get_current_routine_json to see the changes."
+            
+        print(f"Routine state update: {message}")
 
         self.update_messages.append({
             "timestamp": int(datetime.now().timestamp()),
@@ -312,7 +314,30 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
 
     def _register_tools(self) -> None:
         """Register all tools with the LLM client."""
-        self.llm_client.register_tool_from_function(validate_routine)
+        # Register validate_routine with explicit schema
+        self.llm_client.register_tool(
+            name="validate_routine",
+            description=(
+                "Validates a routine JSON object against the Routine schema. "
+                "You MUST pass the COMPLETE routine JSON object as routine_dict. "
+                "If you have a routine from get_current_routine_json, pass that exact routine_json here."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "routine_dict": {
+                        "type": "object",
+                        "description": (
+                            "The complete routine JSON object to validate. Must contain: "
+                            "name (string), description (string), parameters (array of parameter objects), "
+                            "and operations (array of operation objects). "
+                            "Pass the ENTIRE routine object, not individual fields."
+                        ),
+                    }
+                },
+                "required": ["routine_dict"],
+            },
+        )
 
         # Register routine state tools directly (no parameters needed, auto-execute)
         self.llm_client.register_tool(
@@ -466,9 +491,10 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
         Raises:
             UnknownToolError: If tool_name is unknown
         """
-        if tool_name == validate_routine.__name__:
-            logger.info("Executing tool %s", tool_name)
-            return validate_routine(**tool_arguments)
+        if tool_name == "validate_routine":
+            logger.info("Executing tool %s with arguments: %s", tool_name, tool_arguments)
+            routine_dict = tool_arguments.get("routine_dict", {})
+            return validate_routine(routine_dict)
 
         if tool_name == "get_current_routine_json":
             logger.info("Executing tool %s", tool_name)
