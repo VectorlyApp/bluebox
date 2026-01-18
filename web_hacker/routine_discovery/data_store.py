@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from openai import OpenAI
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from web_hacker.utils.data_utils import get_text_from_html
 
@@ -134,8 +134,57 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         if v is not None and not Path(v).exists():
             raise ValueError(f"Path {v} does not exist")
         return v
-    
-    
+
+    @model_validator(mode='after')
+    def populate_cache_from_existing_vectorstore(self) -> 'LocalDiscoveryDataStore':
+        """
+        If documentation_vectorstore_id is provided but caches are empty,
+        fetch file info from the existing vectorstore to populate the cache.
+        """
+        if (
+            self.documentation_vectorstore_id is not None
+            and not self.uploaded_docs_info
+            and not self.uploaded_code_info
+        ):
+            self._populate_cache_from_vectorstore()
+        return self
+
+    def _populate_cache_from_vectorstore(self) -> None:
+        """
+        Populate cache by scanning documentation_dirs and code_dirs.
+        Called when vectorstore_id is provided but cache is empty.
+
+        TODO: Consider fetching file list from vectorstore API instead of re-scanning dirs,
+        which would allow cache population even when dirs aren't available locally.
+        """
+        # Scan documentation directories
+        for doc_dir in self.documentation_dirs:
+            doc_path = Path(doc_dir)
+            if not doc_path.exists():
+                continue
+            for file in doc_path.iterdir():
+                if file.is_file() and file.suffix == ".md":
+                    content = file.read_text(encoding="utf-8", errors="replace")[:500]
+                    summary = self._parse_doc_summary(content)
+                    self.uploaded_docs_info.append({
+                        'filename': file.name,
+                        'summary': summary
+                    })
+
+        # Scan code directories
+        for code_dir in self.code_dirs:
+            code_path = Path(code_dir)
+            if not code_path.exists():
+                continue
+            for file in code_path.rglob("*"):
+                if file.is_file() and file.suffix.lower() in self.code_file_extensions:
+                    relative_path = file.relative_to(code_path)
+                    docstring = self._parse_code_docstring(str(file))
+                    self.uploaded_code_info.append({
+                        'path': str(relative_path),
+                        'docstring': docstring
+                    })
+
     def make_cdp_captures_vectorstore(self) -> None:
         """Make a vectorstore from the CDP captures."""
         # Validate required paths are set

@@ -712,7 +712,6 @@ class OpenAIClient(AbstractLLMVendorClient):
                         call_id=tc_data.get("call_id"),
                     ))
 
-            logger.info("Streaming response complete with %d tool calls", len(tool_calls))
             yield LLMChatResponse(
                 content="".join(full_content) if full_content else None,
                 tool_calls=tool_calls,

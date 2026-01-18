@@ -7,8 +7,12 @@ Script for discovering routines from the network transactions.
 from argparse import ArgumentParser
 import os
 import json
+from pathlib import Path
 
 from openai import OpenAI
+
+# Package root for code_dirs (web_hacker/scripts/ -> web_hacker/)
+PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
 from web_hacker.config import Config
 from web_hacker.utils.exceptions import ApiKeyNotFoundError
@@ -56,7 +60,10 @@ def main() -> None:
         storage_jsonl_path=os.path.join(args.cdp_captures_dir, "storage/events.jsonl"),
         window_properties_path=os.path.join(args.cdp_captures_dir, "window_properties/window_properties.json"),
         documentation_dirs=["./agent_docs"],
-        code_dirs=["./web_hacker/data_models"],
+        code_dirs=[
+            str(PACKAGE_ROOT / "data_models"),
+            str(PACKAGE_ROOT / "utils"),
+        ],
     )
     logger.info("Data store initialized.")
 

@@ -35,6 +35,7 @@ for op in result.operations_metadata:
 | Placeholder not resolved | [placeholder-not-resolved.md](common-issues/placeholder-not-resolved.md) |
 | Click/input fails | [element-not-found.md](common-issues/element-not-found.md) |
 | Fetch returns HTML | [fetch-returns-html.md](common-issues/fetch-returns-html.md) |
+| Routine execution timeout | [execution-timeout.md](common-issues/execution-timeout.md) |
 
 ---
 
