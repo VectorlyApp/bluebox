@@ -1,7 +1,13 @@
 """
 web_hacker/data_models/routine/endpoint.py
 
-Parameter models with comprehensive validation and type information.
+HTTP endpoint configuration for fetch/download operations.
+
+Contains:
+- HTTPMethod: Enum (GET, POST, PUT, DELETE, PATCH, etc.)
+- CREDENTIALS: Enum (same-origin, include, omit)
+- MimeType: Common MIME types for downloads
+- Endpoint: URL, method, headers, body, credentials configuration
 """
 
 from enum import StrEnum

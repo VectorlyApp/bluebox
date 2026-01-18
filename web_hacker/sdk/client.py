@@ -1,5 +1,13 @@
 """
-High-level WebHacker client for easy SDK usage.
+web_hacker/sdk/client.py
+
+Main SDK entry point for web automation.
+
+Contains:
+- WebHacker: High-level client combining monitoring, discovery, and execution
+- monitor(): Start browser monitoring session
+- discover(): Generate routine from captured CDP data
+- execute(): Run a routine with parameters
 """
 
 from typing import Optional, Dict, Any

@@ -1,7 +1,11 @@
 """
 web_hacker/utils/llm_utils.py
 
-Utility functions for LLM API calls.
+LLM API utilities for structured outputs.
+
+Contains:
+- Functions for calling OpenAI with structured Pydantic outputs
+- Response parsing and validation helpers
 """
 
 import json

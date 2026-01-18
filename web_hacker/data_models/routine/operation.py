@@ -1,7 +1,24 @@
 """
 web_hacker/data_models/routine/operation.py
 
-Routine operation data models.
+Operation types for browser automation routines.
+
+Contains:
+- RoutineOperationTypes: Enum of all operation types
+- RoutineOperation: Base class for all operations
+- RoutineNavigateOperation: Navigate to URL
+- RoutineSleepOperation: Pause execution
+- RoutineFetchOperation: HTTP requests via browser fetch API
+- RoutineReturnOperation: Return data from sessionStorage
+- RoutineGetCookiesOperation: Get cookies via CDP
+- RoutineClickOperation: Click elements by selector
+- RoutineTypeOperation: Type text into inputs
+- RoutinePressOperation: Press keyboard keys
+- RoutineWaitForUrlOperation: Wait for URL regex match
+- RoutineScrollOperation: Scroll page/element
+- RoutineReturnHTMLOperation: Return page HTML
+- RoutineDownloadOperation: Download binary files
+- RoutineJsEvaluateOperation: Execute custom JavaScript
 """
 
 import ast

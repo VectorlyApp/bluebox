@@ -1,7 +1,11 @@
 """
 web_hacker/config.py
 
-Centralized environment variable configuration.
+Environment variable configuration.
+
+Contains:
+- Config: Centralized settings from environment variables
+- OPENAI_API_KEY, LOG_LEVEL, DEFAULT_MODEL, etc.
 """
 
 import logging

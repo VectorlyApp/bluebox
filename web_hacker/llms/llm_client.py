@@ -1,7 +1,13 @@
 """
 web_hacker/llms/llm_client.py
 
-Unified LLM client supporting OpenAI models.
+Unified LLM client for OpenAI models.
+
+Contains:
+- LLMClient: High-level interface for chat completions
+- Tool registration and execution
+- Streaming and non-streaming response handling
+- Structured output parsing with Pydantic
 """
 
 from collections.abc import Generator

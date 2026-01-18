@@ -1,5 +1,13 @@
 """
+web_hacker/sdk/monitor.py
+
 Browser monitoring SDK wrapper.
+
+Contains:
+- BrowserMonitor: Wraps CDPSession for easy browser capture
+- start(): Begin capturing network, storage, interactions
+- stop(): End capture, save data to output directory
+- Outputs: transactions/, storage.jsonl, ui_interactions.jsonl, window_properties.json
 """
 
 from typing import Optional, Set

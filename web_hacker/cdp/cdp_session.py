@@ -1,7 +1,13 @@
 """
 web_hacker/cdp/cdp_session.py
 
-CDP Session management for web scraping with Chrome DevTools Protocol.
+CDP session orchestration for browser monitoring.
+
+Contains:
+- CDPSession: Manages WebSocket connection, monitors (network, storage, interaction, window)
+- start(): Begin monitoring session
+- stop(): End session and save captured data
+- Coordinates: NetworkMonitor, StorageMonitor, InteractionMonitor, WindowPropertyMonitor
 """
 
 import json

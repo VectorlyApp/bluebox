@@ -1,10 +1,17 @@
 """
 web_hacker/utils/js_utils.py
 
-JavaScript injection utilities for CDP operations.
+JavaScript code generation for CDP browser operations.
 
-All JavaScript code that gets injected into the browser should be generated
-through functions in this module for consistency and maintainability.
+Contains:
+- generate_fetch_js(): Fetch API call with placeholder resolution
+- generate_download_js(): Binary file download as base64
+- generate_click_js(): Element click with visibility handling
+- generate_type_js(): Input text typing with clear option
+- generate_scroll_element_js(), generate_scroll_window_js(): Scrolling
+- generate_wait_for_url_js(): URL regex matching
+- generate_js_evaluate_wrapper_js(): Custom JS execution wrapper
+- _get_placeholder_resolution_js_helpers(): sessionStorage/localStorage/cookie access
 """
 
 import json

@@ -1,5 +1,13 @@
 """
+web_hacker/sdk/discovery.py
+
 Routine discovery SDK wrapper.
+
+Contains:
+- RoutineDiscoveryResult: Discovered routine with messages and vectorstore IDs
+- RoutineDiscovery: Wraps RoutineDiscoveryAgent for easy routine generation
+- discover(): Generate routine from CDP captures using LLM
+- Uses: LocalDiscoveryDataStore, RoutineDiscoveryAgent
 """
 
 from pathlib import Path

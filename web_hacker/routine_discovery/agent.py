@@ -1,7 +1,12 @@
 """
 web_hacker/routine_discovery/agent.py
 
-Agent for discovering routines from the network transactions.
+LLM-powered agent for generating routines from CDP captures.
+
+Contains:
+- RoutineDiscoveryAgent: Uses OpenAI with tools to analyze captures and build routines
+- Tools: scan_transaction_responses, get_transaction, scan_storage, etc.
+- Outputs: validated Routine JSON with parameters and operations
 """
 
 import json

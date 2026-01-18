@@ -1,7 +1,12 @@
 """
 web_hacker/agents/guide_agent.py
 
-Guide agent that guides the user through the process of creating or editing a routine.
+Interactive agent for routine creation and editing.
+
+Contains:
+- GuideAgent: Conversational interface for building/modifying routines
+- Uses: LLMClient with guide-specific tools
+- Maintains: ChatThread for multi-turn conversation
 """
 
 from datetime import datetime

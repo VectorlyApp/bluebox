@@ -1,7 +1,16 @@
 """
 web_hacker/utils/data_utils.py
 
-Utility functions for loading and writing data.
+Data loading, writing, and transformation utilities.
+
+Contains:
+- load_data(): Load JSON/JSONL files
+- write_json_file(), write_jsonl(): Save data to files
+- get_text_from_html(): Extract text from HTML
+- resolve_dotted_path(): Access nested dict values by dot notation
+- apply_params(): Substitute {{placeholders}} in text
+- assert_balanced_js_delimiters(): Validate JS code structure
+- sanitize_filename(): Clean filenames for filesystem
 """
 
 import base64

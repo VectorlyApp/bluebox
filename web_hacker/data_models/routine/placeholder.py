@@ -1,7 +1,13 @@
 """
 web_hacker/data_models/routine/placeholder.py
 
-Placeholder extraction and validation utilities for routines.
+Placeholder extraction and parsing for template strings.
+
+Contains:
+- PlaceholderQuoteType: Enum (QUOTED, ESCAPE_QUOTED)
+- ExtractedPlaceholder: Parsed placeholder with source type and path
+- extract_placeholders(): Find all {{...}} patterns in text
+- Supports: user params, sessionStorage, localStorage, cookies, windowProperty
 """
 
 import re

@@ -1,7 +1,12 @@
 """
-web_hacker/data_models/monitor/ui_interactions.py
+web_hacker/data_models/ui_interaction.py
 
-UI interaction data models for tracking user interactions with web elements.
+UI interaction tracking models.
+
+Contains:
+- InteractionType: Enum (click, input, keydown, scroll, etc.)
+- Interaction: Base interaction with target element
+- UiInteractionEvent: Timestamped interaction with URL context
 """
 
 from enum import StrEnum

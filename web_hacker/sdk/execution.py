@@ -1,5 +1,12 @@
 """
+web_hacker/sdk/execution.py
+
 Routine execution SDK wrapper.
+
+Contains:
+- RoutineExecutor: High-level interface for running routines
+- execute(): Run routine with parameters, return RoutineExecutionResult
+- Handles: CDP connection setup, parameter validation, result extraction
 """
 
 from typing import Any

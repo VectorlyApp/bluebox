@@ -1,7 +1,13 @@
 """
 web_hacker/routine_discovery/data_store.py
 
-Data store abstractions and utilities for routine discovery.
+Data store for routine discovery with vectorstore support.
+
+Contains:
+- DiscoveryDataStore: Abstract base class for data access
+- LocalDiscoveryDataStore: File-based implementation with OpenAI vectorstores
+- CDP data access: transactions, storage, window properties
+- Documentation/code vectorstore creation for agent context
 """
 
 import json

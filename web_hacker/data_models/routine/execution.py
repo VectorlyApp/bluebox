@@ -1,7 +1,13 @@
 """
 web_hacker/data_models/routine/execution.py
 
-Execution-related data models for routines.
+Execution context and result models for routine runs.
+
+Contains:
+- OperationExecutionMetadata: Per-operation timing, details, errors
+- RoutineExecutionResult: Final result with data, warnings, operation metadata
+- RoutineExecutionContext: Mutable state passed to operations (CDP session, parameters)
+- FetchExecutionResult: Response data from fetch operations
 """
 
 import re

@@ -1,7 +1,12 @@
 """
 web_hacker/cdp/interaction_monitor.py
 
-Interaction monitoring for CDP — tracks mouse and keyboard events with element details.
+User interaction tracking via CDP.
+
+Contains:
+- InteractionMonitor: Captures mouse clicks, keyboard input, element details
+- Tracks: click coordinates, input text, key presses, element selectors
+- Saves: consolidated_ui_interactions.json, ui_interactions.jsonl
 """
 
 import os

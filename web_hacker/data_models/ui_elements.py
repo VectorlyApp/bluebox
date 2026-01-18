@@ -1,8 +1,14 @@
-
 """
-web_hacker/data_models/monitor/ui_elements.py
+web_hacker/data_models/ui_elements.py
 
-UI element data models for robust element identification and replay.
+UI element models for element identification and interaction.
+
+Contains:
+- UiElement: DOM element with selectors, bounding box, attributes
+- Identifier: CSS/XPath/ID selectors for element targeting
+- KeyboardKey: Enum of keyboard keys (Enter, Tab, Escape, etc.)
+- MouseButton: Enum (left, right, middle)
+- ScrollBehavior, HTMLScope: Operation configuration enums
 """
 
 from enum import StrEnum

@@ -1,7 +1,12 @@
 """
 web_hacker/utils/web_socket_utils.py
 
-WebSocket utility functions for CDP communication.
+WebSocket utilities for CDP communication.
+
+Contains:
+- send_cmd(): Send CDP command with auto-incrementing message ID
+- recv_json(): Receive single JSON message with timeout
+- recv_until(): Receive messages until predicate matches
 """
 
 import itertools

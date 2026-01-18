@@ -1,7 +1,13 @@
 """
 web_hacker/data_models/routine/parameter.py
 
-Routine parameter model with validation features.
+Parameter definitions for routine inputs.
+
+Contains:
+- ParameterType: Enum (string, integer, number, boolean, date, datetime, email, url, enum)
+- Parameter: User-defined input with name, type, validation, description
+- BuiltinParameter: Auto-generated values (uuid, epoch_milliseconds, iso_date, etc.)
+- VALID_PLACEHOLDER_PREFIXES: sessionStorage, localStorage, cookie, windowProperty
 """
 
 from enum import StrEnum

@@ -1,7 +1,13 @@
 """
 web_hacker/data_models/routine/routine.py
 
-Routine data model.
+Main Routine model for browser automation workflows.
+
+Contains:
+- Routine: JSON-serializable workflow with operations, parameters, validation
+- execute(): Run routine with CDP connection
+- execute_with_session(): Run with existing CDP session
+- Validation: parameter usage, placeholder resolution, builtin handling
 """
 
 import ast
