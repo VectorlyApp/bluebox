@@ -24,6 +24,7 @@ from web_hacker.data_models.llms.interaction import (
     PendingToolInvocation,
     ToolInvocationStatus,
 )
+from web_hacker.data_models.routine.routine import Routine
 from web_hacker.routine_discovery.data_store import DiscoveryDataStore, LocalDiscoveryDataStore
 
 
@@ -112,8 +113,10 @@ class TerminalGuideChat:
 
     Commands:
       • Type your message and press Enter to chat
-      • Type 'quit' or 'exit' to leave
-      • Type 'reset' to start a new conversation
+      • /load <routine.json>       - Load a routine file
+      • /execute [params.json]     - Execute the loaded routine
+      • reset                      - Start a new conversation
+      • quit / exit                - Leave
 
     Links:
       • Docs: https://vectorly.app/docs
@@ -132,7 +135,7 @@ class TerminalGuideChat:
         self._agent = GuideAgent(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
-            llm_model=llm_model if llm_model else OpenAIModel.GPT_5_MINI,
+            llm_model=llm_model if llm_model else OpenAIModel.GPT_5_1,
             data_store=data_store,
         )
 
@@ -287,6 +290,118 @@ class TerminalGuideChat:
             print(colorize("  Please enter 'y' or 'n': ", Colors.YELLOW), end="")
             return True  # Still in confirmation mode
 
+    def _handle_load_command(self, file_path: str) -> None:
+        """
+        Handle /load command to load a routine JSON file.
+
+        Args:
+            file_path: Path to the routine JSON file.
+        """
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                print()
+                print(colorize(f"  ✗ File not found: {file_path}", Colors.RED))
+                print()
+                return
+
+            with open(path, encoding="utf-8") as f:
+                routine_json = json.load(f)
+
+            self._agent.routine_state.update_current_routine(routine_json)
+
+            print()
+            print(colorize("  ✓ Routine loaded", Colors.GREEN, Colors.BOLD))
+            print()
+            print(colorize(f"  Name: {routine_json.get('name', 'N/A')}", Colors.WHITE))
+            print(colorize(f"  Description: {routine_json.get('description', 'N/A')}", Colors.DIM))
+            print(colorize(f"  Operations: {len(routine_json.get('operations', []))}", Colors.DIM))
+            print(colorize(f"  Parameters: {len(routine_json.get('parameters', []))}", Colors.DIM))
+            print()
+
+        except json.JSONDecodeError as e:
+            print()
+            print(colorize(f"  ✗ Invalid JSON: {e}", Colors.RED))
+            print()
+        except Exception as e:
+            print()
+            print(colorize(f"  ✗ Error loading routine: {e}", Colors.RED))
+            print()
+
+    def _handle_execute_command(self, params_path: str | None) -> None:
+        """
+        Handle /execute command to execute the loaded routine.
+
+        Args:
+            params_path: Optional path to parameters JSON file.
+        """
+        routine_json = self._agent.routine_state.current_routine_json
+        if routine_json is None:
+            print()
+            print(colorize("  ✗ No routine loaded. Use /load <file.json> first.", Colors.RED))
+            print()
+            return
+
+        # Load parameters
+        params: dict[str, Any] = {}
+        if params_path:
+            try:
+                path = Path(params_path)
+                if not path.exists():
+                    print()
+                    print(colorize(f"  ✗ Parameters file not found: {params_path}", Colors.RED))
+                    print()
+                    return
+                with open(path, encoding="utf-8") as f:
+                    params = json.load(f)
+            except json.JSONDecodeError as e:
+                print()
+                print(colorize(f"  ✗ Invalid parameters JSON: {e}", Colors.RED))
+                print()
+                return
+
+        try:
+            print()
+            print(colorize("  ⏳ Executing routine...", Colors.YELLOW))
+
+            # Create and execute routine
+            routine = Routine(**routine_json)
+            result = routine.execute(params)
+            result_dict = result.model_dump()
+
+            # Update agent state with execution result
+            self._agent.routine_state.update_last_execution(
+                routine_json=routine_json,
+                routine_params=params,
+                routine_result=result_dict,
+            )
+
+            # Display result
+            print()
+            if result.ok:
+                print(colorize("  ✓ Execution succeeded", Colors.GREEN, Colors.BOLD))
+            else:
+                print(colorize("  ✗ Execution failed", Colors.RED, Colors.BOLD))
+                if result.error:
+                    print(colorize(f"    Error: {result.error}", Colors.RED))
+
+            # Show output preview
+            print()
+            print(colorize("  Output preview:", Colors.DIM))
+            output_preview = json.dumps(result_dict, indent=2)
+            # Limit preview to first 20 lines
+            lines = output_preview.split("\n")
+            for line in lines[:20]:
+                print(colorize(f"    {line}", Colors.WHITE))
+            if len(lines) > 20:
+                print(colorize(f"    ... ({len(lines) - 20} more lines)", Colors.DIM))
+            print()
+
+        except Exception as e:
+            print()
+            print(colorize(f"  ✗ Execution error: {e}", Colors.RED, Colors.BOLD))
+            print()
+
     def run(self) -> None:
         """Run the interactive chat loop."""
         # Print banner and welcome
@@ -330,6 +445,17 @@ class TerminalGuideChat:
                     print()
                     continue
 
+                # Handle /load command
+                if user_input.strip().startswith("/load "):
+                    self._handle_load_command(user_input.strip()[6:].strip())
+                    continue
+
+                # Handle /execute command
+                if user_input.strip().startswith("/execute"):
+                    params_path = user_input.strip()[8:].strip() or None
+                    self._handle_execute_command(params_path)
+                    continue
+
                 if not user_input.strip():
                     continue
 
@@ -363,8 +489,8 @@ def main() -> None:
     parser.add_argument(
         "--model",
         type=str,
-        default=OpenAIModel.GPT_5_MINI.value,
-        help=f"LLM model to use (default: {OpenAIModel.GPT_5_MINI.value})",
+        default=OpenAIModel.GPT_5_1.value,
+        help=f"LLM model to use (default: {OpenAIModel.GPT_5_1.value})",
     )
     parser.add_argument(
         "--cdp-captures-dir",

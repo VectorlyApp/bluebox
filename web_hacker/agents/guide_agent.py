@@ -27,16 +27,90 @@ from web_hacker.data_models.llms.interaction import (
 )
 from web_hacker.data_models.llms.vendors import OpenAIModel
 from web_hacker.llms.llm_client import LLMClient
-from web_hacker.llms.tools.guide_agent_tools import (
-    start_routine_discovery_job_creation,
-    validate_routine,
-)
+from web_hacker.llms.tools.guide_agent_tools import validate_routine
 from web_hacker.routine_discovery.data_store import DiscoveryDataStore
 from web_hacker.utils.exceptions import UnknownToolError
 from web_hacker.utils.logger import get_logger
 
 
 logger = get_logger(name=__name__)
+
+
+class GuideAgentRoutineState:
+    """
+    Manages routine state for the Guide Agent.
+
+    Tracks current routine, last execution, and queues update messages
+    when state changes. Provides diff-checking so hosts can safely call
+    update methods on every message without duplicate notifications.
+    """
+
+    def __init__(self) -> None:
+        """Initialize empty routine state."""
+        self.current_routine_json: dict | None = None
+        self.last_executed_routine_json: dict | None = None
+        self.last_executed_routine_params: dict | None = None
+        self.last_executed_routine_result: dict | None = None
+        self.update_messages: list[dict[str, Any]] = []
+
+    def update_current_routine(self, routine_json: dict | None) -> None:
+        """
+        Update current routine if changed. No-op if unchanged.
+        """
+        if routine_json == self.current_routine_json:
+            return
+        was_none = self.current_routine_json is None
+        self.current_routine_json = routine_json
+
+        if routine_json is None:
+            message = "Routine has been removed from context."
+        elif was_none:
+            message = "Routine added to context. Use get_current_routine_json to see the routine."
+        else:
+            message = "Routine has been updated. Use get_current_routine_json to see the changes."
+
+        self.update_messages.append({
+            "timestamp": int(datetime.now().timestamp()),
+            "message": message,
+        })
+
+    def update_last_execution(
+        self,
+        routine_json: dict,
+        routine_params: dict,
+        routine_result: dict,
+    ) -> None:
+        """
+        Update last execution state.
+        """
+        self.last_executed_routine_json = routine_json
+        self.last_executed_routine_params = routine_params
+        self.last_executed_routine_result = routine_result
+        self.update_messages.append({
+            "timestamp": int(datetime.now().timestamp()),
+            "message": "Executed routine. To see the executed routine and parameters use the get_last_routine_execution tool. To see the result use the get_last_routine_execution_result tool."
+        })
+
+    def flush_update_messages(self) -> str | None:
+        """
+        Get formatted update messages and clear the queue.
+        Returns None if no pending updates.
+        """
+        if not self.update_messages:
+            return None
+        updates = "\n".join(
+            f"[System Update] {msg['message']}" for msg in self.update_messages
+        )
+        self.update_messages.clear()
+        return updates
+
+    def reset(self) -> None:
+        """Reset all state."""
+        self.current_routine_json = None
+        self.last_executed_routine_json = None
+        self.last_executed_routine_params = None
+        self.last_executed_routine_result = None
+        self.update_messages.clear()
 
 
 class GuideAgent:
@@ -98,6 +172,18 @@ Help users troubleshoot by reviewing:
 - Parameter values and placeholder resolution
 - Network transactions and responses
 
+## Routine State Tools - USE THESE WHEN DEBUGGING
+When a user asks for help debugging a routine or wants you to review their routine, use these tools:
+- **`get_current_routine_json`**: Call this FIRST when the user asks about their routine or wants help editing it. Shows the routine JSON they're currently working on.
+- **`get_last_routine_execution`**: Call this when the user says they ran a routine and it failed. Returns the routine JSON and parameters that were used in the last execution.
+- **`get_last_routine_execution_result`**: Call this to see what actually happened during execution - success/failure status, output data, operation metadata, and error messages. Essential for diagnosing why a routine failed.
+
+**Debugging workflow:**
+1. User says "my routine failed" or "help me debug" → call `get_last_routine_execution` and `get_last_routine_execution_result`
+2. User says "review my routine" or "what's wrong with my routine" → call `get_current_routine_json`
+3. Analyze the results and cross-reference with documentation via file_search
+4. Suggest specific fixes based on the error patterns
+
 ## Routine Validation - CRITICAL
 
 **IMPORTANT**: Whenever you propose changes to an existing routine or generate a new routine, \
@@ -124,7 +210,7 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
-        llm_model: OpenAIModel = OpenAIModel.GPT_5_MINI,
+        llm_model: OpenAIModel = OpenAIModel.GPT_5_1,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         data_store: DiscoveryDataStore | None = None,
@@ -183,6 +269,9 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
             self._thread.id,
         )
 
+        # Initialize routine state
+        self._routine_state = GuideAgentRoutineState()
+
     # Properties ___________________________________________________________________________________________________________
 
     @property
@@ -205,6 +294,11 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
         """Return the set of tool names that require user approval."""
         return self._tools_requiring_approval
 
+    @property
+    def routine_state(self) -> GuideAgentRoutineState:
+        """Return the routine state manager."""
+        return self._routine_state
+
     # Private methods ______________________________________________________________________________________________________
 
     def _get_system_prompt(self) -> str:
@@ -219,7 +313,23 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
     def _register_tools(self) -> None:
         """Register all tools with the LLM client."""
         self.llm_client.register_tool_from_function(validate_routine)
-        # self.llm_client.register_tool_from_function(start_routine_discovery_job_creation)
+
+        # Register routine state tools directly (no parameters needed, auto-execute)
+        self.llm_client.register_tool(
+            name="get_current_routine_json",
+            description="Get the current routine JSON that the user is working on. Use this to see the routine before making edits or suggestions.",
+            parameters={"type": "object", "properties": {}, "required": []},
+        )
+        self.llm_client.register_tool(
+            name="get_last_routine_execution",
+            description="Get the last executed routine JSON and the parameters that were used. Use this to understand what was run.",
+            parameters={"type": "object", "properties": {}, "required": []},
+        )
+        self.llm_client.register_tool(
+            name="get_last_routine_execution_result",
+            description="Get the result of the last routine execution including success/failure status, output data, and any errors. Use this to debug execution issues.",
+            parameters={"type": "object", "properties": {}, "required": []},
+        )
 
     def _emit_message(self, message: EmittedChatMessage) -> None:
         """Emit a message via the callback."""
@@ -360,17 +470,26 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
             logger.info("Executing tool %s", tool_name)
             return validate_routine(**tool_arguments)
 
-        if tool_name == start_routine_discovery_job_creation.__name__:
-            logger.info(
-                "Executing tool %s with args: %s",
-                tool_name,
-                tool_arguments,
-            )
-            result = start_routine_discovery_job_creation(**tool_arguments)
+        if tool_name == "get_current_routine_json":
+            logger.info("Executing tool %s", tool_name)
+            if self._routine_state.current_routine_json is None:
+                return {"error": "No current routine set. The user hasn't loaded or created a routine yet."}
+            return {"routine_json": self._routine_state.current_routine_json}
+
+        if tool_name == "get_last_routine_execution":
+            logger.info("Executing tool %s", tool_name)
+            if self._routine_state.last_executed_routine_json is None:
+                return {"error": "No routine has been executed yet."}
             return {
-                "thread_id": self._thread.id,
-                **result,
+                "routine_json": self._routine_state.last_executed_routine_json,
+                "parameters": self._routine_state.last_executed_routine_params,
             }
+
+        if tool_name == "get_last_routine_execution_result":
+            logger.info("Executing tool %s", tool_name)
+            if self._routine_state.last_executed_routine_result is None:
+                return {"error": "No routine execution result available. No routine has been executed yet."}
+            return {"result": self._routine_state.last_executed_routine_result}
 
         logger.error("Unknown tool \"%s\" with arguments: %s", tool_name, tool_arguments)
         raise UnknownToolError(f"Unknown tool \"{tool_name}\" with arguments: {tool_arguments}")
@@ -460,6 +579,11 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
                 )
             )
             return
+
+        # Prepend any pending update messages to user content, then clear them
+        updates = self._routine_state.flush_update_messages()
+        if updates:
+            content = f"{updates}\n\n{content}"
 
         # Add user message to history
         self._add_chat(ChatRole.USER, content)
@@ -785,11 +909,12 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
         """
         Reset the conversation to a fresh state.
 
-        Generates a new thread and clears all messages.
+        Generates a new thread and clears all messages and routine state.
         """
         old_thread_id = self._thread.id
         self._thread = ChatThread()
         self._chats = {}
+        self._routine_state.reset()
 
         if self._persist_chat_thread_callable:
             self._thread = self._persist_chat_thread_callable(self._thread)
