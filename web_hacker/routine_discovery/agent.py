@@ -137,16 +137,24 @@ class RoutineDiscoveryAgent(BaseModel):
             content=f"Discovery initiated"
         ))
 
-        # construct the tools
+        # construct the tools with all available vectorstores
+        vector_store_ids = [self.data_store.cdp_captures_vectorstore_id]
+        if self.data_store.documentation_vectorstore_id is not None:
+            vector_store_ids.append(self.data_store.documentation_vectorstore_id)
+
         self.tools = [
             {
                 "type": "file_search",
-                "vector_store_ids": [self.data_store.cdp_captures_vectorstore_id],
+                "vector_store_ids": vector_store_ids,
             }
         ]
 
-        # add the system prompt to the message history
-        self._add_to_message_history("system", self.SYSTEM_PROMPT_IDENTIFY_TRANSACTIONS)
+        # add the system prompt to the message history (including data store context)
+        system_prompt = self.SYSTEM_PROMPT_IDENTIFY_TRANSACTIONS
+        data_store_prompt = self.data_store.generate_data_store_prompt()
+        if data_store_prompt:
+            system_prompt = f"{system_prompt}\n\n{data_store_prompt}"
+        self._add_to_message_history("system", system_prompt)
 
         # add the user prompt to the message history
         self._add_to_message_history("user", f"Task description: {self.task}")
@@ -455,8 +463,8 @@ class RoutineDiscoveryAgent(BaseModel):
             model=self.llm_model,
             input=[self.message_history[-1]],
             previous_response_id=self.last_response_id,
-            # tools=self.tools,
-            # tool_choice="auto",
+            tools=self.tools,
+            tool_choice="auto",
             text_format=ExtractedVariableResponse
         )
         extracted_variable_response = response.output_parsed
