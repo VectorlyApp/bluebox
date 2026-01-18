@@ -133,7 +133,8 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
             raise ValueError(f"Vectorstore ID already exists: {self.cdp_captures_vectorstore_id}")
 
         vs = self.client.vector_stores.create(
-            name=f"api-extraction-context-{int(time.time())}"
+            name=f"cdp-captures-{int(time.time())}",
+            expires_after={"anchor": "last_active_at", "days": 1}
         )
         self.cdp_captures_vectorstore_id = vs.id
 
@@ -426,6 +427,7 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         """
         Create a vectorstore and upload documentation (.md files) and code files.
         Both documentation_dirs and code_dirs contents go into the same vectorstore.
+        Uses batch upload for faster processing.
         """
         if self.documentation_vectorstore_id is not None:
             raise ValueError(f"Documentation vectorstore already exists: {self.documentation_vectorstore_id}")
@@ -437,62 +439,57 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         self.uploaded_docs_info = []
         self.uploaded_code_info = []
 
-        vs = self.client.vector_stores.create(
-            name=f"documentation-context-{int(time.time())}"
-        )
-        self.documentation_vectorstore_id = vs.id
+        # Collect all files to upload
+        files_to_upload: list[Path] = []
 
-        self._upload_documentation_files()
-        self._upload_code_files()
-
-    def _upload_documentation_files(self) -> None:
-        """Scan all documentation_dirs for .md files and upload each to the vectorstore."""
+        # Collect documentation files
         for doc_dir in self.documentation_dirs:
             doc_path = Path(doc_dir)
             if not doc_path.exists():
                 raise ValueError(f"Documentation directory does not exist: {doc_dir}")
 
             for file in doc_path.iterdir():
-                if file.is_file() and file.suffix == ".md":
+                if file.is_file() and file.suffix == ".md" and file.stat().st_size > 0:
                     # Parse summary for caching
                     content = file.read_text(encoding="utf-8", errors="replace")[:500]
                     summary = self._parse_doc_summary(content)
-
-                    metadata = {"type": "documentation", "filename": file.name, "source_dir": doc_dir}
-                    self._upload_file_to_vectorstore(
-                        self.documentation_vectorstore_id,
-                        str(file),
-                        metadata
-                    )
-                    # Cache info for prompt generation
                     self.uploaded_docs_info.append({"filename": file.name, "summary": summary})
+                    files_to_upload.append(file)
 
-    def _upload_code_files(self) -> None:
-        """Recursively scan all code_dirs and upload all code files to the vectorstore."""
+        # Collect code files
         for code_dir in self.code_dirs:
             code_path = Path(code_dir)
             if not code_path.exists():
                 raise ValueError(f"Code directory does not exist: {code_dir}")
 
             for file in code_path.rglob("*"):
-                if file.is_file() and file.suffix.lower() in self.code_file_extensions:
+                if file.is_file() and file.suffix.lower() in self.code_file_extensions and file.stat().st_size > 0:
                     relative_path = file.relative_to(code_path)
                     # Parse docstring for caching
                     docstring = self._parse_code_docstring(str(file))
-
-                    metadata = {
-                        "type": "code",
-                        "filename": file.name,
-                        "path": str(relative_path),
-                        "source_dir": code_dir
-                    }
-                    self._upload_file_to_vectorstore(
-                        self.documentation_vectorstore_id,
-                        str(file),
-                        metadata
-                    )
-                    # Cache info for prompt generation
                     self.uploaded_code_info.append({"path": str(relative_path), "docstring": docstring})
+                    files_to_upload.append(file)
+
+        if not files_to_upload:
+            raise ValueError("No files found to upload")
+
+        # Create vectorstore
+        vs = self.client.vector_stores.create(
+            name=f"documentation-code-{int(time.time())}",
+            expires_after={"anchor": "last_active_at", "days": 1}
+        )
+        self.documentation_vectorstore_id = vs.id
+
+        # Batch upload all files at once using upload_and_poll
+        file_streams = [open(f, "rb") for f in files_to_upload]
+        try:
+            self.client.vector_stores.file_batches.upload_and_poll(
+                vector_store_id=self.documentation_vectorstore_id,
+                files=file_streams
+            )
+        finally:
+            for stream in file_streams:
+                stream.close()
 
     def _parse_doc_summary(self, content: str) -> str | None:
         """Parse summary from markdown content (blockquote after title)."""
