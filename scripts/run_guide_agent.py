@@ -865,6 +865,7 @@ def main() -> None:
                 str(WEB_HACKER_PACKAGE_ROOT / "routine_discovery"),
                 str(WEB_HACKER_PACKAGE_ROOT / "utils" / "js_utils.py"),
                 str(WEB_HACKER_PACKAGE_ROOT / "utils" / "data_utils.py"),
+                "!" + str(WEB_HACKER_PACKAGE_ROOT / "**" / "__init__.py"),
             ],
         }
 

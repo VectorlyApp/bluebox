@@ -121,6 +121,7 @@ class RoutineDiscovery:
                     str(PACKAGE_ROOT / "data_models" / "ui_elements.py"),
                     str(PACKAGE_ROOT / "utils" / "js_utils.py"),
                     str(PACKAGE_ROOT / "utils" / "data_utils.py"),
+                    "!" + str(PACKAGE_ROOT / "**" / "__init__.py"),
                 ],
             )
             logger.info("Data store initialized.")
