@@ -21,6 +21,7 @@ from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from web_hacker.utils.data_utils import get_text_from_html
+from web_hacker.utils.infra_utils import resolve_glob_patterns
 
 
 class DiscoveryDataStore(BaseModel, ABC):
@@ -117,8 +118,8 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
 
     # documentation and code related fields (both go into same vectorstore)
     documentation_vectorstore_id: str | None = None
-    documentation_dirs: list[str] = Field(default_factory=list)
-    code_dirs: list[str] = Field(default_factory=list)
+    documentation_paths: list[str] = Field(default_factory=list)
+    code_paths: list[str] = Field(default_factory=list)
     code_file_extensions: list[str] = Field(default_factory=lambda: [
         ".py", ".js", ".ts", ".jsx", ".tsx", ".json", ".yaml", ".yml",
         ".md", ".txt", ".html", ".css", ".scss", ".sql", ".sh", ".bash",
@@ -151,39 +152,43 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
 
     def _populate_cache_from_vectorstore(self) -> None:
         """
-        Populate cache by scanning documentation_dirs and code_dirs.
+        Populate cache by scanning documentation_paths and code_paths.
         Called when vectorstore_id is provided but cache is empty.
+
+        Supports glob patterns in paths (see resolve_glob_patterns for pattern syntax).
 
         TODO: Consider fetching file list from vectorstore API instead of re-scanning dirs,
         which would allow cache population even when dirs aren't available locally.
         """
-        # Scan documentation directories
-        for doc_dir in self.documentation_dirs:
-            doc_path = Path(doc_dir)
-            if not doc_path.exists():
-                continue
-            for file in doc_path.iterdir():
-                if file.is_file() and file.suffix == ".md":
-                    content = file.read_text(encoding="utf-8", errors="replace")[:500]
-                    summary = self._parse_doc_summary(content)
-                    self.uploaded_docs_info.append({
-                        'filename': file.name,
-                        'summary': summary
-                    })
+        # Resolve documentation patterns (recursive to include subdirectories)
+        doc_files = resolve_glob_patterns(
+            self.documentation_paths,
+            extensions={".md"},
+            recursive=True,
+            raise_on_missing=False,
+        )
+        for file in doc_files:
+            content = file.read_text(encoding="utf-8", errors="replace")[:500]
+            summary = self._parse_doc_summary(content)
+            self.uploaded_docs_info.append({
+                'filename': file.name,
+                'summary': summary
+            })
 
-        # Scan code directories
-        for code_dir in self.code_dirs:
-            code_path = Path(code_dir)
-            if not code_path.exists():
-                continue
-            for file in code_path.rglob("*"):
-                if file.is_file() and file.suffix.lower() in self.code_file_extensions:
-                    relative_path = file.relative_to(code_path)
-                    docstring = self._parse_code_docstring(str(file))
-                    self.uploaded_code_info.append({
-                        'path': str(relative_path),
-                        'docstring': docstring
-                    })
+        # Resolve code patterns (recursive by default for code)
+        code_extensions = set(self.code_file_extensions)
+        code_files = resolve_glob_patterns(
+            self.code_paths,
+            extensions=code_extensions,
+            recursive=True,
+            raise_on_missing=False,
+        )
+        for file in code_files:
+            docstring = self._parse_code_docstring(str(file))
+            self.uploaded_code_info.append({
+                'path': file.name,
+                'docstring': docstring
+            })
 
     def make_cdp_captures_vectorstore(self) -> None:
         """Make a vectorstore from the CDP captures."""
@@ -507,14 +512,20 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
     def make_documentation_vectorstore(self) -> None:
         """
         Create a vectorstore and upload documentation (.md files) and code files.
-        Both documentation_dirs and code_dirs contents go into the same vectorstore.
+        Both documentation_paths and code_paths contents go into the same vectorstore.
         Uses parallel uploads for speed.
+
+        Supports glob patterns in paths (see resolve_glob_patterns for pattern syntax):
+        - "path/to/file.md" - single file
+        - "path/to/dir/" - directory
+        - "path/**/*.py" - recursive glob
+        - "!pattern" - exclude files matching pattern
         """
         if self.documentation_vectorstore_id is not None:
             raise ValueError(f"Documentation vectorstore already exists: {self.documentation_vectorstore_id}")
 
-        if not self.documentation_dirs and not self.code_dirs:
-            raise ValueError("At least one of documentation_dirs or code_dirs must be set")
+        if not self.documentation_paths and not self.code_paths:
+            raise ValueError("At least one of documentation_paths or code_paths must be set")
 
         # Clear cached info
         self.uploaded_docs_info = []
@@ -523,38 +534,37 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         # Collect all files to upload: (file_path, metadata, cache_info_type, cache_info)
         upload_tasks: list[tuple[str, dict, str, dict]] = []
 
-        # Collect documentation files
-        for doc_dir in self.documentation_dirs:
-            doc_path = Path(doc_dir)
-            if not doc_path.exists():
-                raise ValueError(f"Documentation directory does not exist: {doc_dir}")
+        # Resolve and collect documentation files (recursive to include subdirectories)
+        doc_files = resolve_glob_patterns(
+            self.documentation_paths,
+            extensions={".md"},
+            recursive=True,
+            raise_on_missing=True,
+        )
+        for file in doc_files:
+            content = file.read_text(encoding="utf-8", errors="replace")[:500]
+            summary = self._parse_doc_summary(content)
+            metadata = {"type": "documentation", "filename": file.name}
+            cache_info = {"filename": file.name, "summary": summary}
+            upload_tasks.append((str(file), metadata, "docs", cache_info))
 
-            for file in doc_path.iterdir():
-                if file.is_file() and file.suffix == ".md":
-                    content = file.read_text(encoding="utf-8", errors="replace")[:500]
-                    summary = self._parse_doc_summary(content)
-                    metadata = {"type": "documentation", "filename": file.name, "source_dir": doc_dir}
-                    cache_info = {"filename": file.name, "summary": summary}
-                    upload_tasks.append((str(file), metadata, "docs", cache_info))
-
-        # Collect code files
-        for code_dir in self.code_dirs:
-            code_path = Path(code_dir)
-            if not code_path.exists():
-                raise ValueError(f"Code directory does not exist: {code_dir}")
-
-            for file in code_path.rglob("*"):
-                if file.is_file() and file.suffix.lower() in self.code_file_extensions:
-                    relative_path = file.relative_to(code_path)
-                    docstring = self._parse_code_docstring(str(file))
-                    metadata = {
-                        "type": "code",
-                        "filename": file.name,
-                        "path": str(relative_path),
-                        "source_dir": code_dir
-                    }
-                    cache_info = {"path": str(relative_path), "docstring": docstring}
-                    upload_tasks.append((str(file), metadata, "code", cache_info))
+        # Resolve and collect code files
+        code_extensions = set(self.code_file_extensions)
+        code_files = resolve_glob_patterns(
+            self.code_paths,
+            extensions=code_extensions,
+            recursive=True,
+            raise_on_missing=True,
+        )
+        for file in code_files:
+            docstring = self._parse_code_docstring(str(file))
+            metadata = {
+                "type": "code",
+                "filename": file.name,
+                "path": file.name,
+            }
+            cache_info = {"path": file.name, "docstring": docstring}
+            upload_tasks.append((str(file), metadata, "code", cache_info))
 
         if not upload_tasks:
             raise ValueError("No files found to upload")
@@ -621,10 +631,19 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
 
         return f"""## CDP Captures Vectorstore
 Contains browser session data captured via Chrome DevTools Protocol:
-- `consolidated_transactions.json`: Summary of all {transaction_count} HTTP transactions
+
+- `consolidated_transactions.json`: Summary of all HTTP transactions collected by CDP
+  - Contains: URL, method, headers, postData (request body), status code, response headers, response body (JSON/HTML/text)
+  - Search when: Looking for API endpoints, request/response payloads, auth headers, or understanding network calls
+
 - `storage.json`: Browser storage (localStorage, sessionStorage, cookies)
+  - Contains: Cookie name/value/domain/expiration, localStorage key-values, sessionStorage key-values
+  - Search when: Debugging auth tokens, session IDs, cached data, or tracking when values were set
+
 - `window_properties.json`: JavaScript window object properties
-- Individual transaction files with request/response details"""
+  - Contains: Custom JS properties injected into window, values captured at different page states with timestamps
+  - Search when: Looking for data set by JavaScript, A/B test flags, analytics config, or dynamic page state
+"""
 
     def _generate_documentation_vectorstore_prompt(self) -> str:
         """Generate a brief prompt describing the documentation vectorstore contents."""

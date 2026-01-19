@@ -11,7 +11,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
-# Package root for code_dirs (web_hacker/scripts/ -> web_hacker/)
+# Package root for code_paths (web_hacker/scripts/ -> web_hacker/)
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
 from web_hacker.config import Config
@@ -59,10 +59,12 @@ def main() -> None:
         consolidated_transactions_path=os.path.join(args.cdp_captures_dir, "network/consolidated_transactions.json"),
         storage_jsonl_path=os.path.join(args.cdp_captures_dir, "storage/events.jsonl"),
         window_properties_path=os.path.join(args.cdp_captures_dir, "window_properties/window_properties.json"),
-        documentation_dirs=[str(PACKAGE_ROOT / "agent_docs")],
-        code_dirs=[
-            str(PACKAGE_ROOT / "data_models"),
-            str(PACKAGE_ROOT / "utils"),
+        documentation_paths=[str(PACKAGE_ROOT / "agent_docs")],
+        code_paths=[
+            str(PACKAGE_ROOT / "data_models" / "routine"),
+            str(PACKAGE_ROOT / "data_models" / "ui_elements.py"),
+            str(PACKAGE_ROOT / "utils" / "js_utils.py"),
+            str(PACKAGE_ROOT / "utils" / "data_utils.py"),
         ],
     )
     logger.info("Data store initialized.")

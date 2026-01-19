@@ -26,7 +26,7 @@ from typing import Any
 
 from openai import OpenAI
 
-# Package root for code_dirs (scripts/ is sibling to web_hacker/)
+# Package root for code_paths (scripts/ is sibling to web_hacker/)
 WEB_HACKER_PACKAGE_ROOT = Path(__file__).resolve().parent.parent / "web_hacker"
 from rich import box
 from rich.console import Console
@@ -823,8 +823,8 @@ def main() -> None:
     parser.add_argument(
         "--docs-dir",
         type=str,
-        default="./agent_docs",
-        help="Documentation directory (default: ./agent_docs)",
+        default=str(WEB_HACKER_PACKAGE_ROOT / "agent_docs"),
+        help="Documentation directory (default: web_hacker/agent_docs)",
     )
     parser.add_argument(
         "-q", "--quiet",
@@ -858,10 +858,13 @@ def main() -> None:
         # Build data store kwargs - CDP paths are optional
         data_store_kwargs: dict[str, Any] = {
             "client": openai_client,
-            "documentation_dirs": [args.docs_dir],
-            "code_dirs": [
-                str(WEB_HACKER_PACKAGE_ROOT / "data_models"),
-                str(WEB_HACKER_PACKAGE_ROOT / "utils"),
+            "documentation_paths": [args.docs_dir],
+            "code_paths": [
+                str(WEB_HACKER_PACKAGE_ROOT / "data_models" / "routine"),
+                str(WEB_HACKER_PACKAGE_ROOT / "data_models" / "ui_elements.py"),
+                str(WEB_HACKER_PACKAGE_ROOT / "routine_discovery"),
+                str(WEB_HACKER_PACKAGE_ROOT / "utils" / "js_utils.py"),
+                str(WEB_HACKER_PACKAGE_ROOT / "utils" / "data_utils.py"),
             ],
         }
 

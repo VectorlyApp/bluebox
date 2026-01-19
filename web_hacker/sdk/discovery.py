@@ -17,7 +17,7 @@ import json
 from openai import OpenAI
 from pydantic import BaseModel
 
-# Package root for code_dirs (web_hacker/sdk/ -> web_hacker/)
+# Package root for code_paths (web_hacker/sdk/ -> web_hacker/)
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
 from ..routine_discovery.agent import RoutineDiscoveryAgent
@@ -115,10 +115,12 @@ class RoutineDiscovery:
                 consolidated_transactions_path=str(Path(self.cdp_captures_dir) / "network" / "consolidated_transactions.json"),
                 storage_jsonl_path=str(Path(self.cdp_captures_dir) / "storage" / "events.jsonl"),
                 window_properties_path=str(Path(self.cdp_captures_dir) / "window_properties" / "window_properties.json"),
-                documentation_dirs=[str(PACKAGE_ROOT / "agent_docs")],
-                code_dirs=[
-                    str(PACKAGE_ROOT / "data_models"),
-                    str(PACKAGE_ROOT / "utils"),
+                documentation_paths=[str(PACKAGE_ROOT / "agent_docs")],
+                code_paths=[
+                    str(PACKAGE_ROOT / "data_models" / "routine"),
+                    str(PACKAGE_ROOT / "data_models" / "ui_elements.py"),
+                    str(PACKAGE_ROOT / "utils" / "js_utils.py"),
+                    str(PACKAGE_ROOT / "utils" / "data_utils.py"),
                 ],
             )
             logger.info("Data store initialized.")
