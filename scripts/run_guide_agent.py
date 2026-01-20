@@ -18,6 +18,7 @@ Commands:
 """
 
 import argparse
+import difflib
 import json
 import logging
 import sys
@@ -292,10 +293,75 @@ class TerminalGuideChat:
         self._last_execution_ok: bool | None = None
         self._agent = GuideAgent(
             emit_message_callable=self._handle_message,
+            persist_routine_callable=self._persist_routine,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=llm_model if llm_model else OpenAIModel.GPT_5_1,
             data_store=data_store,
         )
+
+    def _persist_routine(self, routine_dict: dict[str, Any]) -> None:
+        """
+        Persist the routine to the loaded file path.
+
+        Called when user approves the update_routine tool call.
+        Shows a diff and overwrites the file with the new routine JSON.
+        """
+        if self._loaded_routine_path is None:
+            console.print()
+            console.print("[yellow]⚠ No file loaded - routine updated in memory only[/yellow]")
+            console.print()
+            return
+
+        try:
+            # Read old content for diff
+            old_content = ""
+            if self._loaded_routine_path.exists():
+                with open(self._loaded_routine_path, encoding="utf-8") as f:
+                    old_content = f.read()
+
+            # Format new content
+            new_content = json.dumps(routine_dict, indent=2)
+
+            # Generate and display diff
+            old_lines = old_content.splitlines(keepends=True)
+            new_lines = new_content.splitlines(keepends=True)
+            diff = difflib.unified_diff(
+                old_lines,
+                new_lines,
+                fromfile=str(self._loaded_routine_path),
+                tofile=str(self._loaded_routine_path),
+                lineterm="",
+            )
+
+            diff_lines = list(diff)
+            if diff_lines:
+                console.print()
+                console.print("[bold cyan]Diff:[/bold cyan]")
+                for line in diff_lines:
+                    line = line.rstrip("\n")
+                    if line.startswith("+++") or line.startswith("---"):
+                        console.print(f"[bold]{line}[/bold]")
+                    elif line.startswith("@@"):
+                        console.print(f"[cyan]{line}[/cyan]")
+                    elif line.startswith("+"):
+                        console.print(f"[green]{line}[/green]")
+                    elif line.startswith("-"):
+                        console.print(f"[red]{line}[/red]")
+                    else:
+                        console.print(line)
+                console.print()
+
+            # Write new content
+            with open(self._loaded_routine_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+
+            console.print(f"[green]✓ Routine saved to {self._loaded_routine_path}[/green]")
+            console.print()
+
+        except Exception as e:
+            console.print()
+            console.print(f"[red]✗ Failed to save routine: {e}[/red]")
+            console.print()
 
     def _get_prompt(self) -> str:
         """Get the input prompt with routine name if loaded."""

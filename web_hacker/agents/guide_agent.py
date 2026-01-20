@@ -221,6 +221,7 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
         emit_message_callable: Callable[[EmittedChatMessage], None],
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
+        persist_routine_callable: Callable[[dict], None] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: OpenAIModel = OpenAIModel.GPT_5_1,
         chat_thread: ChatThread | None = None,
@@ -237,6 +238,8 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
                 Returns the Chat with the final ID assigned by the persistence layer.
             persist_chat_thread_callable: Optional callback to persist ChatThread (for DynamoDB).
                 Returns the ChatThread with the final ID assigned by the persistence layer.
+            persist_routine_callable: Optional callback to persist routine when update_routine is approved.
+                Receives the complete routine dict to save/overwrite.
             stream_chunk_callable: Optional callback for streaming text chunks as they arrive.
             llm_model: The LLM model to use for conversation.
             chat_thread: Existing ChatThread to continue, or None for new conversation.
@@ -248,6 +251,7 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
         self._emit_message_callable = emit_message_callable
         self._persist_chat_callable = persist_chat_callable
         self._persist_chat_thread_callable = persist_chat_thread_callable
+        self._persist_routine_callable = persist_routine_callable
         self._stream_chunk_callable = stream_chunk_callable
         self._data_store = data_store
         self._tools_requiring_approval = tools_requiring_approval or set()
@@ -364,6 +368,31 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
             name="get_last_routine_execution_result",
             description="Get the result of the last routine execution including success/failure status, output data, and any errors. Use this to debug execution issues.",
             parameters={"type": "object", "properties": {}, "required": []},
+        )
+
+        # Register update_routine tool - requires user approval after validation
+        self.llm_client.register_tool(
+            name="update_routine",
+            description=(
+                "Update the current routine with a new or modified routine. "
+                "The routine will be validated first. If validation fails, you'll receive an error. "
+                "If validation succeeds, the user will be asked for approval before saving. "
+                "Use this when you want to propose changes to the routine."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "routine_dict": {
+                        "type": "object",
+                        "description": (
+                            "The complete routine JSON object to save. Must contain: "
+                            "name (string), description (string), parameters (array of parameter objects), "
+                            "and operations (array of operation objects)."
+                        ),
+                    }
+                },
+                "required": ["routine_dict"],
+            },
         )
 
     def _emit_message(self, message: EmittedChatMessage) -> None:
@@ -535,6 +564,17 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
                 return {"error": "No routine execution result available. No routine has been executed yet."}
             return {"result": self._routine_state.last_execution_result}
 
+        if tool_name == "update_routine":
+            logger.info("Executing tool %s with arguments: %s", tool_name, tool_arguments)
+            routine_dict = tool_arguments.get("routine_dict", {})
+            # Update routine state
+            routine_str = json.dumps(routine_dict)
+            self._routine_state.update_current_routine(routine_str)
+            # Call persist callback if provided
+            if self._persist_routine_callable:
+                self._persist_routine_callable(routine_dict)
+            return {"success": True, "message": "Routine updated and saved successfully."}
+
         logger.error("Unknown tool \"%s\" with arguments: %s", tool_name, tool_arguments)
         raise UnknownToolError(f"Unknown tool \"{tool_name}\" with arguments: {tool_arguments}")
 
@@ -661,15 +701,21 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
                         messages=messages,
                         system_prompt=self._get_system_prompt(),
                     )
+                    
+                logger.info(f"OPENAI RESPONSE: {response}")
 
                 # Handle response - add assistant message if there's content or tool calls
-                if response.content or response.tool_calls:
+                # Use explicit length check for tool_calls to avoid falsy empty list issue
+                has_content = bool(response.content)
+                has_tool_calls = response.tool_calls is not None and len(response.tool_calls) > 0
+
+                if has_content or has_tool_calls:
                     chat = self._add_chat(
                         ChatRole.ASSISTANT,
                         response.content or "",
-                        tool_calls=response.tool_calls if response.tool_calls else None,
+                        tool_calls=response.tool_calls if has_tool_calls else None,
                     )
-                    if response.content:
+                    if has_content:
                         self._emit_message(
                             EmittedChatMessage(
                                 type=ChatMessageType.CHAT_RESPONSE,
@@ -679,8 +725,17 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
                             )
                         )
 
+                    # Log tool calls for debugging persistence issues
+                    if has_tool_calls:
+                        logger.info(
+                            "Saved assistant message %s with %d tool_calls: %s",
+                            chat.id,
+                            len(response.tool_calls),
+                            [tc.call_id for tc in response.tool_calls],
+                        )
+
                 # If no tool calls, we're done
-                if not response.tool_calls:
+                if not has_tool_calls:
                     logger.debug("Agent loop complete - no more tool calls")
                     return
 
@@ -690,6 +745,39 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
                     tool_name = tool_call.tool_name
                     tool_arguments = tool_call.tool_arguments
                     call_id = tool_call.call_id
+
+                    #TODO: THIS IS UGLY AND GROSS AND SHOULD BE REFACTORED
+                    # Special handling for update_routine: validate before asking for approval
+                    if tool_name == "update_routine":
+                        routine_dict = tool_arguments.get("routine_dict", {})
+                        validation_result = validate_routine(routine_dict)
+                        if not validation_result.get("valid"):
+                            # Validation failed - return error to agent without approval
+                            logger.info(
+                                "update_routine validation failed: %s",
+                                validation_result.get("error"),
+                            )
+                            result_str = json.dumps(validation_result)
+                            self._add_chat(
+                                ChatRole.TOOL,
+                                f"Tool '{tool_name}' validation failed: {result_str}",
+                                tool_call_id=call_id,
+                            )
+                            tools_executed = True
+                            continue  # Skip to next tool call
+                        # Validation passed - proceed to approval flow
+                        logger.info("update_routine validation passed, requesting user approval")
+                        pending = self._create_tool_invocation_request(
+                            tool_name, tool_arguments, call_id
+                        )
+                        self._emit_message(
+                            EmittedChatMessage(
+                                type=ChatMessageType.TOOL_INVOCATION_REQUEST,
+                                tool_invocation=pending,
+                            )
+                        )
+                        logger.debug("Agent loop paused - awaiting update_routine approval")
+                        return  # Pause loop until user confirms/denies
 
                     if tool_name in self._tools_requiring_approval:
                         # Tool requires user approval - pause the loop
