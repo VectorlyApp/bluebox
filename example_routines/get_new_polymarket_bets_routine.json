@@ -1,78 +1,78 @@
 {
-  "name": "Get New Polymarket Bets",
-  "description": "Get new polymarket bets from the API",
-  "operations": [
-    {
-      "type": "navigate",
-      "url": "https://polymarket.com/"
-    },
-    {
-      "type": "sleep",
-      "timeout_seconds": 2.5
-    },
-    {
-      "type": "fetch",
-      "endpoint": {
-        "headers": {
-          "Origin": "https://polymarket.com",
-          "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
-          "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
-          "sec-ch-ua-mobile": "?0",
-          "Accept": "application/json, text/plain, */*",
-          "sec-ch-ua-platform": "\"Linux\""
+    "name": "Get New Polymarket Bets",
+    "description": "Get new polymarket bets from the API",
+    "operations": [
+        {
+            "type": "navigate",
+            "url": "https://polymarket.com/"
         },
-        "description": "Fetch newest active, non-archived, open events (bets) from Polymarket Gamma API, ordered by start date descending (newest first).",
-        "method": "GET",
-        "body": null,
-        "credentials": "include",
-        "url": "https://gamma-api.polymarket.com/events/pagination?limit=\"{{limit}}\"&active=true&archived=false&closed=false&order=startDate&ascending=false&offset=\"{{offset}}\"&exclude_tag_id=100639&exclude_tag_id=102169"
-      },
-      "session_storage_key": "newest_polymarket_events"
-    },
-    {
-      "type": "return",
-      "session_storage_key": "newest_polymarket_events"
-    }
-  ],
-  "incognito": true,
-  "parameters": [
-    {
-      "min_length": null,
-      "enum_values": null,
-      "pattern": null,
-      "format": null,
-      "description": "Number of newest events (bets) to fetch; defaults to 20 if not provided.",
-      "type": "integer",
-      "required": false,
-      "min_value": 1,
-      "default": 20,
-      "examples": [
-        10,
-        20,
-        50
-      ],
-      "name": "limit",
-      "max_length": null,
-      "max_value": 100
-    },
-    {
-      "min_length": null,
-      "enum_values": null,
-      "pattern": null,
-      "format": null,
-      "description": "Pagination offset into the newest events list; defaults to 0 for the first page.",
-      "type": "integer",
-      "required": false,
-      "min_value": 0,
-      "default": 0,
-      "examples": [
-        0,
-        20,
-        40
-      ],
-      "name": "offset",
-      "max_length": null,
-      "max_value": null
-    }
-  ]
+        {
+            "type": "sleep",
+            "timeout_seconds": 2.5
+        },
+        {
+            "type": "fetch",
+            "endpoint": {
+                "headers": {
+                    "Origin": "https://polymarket.com",
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+                    "sec-ch-ua": "\"Not_A Brand\";v=\"99\", \"Chromium\";v=\"142\"",
+                    "sec-ch-ua-mobile": "?0",
+                    "Accept": "application/json, text/plain, */*",
+                    "sec-ch-ua-platform": "\"Linux\""
+                },
+                "description": "Fetch newest active, non-archived, open events (bets) from Polymarket Gamma API, ordered by start date descending (newest first).",
+                "method": "GET",
+                "body": {},
+                "credentials": "include",
+                "url": "https://gamma-api.polymarket.com/events/pagination?limit=\"{{limit}}\"&active=true&archived=false&closed=false&order=startDate&ascending=false&offset=\"{{offset}}\"&exclude_tag_id=100639&exclude_tag_id=102169"
+            },
+            "session_storage_key": "newest_polymarket_events"
+        },
+        {
+            "type": "return",
+            "session_storage_key": "newest_polymarket_events"
+        }
+    ],
+    "incognito": true,
+    "parameters": [
+        {
+            "min_length": null,
+            "enum_values": null,
+            "pattern": null,
+            "format": null,
+            "description": "Number of newest events (bets) to fetch; defaults to 20 if not provided.",
+            "type": "integer",
+            "required": false,
+            "min_value": 1,
+            "default": 20,
+            "examples": [
+                10,
+                20,
+                50
+            ],
+            "name": "limit",
+            "max_length": null,
+            "max_value": 100
+        },
+        {
+            "min_length": null,
+            "enum_values": null,
+            "pattern": null,
+            "format": null,
+            "description": "Pagination offset into the newest events list; defaults to 0 for the first page.",
+            "type": "integer",
+            "required": false,
+            "min_value": 0,
+            "default": 0,
+            "examples": [
+                0,
+                20,
+                40
+            ],
+            "name": "offset",
+            "max_length": null,
+            "max_value": null
+        }
+    ]
 }

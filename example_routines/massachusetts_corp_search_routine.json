@@ -1,11 +1,27 @@
 {
   "name": "massachusetts_corp_search",
   "description": "Search for corporations and business entities registered in Massachusetts using the Secretary of State's corporate database.",
+  "parameters": [
+    {
+      "name": "entity_name",
+      "type": "string",
+      "required": true,
+      "description": "The name of the corporation or entity to search for (e.g., 'Microsoft Corporation')",
+      "default": null,
+      "examples": [],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": null,
+      "enum_values": null,
+      "format": null
+    }
+  ],
   "operations": [
     {
       "type": "navigate",
-      "url": "https://corp.sec.state.ma.us/corpweb/CorpSearch/CorpSearch.aspx",
-      "sleep_after_navigation_seconds": 3.0
+      "url": "https://corp.sec.state.ma.us/corpweb/CorpSearch/CorpSearch.aspx"
     },
     {
       "type": "sleep",
@@ -14,12 +30,12 @@
     {
       "type": "scroll",
       "selector": null,
-      "x": null,
-      "y": null,
       "delta_x": null,
       "delta_y": 100,
-      "behavior": "auto",
-      "timeout_ms": 5000
+      "x": null,
+      "y": null,
+      "timeout_ms": 5000,
+      "behavior": "auto"
     },
     {
       "type": "click",
@@ -75,35 +91,18 @@
     },
     {
       "type": "sleep",
-      "timeout_seconds": 1.0
+      "timeout_seconds": 1
     },
     {
       "type": "js_evaluate",
-      "js": "(()=>{console.log('Starting corp search extraction');const table=document.getElementById('MainContent_SearchControl_grdSearchResultsEntity');if(!table){console.log('Table not found!');return{error:'Table not found',entities:[],entity_count:0};}console.log('Found table:', table.id);const rows=table.querySelectorAll('tr.GridRow');console.log('Found rows:', rows.length);const entities=[];for(const row of rows){const cells=row.querySelectorAll('td,th');const link=row.querySelector('a.link');const entity={entity_name:cells[0]?.textContent?.trim()||'',id_number:cells[1]?.textContent?.trim()||'',old_id_number:cells[2]?.textContent?.trim()||'',address:cells[3]?.textContent?.trim().replace(/\\s+/g,' ')||'',link:link?.href||''};console.log('Extracted entity:', entity.entity_name);entities.push(entity);}console.log('Extraction complete, total results:', entities.length);const ma_search_corp_result={entities,entity_count:entities.length};sessionStorage.setItem('ma_search_corp_result', JSON.stringify(ma_search_corp_result));return ma_search_corp_result;})()",
-      "timeout_seconds": 10.0,
-      "session_storage_key": "ma_search_corp_result"
+      "js": "(()=>{console.log('Starting corp search extraction');const table=document.getElementById('MainContent_SearchControl_grdSearchResultsEntity');if(!table){console.log('Table not found!');return{error:'Table not found',results:[]};}console.log('Found table:', table.id);const rows=table.querySelectorAll('tr.GridRow');console.log('Found rows:', rows.length);const results=[];for(const row of rows){const cells=row.querySelectorAll('td,th');const link=row.querySelector('a.link');const entity={entity_name:cells[0]?.textContent?.trim()||'',id_number:cells[1]?.textContent?.trim()||'',old_id_number:cells[2]?.textContent?.trim()||'',address:cells[3]?.textContent?.trim().replace(/\\s+/g,' ')||'',link:link?.href||''};console.log('Extracted entity:', entity.entity_name);results.push(entity);}console.log('Extraction complete, total results:', results.length);return{results,count:results.length};})()",
+      "session_storage_key": "corp_search_results",
+      "timeout_seconds": 10
     },
     {
       "type": "return",
-      "session_storage_key": "ma_search_corp_result"
-    }
-  ],
-  "incognito": true,
-  "parameters": [
-    {
-      "name": "entity_name",
-      "type": "string",
-      "required": true,
-      "description": "The name of the corporation or entity to search for (e.g., 'Microsoft Corporation')",
-      "default": null,
-      "examples": [],
-      "min_length": null,
-      "max_length": null,
-      "min_value": null,
-      "max_value": null,
-      "pattern": null,
-      "enum_values": null,
-      "format": null
+      "session_storage_key": "corp_search_results"
     }
   ]
 }
+
