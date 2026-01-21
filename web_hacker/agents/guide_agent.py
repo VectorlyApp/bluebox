@@ -577,7 +577,7 @@ but is not required before calling `suggest_routine_edit`.
 
         suggested_edit = SuggestedEditRoutine(
             chat_thread_id=self._thread.id,
-            routine=routine,
+            routine=routine_dict,
         )
 
         # Persist suggested edit if callback provided (may assign new ID)

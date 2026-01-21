@@ -9,7 +9,7 @@ from enum import StrEnum
 from typing import Annotated, Any, Literal, Union
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from web_hacker.data_models.resource_base import ResourceBase
 from web_hacker.data_models.routine import Routine
@@ -74,7 +74,14 @@ class SuggestedEditRoutine(SuggestedEdit):
     Suggested edit for a routine.
     """
     type: Literal[SuggestedEditType.ROUTINE] = SuggestedEditType.ROUTINE
-    routine: Routine = Field(..., description="The new/modified routine object")
+    routine: dict[str, Any] = Field(..., description="The new/modified routine object as dict")
+
+    @field_validator("routine")
+    @classmethod
+    def validate_routine_dict(cls, v: dict[str, Any]) -> dict[str, Any]:
+        """Validate that routine dict can be cast to a Routine object."""
+        Routine(**v)  # Raises ValidationError if invalid
+        return v
 
 
 # Union of all suggested edit types - discriminated by 'type' field
