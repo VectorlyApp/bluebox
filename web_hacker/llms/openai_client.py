@@ -681,6 +681,9 @@ class OpenAIClient(AbstractLLMVendorClient):
                                 tool_calls_by_index[idx] = {"name": None, "args": [], "call_id": None}
                             tool_calls_by_index[idx]["name"] = event.item.name
                             tool_calls_by_index[idx]["call_id"] = getattr(event.item, "call_id", None)
+                            # Also capture arguments if already present (not streamed via delta)
+                            if hasattr(event.item, "arguments") and event.item.arguments:
+                                tool_calls_by_index[idx]["args"].append(event.item.arguments)
 
             # Build final response with all tool calls
             tool_calls: list[LLMToolCall] = []

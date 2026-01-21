@@ -10,8 +10,12 @@ Commands:
   /unload                  Unload the current routine
   /show                    Show current routine details
   /validate                Validate the current routine
-  /execute [params.json]    Execute the loaded routine
+  /execute [params.json]   Execute the loaded routine
+  /diff                    Show pending suggested edit diff
+  /accept                  Accept pending suggested edit
+  /reject                  Reject pending suggested edit
   /status                  Show current state
+  /chats                   Show all messages in the thread
   /reset                   Start a new conversation
   /help                    Show help
   /quit                    Exit
@@ -42,8 +46,9 @@ from web_hacker.config import Config
 from web_hacker.data_models.llms.vendors import OpenAIModel
 from web_hacker.data_models.llms.interaction import (
     ChatMessageType,
-    EmittedChatMessage,
+    EmittedMessage,
     PendingToolInvocation,
+    SuggestedEditRoutine,
     ToolInvocationStatus,
 )
 from web_hacker.data_models.routine.routine import Routine
@@ -110,11 +115,18 @@ can be turned into a reusable routine.
 
 [bold]Commands:[/bold]
   [cyan]/load <routine.json>[/cyan]     Load a routine file (auto-reloads on edits)
+  [cyan]/unload[/cyan]                  Unload the current routine
   [cyan]/show[/cyan]                    Show current routine details
   [cyan]/validate[/cyan]                Validate the current routine
   [cyan]/execute \[params.json][/cyan]   Execute the loaded routine
+  [cyan]/diff[/cyan]                    Show pending suggested edit diff
+  [cyan]/accept[/cyan]                  Accept pending suggested edit
+  [cyan]/reject[/cyan]                  Reject pending suggested edit
   [cyan]/status[/cyan]                  Show current state
+  [cyan]/chats[/cyan]                   Show all messages in the thread
+  [cyan]/reset[/cyan]                   Start a new conversation
   [cyan]/help[/cyan]                    Show all commands
+  [cyan]/quit[/cyan]                    Exit
 
 [bold]Links:[/bold]
   [link=https://vectorly.app/docs]https://vectorly.app/docs[/link]
@@ -176,7 +188,8 @@ def print_tool_result(
     elif invocation.status == ToolInvocationStatus.FAILED:
         console.print("[bold red]✗ Tool execution failed[/bold red]")
         if error:
-            console.print(f"[red]  Error: {error}[/red]")
+            console.print()
+            console.print(Panel(error, title="Error", style="red", box=box.ROUNDED))
 
     console.print()
 
@@ -287,6 +300,7 @@ class TerminalGuideChat:
     ) -> None:
         """Initialize the terminal chat interface."""
         self._pending_invocation: PendingToolInvocation | None = None
+        self._pending_suggested_edit: SuggestedEditRoutine | None = None
         self._streaming_started: bool = False
         self._data_store = data_store
         self._loaded_routine_path: Path | None = None
@@ -389,7 +403,7 @@ class TerminalGuideChat:
         # Use plain print for streaming - Rich console.print breaks on char-by-char output
         print(chunk, end="", flush=True)
 
-    def _handle_message(self, message: EmittedChatMessage) -> None:
+    def _handle_message(self, message: EmittedMessage) -> None:
         """Handle messages emitted by the Guide Agent."""
         if message.type == ChatMessageType.CHAT_RESPONSE:
             if self._streaming_started:
@@ -411,6 +425,14 @@ class TerminalGuideChat:
                     message.tool_result,
                     message.error,
                 )
+
+        elif message.type == ChatMessageType.SUGGESTED_EDIT:
+            if message.suggested_edit:
+                self._pending_suggested_edit = message.suggested_edit
+                console.print()
+                console.print("[bold yellow]📝 Agent suggested a routine edit[/bold yellow]")
+                console.print("[dim]Use /diff to see changes, /accept to apply, /reject to discard[/dim]")
+                console.print()
 
         elif message.type == ChatMessageType.ERROR:
             print_error(message.error or "Unknown error")
@@ -568,6 +590,46 @@ class TerminalGuideChat:
             error = result.get("error", "Unknown error")
             # Format error nicely
             console.print(Panel(error, title="Validation Error", style="red", box=box.ROUNDED))
+        console.print()
+
+    def _handle_chats_command(self) -> None:
+        """Handle /chats command to show all messages in the thread."""
+        chats = self._agent.get_chats()
+        if not chats:
+            console.print()
+            console.print("[yellow]No messages in thread yet.[/yellow]")
+            console.print()
+            return
+
+        console.print()
+        console.print(f"[bold cyan]Chat History ({len(chats)} messages)[/bold cyan]")
+        console.print()
+
+        role_styles = {"user": "green", "assistant": "cyan", "system": "yellow", "tool": "magenta"}
+
+        for i, chat in enumerate(chats, 1):
+            role_style = role_styles.get(chat.role.value, "white")
+
+            # TOOL role = tool result
+            if chat.role.value == "tool":
+                content = chat.content.replace("\n", " ")[:50]
+                tool_id = chat.tool_call_id[:8] + "..." if chat.tool_call_id else "?"
+                console.print(f"[dim]{i}.[/dim] [{role_style}]TOOL_RESULT[/{role_style}] [dim]({tool_id})[/dim] {escape(content)}...")
+                continue
+
+            # ASSISTANT with tool_calls = tool request
+            if chat.role.value == "assistant" and chat.tool_calls:
+                tool_names = ", ".join(tc.tool_name for tc in chat.tool_calls)
+                content = chat.content.replace("\n", " ")[:30] if chat.content else ""
+                prefix = f"{escape(content)}... " if content else ""
+                console.print(f"[dim]{i}.[/dim] [{role_style}]ASSISTANT[/{role_style}] {prefix}[yellow]→ {tool_names}[/yellow]")
+                continue
+
+            # Regular message - single line, ~50 chars
+            content = chat.content.replace("\n", " ")[:50]
+            suffix = "..." if len(chat.content) > 50 else ""
+            console.print(f"[dim]{i}.[/dim] [{role_style}]{chat.role.value.upper()}[/{role_style}] {escape(content)}{suffix}")
+
         console.print()
 
     def _handle_status_command(self) -> None:
@@ -747,6 +809,89 @@ class TerminalGuideChat:
             console.print(f"[bold red]✗ Execution error: {e}[/bold red]")
             console.print()
 
+    def _handle_diff_command(self) -> None:
+        """Handle /diff command to show pending suggested edit."""
+        if not self._pending_suggested_edit:
+            console.print()
+            console.print("[yellow]No pending suggested edit.[/yellow]")
+            console.print()
+            return
+
+        # Get current routine
+        current_str = self._agent.routine_state.current_routine_str or "{}"
+        # Serialize Routine object to JSON for diff
+        new_str = json.dumps(self._pending_suggested_edit.routine.model_dump(), indent=2)
+
+        # Generate unified diff
+        current_lines = current_str.splitlines(keepends=True)
+        new_lines = new_str.splitlines(keepends=True)
+        diff = difflib.unified_diff(
+            current_lines,
+            new_lines,
+            fromfile="current",
+            tofile="suggested",
+            lineterm="",
+        )
+
+        diff_lines = list(diff)
+        if diff_lines:
+            console.print()
+            console.print("[bold cyan]Suggested Edit Diff:[/bold cyan]")
+            for line in diff_lines:
+                line = line.rstrip("\n")
+                if line.startswith("+++") or line.startswith("---"):
+                    console.print(f"[bold]{line}[/bold]")
+                elif line.startswith("@@"):
+                    console.print(f"[cyan]{line}[/cyan]")
+                elif line.startswith("+"):
+                    console.print(f"[green]{line}[/green]")
+                elif line.startswith("-"):
+                    console.print(f"[red]{line}[/red]")
+                else:
+                    console.print(line)
+            console.print()
+        else:
+            console.print()
+            console.print("[yellow]No differences found.[/yellow]")
+            console.print()
+
+    def _handle_accept_command(self) -> None:
+        """Handle /accept command to approve pending edit."""
+        if not self._pending_suggested_edit:
+            console.print()
+            console.print("[yellow]No pending suggested edit to accept.[/yellow]")
+            console.print()
+            return
+
+        # Get routine from pending edit
+        routine = self._pending_suggested_edit.routine
+        routine_dict = routine.model_dump()
+        routine_str = json.dumps(routine_dict)
+
+        # Update agent's routine state
+        self._agent.routine_state.update_current_routine(routine_str)
+
+        # Persist to file (reuses existing _persist_routine method)
+        self._persist_routine(routine_dict)
+
+        console.print()
+        console.print("[bold green]✓ Edit accepted and applied[/bold green]")
+        console.print()
+        self._pending_suggested_edit = None
+
+    def _handle_reject_command(self) -> None:
+        """Handle /reject command to reject pending edit."""
+        if not self._pending_suggested_edit:
+            console.print()
+            console.print("[yellow]No pending suggested edit to reject.[/yellow]")
+            console.print()
+            return
+
+        console.print()
+        console.print("[yellow]✗ Edit rejected[/yellow]")
+        console.print()
+        self._pending_suggested_edit = None
+
     def run(self) -> None:
         """Run the interactive chat loop."""
         print_welcome(str(self._agent.llm_model))
@@ -786,7 +931,11 @@ class TerminalGuideChat:
   [cyan]/show[/cyan]                    Show current routine details
   [cyan]/validate[/cyan]                Validate the current routine
   [cyan]/execute \[params.json][/cyan]   Execute the loaded routine
+  [cyan]/diff[/cyan]                    Show pending suggested edit diff
+  [cyan]/accept[/cyan]                  Accept pending suggested edit
+  [cyan]/reject[/cyan]                  Reject pending suggested edit
   [cyan]/status[/cyan]                  Show current state
+  [cyan]/chats[/cyan]                   Show all messages in the thread
   [cyan]/reset[/cyan]                   Start a new conversation
   [cyan]/help[/cyan]                    Show this help message
   [cyan]/quit[/cyan]                    Exit
@@ -795,7 +944,8 @@ class TerminalGuideChat:
   - After /load, edit the file externally and changes are picked up automatically
   - The prompt shows the loaded routine name: [dim]You (routine_name)>[/dim]
   - Use /execute without params to enter values interactively
-  - Ask the agent to validate, explain, or debug your routine""",
+  - Ask the agent to validate, explain, or debug your routine
+  - When agent suggests edits, use /diff, /accept, or /reject to review them""",
                         title="[bold magenta]Help[/bold magenta]",
                         border_style="magenta",
                         box=box.ROUNDED,
@@ -806,6 +956,7 @@ class TerminalGuideChat:
                 if cmd == "/reset":
                     self._agent.reset()
                     self._pending_invocation = None
+                    self._pending_suggested_edit = None
                     self._loaded_routine_path = None
                     self._last_execution_ok = None
                     console.print()
@@ -817,12 +968,28 @@ class TerminalGuideChat:
                     self._handle_status_command()
                     continue
 
+                if cmd == "/chats":
+                    self._handle_chats_command()
+                    continue
+
                 if cmd == "/show":
                     self._handle_show_command()
                     continue
 
                 if cmd == "/validate":
                     self._handle_validate_command()
+                    continue
+
+                if cmd == "/diff":
+                    self._handle_diff_command()
+                    continue
+
+                if cmd == "/accept":
+                    self._handle_accept_command()
+                    continue
+
+                if cmd == "/reject":
+                    self._handle_reject_command()
                     continue
 
                 if cmd == "/unload":
