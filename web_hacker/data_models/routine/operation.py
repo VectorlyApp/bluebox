@@ -1004,8 +1004,8 @@ class RoutineJsEvaluateOperation(RoutineOperation):
     BLOCKED:
     - Dynamic code generation: eval(), Function constructor
     - Network requests: fetch(), XMLHttpRequest, WebSocket, sendBeacon (use RoutineFetchOperation instead)
-    - Persistent event hooks: addEventListener(), on*=, MutationObserver, IntersectionObserver
-    - Navigation/lifecycle: window.close(), location.*, history.*
+    - Persistent event hooks: addEventListener(), MutationObserver, IntersectionObserver
+    - Navigation/lifecycle: window.close()
 
     FORMAT REQUIREMENT:
     The JavaScript code MUST be wrapped in an IIFE (Immediately Invoked Function Expression):
@@ -1043,21 +1043,18 @@ class RoutineJsEvaluateOperation(RoutineOperation):
         r'(?:^|[^a-zA-Z0-9_])Function\s*\(', 
 
         # Network / exfiltration
-        r'fetch\s*\(',
+        r'(?<![a-zA-Z0-9_])fetch\s*\(',
         r'XMLHttpRequest',
         r'WebSocket',
         r'sendBeacon',
 
         # Persistent event hooks
         r'addEventListener\s*\(',
-        r'on\w+\s*=',
         r'MutationObserver',
         r'IntersectionObserver',
 
         # Navigation / lifecycle control
         r'window\.close\s*\(',
-        r'location\.',
-        r'history\.',
     ]
 
     @field_validator("js")

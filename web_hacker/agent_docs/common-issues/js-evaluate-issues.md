@@ -86,7 +86,7 @@ Check `console_logs` in operation metadata.
 **Cause:** Security restrictions block certain APIs.
 
 **Blocked patterns:**
-- `fetch()` → Use `fetch` operation instead
+- `fetch()` → Use `fetch` operation instead (note: `prefetch()`, `refetch()` etc. are allowed)
 - `eval()`, `Function()` → Rewrite without dynamic code
-- `addEventListener()` → Not supported
-- `location`, `history` → Use `navigate` operation
+- `addEventListener()`, `MutationObserver`, `IntersectionObserver` → Not supported
+- `window.close()` → Not supported

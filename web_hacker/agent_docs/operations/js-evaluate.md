@@ -212,17 +212,14 @@ These patterns are detected and rejected:
 |---------|--------|
 | `eval()` | Dynamic code generation |
 | `Function()` constructor | Dynamic code generation |
-| `fetch()` | Use `fetch` operation instead |
+| `fetch()` | Use `fetch` operation instead (note: `prefetch()`, `refetch()` etc. are allowed) |
 | `XMLHttpRequest` | Network requests |
 | `WebSocket` | Network requests |
 | `sendBeacon` | Exfiltration |
 | `addEventListener()` | Persistent event hooks |
-| `on*=` handlers | Persistent event hooks |
 | `MutationObserver` | Persistent observers |
 | `IntersectionObserver` | Persistent observers |
 | `window.close()` | Lifecycle control |
-| `location.*` | Navigation |
-| `history.*` | Navigation |
 
 ---
 

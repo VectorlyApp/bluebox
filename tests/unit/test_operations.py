@@ -237,6 +237,20 @@ class TestRoutineJsEvaluateOperationValidation:
         errors = exc_info.value.errors()
         assert any("fetch" in str(e.get("msg", "")) for e in errors)
 
+    def test_allowed_prefetch(self) -> None:
+        """Test that prefetch() is not blocked by the fetch pattern."""
+        operation = RoutineJsEvaluateOperation(
+            js="(function() { var link = document.createElement('link'); link.rel = 'prefetch'; return prefetch('/next-page'); })()"
+        )
+        assert operation.js is not None
+
+    def test_allowed_refetch(self) -> None:
+        """Test that refetch() is not blocked by the fetch pattern."""
+        operation = RoutineJsEvaluateOperation(
+            js="(function() { return refetch(); })()"
+        )
+        assert operation.js is not None
+
     def test_blocked_eval_in_async_iife(self) -> None:
         """Test that eval() is blocked even in async IIFE."""
         with pytest.raises(ValidationError) as exc_info:
@@ -287,16 +301,6 @@ class TestRoutineJsEvaluateOperationValidation:
         errors = exc_info.value.errors()
         assert any("addEventListener" in str(e.get("msg", "")) for e in errors)
 
-    def test_blocked_onevent_handler(self) -> None:
-        """Test that onclick= style handlers are blocked."""
-        with pytest.raises(ValidationError) as exc_info:
-            RoutineJsEvaluateOperation(
-                js="(function() { document.onclick = () => {}; })()"
-            )
-        
-        errors = exc_info.value.errors()
-        assert any("on" in str(e.get("msg", "")) for e in errors)
-
     def test_blocked_mutation_observer(self) -> None:
         """Test that MutationObserver is blocked."""
         with pytest.raises(ValidationError) as exc_info:
@@ -326,26 +330,6 @@ class TestRoutineJsEvaluateOperationValidation:
         
         errors = exc_info.value.errors()
         assert any("window\\.close" in str(e.get("msg", "")) or "window.close" in str(e.get("msg", "")) for e in errors)
-
-    def test_blocked_location(self) -> None:
-        """Test that location.* is blocked."""
-        with pytest.raises(ValidationError) as exc_info:
-            RoutineJsEvaluateOperation(
-                js="(function() { location.href = 'http://example.com'; })()"
-            )
-        
-        errors = exc_info.value.errors()
-        assert any("location" in str(e.get("msg", "")) for e in errors)
-
-    def test_blocked_history(self) -> None:
-        """Test that history.* is blocked."""
-        with pytest.raises(ValidationError) as exc_info:
-            RoutineJsEvaluateOperation(
-                js="(function() { history.pushState({}, '', '/new'); })()"
-            )
-        
-        errors = exc_info.value.errors()
-        assert any("history" in str(e.get("msg", "")) for e in errors)
 
     def test_allowed_promise(self) -> None:
         """Test that Promise is allowed."""
@@ -659,6 +643,28 @@ class TestRoutineJsEvaluateOperationValidation:
     # ============================================================================
     # Complex Real-World Examples
     # ============================================================================
+
+    def test_allowed_string_containing_on_prefix(self) -> None:
+        """Test that string literals containing 'on' followed by word chars and '=' are not blocked.
+
+        The pattern r'on\\w+\\s*=' is meant to block event handlers like onclick=, onload=, etc.
+        But it should NOT block occurrences inside string literals (e.g., 'lots_json_length=').
+        """
+        js_code = (
+            "(function () { var r = window.chrComponents && window.chrComponents.lots; "
+            "if (!(r && r.data && Array.isArray(r.data.lots) && r.data.lots.length)) { "
+            "console.log('no_lots'); return null; } var a = r.data.lots; var o = []; "
+            "for (var i = 0; i < a.length; i++) { var l = a[i]; o.push({ "
+            "lot_number: l.lot_id_txt || null, artist: l.title_primary_txt || null, "
+            "title: l.title_secondary_txt || null, estimate_text: l.estimate_txt || null, "
+            "estimate_low: l.estimate_low || null, estimate_high: l.estimate_high || null, "
+            "price_realised_text: l.price_realised_txt || null, price_realised: l.price_realised || null, "
+            "url: l.url || null }); } var s = JSON.stringify(o); "
+            "console.log('lots_json_length=' + s.length); "
+            "sessionStorage.setItem('lots_json', s); return null; })()"
+        )
+        operation = RoutineJsEvaluateOperation(js=js_code)
+        assert operation.js == js_code
 
     def test_complex_valid_code(self) -> None:
         """Test complex but valid JS code."""
