@@ -1151,7 +1151,7 @@ class RoutineJsEvaluateOperation(RoutineOperation):
         )
 
         logger.debug(
-            f"Executing JS evaluation: {expression}"
+            f"Executing JS evaluation: {expression} "
             f"timeout={self.timeout_seconds}s, session_storage_key={self.session_storage_key}"
         )
 
@@ -1175,20 +1175,28 @@ class RoutineJsEvaluateOperation(RoutineOperation):
 
         logger.info(f"JS evaluation reply: {reply}")
 
+        # 1. Transport-level errors (rare)
         if "error" in reply:
             raise RuntimeError(f"JS evaluation failed: {reply['error']}")
 
+        # 2. Engine-level JS errors (syntax, reference, etc)
+        if reply.get("result", {}).get("exceptionDetails"):
+            details = reply["result"]["exceptionDetails"]
+            description = details["exception"]["description"]
+            raise RuntimeError(f"JS evaluation failed: {description}")
+
+        # 3. Normal result from wrapper
         result_value = reply["result"]["result"].get("value")
 
         logger.info(f"JS evaluation result: {result_value}")
 
-        # Store console logs and errors in metadata (not result - that goes in routine return value)
+        # Store console logs and errors in metadata
         if routine_execution_context.current_operation_metadata is not None and isinstance(result_value, dict):
             routine_execution_context.current_operation_metadata.details["console_logs"] = result_value.get("console_logs")
             routine_execution_context.current_operation_metadata.details["execution_error"] = result_value.get("execution_error")
             routine_execution_context.current_operation_metadata.details["storage_error"] = result_value.get("storage_error")
 
-        # Check for errors from our wrapper and raise
+        # 4. Wrapper-level runtime errors
         if isinstance(result_value, dict):
             if result_value.get("execution_error"):
                 raise RuntimeError(f"JS evaluation failed: {result_value['execution_error']}")
