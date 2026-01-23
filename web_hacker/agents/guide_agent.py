@@ -263,6 +263,7 @@ but is not required before calling `suggest_routine_edit`.
         self._stream_chunk_callable = stream_chunk_callable
         self._data_store = data_store
         self._tools_requiring_approval = tools_requiring_approval or set()
+        self._previous_response_id: str | None = None
 
         self.llm_model = llm_model
         self.llm_client = LLMClient(llm_model)
@@ -409,6 +410,7 @@ but is not required before calling `suggest_routine_edit`.
         content: str,
         tool_call_id: str | None = None,
         tool_calls: list[LLMToolCall] | None = None,
+        llm_provider_response_id: str | None = None,
     ) -> Chat:
         """
         Create and store a new Chat, update thread, persist if callbacks set.
@@ -428,6 +430,7 @@ but is not required before calling `suggest_routine_edit`.
             content=content,
             tool_call_id=tool_call_id,
             tool_calls=tool_calls or [],
+            llm_provider_response_id=llm_provider_response_id,
         )
 
         # Persist chat first if callback provided (may assign new ID)
@@ -453,7 +456,24 @@ but is not required before calling `suggest_routine_edit`.
             List of message dicts with 'role', 'content', and optionally 'tool_call_id' or 'tool_calls' keys.
         """
         messages: list[dict[str, Any]] = []
-        for chat_id in self._thread.chat_ids:
+        
+        # determine which chats to include based on the previous response id
+        chats_to_include = self._thread.chat_ids
+        if self._previous_response_id is not None:
+            
+            # get index of the previous response id
+            index = None
+            for idx, chat_id in enumerate(self._thread.chat_ids):
+                if self._chats.get(chat_id).llm_provider_response_id == self._previous_response_id:
+                    index = idx
+                    break
+                
+            # include all chats after the previous response id
+            if index is not None:
+                chats_to_include = self._thread.chat_ids[index + 1:]
+        
+        
+        for chat_id in chats_to_include:
             chat = self._chats.get(chat_id)
             if chat:
                 msg: dict[str, Any] = {
@@ -767,7 +787,12 @@ but is not required before calling `suggest_routine_edit`.
                     response = self.llm_client.call_sync(
                         messages=messages,
                         system_prompt=self._get_system_prompt(),
+                        previous_response_id=self._previous_response_id,
                     )
+
+                # Update previous_response_id for response chaining
+                if response.response_id:
+                    self._previous_response_id = response.response_id
 
                 # Handle response - add assistant message if there's content or tool calls
                 if response.content or response.tool_calls:
@@ -775,6 +800,7 @@ but is not required before calling `suggest_routine_edit`.
                         ChatRole.ASSISTANT,
                         response.content or "",
                         tool_calls=response.tool_calls if response.tool_calls else None,
+                        llm_provider_response_id=response.response_id,
                     )
                     if response.content:
                         self._emit_message(
@@ -825,6 +851,7 @@ but is not required before calling `suggest_routine_edit`.
                         ChatRole.TOOL,
                         f"Tool '{tool_name}' result: {result_str}",
                         tool_call_id=call_id,
+                        llm_provider_response_id=response.response_id,
                     )
                     tools_executed = True
 
@@ -865,6 +892,7 @@ but is not required before calling `suggest_routine_edit`.
         for item in self.llm_client.call_stream_sync(
             messages=messages,
             system_prompt=self._get_system_prompt(),
+            previous_response_id=self._previous_response_id,
         ):
             if isinstance(item, str):
                 # Text chunk - call the callback
@@ -1019,7 +1047,11 @@ but is not required before calling `suggest_routine_edit`.
         denial_message = f"User rejected the tool execution for '{pending.tool_name}'"
         if reason:
             denial_message += f". Reason: {reason}"
-        self._add_chat(ChatRole.TOOL, denial_message, tool_call_id=pending.call_id)
+        self._add_chat(
+            ChatRole.TOOL,
+            denial_message,
+            tool_call_id=pending.call_id,
+        )
 
         self._emit_message(
             EmittedMessage(

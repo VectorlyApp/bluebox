@@ -243,6 +243,14 @@ class Chat(BaseModel):
         default_factory=list,
         description="For ASSISTANT role messages, any tool calls made",
     )
+    chat_cache_key: str | None = Field(
+        default=None,
+        description="Cache key for the message",
+    )
+    llm_provider_response_id: str | None = Field(
+        default=None,
+        description="Response ID for the message from the LLM provider",
+    )
 
 
 class ChatThread(BaseModel):

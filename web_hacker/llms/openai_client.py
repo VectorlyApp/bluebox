@@ -234,29 +234,26 @@ class OpenAIClient(AbstractLLMVendorClient):
             "max_output_tokens": self._resolve_max_tokens(max_tokens),
         }
 
-        # Handle input: either input string or messages array
+        # Handle previous_response_id for conversation chaining
         if previous_response_id:
             kwargs["previous_response_id"] = previous_response_id
-            # When chaining, input is the new user message
-            if input_text:
-                kwargs["input"] = input_text
-            elif messages:
-                # Use the last user message as input for chaining
-                user_messages = [m for m in messages if m.get("role") == "user"]
-                if user_messages:
-                    kwargs["input"] = user_messages[-1]["content"]
-        elif input_text:
+
+        # Handle input
+        system_prompt_handled = False
+        if input_text:
             kwargs["input"] = input_text
         elif messages:
-            # Convert messages to Responses API format (handles tool messages)
             converted_messages = self._convert_messages_for_responses_api(messages)
-            all_messages = self._prepend_system_prompt(converted_messages, system_prompt)
-            kwargs["input"] = all_messages
-        else:
+            if not previous_response_id:
+                # First call: prepend system prompt directly into messages
+                converted_messages = self._prepend_system_prompt(converted_messages, system_prompt)
+                system_prompt_handled = True
+            kwargs["input"] = converted_messages
+        elif not previous_response_id:
             raise ValueError("Either messages or input must be provided")
 
-        # Add system instructions if provided and not using messages
-        if system_prompt and input_text and not messages:
+        # Pass system prompt as instructions when not already in messages
+        if system_prompt and not system_prompt_handled:
             kwargs["instructions"] = system_prompt
 
         if stream:
