@@ -39,6 +39,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         self._client = OpenAI(api_key=Config.OPENAI_API_KEY)
         self._async_client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY)
         self._file_search_vectorstores: list[str] | None = None
+        self._last_response_id: str | None = None
         logger.debug("Initialized OpenAIClient with model: %s", model)
 
     # Private methods ______________________________________________________________________________________________________
@@ -227,6 +228,8 @@ class OpenAIClient(AbstractLLMVendorClient):
         previous_response_id: str | None,
         response_model: type[T] | None,
         stream: bool = False,
+        tool_choice: str | None = None,
+        tools_override: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Build kwargs for Responses API call."""
         kwargs: dict[str, Any] = {
@@ -257,18 +260,24 @@ class OpenAIClient(AbstractLLMVendorClient):
         if extended_reasoning:
             kwargs["reasoning"] = {"effort": "medium"}
 
-        # Build tools list: registered function tools + file_search if configured
-        all_tools: list[dict[str, Any]] = []
-        for tool in self._tools:
-            all_tools.append(self._convert_tool_to_responses_api_format(tool))
-        if self._file_search_vectorstores:
-            all_tools.append({
-                "type": "file_search",
-                "vector_store_ids": self._file_search_vectorstores,
-            })
+        # Build tools list: use override if provided, otherwise registered tools + file_search
+        if tools_override is not None:
+            all_tools = tools_override
+        else:
+            all_tools: list[dict[str, Any]] = []
+            for tool in self._tools:
+                all_tools.append(self._convert_tool_to_responses_api_format(tool))
+            if self._file_search_vectorstores:
+                all_tools.append({
+                    "type": "file_search",
+                    "vector_store_ids": self._file_search_vectorstores,
+                })
 
-        if all_tools and response_model is None:
+        if all_tools:
             kwargs["tools"] = all_tools
+
+        if tool_choice is not None and all_tools:
+            kwargs["tool_choice"] = tool_choice
 
         return kwargs
 
@@ -397,6 +406,11 @@ class OpenAIClient(AbstractLLMVendorClient):
         else:
             logger.debug("Cleared file_search vectorstores")
 
+    @property
+    def last_response_id(self) -> str | None:
+        """Return the last response ID from a Responses API call."""
+        return self._last_response_id
+
     ## Unified API methods
 
     def call_sync(
@@ -411,6 +425,8 @@ class OpenAIClient(AbstractLLMVendorClient):
         stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        tool_choice: str | None = None,
+        tools_override: list[dict[str, Any]] | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified sync call to OpenAI.
@@ -426,6 +442,8 @@ class OpenAIClient(AbstractLLMVendorClient):
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            tool_choice: Tool choice mode ("required", "auto", "none"), or None for default.
+            tools_override: Per-call tool override list (bypasses registered tools).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -462,14 +480,19 @@ class OpenAIClient(AbstractLLMVendorClient):
             kwargs = self._build_responses_api_kwargs(
                 messages, input, system_prompt, max_tokens,
                 extended_reasoning, previous_response_id, response_model,
+                tool_choice=tool_choice, tools_override=tools_override,
             )
 
             if response_model is not None:
-                # Add structured output format
-                kwargs["text"] = {"format": {"type": "json_schema", "schema": response_model.model_json_schema()}}
+                # Use responses.parse() for proper structured output
+                kwargs["text_format"] = response_model
+                response = self._client.responses.parse(**kwargs)
+                self._last_response_id = response.id
+                return response.output_parsed
 
             response = self._client.responses.create(**kwargs)
-            return self._parse_responses_api_response(response, response_model)
+            self._last_response_id = response.id
+            return self._parse_responses_api_response(response, response_model=None)
 
     async def call_async(
         self,
@@ -483,6 +506,8 @@ class OpenAIClient(AbstractLLMVendorClient):
         stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        tool_choice: str | None = None,
+        tools_override: list[dict[str, Any]] | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified async call to OpenAI.
@@ -498,6 +523,8 @@ class OpenAIClient(AbstractLLMVendorClient):
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            tool_choice: Tool choice mode ("required", "auto", "none"), or None for default.
+            tools_override: Per-call tool override list (bypasses registered tools).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -533,13 +560,18 @@ class OpenAIClient(AbstractLLMVendorClient):
             kwargs = self._build_responses_api_kwargs(
                 messages, input, system_prompt, max_tokens,
                 extended_reasoning, previous_response_id, response_model,
+                tool_choice=tool_choice, tools_override=tools_override,
             )
 
             if response_model is not None:
-                kwargs["text"] = {"format": {"type": "json_schema", "schema": response_model.model_json_schema()}}
+                kwargs["text_format"] = response_model
+                response = await self._async_client.responses.parse(**kwargs)
+                self._last_response_id = response.id
+                return response.output_parsed
 
             response = await self._async_client.responses.create(**kwargs)
-            return self._parse_responses_api_response(response, response_model)
+            self._last_response_id = response.id
+            return self._parse_responses_api_response(response, response_model=None)
 
     def call_stream_sync(
         self,
@@ -552,6 +584,8 @@ class OpenAIClient(AbstractLLMVendorClient):
         stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        tool_choice: str | None = None,
+        tools_override: list[dict[str, Any]] | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
         Unified streaming call to OpenAI.
@@ -636,6 +670,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             kwargs = self._build_responses_api_kwargs(
                 messages, input, system_prompt, max_tokens,
                 extended_reasoning, previous_response_id, response_model=None, stream=True,
+                tool_choice=tool_choice, tools_override=tools_override,
             )
 
             stream = self._client.responses.create(**kwargs)

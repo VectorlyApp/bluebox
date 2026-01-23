@@ -85,6 +85,8 @@ class AbstractLLMVendorClient(ABC):
         extended_reasoning: bool = False,
         stateful: bool = False,
         previous_response_id: str | None = None,
+        tool_choice: str | None = None,
+        tools_override: list[dict[str, Any]] | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified sync call to the LLM.
@@ -117,6 +119,8 @@ class AbstractLLMVendorClient(ABC):
         extended_reasoning: bool = False,
         stateful: bool = False,
         previous_response_id: str | None = None,
+        tool_choice: str | None = None,
+        tools_override: list[dict[str, Any]] | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified async call to the LLM.
@@ -148,6 +152,8 @@ class AbstractLLMVendorClient(ABC):
         extended_reasoning: bool = False,
         stateful: bool = False,
         previous_response_id: str | None = None,
+        tool_choice: str | None = None,
+        tools_override: list[dict[str, Any]] | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
         Unified streaming call to the LLM.

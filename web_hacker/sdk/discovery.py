@@ -17,6 +17,9 @@ import json
 from openai import OpenAI
 from pydantic import BaseModel
 
+from ..config import Config
+from ..data_models.llms.vendors import OpenAIModel
+
 # Package root for code_paths (web_hacker/sdk/ -> web_hacker/)
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
@@ -42,7 +45,6 @@ class RoutineDiscovery:
 
     Example:
         >>> discovery = RoutineDiscovery(
-        ...     client=openai_client,
         ...     task="Search for flights",
         ...     cdp_captures_dir="./captures"
         ... )
@@ -53,31 +55,29 @@ class RoutineDiscovery:
 
     def __init__(
         self,
-        client: OpenAI,
         task: str,
         cdp_captures_dir: str = "./cdp_captures",
         output_dir: str = "./routine_discovery_output",
-        llm_model: str = "gpt-5.1",
+        llm_model: OpenAIModel = OpenAIModel.GPT_5_1,
         message_callback: Optional[Callable[[RoutineDiscoveryMessage], None]] = None,
     ):
         """
         Initialize the RoutineDiscovery SDK.
 
         Args:
-            client: OpenAI client instance
             task: Description of the task to discover routines for
             cdp_captures_dir: Directory containing CDP captures
             output_dir: Directory to save output files
-            llm_model: LLM model to use for discovery
+            llm_model: The OpenAI model to use for discovery
             message_callback: Optional callback for progress messages
         """
-        self.client = client
         self.task = task
         self.cdp_captures_dir = cdp_captures_dir
         self.output_dir = output_dir
         self.llm_model = llm_model
         self.message_callback = message_callback or self._default_message_handler
 
+        self._openai_client = OpenAI(api_key=Config.OPENAI_API_KEY)
         self.agent: Optional[RoutineDiscoveryAgent] = None
         self.data_store: Optional[LocalDiscoveryDataStore] = None
 
@@ -109,7 +109,7 @@ class RoutineDiscovery:
 
             # Initialize data store
             self.data_store = LocalDiscoveryDataStore(
-                client=self.client,
+                client=self._openai_client,
                 tmp_dir=str(Path(self.output_dir) / "tmp"),
                 transactions_dir=str(Path(self.cdp_captures_dir) / "network" / "transactions"),
                 consolidated_transactions_path=str(Path(self.cdp_captures_dir) / "network" / "consolidated_transactions.json"),
@@ -135,7 +135,6 @@ class RoutineDiscovery:
 
             # Initialize and run agent
             self.agent = RoutineDiscoveryAgent(
-                client=self.client,
                 data_store=self.data_store,
                 task=self.task,
                 emit_message_callable=self.message_callback,

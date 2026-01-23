@@ -12,9 +12,9 @@ Contains:
 
 from typing import Optional, Dict, Any
 from pathlib import Path
-from openai import OpenAI
 
 from ..config import Config
+from ..data_models.llms.vendors import OpenAIModel
 from ..utils.exceptions import ApiKeyNotFoundError
 from .monitor import BrowserMonitor
 from .discovery import RoutineDiscovery, RoutineDiscoveryResult
@@ -50,23 +50,22 @@ class WebHacker:
         self,
         openai_api_key: Optional[str] = None,
         remote_debugging_address: str = "http://127.0.0.1:9222",
-        llm_model: str = "gpt-5.1",
+        llm_model: str | OpenAIModel = OpenAIModel.GPT_5_1,
     ):
         """
         Initialize WebHacker client.
-        
+
         Args:
             openai_api_key: OpenAI API key. If None, uses OPENAI_API_KEY env var.
             remote_debugging_address: Chrome debugging server address.
-            llm_model: LLM model to use for routine discovery.
+            llm_model: The OpenAI model to use for routine discovery (string or OpenAIModel enum).
         """
         self.openai_api_key = openai_api_key or Config.OPENAI_API_KEY
         if not self.openai_api_key:
             raise ApiKeyNotFoundError("OpenAI API key is required")
-        
-        self.client = OpenAI(api_key=self.openai_api_key)
+
         self.remote_debugging_address = remote_debugging_address
-        self.llm_model = llm_model
+        self.llm_model = OpenAIModel(llm_model) if isinstance(llm_model, str) else llm_model
         
         self._monitor = None
         self._discovery = None
@@ -111,7 +110,7 @@ class WebHacker:
         task: str,
         cdp_captures_dir: str = "./cdp_captures",
         output_dir: str = "./routine_discovery_output",
-        llm_model: Optional[str] = None,
+        llm_model: Optional[str | OpenAIModel] = None,
     ) -> RoutineDiscoveryResult:
         """
         Discover a routine from captured browser data.
@@ -125,12 +124,14 @@ class WebHacker:
         Returns:
             RoutineDiscoveryResult containing the routine and test parameters.
         """
+        resolved_model = self.llm_model
+        if llm_model is not None:
+            resolved_model = OpenAIModel(llm_model) if isinstance(llm_model, str) else llm_model
         self._discovery = RoutineDiscovery(
-            client=self.client,
             task=task,
             cdp_captures_dir=cdp_captures_dir,
             output_dir=output_dir,
-            llm_model=llm_model or self.llm_model,
+            llm_model=resolved_model,
         )
         return self._discovery.run()
     

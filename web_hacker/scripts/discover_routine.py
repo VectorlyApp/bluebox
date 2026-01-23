@@ -15,6 +15,7 @@ from openai import OpenAI
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
 from web_hacker.config import Config
+from web_hacker.data_models.llms.vendors import OpenAIModel
 from web_hacker.utils.exceptions import ApiKeyNotFoundError
 from web_hacker.routine_discovery.agent import RoutineDiscoveryAgent
 from web_hacker.routine_discovery.data_store import LocalDiscoveryDataStore
@@ -93,11 +94,10 @@ def main() -> None:
 
     # initialize routine discovery agent
     routine_discovery_agent = RoutineDiscoveryAgent(
-        client=openai_client,
         data_store=data_store,
         task=args.task,
         emit_message_callable=handle_discovery_message,
-        llm_model=args.llm_model,
+        llm_model=OpenAIModel(args.llm_model),
         output_dir=args.output_dir,
     )
     logger.info("Routine discovery agent initialized.")

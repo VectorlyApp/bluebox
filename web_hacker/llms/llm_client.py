@@ -105,6 +105,11 @@ class LLMClient:
         """
         self._client.set_file_search_vectorstores(vector_store_ids)
 
+    @property
+    def last_response_id(self) -> str | None:
+        """Return the last response ID from a Responses API call."""
+        return self._client.last_response_id
+
     ## Unified API methods
 
     def call_sync(
@@ -119,6 +124,8 @@ class LLMClient:
         stateful: bool = False,
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        tool_choice: str | None = None,
+        tools_override: list[dict[str, Any]] | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified sync call to OpenAI.
@@ -134,6 +141,8 @@ class LLMClient:
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            tool_choice: Tool choice mode ("required", "auto", "none"), or None for default.
+            tools_override: Per-call tool override list (bypasses registered tools).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -149,6 +158,8 @@ class LLMClient:
             stateful=stateful,
             previous_response_id=previous_response_id,
             api_type=api_type,
+            tool_choice=tool_choice,
+            tools_override=tools_override,
         )
 
     async def call_async(
@@ -163,6 +174,8 @@ class LLMClient:
         stateful: bool = False,
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        tool_choice: str | None = None,
+        tools_override: list[dict[str, Any]] | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified async call to OpenAI.
@@ -178,6 +191,8 @@ class LLMClient:
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            tool_choice: Tool choice mode ("required", "auto", "none"), or None for default.
+            tools_override: Per-call tool override list (bypasses registered tools).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -193,6 +208,8 @@ class LLMClient:
             stateful=stateful,
             previous_response_id=previous_response_id,
             api_type=api_type,
+            tool_choice=tool_choice,
+            tools_override=tools_override,
         )
 
     def call_stream_sync(
@@ -206,6 +223,8 @@ class LLMClient:
         stateful: bool = False,
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        tool_choice: str | None = None,
+        tools_override: list[dict[str, Any]] | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
         Unified streaming call to OpenAI.
@@ -222,6 +241,8 @@ class LLMClient:
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            tool_choice: Tool choice mode ("required", "auto", "none"), or None for default.
+            tools_override: Per-call tool override list (bypasses registered tools).
 
         Yields:
             str: Text chunks as they arrive.
@@ -237,4 +258,6 @@ class LLMClient:
             stateful=stateful,
             previous_response_id=previous_response_id,
             api_type=api_type,
+            tool_choice=tool_choice,
+            tools_override=tools_override,
         )
