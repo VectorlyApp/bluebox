@@ -16,7 +16,7 @@ from uuid import uuid4
 
 from web_hacker.data_models.llms.interaction import (
     Chat,
-    ChatMessageType,
+    EmittedMessageType,
     ChatRole,
     ChatThread,
     EmittedMessage,
@@ -460,6 +460,31 @@ immediate execution, not just acknowledgment.
             },
         )
 
+        # Register create_new_routine tool - creates and saves a new routine directly
+        self.llm_client.register_tool(
+            name="create_new_routine",
+            description=(
+                "Create and save a new routine directly. Use this when you want to create a routine "
+                "from scratch without going through the discovery process. The routine will be "
+                "saved to a file and loaded into the current context. "
+                "REQUIRED KEY: 'routine' - the COMPLETE routine object. "
+                "Example: {\"routine\": {\"name\": \"...\", \"description\": \"...\", \"parameters\": [...], \"operations\": [...]}}"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "routine": {
+                        "type": "object",
+                        "description": (
+                            "REQUIRED. The complete routine object to create. "
+                            "Must contain keys: name (string), description (string), parameters (array), operations (array)."
+                        ),
+                    }
+                },
+                "required": ["routine"],
+            },
+        )
+
     def _emit_message(self, message: EmittedMessage) -> None:
         """Emit a message via the callback."""
         self._emit_message_callable(message)
@@ -647,7 +672,7 @@ immediate execution, not just acknowledgment.
 
         self._emit_message(
             EmittedMessage(
-                type=ChatMessageType.BROWSER_RECORDING_REQUEST,
+                type=EmittedMessageType.BROWSER_RECORDING_REQUEST,
                 browser_recording_task=task_description,
                 chat_thread_id=self._thread.id,
             )
@@ -698,7 +723,7 @@ immediate execution, not just acknowledgment.
         # Emit the suggested edit for host to handle
         self._emit_message(
             EmittedMessage(
-                type=ChatMessageType.SUGGESTED_EDIT,
+                type=EmittedMessageType.SUGGESTED_EDIT,
                 suggested_edit=suggested_edit,
                 chat_thread_id=self._thread.id,
             )
@@ -729,7 +754,7 @@ immediate execution, not just acknowledgment.
 
         self._emit_message(
             EmittedMessage(
-                type=ChatMessageType.ROUTINE_DISCOVERY_REQUEST,
+                type=EmittedMessageType.ROUTINE_DISCOVERY_REQUEST,
                 routine_discovery_task=task,
                 chat_thread_id=self._thread.id,
             )
@@ -739,6 +764,37 @@ immediate execution, not just acknowledgment.
             "success": True,
             "message": "Routine discovery request sent. The user will confirm to start the discovery process.",
             "task": task,
+        }
+
+    def _tool_create_new_routine(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute create_new_routine tool."""
+        # Accept both "routine" and "routine_dict" keys for flexibility
+        routine_dict = tool_arguments.get("routine") or tool_arguments.get("routine_dict")
+        # Fallback: if no nested key, try using tool_arguments directly as the routine
+        if not routine_dict and "name" in tool_arguments and "operations" in tool_arguments:
+            routine_dict = tool_arguments
+        if not routine_dict:
+            raise ValueError("routine was empty. Pass the COMPLETE routine object under the 'routine' key.")
+
+        # Create Routine object to validate
+        try:
+            routine = Routine(**routine_dict)
+        except Exception as e:
+            raise ValueError(f"Invalid routine object: {e}. Fix the routine object and try again.")
+
+        # Emit the routine creation request for host to handle
+        self._emit_message(
+            EmittedMessage(
+                type=EmittedMessageType.ROUTINE_CREATION_REQUEST,
+                created_routine=routine,
+                chat_thread_id=self._thread.id,
+            )
+        )
+
+        return {
+            "success": True,
+            "message": f"Routine '{routine.name}' creation request sent. The routine will be saved and loaded into context.",
+            "routine_name": routine.name,
         }
 
     def _execute_tool(
@@ -782,6 +838,9 @@ immediate execution, not just acknowledgment.
         if tool_name == "request_routine_discovery":
             return self._tool_request_routine_discovery(tool_arguments)
 
+        if tool_name == "create_new_routine":
+            return self._tool_create_new_routine(tool_arguments)
+
         logger.error("Unknown tool \"%s\" with arguments: %s", tool_name, tool_arguments)
         raise UnknownToolError(f"Unknown tool \"{tool_name}\" with arguments: {tool_arguments}")
 
@@ -814,7 +873,7 @@ immediate execution, not just acknowledgment.
 
             self._emit_message(
                 EmittedMessage(
-                    type=ChatMessageType.TOOL_INVOCATION_RESULT,
+                    type=EmittedMessageType.TOOL_INVOCATION_RESULT,
                     tool_invocation=invocation,
                     tool_result=result,
                 )
@@ -832,7 +891,7 @@ immediate execution, not just acknowledgment.
 
             self._emit_message(
                 EmittedMessage(
-                    type=ChatMessageType.TOOL_INVOCATION_RESULT,
+                    type=EmittedMessageType.TOOL_INVOCATION_RESULT,
                     tool_invocation=invocation,
                     error=str(e),
                 )
@@ -870,7 +929,7 @@ immediate execution, not just acknowledgment.
         if self._thread.pending_tool_invocation:
             self._emit_message(
                 EmittedMessage(
-                    type=ChatMessageType.ERROR,
+                    type=EmittedMessageType.ERROR,
                     error="Please confirm or deny the pending tool invocation before sending new messages",
                 )
             )
@@ -930,7 +989,7 @@ immediate execution, not just acknowledgment.
                     if response.content:
                         self._emit_message(
                             EmittedMessage(
-                                type=ChatMessageType.CHAT_RESPONSE,
+                                type=EmittedMessageType.CHAT_RESPONSE,
                                 content=response.content,
                                 chat_id=chat.id,
                                 chat_thread_id=self._thread.id,
@@ -956,7 +1015,7 @@ immediate execution, not just acknowledgment.
                         )
                         self._emit_message(
                             EmittedMessage(
-                                type=ChatMessageType.TOOL_INVOCATION_REQUEST,
+                                type=EmittedMessageType.TOOL_INVOCATION_REQUEST,
                                 tool_invocation=pending,
                             )
                         )
@@ -988,7 +1047,7 @@ immediate execution, not just acknowledgment.
                 logger.exception("Error in agent loop: %s", e)
                 self._emit_message(
                     EmittedMessage(
-                        type=ChatMessageType.ERROR,
+                        type=EmittedMessageType.ERROR,
                         error=str(e),
                     )
                 )
@@ -997,7 +1056,7 @@ immediate execution, not just acknowledgment.
         logger.warning("Agent loop hit max iterations (%d)", max_iterations)
         self._emit_message(
             EmittedMessage(
-                type=ChatMessageType.ERROR,
+                type=EmittedMessageType.ERROR,
                 error=f"Agent loop exceeded maximum iterations ({max_iterations})",
             )
         )
@@ -1048,7 +1107,7 @@ immediate execution, not just acknowledgment.
         if not pending:
             self._emit_message(
                 EmittedMessage(
-                    type=ChatMessageType.ERROR,
+                    type=EmittedMessageType.ERROR,
                     error="No pending tool invocation to confirm",
                 )
             )
@@ -1057,7 +1116,7 @@ immediate execution, not just acknowledgment.
         if pending.invocation_id != invocation_id:
             self._emit_message(
                 EmittedMessage(
-                    type=ChatMessageType.ERROR,
+                    type=EmittedMessageType.ERROR,
                     error=f"Invocation ID mismatch: expected {pending.invocation_id}",
                 )
             )
@@ -1078,7 +1137,7 @@ immediate execution, not just acknowledgment.
 
             self._emit_message(
                 EmittedMessage(
-                    type=ChatMessageType.TOOL_INVOCATION_RESULT,
+                    type=EmittedMessageType.TOOL_INVOCATION_RESULT,
                     tool_invocation=pending,
                     tool_result=result,
                 )
@@ -1104,7 +1163,7 @@ immediate execution, not just acknowledgment.
 
             self._emit_message(
                 EmittedMessage(
-                    type=ChatMessageType.TOOL_INVOCATION_RESULT,
+                    type=EmittedMessageType.TOOL_INVOCATION_RESULT,
                     tool_invocation=pending,
                     error=str(e),
                 )
@@ -1145,7 +1204,7 @@ immediate execution, not just acknowledgment.
         if not pending:
             self._emit_message(
                 EmittedMessage(
-                    type=ChatMessageType.ERROR,
+                    type=EmittedMessageType.ERROR,
                     error="No pending tool invocation to deny",
                 )
             )
@@ -1154,7 +1213,7 @@ immediate execution, not just acknowledgment.
         if pending.invocation_id != invocation_id:
             self._emit_message(
                 EmittedMessage(
-                    type=ChatMessageType.ERROR,
+                    type=EmittedMessageType.ERROR,
                     error=f"Invocation ID mismatch: expected {pending.invocation_id}",
                 )
             )
@@ -1180,7 +1239,7 @@ immediate execution, not just acknowledgment.
 
         self._emit_message(
             EmittedMessage(
-                type=ChatMessageType.TOOL_INVOCATION_RESULT,
+                type=EmittedMessageType.TOOL_INVOCATION_RESULT,
                 tool_invocation=pending,
                 content=denial_message,
             )

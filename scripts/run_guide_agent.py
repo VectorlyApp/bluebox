@@ -47,7 +47,7 @@ from web_hacker.agents.guide_agent import GuideAgent
 from web_hacker.config import Config
 from web_hacker.data_models.llms.vendors import OpenAIModel
 from web_hacker.data_models.llms.interaction import (
-    ChatMessageType,
+    EmittedMessageType,
     ChatRole,
     EmittedMessage,
     PendingToolInvocation,
@@ -323,6 +323,8 @@ class TerminalGuideChat:
         self._browser_recording_requested: bool = False
         self._routine_discovery_requested: bool = False
         self._routine_discovery_task: str | None = None
+        self._routine_creation_requested: bool = False
+        self._created_routine: Routine | None = None
         self._cdp_captures_dir: Path = cdp_captures_dir or DEFAULT_CDP_CAPTURES_DIR
         self._agent = GuideAgent(
             emit_message_callable=self._handle_message,
@@ -423,7 +425,7 @@ class TerminalGuideChat:
 
     def _handle_message(self, message: EmittedMessage) -> None:
         """Handle messages emitted by the Guide Agent."""
-        if message.type == ChatMessageType.CHAT_RESPONSE:
+        if message.type == EmittedMessageType.CHAT_RESPONSE:
             if self._streaming_started:
                 print()  # End the streamed line
                 print()  # Add spacing
@@ -431,12 +433,12 @@ class TerminalGuideChat:
             else:
                 print_assistant_message(message.content or "")
 
-        elif message.type == ChatMessageType.TOOL_INVOCATION_REQUEST:
+        elif message.type == EmittedMessageType.TOOL_INVOCATION_REQUEST:
             if message.tool_invocation:
                 self._pending_invocation = message.tool_invocation
                 print_tool_request(message.tool_invocation)
 
-        elif message.type == ChatMessageType.TOOL_INVOCATION_RESULT:
+        elif message.type == EmittedMessageType.TOOL_INVOCATION_RESULT:
             if message.tool_invocation:
                 print_tool_result(
                     message.tool_invocation,
@@ -444,7 +446,7 @@ class TerminalGuideChat:
                     message.error,
                 )
 
-        elif message.type == ChatMessageType.SUGGESTED_EDIT:
+        elif message.type == EmittedMessageType.SUGGESTED_EDIT:
             if message.suggested_edit:
                 self._pending_suggested_edit = message.suggested_edit
                 console.print()
@@ -452,14 +454,18 @@ class TerminalGuideChat:
                 console.print("[dim]Use /diff to see changes, /accept to apply, /reject to discard[/dim]")
                 console.print()
 
-        elif message.type == ChatMessageType.BROWSER_RECORDING_REQUEST:
+        elif message.type == EmittedMessageType.BROWSER_RECORDING_REQUEST:
             self._browser_recording_requested = True
 
-        elif message.type == ChatMessageType.ROUTINE_DISCOVERY_REQUEST:
+        elif message.type == EmittedMessageType.ROUTINE_DISCOVERY_REQUEST:
             self._routine_discovery_requested = True
             self._routine_discovery_task = message.routine_discovery_task
 
-        elif message.type == ChatMessageType.ERROR:
+        elif message.type == EmittedMessageType.ROUTINE_CREATION_REQUEST:
+            self._routine_creation_requested = True
+            self._created_routine = message.created_routine
+
+        elif message.type == EmittedMessageType.ERROR:
             print_error(message.error or "Unknown error")
 
     def _handle_tool_confirmation(self, user_input: str) -> bool:
@@ -1086,7 +1092,7 @@ class TerminalGuideChat:
             # Save routine to file (name -> lowercase_underscores)
             safe_name = routine.name.lower().replace(" ", "_").replace("-", "_")
             safe_name = "".join(c for c in safe_name if c.isalnum() or c == "_")
-            routines_dir = Path("./routines")
+            routines_dir = Path("./example_routines")
             routines_dir.mkdir(parents=True, exist_ok=True)
             routine_path = routines_dir / f"{safe_name}.json"
             routine_path.write_text(json.dumps(routine.model_dump(), indent=2))
@@ -1114,6 +1120,51 @@ class TerminalGuideChat:
         except Exception as e:
             console.print()
             console.print(f"[bold red]✗ Discovery failed: {e}[/bold red]")
+            console.print()
+
+    def _handle_routine_creation(self, routine: Routine | None) -> None:
+        """Handle routine creation request - save and load the routine."""
+        if not routine:
+            console.print("[yellow]⚠ No routine provided.[/yellow]")
+            return
+
+        console.print()
+        console.print("[bold cyan]Creating new routine:[/bold cyan]")
+        console.print(f"  Name: {routine.name}")
+        console.print(f"  Operations: {len(routine.operations)}")
+        console.print(f"  Parameters: {len(routine.parameters)}")
+        console.print()
+
+        try:
+            # Save routine to file (name -> lowercase_underscores)
+            safe_name = routine.name.lower().replace(" ", "_").replace("-", "_")
+            safe_name = "".join(c for c in safe_name if c.isalnum() or c == "_")
+            routines_dir = Path("./example_routines")
+            routines_dir.mkdir(parents=True, exist_ok=True)
+            routine_path = routines_dir / f"{safe_name}.json"
+            routine_path.write_text(json.dumps(routine.model_dump(), indent=2))
+            console.print(f"[green]✓ Saved to: {routine_path}[/green]")
+
+            # Load routine into context (like /load)
+            routine_str = routine_path.read_text()
+            self._loaded_routine_path = routine_path
+            self._agent.routine_state.update_current_routine(routine_str)
+
+            console.print("[green]✓ Routine loaded into context![/green]")
+            console.print()
+
+            # Notify agent about the created routine
+            system_message = (
+                f"[ACTION REQUIRED] Routine '{routine.name}' has been created and saved to {routine_path}. "
+                f"It has {len(routine.operations)} operations and {len(routine.parameters)} parameters. "
+                "The routine is now loaded into context. Review it using get_current_routine and explain "
+                "to the user what it does, what parameters it needs, and how to use it."
+            )
+            self._agent.process_new_message(system_message, ChatRole.SYSTEM)
+
+        except Exception as e:
+            console.print()
+            console.print(f"[bold red]✗ Failed to create routine: {e}[/bold red]")
             console.print()
 
     def run(self) -> None:
@@ -1251,6 +1302,13 @@ class TerminalGuideChat:
                     task = self._routine_discovery_task
                     self._routine_discovery_task = None
                     self._handle_routine_discovery(task)
+
+                # Check if agent requested routine creation
+                if self._routine_creation_requested:
+                    self._routine_creation_requested = False
+                    routine = self._created_routine
+                    self._created_routine = None
+                    self._handle_routine_creation(routine)
 
             except KeyboardInterrupt:
                 console.print()

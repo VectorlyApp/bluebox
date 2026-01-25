@@ -117,7 +117,7 @@ class PendingToolInvocation(BaseModel):
     )
 
 
-class ChatMessageType(StrEnum):
+class EmittedMessageType(StrEnum):
     """
     Types of messages the chat can emit via callback.
     """
@@ -128,6 +128,7 @@ class ChatMessageType(StrEnum):
     SUGGESTED_EDIT = "suggested_edit"
     BROWSER_RECORDING_REQUEST = "browser_recording_request"
     ROUTINE_DISCOVERY_REQUEST = "routine_discovery_request"
+    ROUTINE_CREATION_REQUEST = "routine_creation_request"
     ERROR = "error"
 
 
@@ -139,7 +140,7 @@ class EmittedMessage(BaseModel):
     with its host (e.g., CLI, WebSocket handler in servers repo).
     """
 
-    type: ChatMessageType = Field(
+    type: EmittedMessageType = Field(
         ...,
         description="The type of message being emitted",
     )
@@ -182,6 +183,10 @@ class EmittedMessage(BaseModel):
     routine_discovery_task: str | None = Field(
         default=None,
         description="Task description for ROUTINE_DISCOVERY_REQUEST messages",
+    )
+    created_routine: Routine | None = Field(
+        default=None,
+        description="Routine object for ROUTINE_CREATION_REQUEST messages",
     )
 
 

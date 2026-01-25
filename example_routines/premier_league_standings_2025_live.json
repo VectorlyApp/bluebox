@@ -1,6 +1,6 @@
 {
-  "name": "premier_league_standings_by_season",
-  "description": "Return full Premier League league-table standings for a given season (defaults to current 2025 season) using premierleague.com backing API.",
+  "name": "live",
+  "description": "Return full Premier League league-table standings for the 2025 season using the premierleague.com backing API. Season is hard-coded to 2025; no parameters.",
   "operations": [
     {
       "type": "navigate",
@@ -14,8 +14,8 @@
     {
       "type": "fetch",
       "endpoint": {
-        "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/8/seasons/\"{{season}}\"/standings",
-        "description": "Premier League standings for a specific season (competition 8).",
+        "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/8/seasons/2025/standings",
+        "description": "Premier League standings for the 2025 season (competition 8).",
         "method": "GET",
         "headers": {
           "x-pulse-application-version": "v1.37.7",
@@ -37,25 +37,5 @@
     }
   ],
   "incognito": true,
-  "parameters": [
-    {
-      "name": "season",
-      "type": "integer",
-      "required": false,
-      "description": "Premier League season ID used by the API (e.g. 2025 for the current season). If omitted, defaults to 2025.",
-      "default": 2025,
-      "examples": [
-        2025,
-        2024,
-        2019
-      ],
-      "min_length": null,
-      "max_length": null,
-      "min_value": 2000,
-      "max_value": 2100,
-      "pattern": null,
-      "enum_values": null,
-      "format": null
-    }
-  ]
+  "parameters": []
 }
