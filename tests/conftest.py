@@ -70,7 +70,7 @@ def input_data_dir(data_dir: Path) -> Path:
 def make_routine():
     """
     Factory fixture to create Routine with hardcoded defaults.
-    
+
     Usage:
         routine = make_routine(operations=[...])
         routine = make_routine(operations=[...], parameters=[...], name="custom")
@@ -81,5 +81,26 @@ def make_routine():
             "description": "Test routine",
         }
         return Routine(operations=operations, **{**defaults, **kwargs})
-    
+
     return factory
+
+
+# CDP Monitor Fixtures ___________________________________________________________________________
+
+@pytest.fixture
+def mock_event_callback():
+    """Async callback that records calls for CDP monitor testing."""
+    from unittest.mock import AsyncMock
+    return AsyncMock()
+
+
+@pytest.fixture
+def mock_cdp_session():
+    """Mock AsyncCDPSession for testing monitors."""
+    from unittest.mock import AsyncMock
+    session = AsyncMock()
+    session.send = AsyncMock(return_value=1)
+    session.send_and_wait = AsyncMock(return_value={"result": {}})
+    session.enable_domain = AsyncMock()
+    session.page_session_id = "mock-session-id"
+    return session
