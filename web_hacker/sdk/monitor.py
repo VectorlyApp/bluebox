@@ -136,19 +136,34 @@ class BrowserMonitor:
             except Exception as e:
                 raise BrowserConnectionError(f"Failed to create browser tab: {e}")
         else:
-            # Attach to an existing page tab
+            # Try to attach to an existing page tab, or create one if none exist
             try:
                 resp = requests.get(f"{self.remote_debugging_address}/json/list", timeout=5)
                 resp.raise_for_status()
                 tabs = resp.json()
                 page_tabs = [t for t in tabs if t.get("type") == "page"]
-                if not page_tabs:
-                    raise BrowserConnectionError("No existing page tabs found to attach to")
-                target_id = page_tabs[0]["id"]
-                host_port = self.remote_debugging_address.replace("http://", "").replace("https://", "")
-                ws_url = f"ws://{host_port}/devtools/page/{target_id}"
-            except BrowserConnectionError:
-                raise
+
+                if page_tabs:
+                    # Attach to existing tab
+                    target_id = page_tabs[0]["id"]
+                    host_port = self.remote_debugging_address.replace("http://", "").replace("https://", "")
+                    ws_url = f"ws://{host_port}/devtools/page/{target_id}"
+                else:
+                    # No existing tabs - create a new one
+                    logger.info("No existing page tabs found, creating a new tab...")
+                    target_id, browser_context_id, browser_ws = cdp_new_tab(
+                        remote_debugging_address=self.remote_debugging_address,
+                        incognito=self.incognito,
+                        url=self.url,
+                    )
+                    try:
+                        browser_ws.close()
+                    except Exception:
+                        pass
+                    self.context_id = browser_context_id
+                    self.created_tab = True
+                    host_port = self.remote_debugging_address.replace("http://", "").replace("https://", "")
+                    ws_url = f"ws://{host_port}/devtools/page/{target_id}"
             except Exception as e:
                 raise BrowserConnectionError(f"Failed to connect to browser: {e}")
 
