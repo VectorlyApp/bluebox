@@ -1056,16 +1056,42 @@ class TerminalGuideChat:
         console.print(f"  {task}")
         console.print()
 
-        if not ask_yes_no("Start routine discovery?"):
-            return
+        # Allow user to accept, reject, or modify the task
+        while True:
+            response = console.input("[yellow]Start routine discovery? (y/n/m to modify): [/yellow]").strip().lower()
+            if response == "y":
+                break
+            if response == "n":
+                self._agent.notify_routine_discovery_complete(accepted=False)
+                return
+            if response == "m":
+                modified_task = console.input("[yellow]Enter new task description: [/yellow]").strip()
+                if modified_task:
+                    task = modified_task
+                    console.print()
+                    console.print("[bold cyan]Updated Task:[/bold cyan]")
+                    console.print(f"  {task}")
+                    console.print()
+                else:
+                    console.print("[yellow]⚠ Empty input, task unchanged.[/yellow]")
+            else:
+                console.print("[yellow]⚠ Please enter 'y', 'n', or 'm'[/yellow]")
 
         # Verify we have data store with CDP captures
         if not isinstance(self._data_store, LocalDiscoveryDataStore):
             console.print("[red]✗ No data store available.[/red]")
+            self._agent.notify_routine_discovery_complete(
+                accepted=True,
+                error="No data store available"
+            )
             return
 
         if self._data_store.cdp_captures_vectorstore_id is None:
             console.print("[red]✗ No CDP captures available. Run /monitor first.[/red]")
+            self._agent.notify_routine_discovery_complete(
+                accepted=True,
+                error="No CDP captures available"
+            )
             return
 
         # Create output directory
@@ -1122,19 +1148,20 @@ class TerminalGuideChat:
             console.print()
 
             # Notify agent to review the routine
-            system_message = (
-                f"[ACTION REQUIRED] Routine discovery completed successfully. "
-                f"The routine '{routine.name}' has been created with {len(routine.operations)} operations "
-                f"and {len(routine.parameters)} parameters. "
-                "Review the routine using get_current_routine and explain to the user what it does, "
-                "what parameters it needs, and how to use it."
+            self._agent.notify_routine_discovery_complete(
+                accepted=True,
+                routine=routine,
+                task_description=task,
             )
-            self._agent.process_new_message(system_message, ChatRole.SYSTEM)
 
         except Exception as e:
             console.print()
             console.print(f"[bold red]✗ Discovery failed: {e}[/bold red]")
             console.print()
+            self._agent.notify_routine_discovery_complete(
+                accepted=True,
+                error=str(e)
+            )
 
     def _handle_routine_creation(self, routine: Routine | None) -> None:
         """Handle routine creation request - save and load the routine."""

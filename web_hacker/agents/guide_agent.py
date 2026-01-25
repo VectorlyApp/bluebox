@@ -1097,6 +1097,47 @@ execute the requested action using the appropriate tools.
             )
         self.process_new_message(system_message, ChatRole.SYSTEM)
 
+    def notify_routine_discovery_complete(
+        self,
+        accepted: bool,
+        error: str | None = None,
+        routine: Routine | None = None,
+        task_description: str | None = None,
+    ) -> None:
+        """
+        Notify the agent about the routine discovery outcome.
+
+        Args:
+            accepted: True if user accepted the discovery request, False if rejected.
+            error: Optional error message if discovery failed.
+            routine: The discovered routine on success.
+            task_description: The task description used for discovery (may have been modified by user).
+        """
+        if not accepted:
+            system_message = (
+                "Routine discovery was rejected by the user. "
+                "Ask the user if they'd like to try again or need help with something else."
+            )
+        elif error:
+            system_message = (
+                f"Routine discovery failed: {error}. "
+                "Ask the user if they'd like to try again or need help with something else."
+            )
+        else:
+            # Success case - routine should be provided
+            routine_name = routine.name if routine else "Unknown"
+            ops_count = len(routine.operations) if routine else 0
+            params_count = len(routine.parameters) if routine else 0
+            task_info = f" Task: '{task_description}'." if task_description else ""
+            system_message = (
+                f"[ACTION REQUIRED] Routine discovery completed successfully.{task_info} "
+                f"The routine '{routine_name}' has been created with {ops_count} operations "
+                f"and {params_count} parameters. "
+                "Review the routine using get_current_routine and explain to the user what it does, "
+                "what parameters it needs, and how to use it."
+            )
+        self.process_new_message(system_message, ChatRole.SYSTEM)
+
     def process_new_message(self, content: str, role: ChatRole = ChatRole.USER) -> None:
         """
         Process a new message and emit responses via callback.
