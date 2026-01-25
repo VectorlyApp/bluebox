@@ -57,7 +57,7 @@ from web_hacker.data_models.llms.interaction import (
 from web_hacker.data_models.routine.routine import Routine
 from web_hacker.llms.tools.guide_agent_tools import validate_routine
 from web_hacker.routine_discovery.data_store import DiscoveryDataStore, LocalDiscoveryDataStore
-from web_hacker.routine_discovery.message import RoutineDiscoveryMessage, RoutineDiscoveryMessageType
+from web_hacker.data_models.routine_discovery.message import RoutineDiscoveryMessage, RoutineDiscoveryMessageType
 from web_hacker.sdk import BrowserMonitor
 from web_hacker.sdk.discovery import RoutineDiscovery
 from web_hacker.utils.chrome_utils import ensure_chrome_running
@@ -810,6 +810,14 @@ class TerminalGuideChat:
                 params = self._prompt_for_parameters(routine_dict)
                 if params is None:
                     return  # User cancelled
+
+        # Ensure Chrome is running in debug mode
+        if not ensure_chrome_running(PORT):
+            console.print()
+            console.print("[red]✗ Could not start Chrome in debug mode.[/red]")
+            console.print(f"[dim]Launch Chrome manually with: --remote-debugging-port={PORT}[/dim]")
+            console.print()
+            return
 
         try:
             console.print()

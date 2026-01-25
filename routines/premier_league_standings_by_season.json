@@ -1,0 +1,61 @@
+{
+  "name": "premier_league_standings_by_season",
+  "description": "Return full Premier League league-table standings for a given season (defaults to current 2025 season) using premierleague.com backing API.",
+  "operations": [
+    {
+      "type": "navigate",
+      "url": "https://www.premierleague.com/en/tables",
+      "sleep_after_navigation_seconds": 3.0
+    },
+    {
+      "type": "sleep",
+      "timeout_seconds": 3.0
+    },
+    {
+      "type": "fetch",
+      "endpoint": {
+        "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/8/seasons/\"{{season}}\"/standings?live=false",
+        "description": "Premier League standings for a specific season (competition 8).",
+        "method": "GET",
+        "headers": {
+          "x-pulse-application-version": "v1.37.7",
+          "sec-ch-ua-platform": "\"macOS\"",
+          "Referer": "https://www.premierleague.com/",
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+          "x-pulse-application-name": "web",
+          "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+          "sec-ch-ua-mobile": "?0"
+        },
+        "body": null,
+        "credentials": "same-origin"
+      },
+      "session_storage_key": "pl_standings_response"
+    },
+    {
+      "type": "return",
+      "session_storage_key": "pl_standings_response"
+    }
+  ],
+  "incognito": true,
+  "parameters": [
+    {
+      "name": "season",
+      "type": "integer",
+      "required": false,
+      "description": "Premier League season ID used by the API (e.g. 2025 for the current season). If omitted, defaults to 2025.",
+      "default": 2025,
+      "examples": [
+        2025,
+        2024,
+        2019
+      ],
+      "min_length": null,
+      "max_length": null,
+      "min_value": 2000,
+      "max_value": 2100,
+      "pattern": null,
+      "enum_values": null,
+      "format": null
+    }
+  ]
+}
