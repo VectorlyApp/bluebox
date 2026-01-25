@@ -50,6 +50,15 @@ from web_hacker.data_models.llms.interaction import (
     EmittedMessageType,
     ChatRole,
     EmittedMessage,
+    BaseEmittedMessage,
+    ChatResponseEmittedMessage,
+    ToolInvocationRequestEmittedMessage,
+    ToolInvocationResultEmittedMessage,
+    SuggestedEditEmittedMessage,
+    BrowserRecordingRequestEmittedMessage,
+    RoutineDiscoveryRequestEmittedMessage,
+    RoutineCreationRequestEmittedMessage,
+    ErrorEmittedMessage,
     PendingToolInvocation,
     SuggestedEditRoutine,
     ToolInvocationStatus,
@@ -423,50 +432,49 @@ class TerminalGuideChat:
         # Use plain print for streaming - Rich console.print breaks on char-by-char output
         print(chunk, end="", flush=True)
 
-    def _handle_message(self, message: EmittedMessage) -> None:
+    def _handle_message(self, message: BaseEmittedMessage) -> None:
         """Handle messages emitted by the Guide Agent."""
-        if message.type == EmittedMessageType.CHAT_RESPONSE:
+        if isinstance(message, ChatResponseEmittedMessage):
             if self._streaming_started:
                 print()  # End the streamed line
                 print()  # Add spacing
                 self._streaming_started = False
             else:
-                print_assistant_message(message.content or "")
+                print_assistant_message(message.content)
 
-        elif message.type == EmittedMessageType.TOOL_INVOCATION_REQUEST:
-            if message.tool_invocation:
-                self._pending_invocation = message.tool_invocation
-                print_tool_request(message.tool_invocation)
+        elif isinstance(message, ToolInvocationRequestEmittedMessage):
+            self._pending_invocation = message.tool_invocation
+            print_tool_request(message.tool_invocation)
 
-        elif message.type == EmittedMessageType.TOOL_INVOCATION_RESULT:
-            if message.tool_invocation:
-                print_tool_result(
-                    message.tool_invocation,
-                    message.tool_result,
-                    message.error,
-                )
+        elif isinstance(message, ToolInvocationResultEmittedMessage):
+            # Check if result contains an error
+            error = message.tool_result.get("error") if isinstance(message.tool_result, dict) else None
+            print_tool_result(
+                message.tool_invocation,
+                message.tool_result,
+                error,
+            )
 
-        elif message.type == EmittedMessageType.SUGGESTED_EDIT:
-            if message.suggested_edit:
-                self._pending_suggested_edit = message.suggested_edit
-                console.print()
-                console.print("[bold yellow]📝 Agent suggested a routine edit[/bold yellow]")
-                console.print("[dim]Use /diff to see changes, /accept to apply, /reject to discard[/dim]")
-                console.print()
+        elif isinstance(message, SuggestedEditEmittedMessage):
+            self._pending_suggested_edit = message.suggested_edit
+            console.print()
+            console.print("[bold yellow]📝 Agent suggested a routine edit[/bold yellow]")
+            console.print("[dim]Use /diff to see changes, /accept to apply, /reject to discard[/dim]")
+            console.print()
 
-        elif message.type == EmittedMessageType.BROWSER_RECORDING_REQUEST:
+        elif isinstance(message, BrowserRecordingRequestEmittedMessage):
             self._browser_recording_requested = True
 
-        elif message.type == EmittedMessageType.ROUTINE_DISCOVERY_REQUEST:
+        elif isinstance(message, RoutineDiscoveryRequestEmittedMessage):
             self._routine_discovery_requested = True
             self._routine_discovery_task = message.routine_discovery_task
 
-        elif message.type == EmittedMessageType.ROUTINE_CREATION_REQUEST:
+        elif isinstance(message, RoutineCreationRequestEmittedMessage):
             self._routine_creation_requested = True
             self._created_routine = message.created_routine
 
-        elif message.type == EmittedMessageType.ERROR:
-            print_error(message.error or "Unknown error")
+        elif isinstance(message, ErrorEmittedMessage):
+            print_error(message.error)
 
     def _handle_tool_confirmation(self, user_input: str) -> bool:
         """Handle yes/no confirmation for pending tool invocation."""

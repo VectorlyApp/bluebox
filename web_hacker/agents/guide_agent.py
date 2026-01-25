@@ -20,6 +20,14 @@ from web_hacker.data_models.llms.interaction import (
     ChatRole,
     ChatThread,
     EmittedMessage,
+    ChatResponseEmittedMessage,
+    ToolInvocationRequestEmittedMessage,
+    ToolInvocationResultEmittedMessage,
+    SuggestedEditEmittedMessage,
+    BrowserRecordingRequestEmittedMessage,
+    RoutineDiscoveryRequestEmittedMessage,
+    RoutineCreationRequestEmittedMessage,
+    ErrorEmittedMessage,
     LLMChatResponse,
     LLMToolCall,
     PendingToolInvocation,
@@ -671,8 +679,7 @@ immediate execution, not just acknowledgment.
             raise ValueError("task_description is required.")
 
         self._emit_message(
-            EmittedMessage(
-                type=EmittedMessageType.BROWSER_RECORDING_REQUEST,
+            BrowserRecordingRequestEmittedMessage(
                 browser_recording_task=task_description,
                 chat_thread_id=self._thread.id,
             )
@@ -722,8 +729,7 @@ immediate execution, not just acknowledgment.
 
         # Emit the suggested edit for host to handle
         self._emit_message(
-            EmittedMessage(
-                type=EmittedMessageType.SUGGESTED_EDIT,
+            SuggestedEditEmittedMessage(
                 suggested_edit=suggested_edit,
                 chat_thread_id=self._thread.id,
             )
@@ -753,8 +759,7 @@ immediate execution, not just acknowledgment.
         task = " ".join(task_parts) + "."
 
         self._emit_message(
-            EmittedMessage(
-                type=EmittedMessageType.ROUTINE_DISCOVERY_REQUEST,
+            RoutineDiscoveryRequestEmittedMessage(
                 routine_discovery_task=task,
                 chat_thread_id=self._thread.id,
             )
@@ -784,8 +789,7 @@ immediate execution, not just acknowledgment.
 
         # Emit the routine creation request for host to handle
         self._emit_message(
-            EmittedMessage(
-                type=EmittedMessageType.ROUTINE_CREATION_REQUEST,
+            RoutineCreationRequestEmittedMessage(
                 created_routine=routine,
                 chat_thread_id=self._thread.id,
             )
@@ -872,8 +876,7 @@ immediate execution, not just acknowledgment.
             invocation.status = ToolInvocationStatus.EXECUTED
 
             self._emit_message(
-                EmittedMessage(
-                    type=EmittedMessageType.TOOL_INVOCATION_RESULT,
+                ToolInvocationResultEmittedMessage(
                     tool_invocation=invocation,
                     tool_result=result,
                 )
@@ -890,10 +893,9 @@ immediate execution, not just acknowledgment.
             invocation.status = ToolInvocationStatus.FAILED
 
             self._emit_message(
-                EmittedMessage(
-                    type=EmittedMessageType.TOOL_INVOCATION_RESULT,
+                ToolInvocationResultEmittedMessage(
                     tool_invocation=invocation,
-                    error=str(e),
+                    tool_result={"error": str(e)},
                 )
             )
 
@@ -928,8 +930,7 @@ immediate execution, not just acknowledgment.
         # Block new messages if there's a pending tool invocation
         if self._thread.pending_tool_invocation:
             self._emit_message(
-                EmittedMessage(
-                    type=EmittedMessageType.ERROR,
+                ErrorEmittedMessage(
                     error="Please confirm or deny the pending tool invocation before sending new messages",
                 )
             )
@@ -988,8 +989,7 @@ immediate execution, not just acknowledgment.
                     )
                     if response.content:
                         self._emit_message(
-                            EmittedMessage(
-                                type=EmittedMessageType.CHAT_RESPONSE,
+                            ChatResponseEmittedMessage(
                                 content=response.content,
                                 chat_id=chat.id,
                                 chat_thread_id=self._thread.id,
@@ -1014,8 +1014,7 @@ immediate execution, not just acknowledgment.
                             tool_name, tool_arguments, call_id
                         )
                         self._emit_message(
-                            EmittedMessage(
-                                type=EmittedMessageType.TOOL_INVOCATION_REQUEST,
+                            ToolInvocationRequestEmittedMessage(
                                 tool_invocation=pending,
                             )
                         )
@@ -1046,8 +1045,7 @@ immediate execution, not just acknowledgment.
             except Exception as e:
                 logger.exception("Error in agent loop: %s", e)
                 self._emit_message(
-                    EmittedMessage(
-                        type=EmittedMessageType.ERROR,
+                    ErrorEmittedMessage(
                         error=str(e),
                     )
                 )
@@ -1055,8 +1053,7 @@ immediate execution, not just acknowledgment.
 
         logger.warning("Agent loop hit max iterations (%d)", max_iterations)
         self._emit_message(
-            EmittedMessage(
-                type=EmittedMessageType.ERROR,
+            ErrorEmittedMessage(
                 error=f"Agent loop exceeded maximum iterations ({max_iterations})",
             )
         )
@@ -1106,8 +1103,7 @@ immediate execution, not just acknowledgment.
 
         if not pending:
             self._emit_message(
-                EmittedMessage(
-                    type=EmittedMessageType.ERROR,
+                ErrorEmittedMessage(
                     error="No pending tool invocation to confirm",
                 )
             )
@@ -1115,8 +1111,7 @@ immediate execution, not just acknowledgment.
 
         if pending.invocation_id != invocation_id:
             self._emit_message(
-                EmittedMessage(
-                    type=EmittedMessageType.ERROR,
+                ErrorEmittedMessage(
                     error=f"Invocation ID mismatch: expected {pending.invocation_id}",
                 )
             )
@@ -1136,8 +1131,7 @@ immediate execution, not just acknowledgment.
                 self._thread = self._persist_chat_thread_callable(self._thread)
 
             self._emit_message(
-                EmittedMessage(
-                    type=EmittedMessageType.TOOL_INVOCATION_RESULT,
+                ToolInvocationResultEmittedMessage(
                     tool_invocation=pending,
                     tool_result=result,
                 )
@@ -1162,10 +1156,9 @@ immediate execution, not just acknowledgment.
             self._thread.pending_tool_invocation = None
 
             self._emit_message(
-                EmittedMessage(
-                    type=EmittedMessageType.TOOL_INVOCATION_RESULT,
+                ToolInvocationResultEmittedMessage(
                     tool_invocation=pending,
-                    error=str(e),
+                    tool_result={"error": str(e)},
                 )
             )
 
@@ -1203,8 +1196,7 @@ immediate execution, not just acknowledgment.
 
         if not pending:
             self._emit_message(
-                EmittedMessage(
-                    type=EmittedMessageType.ERROR,
+                ErrorEmittedMessage(
                     error="No pending tool invocation to deny",
                 )
             )
@@ -1212,8 +1204,7 @@ immediate execution, not just acknowledgment.
 
         if pending.invocation_id != invocation_id:
             self._emit_message(
-                EmittedMessage(
-                    type=EmittedMessageType.ERROR,
+                ErrorEmittedMessage(
                     error=f"Invocation ID mismatch: expected {pending.invocation_id}",
                 )
             )
@@ -1238,10 +1229,9 @@ immediate execution, not just acknowledgment.
         )
 
         self._emit_message(
-            EmittedMessage(
-                type=EmittedMessageType.TOOL_INVOCATION_RESULT,
+            ToolInvocationResultEmittedMessage(
                 tool_invocation=pending,
-                content=denial_message,
+                tool_result={"denied": True, "message": denial_message},
             )
         )
 
