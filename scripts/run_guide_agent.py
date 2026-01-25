@@ -1029,15 +1029,8 @@ class TerminalGuideChat:
         console.print("[green]✓ CDP captures vectorstore ready![/green]")
         console.print()
 
-        # Notify the agent about the new data - use [ACTION REQUIRED] prefix to trigger immediate action
-        system_message = (
-            "[ACTION REQUIRED] Browser recording completed. New CDP captures are now available in the vectorstore. "
-            f"{transaction_count} network transactions were captured. "
-            "Scan the captured data NOW using file_search to verify it contains the information needed for the user's requested automation. "
-            "Examine the consolidated_transactions.json and confirm the relevant API endpoints, "
-            "request/response payloads, and any authentication data are present."
-        )
-        self._agent.process_new_message(system_message, ChatRole.SYSTEM)
+        # Notify the agent about the new data
+        self._agent.notify_browser_recording_complete(transaction_count)
 
     def _handle_routine_discovery(self, task: str | None) -> None:
         """Handle routine discovery request."""

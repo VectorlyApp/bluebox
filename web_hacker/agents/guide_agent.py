@@ -223,7 +223,7 @@ have enough information to build the routine programmatically.
 - Ask clarifying questions to understand exactly what the user wants to automate (VERY CONSICE AND TO THE POINT!)
 - Provide clear, bulleted instructions when requesting browser recordings
 - If the user asks about an existing routine, inform them no routine is currently loaded
-- BE VERY CONCISE AND TO THE POINT. DO NOT BE TOO LONG-WINDED!
+- BE VERY CONCISE AND TO THE POINT. We DONT NEED LONG CONVERSATIONS!
 - IMPORTANT: When you decide to use a tool, JUST CALL IT. Do NOT announce "I will now call X" or \
 "Let me use X tool" - just invoke the tool directly. The user can always decline the request.
 
@@ -293,7 +293,7 @@ When proposing changes, use the `suggest_routine_edit` tool:
 - Ask clarifying questions if needed (VERY CONCISE AND TO THE POINT!)
 - When debugging, analyze the specific error and suggest concrete fixes
 - Use file_search to reference documentation for complex issues
-- BE VERY CONCISE AND TO THE POINT. DO NOT BE TOO LONG-WINDED!
+- BE VERY CONCISE AND TO THE POINT. We DONT NEED LONG CONVERSATIONS!
 - IMPORTANT: When you decide to use a tool, JUST CALL IT. Do NOT announce "I will now call X" or \
 "Let me use X tool" - just invoke the tool directly.
 
@@ -828,7 +828,8 @@ execute the requested action using the appropriate tools.
                 "Give the user brief bulleted instructions on what to do:\n"
                 "- A new browser tab will open\n"
                 "- Navigate to <WEBSITE>\n"
-                "- Perform the following: <STEPS>"
+                "- Perform the following: <STEPS>\n"
+                "- Ensure requested data is located in the browser tab."
             ),
         }
 
@@ -873,7 +874,11 @@ execute the requested action using the appropriate tools.
 
         return {
             "success": True,
-            "message": "Edit suggested and sent to user for approval. Pay attention to changes in the routine to see if the user accepted the edits or not.",
+            "message": (
+                "Edit suggested and sent to user for approval. "
+                "Pay attention to changes in the routine to see if the user accepted the edits or not. "
+                "Give the user a very brief summary (diffs) of the changes."
+            ),
             "edit_id": suggested_edit.id,
         }
 
@@ -903,7 +908,14 @@ execute the requested action using the appropriate tools.
 
         return {
             "success": True,
-            "message": "Routine discovery request sent. The user will confirm to start the discovery process.",
+            "message": (
+                "Routine discovery request sent. "
+                "The user will confirm to start the discovery process. "
+                "Give the user a very brief summary of the discovery process: "
+                "find network transactions relevant to the request, "
+                "extract and resolve parameters, cookies, tokens, etc., "
+                "and construct the routine."
+            ),
             "task": task,
         }
 
@@ -933,7 +945,11 @@ execute the requested action using the appropriate tools.
 
         return {
             "success": True,
-            "message": f"Routine '{routine.name}' creation request sent. The routine will be saved and loaded into context.",
+            "message": (
+                f"Routine '{routine.name}' creation request sent. "
+                "The user will now be asked to confirm the routine creation. "
+                "At this point give the user a very brief summary of the routine."
+            ),
             "routine_name": routine.name,
         }
 
@@ -1048,6 +1064,29 @@ execute the requested action using the appropriate tools.
     def process_user_message(self, content: str) -> None:
         """Process a user message. Convenience wrapper for process_new_message."""
         self.process_new_message(content, ChatRole.USER)
+
+    def notify_browser_recording_complete(self, transaction_count: int) -> None:
+        """
+        Notify the agent that browser recording has completed.
+
+        Sends a system message instructing the agent to scan the captured data
+        and initiate routine discovery if appropriate.
+
+        Args:
+            transaction_count: Number of network transactions captured.
+        """
+        system_message = (
+            "[ACTION REQUIRED] Browser recording completed. "
+            "New CDP captures are now available in the vectorstore. "
+            f"{transaction_count} network transactions were captured. "
+            "Scan the captured data NOW using file_search to verify it contains "
+            "the information needed for the user's requested automation. "
+            "Examine the consolidated_transactions.json and confirm the relevant API endpoints, "
+            "request/response payloads, and any authentication data are present. "
+            "If you see the data related to the requested task, initiate a routine discovery process. "
+            "Otherwise you can ask the user for clarifying questions or re-request the browser recording."
+        )
+        self.process_new_message(system_message, ChatRole.SYSTEM)
 
     def process_new_message(self, content: str, role: ChatRole = ChatRole.USER) -> None:
         """
