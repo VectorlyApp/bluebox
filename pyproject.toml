@@ -47,6 +47,7 @@ dependencies = [
     "beautifulsoup4>=4.14.2",
     "pylint>=3.0.0",
     "pytest>=8.3.5",
+    "pytest-asyncio>=0.24.0",
     "rich>=13.0.0",
 ]
 
