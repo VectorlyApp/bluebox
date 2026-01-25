@@ -6,7 +6,7 @@ Configuration for pytest.
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -90,14 +90,12 @@ def make_routine():
 @pytest.fixture
 def mock_event_callback():
     """Async callback that records calls for CDP monitor testing."""
-    from unittest.mock import AsyncMock
     return AsyncMock()
 
 
 @pytest.fixture
 def mock_cdp_session():
     """Mock AsyncCDPSession for testing monitors."""
-    from unittest.mock import AsyncMock
     session = AsyncMock()
     session.send = AsyncMock(return_value=1)
     session.send_and_wait = AsyncMock(return_value={"result": {}})
