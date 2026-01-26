@@ -1101,7 +1101,7 @@ execute the requested action using the appropriate tools.
             )
         self.process_new_message(system_message, ChatRole.SYSTEM)
 
-    def notify_routine_discovery_approval(
+    def notify_routine_discovery_response(
         self,
         accepted: bool,
         task_description: str | None = None,
@@ -1132,7 +1132,7 @@ execute the requested action using the appropriate tools.
             )
             self.process_new_message(message, ChatRole.SYSTEM)
 
-    def notify_routine_discovery_response(
+    def notify_routine_discovery_result(
         self,
         error: str | None = None,
         routine: Routine | None = None,
