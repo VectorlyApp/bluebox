@@ -367,6 +367,7 @@ and improve web automation routines.
         self._tools_requiring_approval = tools_requiring_approval or set()
         self._custom_system_prompt = system_prompt  # None means use mode-based prompts
         self._previous_response_id: str | None = None
+        self._response_id_to_chat_index: dict[str, int] = {}
 
         self.llm_model = llm_model
         self.llm_client = LLMClient(llm_model)
@@ -688,6 +689,10 @@ and improve web automation routines.
         self._thread.chat_ids.append(chat.id)
         self._thread.updated_at = int(datetime.now().timestamp())
 
+        # Track response_id to chat index for O(1) lookup
+        if llm_provider_response_id:
+            self._response_id_to_chat_index[llm_provider_response_id] = len(self._thread.chat_ids) - 1
+
         # Persist thread if callback provided
         if self._persist_chat_thread_callable:
             self._thread = self._persist_chat_thread_callable(self._thread)
@@ -702,23 +707,14 @@ and improve web automation routines.
             List of message dicts with 'role', 'content', and optionally 'tool_call_id' or 'tool_calls' keys.
         """
         messages: list[dict[str, Any]] = []
-        
-        # determine which chats to include based on the previous response id
+
+        # Determine which chats to include based on the previous response id
         chats_to_include = self._thread.chat_ids
         if self._previous_response_id is not None:
-            
-            # get index of the previous response id
-            index = None
-            for idx, chat_id in enumerate(self._thread.chat_ids):
-                if self._chats.get(chat_id).llm_provider_response_id == self._previous_response_id:
-                    index = idx
-                    break
-                
-            # include all chats after the previous response id
+            index = self._response_id_to_chat_index.get(self._previous_response_id)
             if index is not None:
                 chats_to_include = self._thread.chat_ids[index + 1:]
-        
-        
+
         for chat_id in chats_to_include:
             chat = self._chats.get(chat_id)
             if not chat:
@@ -1554,6 +1550,8 @@ and improve web automation routines.
         old_chat_thread_id = self._thread.id
         self._thread = ChatThread()
         self._chats = {}
+        self._previous_response_id = None
+        self._response_id_to_chat_index = {}
         self._routine_state.reset()
 
         # Reset mode to CREATION and re-register tools
