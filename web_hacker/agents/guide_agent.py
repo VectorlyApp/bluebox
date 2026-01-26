@@ -173,7 +173,7 @@ class GuideAgent:
 
     DATA_STORE_PROMPT: str = """
     You have access to the following data and you must refer to it when answering questions or helping debug!
-    It is essecntial that you use this data, documentation, and code:
+    It is essential that you use this data, documentation, and code:
     {data_store_prompt}
     """
 
