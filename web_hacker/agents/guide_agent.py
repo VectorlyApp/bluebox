@@ -1560,9 +1560,17 @@ execute the requested action using the appropriate tools.
         """
         if self._data_store:
             vector_store_ids = self._data_store.get_vectorstore_ids()
+            logger.info(
+                "refresh_vectorstores called - data_store has cdp_vs=%s, doc_vs=%s, returning ids=%s",
+                getattr(self._data_store, 'cdp_captures_vectorstore_id', None),
+                getattr(self._data_store, 'documentation_vectorstore_id', None),
+                vector_store_ids,
+            )
             if vector_store_ids:
                 self.llm_client.set_file_search_vectorstores(vector_store_ids)
                 logger.info("Refreshed vectorstores: %s", vector_store_ids)
             else:
                 self.llm_client.set_file_search_vectorstores(None)
-                logger.info("Cleared vectorstores (none available)")
+                logger.warning("Cleared vectorstores (none available) - file_search will NOT be available!")
+        else:
+            logger.warning("refresh_vectorstores called but no data_store configured!")

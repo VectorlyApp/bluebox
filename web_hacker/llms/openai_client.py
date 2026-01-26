@@ -266,9 +266,14 @@ class OpenAIClient(AbstractLLMVendorClient):
                 "type": "file_search",
                 "vector_store_ids": self._file_search_vectorstores,
             })
+            logger.info("Including file_search tool with vectorstores: %s", self._file_search_vectorstores)
+        else:
+            logger.debug("file_search not included (no vectorstores configured)")
 
         if all_tools and response_model is None:
             kwargs["tools"] = all_tools
+            tool_names = [t.get("name") or t.get("type") for t in all_tools]
+            logger.info("API call tools: %s", tool_names)
 
         return kwargs
 
@@ -393,9 +398,9 @@ class OpenAIClient(AbstractLLMVendorClient):
         """
         self._file_search_vectorstores = vector_store_ids
         if vector_store_ids:
-            logger.debug("Set file_search vectorstores: %s", vector_store_ids)
+            logger.info("Set file_search vectorstores: %s", vector_store_ids)
         else:
-            logger.debug("Cleared file_search vectorstores")
+            logger.info("Cleared file_search vectorstores")
 
     ## Unified API methods
 
