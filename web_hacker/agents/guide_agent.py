@@ -1101,34 +1101,58 @@ execute the requested action using the appropriate tools.
             )
         self.process_new_message(system_message, ChatRole.SYSTEM)
 
-    def notify_routine_discovery_result(
+    def notify_routine_discovery_started(
         self,
         accepted: bool,
+        task_description: str | None = None,
+    ) -> None:
+        """
+        Log that routine discovery was started or declined.
+
+        If accepted: logs system message (no agent response) - user can keep chatting.
+        If declined: triggers agent response to handle rejection.
+
+        Args:
+            accepted: True if user accepted, False if declined.
+            task_description: The task description for discovery.
+        """
+        if accepted:
+            task_info = f" for task: '{task_description}'" if task_description else ""
+            message = (
+                f"Routine discovery has started{task_info}. "
+                "Discovery is currently RUNNING in the background - it is NOT complete yet. "
+                "The user can continue chatting while discovery runs. "
+                "You will be notified when discovery completes."
+            )
+            self._add_chat(ChatRole.SYSTEM, message)
+        else:
+            message = (
+                "Routine discovery was declined by the user. "
+                "Ask the user if they'd like to try again or need help with something else."
+            )
+            self.process_new_message(message, ChatRole.SYSTEM)
+
+    def notify_routine_discovery_response(
+        self,
         error: str | None = None,
         routine: Routine | None = None,
         task_description: str | None = None,
     ) -> None:
         """
-        Notify the agent about the routine discovery outcome.
+        Notify the agent that routine discovery has completed.
+        Triggers agent response to explain routine or handle error.
 
         Args:
-            accepted: True if user accepted the discovery request, False if rejected.
             error: Optional error message if discovery failed.
             routine: The discovered routine on success.
-            task_description: The task description used for discovery (may have been modified by user).
+            task_description: The task description used for discovery.
         """
-        if not accepted:
-            system_message = (
-                "Routine discovery was rejected by the user. "
-                "Ask the user if they'd like to try again or need help with something else."
-            )
-        elif error:
+        if error:
             system_message = (
                 f"Routine discovery failed: {error}. "
                 "Ask the user if they'd like to try again or need help with something else."
             )
         else:
-            # Success case - routine should be provided
             routine_name = routine.name if routine else "Unknown"
             ops_count = len(routine.operations) if routine else 0
             params_count = len(routine.parameters) if routine else 0

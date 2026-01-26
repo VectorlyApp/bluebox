@@ -1062,7 +1062,7 @@ class TerminalGuideChat:
             if response == "y":
                 break
             if response == "n":
-                self._agent.notify_routine_discovery_result(accepted=False)
+                self._agent.notify_routine_discovery_started(accepted=False)
                 return
             if response == "m":
                 modified_task = console.input("[yellow]Enter new task description: [/yellow]").strip()
@@ -1077,21 +1077,18 @@ class TerminalGuideChat:
             else:
                 console.print("[yellow]⚠ Please enter 'y', 'n', or 'm'[/yellow]")
 
+        # User accepted - log that discovery is starting (no agent response yet)
+        self._agent.notify_routine_discovery_started(accepted=True, task_description=task)
+
         # Verify we have data store with CDP captures
         if not isinstance(self._data_store, LocalDiscoveryDataStore):
             console.print("[red]✗ No data store available.[/red]")
-            self._agent.notify_routine_discovery_result(
-                accepted=True,
-                error="No data store available"
-            )
+            self._agent.notify_routine_discovery_response(error="No data store available")
             return
 
         if self._data_store.cdp_captures_vectorstore_id is None:
             console.print("[red]✗ No CDP captures available. Run /monitor first.[/red]")
-            self._agent.notify_routine_discovery_result(
-                accepted=True,
-                error="No CDP captures available"
-            )
+            self._agent.notify_routine_discovery_response(error="No CDP captures available")
             return
 
         # Create output directory
@@ -1148,8 +1145,7 @@ class TerminalGuideChat:
             console.print()
 
             # Notify agent to review the routine
-            self._agent.notify_routine_discovery_result(
-                accepted=True,
+            self._agent.notify_routine_discovery_response(
                 routine=routine,
                 task_description=task,
             )
@@ -1158,10 +1154,7 @@ class TerminalGuideChat:
             console.print()
             console.print(f"[bold red]✗ Discovery failed: {e}[/bold red]")
             console.print()
-            self._agent.notify_routine_discovery_result(
-                accepted=True,
-                error=str(e)
-            )
+            self._agent.notify_routine_discovery_response(error=str(e))
 
     def _handle_routine_creation(self, routine: Routine | None) -> None:
         """Handle routine creation request - save and load the routine."""
