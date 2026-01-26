@@ -689,8 +689,8 @@ and improve web automation routines.
         self._thread.chat_ids.append(chat.id)
         self._thread.updated_at = int(datetime.now().timestamp())
 
-        # Track response_id to chat index for O(1) lookup
-        if llm_provider_response_id:
+        # Track response_id to chat index for O(1) lookup (only for ASSISTANT messages)
+        if llm_provider_response_id and role == ChatRole.ASSISTANT:
             self._response_id_to_chat_index[llm_provider_response_id] = len(self._thread.chat_ids) - 1
 
         # Persist thread if callback provided
@@ -846,7 +846,8 @@ and improve web automation routines.
                 "- A new browser tab will open\n"
                 "- Navigate to <WEBSITE>\n"
                 "- Perform the following: <STEPS>\n"
-                "- Ensure requested data is located in the browser tab."
+                "- Ensure requested data is located in the browser tab.",
+                "DO NOT SAY ANYTHING ELSE! JUST WHAT TO DO IN BROWSER AND THATS IT!"
             ),
         }
 
@@ -901,6 +902,14 @@ and improve web automation routines.
 
     def _tool_request_routine_discovery(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute request_routine_discovery tool."""
+        # Check if CDP captures vectorstore is available
+        if self._data_store is None or self._data_store.cdp_captures_vectorstore_id is None:
+            raise ValueError(
+                "No CDP captures available. Request a browser recording first to capture network data. "
+                "If already requested, wait for user to finish recording. "
+                "You will get a system message to tell you when it is done."
+            )
+
         data_output = tool_arguments.get("data_output", "")
         parameters = tool_arguments.get("parameters", "")
         website = tool_arguments.get("website", "")
@@ -1313,7 +1322,6 @@ and improve web automation routines.
                         ChatRole.TOOL,
                         f"Tool '{tool_name}' result: {result_str}",
                         tool_call_id=call_id,
-                        llm_provider_response_id=response.response_id,
                     )
                     tools_executed = True
 
