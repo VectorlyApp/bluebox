@@ -918,12 +918,11 @@ and improve web automation routines.
             raise ValueError("data_output is required - what should the routine return?")
 
         # Build task description
-        task_parts = [f"Create a web routine that returns {data_output}"]
+        task = f"Create a web routine that returns {data_output}."
         if parameters:
-            task_parts.append(f"given {parameters}")
+            task += f"\nGiven: {parameters}"
         if website:
-            task_parts.append(f"from {website}")
-        task = " ".join(task_parts) + "."
+            task += f"\nFrom: {website}"
 
         self._emit_message(
             RoutineDiscoveryRequestEmittedMessage(
