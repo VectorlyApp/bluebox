@@ -65,6 +65,50 @@ wheels = [
 ]
 
 [[package]]
+name = "bluebox-sdk"
+version = "1.3"
+source = { editable = "." }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "jmespath" },
+    { name = "openai" },
+    { name = "pydantic" },
+    { name = "pylint" },
+    { name = "pytest" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+    { name = "rich" },
+    { name = "tldextract" },
+    { name = "toonify", extra = ["pydantic"] },
+    { name = "websocket-client" },
+    { name = "websockets" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "ipykernel" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "beautifulsoup4", specifier = ">=4.14.2" },
+    { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.29.5" },
+    { name = "jmespath", specifier = ">=1.0.1,<2" },
+    { name = "openai", specifier = ">=2.6.1" },
+    { name = "pydantic", specifier = ">=2.11.4" },
+    { name = "pylint", specifier = ">=3.0.0" },
+    { name = "pytest", specifier = ">=8.3.5" },
+    { name = "python-dotenv", specifier = ">=1.2.1" },
+    { name = "requests", specifier = ">=2.31.0" },
+    { name = "rich", specifier = ">=13.0.0" },
+    { name = "tldextract", specifier = ">=5.1.0" },
+    { name = "toonify", extras = ["pydantic"], specifier = ">=1.5.1" },
+    { name = "websocket-client", specifier = ">=1.6.0" },
+    { name = "websockets", specifier = ">=15.0.1" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "certifi"
 version = "2026.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -938,50 +982,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/95/fc/44799c4a51ff0da0d
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7a/86/7f461495625145a99d60f14cdac142a11db5d501c86d48aad165575d1e06/wcwidth-0.3.5-py3-none-any.whl", hash = "sha256:b0a0245130566939a24ab8432e625b38272fbc62ecbe5aecbdcb50b8f02ce993", size = 86681, upload-time = "2026-01-25T04:37:22.585Z" },
 ]
-
-[[package]]
-name = "web-hacker"
-version = "1.3"
-source = { editable = "." }
-dependencies = [
-    { name = "beautifulsoup4" },
-    { name = "jmespath" },
-    { name = "openai" },
-    { name = "pydantic" },
-    { name = "pylint" },
-    { name = "pytest" },
-    { name = "python-dotenv" },
-    { name = "requests" },
-    { name = "rich" },
-    { name = "tldextract" },
-    { name = "toonify", extra = ["pydantic"] },
-    { name = "websocket-client" },
-    { name = "websockets" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "ipykernel" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "beautifulsoup4", specifier = ">=4.14.2" },
-    { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.29.5" },
-    { name = "jmespath", specifier = ">=1.0.1,<2" },
-    { name = "openai", specifier = ">=2.6.1" },
-    { name = "pydantic", specifier = ">=2.11.4" },
-    { name = "pylint", specifier = ">=3.0.0" },
-    { name = "pytest", specifier = ">=8.3.5" },
-    { name = "python-dotenv", specifier = ">=1.2.1" },
-    { name = "requests", specifier = ">=2.31.0" },
-    { name = "rich", specifier = ">=13.0.0" },
-    { name = "tldextract", specifier = ">=5.1.0" },
-    { name = "toonify", extras = ["pydantic"], specifier = ">=1.5.1" },
-    { name = "websocket-client", specifier = ">=1.6.0" },
-    { name = "websockets", specifier = ">=15.0.1" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "websocket-client"
