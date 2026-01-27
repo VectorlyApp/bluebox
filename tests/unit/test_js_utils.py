@@ -162,3 +162,41 @@ class TestGenerateJsEvaluateWrapperJs:
 
         # Should check if result is undefined before storing
         assert "if (__result !== undefined)" in result
+
+    def test_trailing_semicolon_stripped(self) -> None:
+        """Test that trailing semicolon is stripped from IIFE to avoid syntax error."""
+        # IIFE with trailing semicolon - would cause "missing ) after argument list"
+        # if embedded as: Promise.resolve((function(){...})();)
+        iife_with_semicolon = "(function() { return 42; })();"
+        result = generate_js_evaluate_wrapper_js(iife_with_semicolon)
+
+        # Should NOT contain the trailing semicolon in the embedded IIFE
+        # The wrapper embeds as: await Promise.resolve(IIFE)
+        # So we should see ")())" not "()();)"
+        assert "await Promise.resolve((function() { return 42; })())" in result
+        assert "();)" not in result
+
+    def test_trailing_semicolon_with_whitespace_stripped(self) -> None:
+        """Test that trailing semicolon with whitespace is stripped."""
+        iife_with_semicolon_and_whitespace = "(function() { return 42; })();   \n  "
+        result = generate_js_evaluate_wrapper_js(iife_with_semicolon_and_whitespace)
+
+        # Should strip both whitespace and semicolon
+        assert "await Promise.resolve((function() { return 42; })())" in result
+        assert "();)" not in result
+
+    def test_leading_whitespace_stripped(self) -> None:
+        """Test that leading whitespace is stripped from IIFE."""
+        iife_with_leading_whitespace = "   \n  (function() { return 42; })()"
+        result = generate_js_evaluate_wrapper_js(iife_with_leading_whitespace)
+
+        # Should embed cleanly without leading whitespace
+        assert "await Promise.resolve((function() { return 42; })())" in result
+
+    def test_no_semicolon_unchanged(self) -> None:
+        """Test that IIFE without trailing semicolon is unchanged."""
+        iife_no_semicolon = "(function() { return 42; })()"
+        result = generate_js_evaluate_wrapper_js(iife_no_semicolon)
+
+        # Should embed as-is
+        assert "await Promise.resolve((function() { return 42; })())" in result

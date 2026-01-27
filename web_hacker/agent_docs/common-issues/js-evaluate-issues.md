@@ -1,6 +1,6 @@
 # js_evaluate Issues
 
-> Common problems when using `js_evaluate` operations: code returns undefined due to missing IIFE wrappers or return statements, stored fetch data needs JSON parsing (sometimes double parsing), and certain APIs like `fetch()` or `eval()` are blocked and must use dedicated operations instead. Related: [js-evaluate.md](../operations/js-evaluate.md), [fetch.md](../operations/fetch.md)
+> Common problems when using `js_evaluate` operations: code returns undefined due to missing IIFE wrappers or return statements, stored fetch data needs JSON parsing, and certain APIs like `fetch()` or `eval()` are blocked and must use dedicated operations instead. Related: [js-evaluate.md](../operations/js-evaluate.md), [fetch.md](../operations/fetch.md)
 
 ---
 
@@ -31,47 +31,31 @@ document.title
 
 ## Can't Access Fetch Data
 
-**Symptom:** `JSON.parse()` fails, `data.items` is undefined
+**Symptom:** `data.items` is undefined
 
-**Cause:** Fetch stores results as **strings**. You must parse them.
-
-**Important:** Data may be **doubly stringified**. You may need to call `JSON.parse()` twice!
+**Cause:** Fetch stores results as **strings** in sessionStorage. You must parse them.
 
 ```javascript
 // WRONG - raw is a string!
-const raw = sessionStorage.getItem('api_response');
+var raw = sessionStorage.getItem('api_response');
 return raw.items;  // undefined
 
 // RIGHT - parse first
-const raw = sessionStorage.getItem('api_response');
-const data = JSON.parse(raw);
-return data.items;
-
-// If still a string, parse again!
-const raw = sessionStorage.getItem('api_response');
-let data = JSON.parse(raw);
-if (typeof data === 'string') {
-  data = JSON.parse(data);  // Double parse
-}
+var raw = sessionStorage.getItem('api_response');
+var data = JSON.parse(raw);
 return data.items;
 ```
 
-**Always debug with console.log:**
+**Debug with console.log:**
 ```javascript
 (function() {
-  const raw = sessionStorage.getItem('api_response');
+  var raw = sessionStorage.getItem('api_response');
   console.log('Raw type:', typeof raw);
-  console.log('Raw value:', raw?.substring(0, 200));
+  console.log('Raw preview:', raw ? raw.substring(0, 200) : null);
 
-  let data = JSON.parse(raw);
-  console.log('After first parse, type:', typeof data);
+  var data = JSON.parse(raw);
+  console.log('Parsed keys:', Object.keys(data));
 
-  if (typeof data === 'string') {
-    console.log('Still a string! Parsing again...');
-    data = JSON.parse(data);
-  }
-
-  console.log('Final data keys:', Object.keys(data));
   return data;
 })()
 ```

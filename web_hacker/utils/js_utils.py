@@ -318,7 +318,7 @@ def generate_fetch_js(
         "      headers: responseHeaders,",
         "    };",
         "",
-        f"    if ({'true' if session_storage_key else 'false'}) {{ try {{ window.sessionStorage.setItem({json.dumps(session_storage_key) if session_storage_key else 'null'}, JSON.stringify(val)); }} catch(e) {{ return {{ __err: 'SessionStorage Error: ' + String(e), resolvedValues }}; }} }}",
+        f"    if ({'true' if session_storage_key else 'false'}) {{ try {{ window.sessionStorage.setItem({json.dumps(session_storage_key) if session_storage_key else 'null'}, val); }} catch(e) {{ return {{ __err: 'SessionStorage Error: ' + String(e), resolvedValues }}; }} }}",
         "    return {status, value: 'success', resolvedValues, request: requestMeta, response: responseMeta};",
         "  } catch(e) {",
         "    return { __err: 'fetch failed: ' + String(e), resolvedValues, request: requestMeta };",
@@ -778,6 +778,12 @@ def generate_js_evaluate_wrapper_js(
             storage_error: <string or null>
         }}
     """
+    # Strip whitespace and trailing semicolon if present
+    # Trailing ; breaks Promise.resolve() embedding: Promise.resolve((function(){...})();) is invalid
+    iife = iife.strip()
+    if iife.endswith(";"):
+        iife = iife[:-1]
+
     storage_code = ""
     if session_storage_key:
         storage_code = f"""
