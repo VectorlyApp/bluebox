@@ -1,5 +1,5 @@
 """
-Web Hacker SDK - High-level API for web automation.
+Bluebox SDK - High-level API for web automation.
 """
 
 from .client import Bluebox

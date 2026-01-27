@@ -87,7 +87,7 @@ class RoutineExecutionError(Exception):
 
 class BlueboxError(Exception):
     """
-    Base exception for all Web Hacker errors.
+    Base exception for all Bluebox errors.
     """
 
 

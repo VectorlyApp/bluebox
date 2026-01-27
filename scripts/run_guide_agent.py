@@ -34,7 +34,7 @@ from typing import Any
 from openai import OpenAI
 
 # Package root for code_paths (scripts/ is sibling to bluebox/)
-WEB_HACKER_PACKAGE_ROOT = Path(__file__).resolve().parent.parent / "bluebox"
+BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent / "bluebox"
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
@@ -1386,7 +1386,7 @@ def main() -> None:
     parser.add_argument(
         "--docs-dir",
         type=str,
-        default=str(WEB_HACKER_PACKAGE_ROOT / "agent_docs"),
+        default=str(BLUEBOX_PACKAGE_ROOT / "agent_docs"),
         help="Documentation directory (default: bluebox/agent_docs)",
     )
     parser.add_argument(
@@ -1423,12 +1423,12 @@ def main() -> None:
             "client": openai_client,
             "documentation_paths": [args.docs_dir],
             "code_paths": [
-                str(WEB_HACKER_PACKAGE_ROOT / "data_models" / "routine"),
-                str(WEB_HACKER_PACKAGE_ROOT / "data_models" / "ui_elements.py"),
-                str(WEB_HACKER_PACKAGE_ROOT / "routine_discovery"),
-                str(WEB_HACKER_PACKAGE_ROOT / "utils" / "js_utils.py"),
-                str(WEB_HACKER_PACKAGE_ROOT / "utils" / "data_utils.py"),
-                "!" + str(WEB_HACKER_PACKAGE_ROOT / "**" / "__init__.py"),
+                str(BLUEBOX_PACKAGE_ROOT / "data_models" / "routine"),
+                str(BLUEBOX_PACKAGE_ROOT / "data_models" / "ui_elements.py"),
+                str(BLUEBOX_PACKAGE_ROOT / "routine_discovery"),
+                str(BLUEBOX_PACKAGE_ROOT / "utils" / "js_utils.py"),
+                str(BLUEBOX_PACKAGE_ROOT / "utils" / "data_utils.py"),
+                "!" + str(BLUEBOX_PACKAGE_ROOT / "**" / "__init__.py"),
             ],
         }
 

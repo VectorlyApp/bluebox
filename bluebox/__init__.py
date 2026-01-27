@@ -1,23 +1,23 @@
 """
-Web Hacker SDK - Reverse engineer any web app!
+Bluebox SDK - Reverse engineer any web app!
 
 Usage:
     from bluebox import Bluebox
-    
+
     # Monitor browser activity
-    hacker = Bluebox()
-    with hacker.monitor_browser(output_dir="./captures"):
+    client = Bluebox()
+    with client.monitor_browser(output_dir="./captures"):
         # User performs actions in browser
         pass
-    
+
     # Discover routines
-    routine = hacker.discover_routine(
+    routine = client.discover_routine(
         task="Search for flights",
         cdp_captures_dir="./captures"
     )
-    
+
     # Execute routines
-    result = hacker.execute_routine(
+    result = client.execute_routine(
         routine=routine,
         parameters={"origin": "NYC", "destination": "LAX"}
     )

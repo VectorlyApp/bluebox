@@ -24,23 +24,23 @@ from ..data_models.routine.routine import Routine
 
 class Bluebox:
     """
-    Main SDK client for Web Hacker.
+    Main SDK client for Bluebox.
 
     Provides a simple, high-level interface for monitoring browsers,
     discovering routines, and executing automation.
 
     Example:
-        >>> hacker = Bluebox(openai_api_key="sk-...")
-        >>> with hacker.monitor_browser(output_dir="./captures"):
+        >>> client = Bluebox(openai_api_key="sk-...")
+        >>> with client.monitor_browser(output_dir="./captures"):
         ...     # User performs actions in browser
         ...     pass
-        >>> discovery_result = hacker.discover_routine(
+        >>> discovery_result = client.discover_routine(
         ...     task="Search for flights",
         ...     cdp_captures_dir="./captures"
         ... )
         >>> routine = discovery_result.routine
         >>> test_params = discovery_result.test_parameters
-        >>> result = hacker.execute_routine(
+        >>> result = client.execute_routine(
         ...     routine=routine,
         ...     parameters={"origin": "NYC", "destination": "LAX"}
         ... )

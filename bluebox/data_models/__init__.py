@@ -1,4 +1,4 @@
 """
-Web Hacker data models.
+Bluebox data models.
 """
 

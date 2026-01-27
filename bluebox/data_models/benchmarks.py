@@ -791,8 +791,8 @@ class RoutineDiscoveryEvaluation(BaseModel):
         start_time = time.time()
 
         try:
-            hacker = Bluebox(llm_model=model)
-            result = hacker.discover_routine(
+            client = Bluebox(llm_model=model)
+            result = client.discover_routine(
                 task=self.task,
                 cdp_captures_dir=cdp_captures_dir,
                 output_dir=output_dir,

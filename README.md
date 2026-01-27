@@ -16,7 +16,7 @@ REVERSE ENGINEER ANY WEB APP! ⚡️
 * are tired of complicated, endless API integrations
 * dealing with closed APIs
 
-Welcome to Vectorly's Web Hacker... **No API? No Problem!**
+Welcome to Vectorly's Bluebox... **No API? No Problem!**
 
 ## Our Process ᯓ ✈︎`
 
@@ -53,7 +53,7 @@ Example:
 
 ### Parameters
 
-- Defined as typed inputs (see [`Parameter`](https://github.com/VectorlyApp/web-hacker/blob/main/src/data_models/production_routine.py) class).
+- Defined as typed inputs (see [`Parameter`](https://github.com/VectorlyApp/bluebox/blob/main/src/data_models/production_routine.py) class).
 - Each parameter has required `name` and `description` fields. Optional fields include `type` (defaults to `string`), `required` (defaults to `true`), `default`, and `examples`.
 - Parameters are referenced inside `operations` using placeholder tokens like `"{{paramName}}"` or `\"{{paramName}}\"` (see [Placeholder Interpolation](#placeholder-interpolation-) below).
 - **Parameter Types**: Supported types include `string`, `integer`, `number`, `boolean`, `date`, `datetime`, `email`, `url`, and `enum`.
@@ -62,7 +62,7 @@ Example:
 
 ### Operations
 
-Operations define the executable steps of a Routine. They are represented as a **typed list** (see [`RoutineOperationUnion`](https://github.com/VectorlyApp/web-hacker/blob/main/bluebox/data_models/routine/operation.py)) and are executed sequentially by a browser.
+Operations define the executable steps of a Routine. They are represented as a **typed list** (see [`RoutineOperationUnion`](https://github.com/VectorlyApp/bluebox/blob/main/bluebox/data_models/routine/operation.py)) and are executed sequentially by a browser.
 
 Each operation specifies a `type` and its parameters:
 
@@ -255,8 +255,8 @@ For development or if you want the latest code:
 
 ```bash
 # Clone the repository
-git clone https://github.com/VectorlyApp/web-hacker.git
-cd web-hacker
+git clone https://github.com/VectorlyApp/bluebox.git
+cd bluebox
 
 # Create and activate virtual environment
 python3 -m venv bluebox-env
@@ -293,7 +293,7 @@ The quickstart script will:
 3. 🤖 Discover routines from captured data
 4. 📝 Show you how to execute the discovered routine
 
-**Note:** The quickstart script is included in the repository. If you installed from PyPI, you can download it from the [GitHub repository](https://github.com/VectorlyApp/web-hacker/blob/main/quickstart.py).
+**Note:** The quickstart script is included in the repository. If you installed from PyPI, you can download it from the [GitHub repository](https://github.com/VectorlyApp/bluebox/blob/main/quickstart.py).
 
 ## Launch Chrome in Debug Mode 🐞
 
@@ -541,11 +541,11 @@ from bluebox.sdk import Bluebox
 from bluebox.data_models.routine.routine import Routine
 
 # Initialize (uses OPENAI_API_KEY from environment)
-hacker = Bluebox()
+client = Bluebox()
 
 # Load and execute an existing routine
 routine = Routine.model_validate_json(open("routine.json").read())
-result = hacker.execute_routine(
+result = client.execute_routine(
     routine=routine,
     parameters={"origin": "NYC", "destination": "LAX", "date": "2026-03-15"}
 )
@@ -560,7 +560,7 @@ if result.ok:
 import json
 from bluebox.sdk import Bluebox, BrowserMonitor
 
-hacker = Bluebox()
+client = Bluebox()
 
 # Step 1: Monitor browser activity
 monitor = BrowserMonitor(output_dir="./captures")
@@ -570,7 +570,7 @@ input("Press Enter when done")
 monitor.stop()
 
 # Step 2: Discover routine from captures
-routine = hacker.discover_routine(
+routine = client.discover_routine(
     task="Search for flights and get prices",
     cdp_captures_dir="./captures",
     output_dir="./output"
@@ -578,10 +578,10 @@ routine = hacker.discover_routine(
 
 # Step 3: Test with generated test parameters
 test_params = json.load(open("./output/test_parameters.json"))
-result = hacker.execute_routine(routine=routine, parameters=test_params)
+result = client.execute_routine(routine=routine, parameters=test_params)
 
 # Step 4: Execute with new parameters
-result = hacker.execute_routine(
+result = client.execute_routine(
     routine=routine,
     parameters={"origin": "SFO", "destination": "JFK", "date": "2026-04-01"}
 )
@@ -657,8 +657,8 @@ Results are saved to the output directory:
 
 We welcome contributions! Here's how to get started:
 
-1. **Report bugs or request features** — Open an [issue](https://github.com/VectorlyApp/web-hacker/issues)
-2. **Submit code** — Fork the repo and open a [pull request](https://github.com/VectorlyApp/web-hacker/pulls)
+1. **Report bugs or request features** — Open an [issue](https://github.com/VectorlyApp/bluebox/issues)
+2. **Submit code** — Fork the repo and open a [pull request](https://github.com/VectorlyApp/bluebox/pulls)
 3. **Test your code** — Add unit tests and make sure all tests pass:
 
 ```bash

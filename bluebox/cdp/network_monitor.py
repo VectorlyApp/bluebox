@@ -407,7 +407,7 @@ class NetworkMonitor:
             "pending_bodies": len(self.pending_body)
         }
 
-    def generate_har_file(self, output_path=None, page_title="Web Hacker Session"):
+    def generate_har_file(self, output_path=None, page_title="Bluebox Session"):
         """
         Generate a HAR (HTTP Archive) file from collected network data.
         
@@ -449,7 +449,7 @@ class NetworkMonitor:
             "log": {
                 "version": "1.2",
                 "creator": {
-                    "name": "Web Hacker Network Monitor",
+                    "name": "Bluebox Network Monitor",
                     "version": "1.0"
                 },
                 "browser": {
@@ -779,7 +779,7 @@ class NetworkMonitor:
         
         return consolidated
 
-    def generate_har_from_transactions(self, output_path=None, page_title="Web Hacker Session"):
+    def generate_har_from_transactions(self, output_path=None, page_title="Bluebox Session"):
         """
         Generate HAR file from transaction directories with full response bodies.
         This reads the full response body files directly instead of using truncated consolidated data.

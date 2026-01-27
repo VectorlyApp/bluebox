@@ -249,7 +249,7 @@ class BrowserMonitor:
             har_path = self.session.paths.get('network_har_path',
                                               str(Path(network_dir) / "network.har"))
             logger.info(f"Generating HAR file at {har_path}...")
-            self.session.network_monitor.generate_har_from_transactions(har_path, "Web Hacker Session")
+            self.session.network_monitor.generate_har_from_transactions(har_path, "Bluebox Session")
             if os.path.exists(har_path):
                 logger.info(f"✓ HAR file saved to {har_path}")
             else:

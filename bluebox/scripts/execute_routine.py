@@ -2,12 +2,12 @@
 Execute a routine from the command line.
 
 Usage:
-    web-hacker-execute --routine-path <path> --parameters-path <path> [--output <path>] [--download-dir <dir>] [--keep-open]
-    web-hacker-execute --routine-path <path> --parameters-dict '<json>' [--output <path>] [--download-dir <dir>] [--keep-open]
-    
+    bluebox-execute --routine-path <path> --parameters-path <path> [--output <path>] [--download-dir <dir>] [--keep-open]
+    bluebox-execute --routine-path <path> --parameters-dict '<json>' [--output <path>] [--download-dir <dir>] [--keep-open]
+
 Examples:
-    web-hacker-execute --routine-path example_routines/amtrak_one_way_train_search_routine.json --parameters-path example_routines/amtrak_one_way_train_search_input.json
-    web-hacker-execute --routine-path example_routines/amtrak_one_way_train_search_routine.json --parameters-dict '{"origin": "boston", "destination": "new york", "departureDate": "2026-03-22"}' --output output.json --keep-open
+    bluebox-execute --routine-path example_routines/amtrak_one_way_train_search_routine.json --parameters-path example_routines/amtrak_one_way_train_search_input.json
+    bluebox-execute --routine-path example_routines/amtrak_one_way_train_search_routine.json --parameters-dict '{"origin": "boston", "destination": "new york", "departureDate": "2026-03-22"}' --output output.json --keep-open
 """
 
 import argparse

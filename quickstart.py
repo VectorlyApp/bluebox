@@ -105,7 +105,7 @@ def step_1_monitor_browser(cdp_captures_dir: Path) -> bool:
 
 
 def step_2_discover_routine(
-    hacker: Bluebox,
+    client: Bluebox,
     cdp_captures_dir: Path,
     discovery_output_dir: Path,
 ) -> Routine | None:
@@ -204,7 +204,7 @@ def step_2_discover_routine(
     print()
 
     try:
-        result = hacker.discover_routine(
+        result = client.discover_routine(
             task=task,
             cdp_captures_dir=str(cdp_captures_dir),
             output_dir=str(discovery_output_dir),
@@ -225,7 +225,7 @@ def step_2_discover_routine(
 
 
 def step_3_execute_routine(
-    hacker: Bluebox,
+    client: Bluebox,
     routine: Routine,
     discovery_output_dir: Path,
 ) -> None:
@@ -302,7 +302,7 @@ def step_3_execute_routine(
     print()
 
     try:
-        result = hacker.execute_routine(
+        result = client.execute_routine(
             routine=routine,
             parameters=parameters,
             timeout=60.0,
@@ -342,7 +342,7 @@ def step_3_execute_routine(
 def main() -> None:
     """Main workflow."""
     print_colored("╔════════════════════════════════════════════════════════════╗", BLUE)
-    print_colored("║         Web Hacker - Quickstart Workflow                   ║", BLUE)
+    print_colored("║           Bluebox - Quickstart Workflow                    ║", BLUE)
     print_colored("╚════════════════════════════════════════════════════════════╝", BLUE)
     print()
 
@@ -366,7 +366,7 @@ def main() -> None:
     print()
     print("🔧 Initializing Bluebox...")
     try:
-        hacker = Bluebox(
+        client = Bluebox(
             remote_debugging_address=REMOTE_DEBUGGING_ADDRESS,
             llm_model="gpt-5.1",
         )
@@ -377,13 +377,13 @@ def main() -> None:
         return
 
     # Step 2: Discover
-    routine = step_2_discover_routine(hacker, cdp_captures_dir, discovery_output_dir)
+    routine = step_2_discover_routine(client, cdp_captures_dir, discovery_output_dir)
     if not routine:
         print_colored("⚠️  No routine available. Exiting.", YELLOW)
         return
 
     # Step 3: Execute
-    step_3_execute_routine(hacker, routine, discovery_output_dir)
+    step_3_execute_routine(client, routine, discovery_output_dir)
 
     print()
     print_colored("═" * 60, GREEN)

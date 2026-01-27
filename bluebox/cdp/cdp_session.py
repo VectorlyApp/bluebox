@@ -268,7 +268,7 @@ class CDPSession:
             har_path = self.paths.get('network_har_path', 
                                      os.path.join(network_dir, "network.har"))
             logger.info(f"Generating HAR file at {har_path}...")
-            self.network_monitor.generate_har_from_transactions(har_path, "Web Hacker Session")
+            self.network_monitor.generate_har_from_transactions(har_path, "Bluebox Session")
             logger.info(f"HAR method returned, checking file...")
             if os.path.exists(har_path):
                 file_size = os.path.getsize(har_path)

@@ -56,7 +56,7 @@ class InteractionMonitor:
         self.interactions_by_url = defaultdict(int)
         
         # Binding name for JavaScript to call
-        self.binding_name = "__webHackerInteractionLog"
+        self.binding_name = "__blueboxInteractionLog"
     
     # ------------------------ Setup ------------------------
     def setup_interaction_monitoring(self, cdp_session):
@@ -98,7 +98,7 @@ class InteractionMonitor:
             }} else if (Date.now() - startTime < maxWait) {{
                 setTimeout(check, 50);
             }} else {{
-                console.warn('Web Hacker interaction binding not available after timeout');
+                console.warn('Bluebox interaction binding not available after timeout');
             }}
         }}
         check();
@@ -339,7 +339,7 @@ class InteractionMonitor:
             logInteraction('blur', event, event.target);
         }}, true);
         
-        console.log('Web Hacker interaction monitoring enabled');
+        console.log('Bluebox interaction monitoring enabled');
     }});
 }})();
 """

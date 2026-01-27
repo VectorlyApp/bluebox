@@ -62,9 +62,9 @@ bluebox-execute = "bluebox.scripts.execute_routine:main"
 
 [project.urls]
 Homepage = "https://vectorly.app"
-Documentation = "https://github.com/VectorlyApp/web-hacker#readme"
-Repository = "https://github.com/VectorlyApp/web-hacker"
-Issues = "https://github.com/VectorlyApp/web-hacker/issues"
+Documentation = "https://github.com/VectorlyApp/bluebox#readme"
+Repository = "https://github.com/VectorlyApp/bluebox"
+Issues = "https://github.com/VectorlyApp/bluebox/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["bluebox"]
