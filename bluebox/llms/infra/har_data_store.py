@@ -142,6 +142,57 @@ class HarDataStore:
         "bearer",
     ])
 
+    # MIME types to exclude (JS, images, media, fonts, etc.)
+    EXCLUDED_MIME_PREFIXES = (
+        "application/javascript",
+        "application/x-javascript",
+        "text/javascript",
+        "image/",
+        "video/",
+        "audio/",
+        "font/",
+        "application/font",
+        "application/octet-stream",
+    )
+
+    # MIME types to include (HTML, JSON, XML, text)
+    INCLUDED_MIME_PREFIXES = (
+        "application/json",
+        "text/html",
+        "text/xml",
+        "application/xml",
+        "text/plain",
+    )
+
+    @staticmethod
+    def _is_relevant_entry(entry: "HarEntry") -> bool:
+        """
+        Check if an entry should be included in analysis.
+
+        Only includes HTML and JSON responses, excludes JS, images, media, fonts.
+        """
+        mime = entry.mime_type.lower()
+
+        # Exclude known non-relevant types
+        for prefix in HarDataStore.EXCLUDED_MIME_PREFIXES:
+            if mime.startswith(prefix):
+                return False
+
+        # Include known relevant types
+        for prefix in HarDataStore.INCLUDED_MIME_PREFIXES:
+            if mime.startswith(prefix):
+                return True
+
+        # Exclude by URL extension as fallback
+        url_lower = entry.url.lower().split("?")[0]
+        excluded_extensions = (".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
+                               ".woff", ".woff2", ".ttf", ".eot", ".mp4", ".webm", ".mp3", ".wav")
+        if url_lower.endswith(excluded_extensions):
+            return False
+
+        # Default: include if it has response content
+        return bool(entry.response_content)
+
     def __init__(self, har_content: str) -> None:
         """
         Initialize the HAR data store.
@@ -372,12 +423,15 @@ class HarDataStore:
         """
         Get all unique URLs from the HAR file.
 
+        Only includes HTML/JSON entries, excludes JS, images, media.
+
         Returns:
             List of unique URLs, sorted alphabetically.
         """
         urls: set[str] = set()
         for entry in self._entries:
-            urls.add(entry.url)
+            if self._is_relevant_entry(entry):
+                urls.add(entry.url)
         return sorted(urls)
 
     def get_entry_ids_by_url(self, url: str) -> list[int]:
@@ -396,12 +450,15 @@ class HarDataStore:
         """
         Get a mapping of each unique URL to its occurrence count.
 
+        Only includes HTML/JSON entries, excludes JS, images, media.
+
         Returns:
             Dict mapping URL to number of times it appeared in the HAR.
         """
         url_counts: dict[str, int] = {}
         for entry in self._entries:
-            url_counts[entry.url] = url_counts.get(entry.url, 0) + 1
+            if self._is_relevant_entry(entry):
+                url_counts[entry.url] = url_counts.get(entry.url, 0) + 1
         # Sort by count descending
         return dict(sorted(url_counts.items(), key=lambda x: -x[1]))
 
@@ -409,7 +466,6 @@ class HarDataStore:
         self,
         terms: list[str],
         top_n: int = 10,
-        json_only: bool = True,
     ) -> list[dict[str, Any]]:
         """
         Search entries by a list of terms and rank by relevance.
@@ -419,10 +475,11 @@ class HarDataStore:
         - total_hits: total number of term matches across all terms
         - score: (total_hits / num_terms) * unique_terms_found
 
+        Only searches relevant entries (HTML/JSON), excludes JS, images, media.
+
         Args:
             terms: List of search terms (case-insensitive).
             top_n: Number of top results to return.
-            json_only: If True, only search entries with JSON response content.
 
         Returns:
             List of dicts with keys: id, url, unique_terms_found, total_hits, score
@@ -436,12 +493,12 @@ class HarDataStore:
             return results
 
         for entry in self._entries:
-            # Skip if no response content
-            if not entry.response_content:
+            # Skip non-relevant entries (JS, images, media, etc.)
+            if not self._is_relevant_entry(entry):
                 continue
 
-            # Skip non-JSON if json_only is True
-            if json_only and "json" not in entry.mime_type.lower():
+            # Skip if no response content
+            if not entry.response_content:
                 continue
 
             content_lower = entry.response_content.lower()
@@ -460,16 +517,19 @@ class HarDataStore:
             if unique_terms_found == 0:
                 continue
 
-            # Calculate score: avg hits per term * unique terms
+            # Calculate score: (avg hits per term * unique terms) / content length
+            # Multiply by 1000 to keep scores in reasonable range
+            content_len = len(content_lower)
             avg_hits = total_hits / num_terms
-            score = avg_hits * unique_terms_found
+            score = (avg_hits * unique_terms_found / content_len) * 1000
 
             results.append({
                 "id": entry.id,
                 "url": entry.url,
                 "unique_terms_found": unique_terms_found,
                 "total_hits": total_hits,
-                "score": score,
+                "content_length": content_len,
+                "score": round(score, 4),
             })
 
         # Sort by score descending

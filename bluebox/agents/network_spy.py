@@ -80,7 +80,7 @@ When the user asks about specific data (e.g., "train prices", "search results", 
 
 - **`search_har_by_terms`**: Search HAR entries by a list of terms. Returns top 10 entries ranked by relevance.
   - Pass 20-30 search terms for best results
-  - Only searches JSON response bodies
+  - Only searches HTML/JSON response bodies (excludes JS, images, media)
   - Returns: id, url, unique_terms_found, total_hits, score
 
 - **`get_entry_detail`**: Get full details of a specific HAR entry by ID.
@@ -159,8 +159,8 @@ When the user asks about specific data (e.g., "train prices", "search results", 
         self.llm_client.register_tool(
             name="search_har_by_terms",
             description=(
-                "Search HAR entries by a list of terms. Searches JSON response bodies "
-                "and returns top 10 entries ranked by relevance score. "
+                "Search HAR entries by a list of terms. Searches HTML/JSON response bodies "
+                "(excludes JS, images, media) and returns top 10 entries ranked by relevance score. "
                 "Pass 20-30 search terms for best results."
             ),
             parameters={
@@ -334,7 +334,7 @@ When the user asks about specific data (e.g., "train prices", "search results", 
         if not terms:
             return {"error": "No search terms provided"}
 
-        results = self._har_data_store.search_entries_by_terms(terms, top_n=10, json_only=True)
+        results = self._har_data_store.search_entries_by_terms(terms, top_n=10)
 
         if not results:
             return {
