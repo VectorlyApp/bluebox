@@ -568,7 +568,7 @@ class TestAsyncInteractionMonitorParseEvent:
     """
 
     def test_parse_interaction_event(self, mock_event_callback: AsyncMock) -> None:
-        """Parses raw JS data into UiInteractionEvent."""
+        """Parses raw JS data into UIInteractionEvent."""
         monitor = AsyncInteractionMonitor(event_callback_fn=mock_event_callback)
         raw_data = {
             "type": "click",

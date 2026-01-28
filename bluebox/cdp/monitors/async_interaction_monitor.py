@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from bluebox.cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
 from bluebox.data_models.ui_elements import UiElement, BoundingBox
-from bluebox.data_models.cdp import UiInteractionEvent, InteractionType, Interaction
+from bluebox.data_models.cdp import UIInteractionEvent, InteractionType, Interaction
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -419,8 +419,8 @@ class AsyncInteractionMonitor(AbstractAsyncMonitor):
         except Exception as e:
             logger.warning("Failed to inject interaction script: %s", e)
 
-    def _parse_interaction_event(self, raw_data: dict) -> UiInteractionEvent | None:
-        """Parse raw JS data into UiInteractionEvent model."""
+    def _parse_interaction_event(self, raw_data: dict) -> UIInteractionEvent | None:
+        """Parse raw JS data into UIInteractionEvent model."""
         try:
             element_data = raw_data.get("element")
             if not element_data:
@@ -487,7 +487,7 @@ class AsyncInteractionMonitor(AbstractAsyncMonitor):
                 logger.warning("Unknown interaction type: %s", interaction_type_str)
                 return None
 
-            return UiInteractionEvent(
+            return UIInteractionEvent(
                 type=interaction_type,
                 timestamp=raw_data.get("timestamp", 0),
                 interaction=interaction,
@@ -512,7 +512,7 @@ class AsyncInteractionMonitor(AbstractAsyncMonitor):
             # Parse interaction data
             raw_data = json.loads(payload)
 
-            # Try to convert to UiInteractionEvent
+            # Try to convert to UIInteractionEvent
             ui_interaction_event = self._parse_interaction_event(raw_data)
 
             if ui_interaction_event is not None:

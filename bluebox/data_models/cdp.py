@@ -307,7 +307,7 @@ class Interaction(BaseModel):
     )
 
 
-class UiInteractionEvent(BaseModel):
+class UIInteractionEvent(BaseCDPEvent):
     """
     Complete UI interaction event record.
     
@@ -320,11 +320,6 @@ class UiInteractionEvent(BaseModel):
     """
     # Interaction type
     type: InteractionType
-
-    # Timestamp
-    timestamp: int = Field(
-        description="Client-side timestamp (milliseconds since epoch) when the interaction occurred."
-    )
 
     # How the interaction occurred (mouse coordinates, keyboard keys, modifiers, etc.)
     interaction: Interaction | None = Field(

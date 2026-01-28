@@ -7,7 +7,7 @@ Unit tests for benchmarks data models and expression evaluation.
 import pytest
 import re
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from bluebox.data_models.benchmarks import (
     ExpressionOperator,
