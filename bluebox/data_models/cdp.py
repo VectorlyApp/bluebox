@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ConfigDict
 
-from bluebox.data_models.ui_elements import UiElement
+from bluebox.data_models.ui_elements import UIElement
 
 
 ## Base event
@@ -229,7 +229,7 @@ class InteractionType(StrEnum):
     # Keyboard events
     KEYDOWN = "keydown"
     KEYUP = "keyup"
-    KEYPRESS = "keypress"  # Deprecated but still emitted by browsers
+    KEYPRESS = "keypress"  # deprecated but still emitted by browsers
 
     # Form events
     INPUT = "input"
@@ -314,7 +314,7 @@ class UIInteractionEvent(BaseCDPEvent):
     Represents a single user interaction with a web element, including:
     - What type of interaction occurred
     - When it occurred (timestamp)
-    - What element was interacted with (UiElement)
+    - What element was interacted with (UIElement)
     - How it occurred (Interaction) - mouse position, keys pressed, modifiers, etc.
     - Page context (URL)
     """
@@ -328,7 +328,7 @@ class UIInteractionEvent(BaseCDPEvent):
     )
 
     # Element that was interacted with
-    element: UiElement
+    element: UIElement
 
     # Page context
     url: str = Field(

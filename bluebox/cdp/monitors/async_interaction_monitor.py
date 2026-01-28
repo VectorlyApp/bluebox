@@ -13,7 +13,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from bluebox.cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
-from bluebox.data_models.ui_elements import UiElement, BoundingBox
+from bluebox.data_models.ui_elements import UIElement, BoundingBox
 from bluebox.data_models.cdp import UIInteractionEvent, InteractionType, Interaction
 from bluebox.utils.logger import get_logger
 
@@ -163,7 +163,7 @@ class AsyncInteractionMonitor(AbstractAsyncMonitor):
         check();
     }}
 
-    // Helper function to get element details (UiElement format)
+    // Helper function to get element details (UIElement format)
     function getElementDetails(element) {{
         if (!element) return null;
 
@@ -438,8 +438,8 @@ class AsyncInteractionMonitor(AbstractAsyncMonitor):
                     height=bb.get("height", 0)
                 )
 
-            # Build UiElement
-            ui_element = UiElement(
+            # Build UIElement
+            ui_element = UIElement(
                 tag_name=element_data.get("tag_name", ""),
                 id=element_data.get("id"),
                 name=element_data.get("name"),

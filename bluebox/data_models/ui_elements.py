@@ -4,7 +4,7 @@ bluebox/data_models/ui_elements.py
 UI element models for element identification and interaction.
 
 Contains:
-- UiElement: DOM element with selectors, bounding box, attributes
+- UIElement: DOM element with selectors, bounding box, attributes
 - Identifier: CSS/XPath/ID selectors for element targeting
 - KeyboardKey: Enum of keyboard keys (Enter, Tab, Escape, etc.)
 - MouseButton: Enum (left, right, middle)
@@ -74,7 +74,7 @@ class BoundingBox(BaseModel):
     height: float
 
 
-class UiElement(BaseModel):
+class UIElement(BaseModel):
     """
     Unified description of a UI element sufficient for robust replay.
 
