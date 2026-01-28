@@ -1,4 +1,4 @@
-# pyproject.toml for bluebox-sdk
+# pyproject.toml
 
 [build-system]
 requires = ["hatchling"]

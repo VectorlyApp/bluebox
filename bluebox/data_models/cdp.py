@@ -19,7 +19,7 @@ class BaseCDPEvent(BaseModel):
     """
     Base model for all CDP event details.
     """
-    timestamp: int = Field(
+    timestamp: float = Field(
         default_factory=lambda: datetime.now(tz=timezone.utc).timestamp(),
         description="Unix timestamp (seconds) when the event occurred"
     )
@@ -71,9 +71,9 @@ class NetworkTransactionEvent(BaseCDPEvent):
         default=None,
         description="HTTP response headers",
     )
-    post_data: str | None = Field(
+    post_data: str | dict | list | None = Field(
         default=None,
-        description="Request body data (for POST/PUT requests)",
+        description="Request body data (for POST/PUT requests). May be parsed JSON (dict/list) or raw string.",
     )
     response_body: str = Field(
         default="",

@@ -37,7 +37,7 @@ class DiscoveryDataStore(BaseModel, ABC):
     def make_cdp_captures_vectorstore(self) -> None:
         """Make a vectorstore from the CDP captures."""
         pass
-    
+
     @abstractmethod
     def make_documentation_vectorstore(self) -> None:
         """Make a vectorstore from the documentation."""
@@ -644,7 +644,7 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
 
         transaction_count = len(self.get_all_transaction_ids())
 
-        return f"""## CDP Captures Vectorstore
+        return """## CDP Captures Vectorstore
 Contains browser session data captured via Chrome DevTools Protocol:
 
 - `consolidated_transactions.json`: Summary of all HTTP transactions collected by CDP

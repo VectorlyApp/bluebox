@@ -617,7 +617,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
             # cleanup
             self.req_meta.pop(request_id, None)
         else:
-            logger.warning("⚠️ Loading failed for unknown request_id=%s", request_id)
+            logger.debug("⚠️ Loading failed for unknown request_id=%s (likely already emitted via Fetch or blocked)", request_id)
 
         return True
 
