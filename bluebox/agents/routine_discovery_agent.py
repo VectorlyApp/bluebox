@@ -18,7 +18,7 @@ from openai import OpenAI
 from pydantic import BaseModel, Field, ConfigDict
 from toon import encode
 
-from bluebox.routine_discovery.data_store import DiscoveryDataStore
+from bluebox.llms.infra.data_store import DiscoveryDataStore
 from bluebox.utils.llm_utils import collect_text_from_response, manual_llm_parse_text_to_model
 from bluebox.data_models.routine_discovery.llm_responses import (
     TransactionIdentificationResponse,

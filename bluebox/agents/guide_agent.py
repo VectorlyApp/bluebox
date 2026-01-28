@@ -39,7 +39,7 @@ from bluebox.data_models.routine import Routine
 from bluebox.data_models.llms.vendors import OpenAIModel
 from bluebox.llms.llm_client import LLMClient
 from bluebox.llms.tools.guide_agent_tools import validate_routine
-from bluebox.routine_discovery.data_store import DiscoveryDataStore
+from bluebox.llms.infra.data_store import DiscoveryDataStore
 from bluebox.utils.exceptions import UnknownToolError
 from bluebox.utils.logger import get_logger
 
