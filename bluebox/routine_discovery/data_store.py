@@ -10,6 +10,8 @@ Contains:
 - Documentation/code vectorstore creation for agent context
 """
 
+from __future__ import annotations
+
 import json
 import shutil
 import time
@@ -25,7 +27,9 @@ from bluebox.utils.infra_utils import resolve_glob_patterns
 
 
 class DiscoveryDataStore(BaseModel, ABC):
-    """Abstract base class for managing discovery data."""
+    """
+    Abstract base class for managing CDP discovery data and documentation/code vectorstores.
+    """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -96,6 +100,10 @@ class DiscoveryDataStore(BaseModel, ABC):
 
 
 class LocalDiscoveryDataStore(DiscoveryDataStore):
+    """
+    File-based implementation of DiscoveryDataStore with OpenAI vectorstores.
+    Manages CDP captures and documentation/code vectorstores.
+    """
 
     # openai client for vector store management
     client: OpenAI
@@ -109,21 +117,25 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
     window_properties_path: str | None = None
     cached_transaction_ids: list[str] | None = Field(default=None, exclude=True)
     uploaded_transaction_ids: set[str] = Field(default_factory=set, exclude=True)
-    transaction_response_supported_file_extensions: list[str] = Field(default_factory=lambda: [
-        ".txt",
-        ".json",
-        ".html",
-        ".xml",
-    ])
+    transaction_response_supported_file_extensions: list[str] = Field(
+        default_factory=lambda: [
+            ".txt",
+            ".json",
+            ".html",
+            ".xml",
+        ],
+    )
 
     # documentation and code related fields (both go into same vectorstore)
     documentation_vectorstore_id: str | None = None
     documentation_paths: list[str] = Field(default_factory=list)
     code_paths: list[str] = Field(default_factory=list)
-    code_file_extensions: list[str] = Field(default_factory=lambda: [
-        ".py", ".js", ".ts", ".jsx", ".tsx", ".json", ".yaml", ".yml",
-        ".md", ".txt", ".html", ".css", ".scss", ".sql", ".sh", ".bash",
-    ])
+    code_file_extensions: list[str] = Field(
+        default_factory=lambda: [
+            ".py", ".js", ".ts", ".jsx", ".tsx", ".json", ".yaml", ".yml",
+            ".md", ".txt", ".html", ".css", ".scss", ".sql", ".sh", ".bash",
+        ],
+    )
 
     # Cache for uploaded documentation files info (for prompt generation)
     uploaded_docs_info: list[dict] = Field(default_factory=list, exclude=True)
@@ -137,7 +149,7 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         return v
 
     @model_validator(mode='after')
-    def populate_cache_from_existing_vectorstore(self) -> 'LocalDiscoveryDataStore':
+    def populate_cache_from_existing_vectorstore(self) -> LocalDiscoveryDataStore:
         """
         If documentation_vectorstore_id is provided but caches are empty,
         fetch file info from the existing vectorstore to populate the cache.
@@ -162,7 +174,7 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         """
         # Resolve documentation patterns (recursive to include subdirectories)
         doc_files = resolve_glob_patterns(
-            self.documentation_paths,
+            patterns=self.documentation_paths,
             extensions={".md"},
             recursive=True,
             raise_on_missing=False,
@@ -178,7 +190,7 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         # Resolve code patterns (recursive by default for code)
         code_extensions = set(self.code_file_extensions)
         code_files = resolve_glob_patterns(
-            self.code_paths,
+            patterns=self.code_paths,
             extensions=code_extensions,
             recursive=True,
             raise_on_missing=False,
@@ -259,7 +271,10 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         transactions_path = Path(self.transactions_dir)
         supported_transaction_ids = [
             item.name for item in transactions_path.iterdir()
-            if item.is_dir() and self.get_response_body_file_extension(item.name) in self.transaction_response_supported_file_extensions
+            if (
+                item.is_dir()
+                and self.get_response_body_file_extension(item.name) in self.transaction_response_supported_file_extensions
+            )
         ]
 
         self.cached_transaction_ids = supported_transaction_ids
@@ -536,7 +551,7 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
 
         # Resolve and collect documentation files (recursive to include subdirectories)
         doc_files = resolve_glob_patterns(
-            self.documentation_paths,
+            patterns=self.documentation_paths,
             extensions={".md"},
             recursive=True,
             raise_on_missing=True,
@@ -551,7 +566,7 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         # Resolve and collect code files
         code_extensions = set(self.code_file_extensions)
         code_files = resolve_glob_patterns(
-            self.code_paths,
+            patterns=self.code_paths,
             extensions=code_extensions,
             recursive=True,
             raise_on_missing=True,
