@@ -113,14 +113,14 @@ AI agents that power routine discovery and conversational interactions:
 - `bluebox/agents/routine_discovery_agent.py` - Analyzes CDP captures to generate routines (identifies transactions, extracts/resolves variables, constructs operations)
 - `bluebox/agents/guide_agent.py` - Conversational agent for guiding users through routine creation/editing (maintains chat history, dynamic tool registration)
 
-**Data Infrastructure:**
-- `bluebox/routine_discovery/data_store.py` - Data stores for CDP captures and vectorstore management (used by RoutineDiscoveryAgent)
+**LLM Infrastructure:**
+- `bluebox/llms/infra/data_store.py` - Data stores for CDP captures and vectorstore management (used by both agents)
 
 **Import patterns:**
 ```python
 from bluebox.agents.guide_agent import GuideAgent
 from bluebox.agents.routine_discovery_agent import RoutineDiscoveryAgent
-from bluebox.routine_discovery.data_store import DiscoveryDataStore, LocalDiscoveryDataStore
+from bluebox.llms.infra.data_store import DiscoveryDataStore, LocalDiscoveryDataStore
 ```
 
 ### Important Patterns
