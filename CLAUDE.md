@@ -118,8 +118,9 @@ AI agents that power routine discovery and conversational interactions:
 
 **Import patterns:**
 ```python
-from bluebox.agents import GuideAgent, RoutineDiscoveryAgent
-from bluebox.routine_discovery import DiscoveryDataStore, LocalDiscoveryDataStore
+from bluebox.agents.guide_agent import GuideAgent
+from bluebox.agents.routine_discovery_agent import RoutineDiscoveryAgent
+from bluebox.routine_discovery.data_store import DiscoveryDataStore, LocalDiscoveryDataStore
 ```
 
 ### Important Patterns
