@@ -124,14 +124,6 @@ class StorageEvent(BaseCDPEvent):
         description="Origin/domain for storage events",
     )
     # Cookie-specific fields
-    count: int | None = Field(
-        default=None,
-        description="Number of cookies (for initialCookies events)",
-    )
-    cookies: list[dict[str, Any]] | None = Field(
-        default=None,
-        description="List of cookies (for initialCookies events)",
-    )
     triggered_by: str | None = Field(
         default=None,
         description="What triggered the cookie change",
