@@ -4,7 +4,7 @@ bluebox/data_models/routine_discovery/message.py
 Routine discovery message data models.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -29,8 +29,8 @@ class RoutineDiscoveryMessage(BaseModel):
         ...,
         description="The type of the discovery message"
     )
-    timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
+    timestamp: float = Field(
+        default_factory=lambda: datetime.now(tz=timezone.utc).timestamp(),
         description="Timestamp when the message was created"
     )
     content: str = Field(

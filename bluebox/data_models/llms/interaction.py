@@ -147,8 +147,8 @@ class BaseEmittedMessage(BaseModel):
         ...,
         description="The type of message being emitted",
     )
-    timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(tz=timezone.utc),
+    timestamp: float = Field(
+        default_factory=lambda: datetime.now(tz=timezone.utc).timestamp(),
         description="When the message was created",
     )
     chat_thread_id: str | None = Field(
