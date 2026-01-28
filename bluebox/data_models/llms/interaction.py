@@ -9,7 +9,7 @@ from enum import StrEnum
 from typing import Annotated, Any, Literal, Union
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from bluebox.data_models.resource_base import ResourceBase
 from bluebox.data_models.routine import Routine

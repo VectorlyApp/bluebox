@@ -5,8 +5,9 @@ Configuration for pytest.
 """
 
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -67,10 +68,10 @@ def input_data_dir(data_dir: Path) -> Path:
 
 
 @pytest.fixture
-def make_routine():
+def make_routine() -> Callable[..., Routine]:
     """
     Factory fixture to create Routine with hardcoded defaults.
-    
+
     Usage:
         routine = make_routine(operations=[...])
         routine = make_routine(operations=[...], parameters=[...], name="custom")
@@ -80,6 +81,25 @@ def make_routine():
             "name": "test_routine",
             "description": "Test routine",
         }
-        return Routine(operations=operations, **{**defaults, **kwargs})
-    
+        return Routine(
+            operations=operations,
+            **{**defaults, **kwargs}
+        )
     return factory
+
+
+@pytest.fixture
+def mock_event_callback() -> AsyncMock:
+    """Async callback that records calls for CDP monitor testing."""
+    return AsyncMock()
+
+
+@pytest.fixture
+def mock_cdp_session() -> AsyncMock:
+    """Mock AsyncCDPSession for testing monitors."""
+    session = AsyncMock()
+    session.send = AsyncMock(return_value=1)
+    session.send_and_wait = AsyncMock(return_value={"result": {}})
+    session.enable_domain = AsyncMock()
+    session.page_session_id = "mock-session-id"
+    return session

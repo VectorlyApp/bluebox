@@ -5,7 +5,7 @@
   <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-10b981?style=for-the-badge&logo=apache&logoColor=white" /></a>
 </p>
 
-# bluebox-sdk
+# bluebox-sdk 🟦
 
 REVERSE ENGINEER ANY WEB APP! ⚡️
 
@@ -30,7 +30,7 @@ Welcome to Vectorly's Bluebox... **No API? No Problem!**
 
 ## What is a *Routine*?
 
-> A **Routine** is a portable automation recipe that captures how to perform a specific task in any web app.
+> A [**Routine**](https://vectorly.app/docs/routines/overview) is a portable automation recipe that captures how to perform a specific task in any web app.
 
 Define once. Reuse everywhere. Automate anything you can do in a browser.
 
