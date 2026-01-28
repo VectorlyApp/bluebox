@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from bluebox.data_models.resource_base import ResourceBase
 from bluebox.data_models.routine import Routine
 
+
 class ChatRole(StrEnum):
     """
     Role in a chat message.

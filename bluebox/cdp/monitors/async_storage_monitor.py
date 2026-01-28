@@ -43,7 +43,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
 
         # add relevant fields based on event type
         if "cookie" in event_type.lower():
-            summary["cookie_count"] = detail.get("total_count") or detail.get("count")
+            summary["cookie_count"] = detail.get("total_count")
             # for changes, include counts
             if event_type == "cookieChange":
                 summary["added_count"] = len(detail.get("added", []))
@@ -223,17 +223,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
 
         if is_initial:
             self.cookies_state = current_cookies
-            event = StorageEvent(
-                type="initialCookies",
-                count=len(cookies),
-                cookies=cookies,
-                source="native_cdp"
-            )
-            try:
-                await self.event_callback_fn(self.get_monitor_category(), event)
-                logger.info("📊 Emitted initial cookies event: %d cookies", len(cookies))
-            except Exception as e:
-                logger.error("❌ Error calling event_callback for initial cookies: %s", e, exc_info=True)
+            logger.info("🍪 Initial cookie state populated: %d cookies", len(cookies))
         else:
             # check for changes
             added_cookies = []

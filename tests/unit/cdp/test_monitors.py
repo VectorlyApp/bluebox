@@ -434,7 +434,7 @@ class TestAsyncStorageMonitorStateManagement:
 
     @pytest.mark.asyncio
     async def test_handle_get_cookies_reply_initial(self, mock_event_callback: AsyncMock) -> None:
-        """getAllCookies reply sets initial cookie state."""
+        """getAllCookies reply sets initial cookie state silently (no event emitted)."""
         monitor = AsyncStorageMonitor(event_callback_fn=mock_event_callback)
         msg = {
             "result": {
@@ -450,9 +450,7 @@ class TestAsyncStorageMonitorStateManagement:
 
         assert len(monitor.cookies_state) == 2
         assert ".example.com:session" in monitor.cookies_state
-        mock_event_callback.assert_called_once()
-        call_args = mock_event_callback.call_args
-        assert call_args[0][1].type == "initialCookies"
+        mock_event_callback.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_handle_get_cookies_reply_changes(self, mock_event_callback: AsyncMock) -> None:
