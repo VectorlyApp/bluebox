@@ -108,7 +108,7 @@ class FileEventWriter:
                 event_dict.get("mime_type", "") 
                 or (event_dict.get("response_headers") or {}).get("content-type", "")
             )
-            if "text/javascript" in content_type:
+            if "javascript" in content_type:
                 output_path = self.javascript_events_path
             else:
                 output_path = self.network_events_path
