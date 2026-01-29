@@ -744,9 +744,6 @@ You have access to vectorstore that contains network transactions and storage da
         routine: Routine,
         parameters: dict[str, Any],
         remote_debugging_address: str = "http://127.0.0.1:9222",
-        timeout: float = 180.0,
-        close_tab_when_done: bool = True,
-        tab_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Execute a routine with the given parameters.
@@ -755,9 +752,6 @@ You have access to vectorstore that contains network transactions and storage da
             routine: The routine to execute
             parameters: Parameters for the routine
             remote_debugging_address: Chrome debugging address
-            timeout: Execution timeout in seconds
-            close_tab_when_done: Whether to close tab after execution
-            tab_id: Optional existing tab ID to use
 
         Returns:
             dict with 'success', 'result' or 'error'
@@ -766,9 +760,6 @@ You have access to vectorstore that contains network transactions and storage da
             routine=routine.model_dump(),
             parameters=parameters,
             remote_debugging_address=remote_debugging_address,
-            timeout=timeout,
-            close_tab_when_done=close_tab_when_done,
-            tab_id=tab_id,
         )
 
     def _add_to_message_history(self, role: str, content: str) -> None:
