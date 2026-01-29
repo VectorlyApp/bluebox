@@ -299,7 +299,7 @@ The quickstart script will:
 
 **Note:** The quickstart script is included in the repository. If you installed from PyPI, you can download it from the [GitHub repository](https://github.com/VectorlyApp/bluebox/blob/main/quickstart.py).
 
-## HACK (reverse engineer) WEB APPS 👨🏻‍💻
+## Reverse Engineer Web Apps
 
 The reverse engineering process follows a simple three-step workflow:
 
@@ -307,19 +307,84 @@ The reverse engineering process follows a simple three-step workflow:
 2. **Discover** — Let the AI agent analyze the captured data and generate a reusable Routine
 3. **Execute** — Run the discovered Routine with different parameters to automate the task
 
+### Legal & Privacy Notice
+
+Reverse-engineering and automating a website can violate terms of service. Store captures securely and scrub any sensitive fields before sharing.
+
 ### Quick Start (Recommended)
 
 **Easiest way:** Use the [quickstart script](#quickstart-easiest-way-🚀) which automates the entire workflow.
 
 ### Manual Workflow (Step-by-Step)
 
-Each step is detailed below. Start by ensuring Chrome is running in debug mode (see [Launch Chrome in Debug Mode](#launch-chrome-in-debug-mode) below).
+#### 0. Launch Chrome in Debug Mode
 
-### 0. Legal & Privacy Notice ⚠️
+> 💡 **Tip:** The [quickstart script](#quickstart-easiest-way-🚀) automatically launches Chrome for you. You only need these manual instructions if you're not using the quickstart script.
 
-Reverse-engineering and automating a website can violate terms of service. Store captures securely and scrub any sensitive fields before sharing.
+### macOS
 
-### 1. Monitor Browser While Performing Some Task
+```bash
+# Create temporary Chrome user directory
+mkdir -p $HOME/tmp/chrome
+
+# Launch Chrome in debug mode
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/tmp/chrome" \
+  --remote-allow-origins='*' \
+  --no-first-run \
+  --no-default-browser-check
+
+# Verify Chrome is running
+curl http://127.0.0.1:9222/json/version
+```
+
+### Windows
+
+```powershell
+# Create temporary Chrome user directory
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\tmp\chrome" | Out-Null
+
+# Locate Chrome
+$chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+if (!(Test-Path $chrome)) {
+  $chrome = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+}
+
+# Launch Chrome in debug mode
+& $chrome `
+  --remote-debugging-address=127.0.0.1 `
+  --remote-debugging-port=9222 `
+  --user-data-dir="$env:USERPROFILE\tmp\chrome" `
+  --remote-allow-origins=* `
+  --no-first-run `
+  --no-default-browser-check
+
+# Verify Chrome is running
+(Invoke-WebRequest http://127.0.0.1:9222/json/version).Content
+```
+
+### Linux
+
+```bash
+# Create temporary Chrome user directory
+mkdir -p $HOME/tmp/chrome
+
+# Launch Chrome in debug mode (adjust path if needed)
+google-chrome \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/tmp/chrome" \
+  --remote-allow-origins='*' \
+  --no-first-run \
+  --no-default-browser-check
+
+# Verify Chrome is running
+curl http://127.0.0.1:9222/json/version
+```
+
+#### 1. Monitor Browser While Performing Some Task
 
 Use the CDP browser monitor to block trackers and capture network, storage, and interaction data while you manually perform the task in Chrome.
 
@@ -350,7 +415,7 @@ cdp_captures/
 
 Tip: Keep Chrome focused while monitoring and perform the target flow (search, checkout, etc.). Press Ctrl+C to stop; the script will consolidate transactions and produce a HTTP Archive (HAR) automatically.
 
-### 2. Run Routine-Discovery Agent (Our Very Smart AI with Very Good Prompts🔮)🤖
+#### 2. Run Routine-Discovery Agent (Our Very Smart AI with Very Good Prompts🔮)🤖
 
 Use the **routine-discovery pipeline** to analyze captured data and synthesize a reusable Routine (`navigate → fetch → return`).
 
@@ -401,7 +466,7 @@ routine_discovery_output/
 └── routine.json                    # Final Routine model (name, parameters, operations)
 ```
 
-### 3. Execute the Discovered Routines 🏃
+#### 3. Execute the Discovered Routines 🏃
 
 ⚠️ **Prerequisite:** Make sure Chrome is still running in debug mode (see [Launch Chrome in Debug Mode](#launch-chrome-in-debug-mode-🐞) above). The routine execution script connects to the same Chrome debug session on `127.0.0.1:9222`.
 
@@ -535,70 +600,3 @@ pytest tests/ -v
 ```
 
 Please follow existing code style and include tests for new features.
-
-## Launch Chrome in Debug Mode
-
-> 💡 **Tip:** The [quickstart script](#quickstart-easiest-way-🚀) automatically launches Chrome for you. You only need these manual instructions if you're not using the quickstart script.
-
-### macOS
-
-```bash
-# Create temporary Chrome user directory
-mkdir -p $HOME/tmp/chrome
-
-# Launch Chrome in debug mode
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --remote-debugging-address=127.0.0.1 \
-  --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/tmp/chrome" \
-  --remote-allow-origins='*' \
-  --no-first-run \
-  --no-default-browser-check
-
-# Verify Chrome is running
-curl http://127.0.0.1:9222/json/version
-```
-
-### Windows
-
-```powershell
-# Create temporary Chrome user directory
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\tmp\chrome" | Out-Null
-
-# Locate Chrome
-$chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
-if (!(Test-Path $chrome)) {
-  $chrome = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-}
-
-# Launch Chrome in debug mode
-& $chrome `
-  --remote-debugging-address=127.0.0.1 `
-  --remote-debugging-port=9222 `
-  --user-data-dir="$env:USERPROFILE\tmp\chrome" `
-  --remote-allow-origins=* `
-  --no-first-run `
-  --no-default-browser-check
-
-# Verify Chrome is running
-(Invoke-WebRequest http://127.0.0.1:9222/json/version).Content
-```
-
-### Linux
-
-```bash
-# Create temporary Chrome user directory
-mkdir -p $HOME/tmp/chrome
-
-# Launch Chrome in debug mode (adjust path if needed)
-google-chrome \
-  --remote-debugging-address=127.0.0.1 \
-  --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/tmp/chrome" \
-  --remote-allow-origins='*' \
-  --no-first-run \
-  --no-default-browser-check
-
-# Verify Chrome is running
-curl http://127.0.0.1:9222/json/version
-```
