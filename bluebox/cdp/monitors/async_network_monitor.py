@@ -9,9 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import re
-from datetime import datetime
 from fnmatch import fnmatch
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar
 
 from bluebox.cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
