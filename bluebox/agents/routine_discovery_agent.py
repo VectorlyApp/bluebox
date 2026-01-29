@@ -33,7 +33,6 @@ from bluebox.data_models.routine_discovery.message import (
 )
 from bluebox.data_models.routine.routine import Routine
 from bluebox.data_models.routine.dev_routine import DevRoutine
-from bluebox.llms.tools.execute_routine_tool import execute_routine
 from bluebox.utils.exceptions import TransactionIdentificationFailedError
 from bluebox.utils.llm_utils import manual_llm_parse_text_to_model
 from bluebox.utils.logger import get_logger
@@ -738,29 +737,6 @@ You have access to vectorstore that contains network transactions and storage da
 
         # return the test parameters response
         return test_parameters_response
-
-    def execute_routine(
-        self,
-        routine: Routine,
-        parameters: dict[str, Any],
-        remote_debugging_address: str = "http://127.0.0.1:9222",
-    ) -> dict[str, Any]:
-        """
-        Execute a routine with the given parameters.
-
-        Args:
-            routine: The routine to execute
-            parameters: Parameters for the routine
-            remote_debugging_address: Chrome debugging address
-
-        Returns:
-            dict with 'success', 'result' or 'error'
-        """
-        return execute_routine(
-            routine=routine.model_dump(),
-            parameters=parameters,
-            remote_debugging_address=remote_debugging_address,
-        )
 
     def _add_to_message_history(self, role: str, content: str) -> None:
         """
