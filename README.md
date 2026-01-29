@@ -321,7 +321,7 @@ Reverse-engineering and automating a website can violate terms of service. Store
 
 > 💡 **Tip:** The [quickstart script](#quickstart-easiest-way-🚀) automatically launches Chrome for you. You only need these manual instructions if you're not using the quickstart script.
 
-### macOS
+##### macOS
 
 ```bash
 # Create temporary Chrome user directory
@@ -340,7 +340,7 @@ mkdir -p $HOME/tmp/chrome
 curl http://127.0.0.1:9222/json/version
 ```
 
-### Windows
+##### Windows
 
 ```powershell
 # Create temporary Chrome user directory
@@ -365,7 +365,7 @@ if (!(Test-Path $chrome)) {
 (Invoke-WebRequest http://127.0.0.1:9222/json/version).Content
 ```
 
-### Linux
+##### Linux
 
 ```bash
 # Create temporary Chrome user directory
