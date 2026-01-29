@@ -299,7 +299,7 @@ The quickstart script will:
 
 **Note:** The quickstart script is included in the repository. If you installed from PyPI, you can download it from the [GitHub repository](https://github.com/VectorlyApp/bluebox/blob/main/quickstart.py).
 
-## Guide Agent Terminal (Interactive Mode) 💬
+## Guide Agent Terminal (Interactive Mode)
 
 For iterative routine development, debugging, and more complex workflows, use the Guide Agent terminal app. It provides a full chat interface with an LLM-powered agent that can help you create, edit, and refine routines interactively.
 
