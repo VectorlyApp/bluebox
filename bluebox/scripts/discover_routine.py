@@ -18,6 +18,8 @@ from bluebox.config import Config
 from bluebox.utils.exceptions import ApiKeyNotFoundError
 from bluebox.agents.routine_discovery_agent import RoutineDiscoveryAgent
 from bluebox.llms.infra.data_store import LocalDiscoveryDataStore
+from bluebox.llms.llm_client import LLMClient
+from bluebox.data_models.llms.vendors import OpenAIModel
 from bluebox.data_models.routine_discovery.message import (
     RoutineDiscoveryMessage,
     RoutineDiscoveryMessageType,
@@ -92,12 +94,12 @@ def main() -> None:
             logger.error(f"❌ {message.content}")
 
     # initialize routine discovery agent
+    llm_client = LLMClient(llm_model=OpenAIModel(args.llm_model))
     routine_discovery_agent = RoutineDiscoveryAgent(
-        client=openai_client,
+        llm_client=llm_client,
         data_store=data_store,
         task=args.task,
         emit_message_callable=handle_discovery_message,
-        llm_model=args.llm_model,
         output_dir=args.output_dir,
     )
     logger.info("Routine discovery agent initialized.")

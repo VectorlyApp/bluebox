@@ -24,6 +24,50 @@ logger = get_logger(name=__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
+def _clean_schema_for_openai(schema: dict[str, Any]) -> dict[str, Any]:
+    """
+    Recursively clean a JSON schema for OpenAI's structured output requirements:
+    1. Add 'additionalProperties': false to all object types
+    2. Remove extra keywords when $ref is present (OpenAI doesn't allow $ref with other keys)
+    3. Ensure all properties are in the 'required' array (OpenAI strict mode requirement)
+    """
+    schema = schema.copy()
+
+    # If $ref is present, remove all other keys except $ref (OpenAI requirement)
+    if "$ref" in schema:
+        return {"$ref": schema["$ref"]}
+
+    # Add to root if it's an object type
+    if schema.get("type") == "object" or "properties" in schema:
+        schema["additionalProperties"] = False
+        # OpenAI strict mode requires all properties to be in 'required'
+        if "properties" in schema:
+            schema["required"] = list(schema["properties"].keys())
+
+    # Process properties
+    if "properties" in schema:
+        schema["properties"] = {
+            k: _clean_schema_for_openai(v) for k, v in schema["properties"].items()
+        }
+
+    # Process $defs (Pydantic uses this for nested models)
+    if "$defs" in schema:
+        schema["$defs"] = {
+            k: _clean_schema_for_openai(v) for k, v in schema["$defs"].items()
+        }
+
+    # Process array items
+    if "items" in schema:
+        schema["items"] = _clean_schema_for_openai(schema["items"])
+
+    # Process anyOf, oneOf, allOf
+    for key in ("anyOf", "oneOf", "allOf"):
+        if key in schema:
+            schema[key] = [_clean_schema_for_openai(s) for s in schema[key]]
+
+    return schema
+
+
 class OpenAIClient(AbstractLLMVendorClient):
     """
     OpenAI-specific LLM client with unified API.
@@ -356,9 +400,17 @@ class OpenAIClient(AbstractLLMVendorClient):
                         call_id=getattr(item, "call_id", None),
                     ))
 
+        # If response_model provided but not auto-parsed, manually parse from JSON content
+        if response_model is not None and parsed is None and content:
+            try:
+                parsed = response_model.model_validate_json(content)
+            except Exception as e:
+                logger.error("Failed to parse JSON content into %s: %s", response_model.__name__, e)
+                raise ValueError(f"Failed to parse structured response from OpenAI Responses API: {e}")
+
         # Validate parsed model was found if response_model was provided
         if response_model is not None and parsed is None:
-            raise ValueError("Failed to parse structured response from OpenAI Responses API")
+            raise ValueError("Failed to parse structured response from OpenAI Responses API: no content returned")
 
         return LLMChatResponse(
             content=content,
@@ -479,10 +531,14 @@ class OpenAIClient(AbstractLLMVendorClient):
             )
 
             if response_model is not None:
-                # Add structured output format
-                kwargs["text"] = {"format": {"type": "json_schema", "schema": response_model.model_json_schema()}}
+                # Use responses.parse() with text_format for automatic schema handling
+                response = self._client.responses.parse(
+                    **kwargs,
+                    text_format=response_model,
+                )
+            else:
+                response = self._client.responses.create(**kwargs)
 
-            response = self._client.responses.create(**kwargs)
             return self._parse_responses_api_response(response, response_model)
 
     async def call_async(
@@ -553,9 +609,14 @@ class OpenAIClient(AbstractLLMVendorClient):
             )
 
             if response_model is not None:
-                kwargs["text"] = {"format": {"type": "json_schema", "schema": response_model.model_json_schema()}}
+                # Use responses.parse() with text_format for automatic schema handling
+                response = await self._async_client.responses.parse(
+                    **kwargs,
+                    text_format=response_model,
+                )
+            else:
+                response = await self._async_client.responses.create(**kwargs)
 
-            response = await self._async_client.responses.create(**kwargs)
             return self._parse_responses_api_response(response, response_model)
 
     def call_stream_sync(

@@ -22,6 +22,8 @@ PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
 from ..agents.routine_discovery_agent import RoutineDiscoveryAgent
 from ..llms.infra.data_store import LocalDiscoveryDataStore
+from ..llms.llm_client import LLMClient
+from ..data_models.llms.vendors import OpenAIModel
 from ..data_models.routine.routine import Routine
 from ..data_models.routine_discovery.message import RoutineDiscoveryMessage
 from ..data_models.routine_discovery.llm_responses import TestParametersResponse
@@ -134,12 +136,12 @@ class RoutineDiscovery:
             logger.info(f"Documentation vectorstore created: {self.data_store.documentation_vectorstore_id}")
 
             # Initialize and run agent
+            llm_client = LLMClient(llm_model=OpenAIModel(self.llm_model))
             self.agent = RoutineDiscoveryAgent(
-                client=self.client,
+                llm_client=llm_client,
                 data_store=self.data_store,
                 task=self.task,
                 emit_message_callable=self.message_callback,
-                llm_model=self.llm_model,
                 output_dir=self.output_dir,
             )
 
