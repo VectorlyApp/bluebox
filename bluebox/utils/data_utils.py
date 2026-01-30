@@ -30,7 +30,7 @@ from urllib.parse import urlparse
 import tldextract
 from bs4 import BeautifulSoup
 
-from bluebox.data_models.parameter_type import ParameterType
+from bluebox.data_models.routine.parameter_type import ParameterType
 from bluebox.utils.exceptions import UnsupportedFileFormat
 from bluebox.utils.logger import get_logger
 

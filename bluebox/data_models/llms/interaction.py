@@ -12,7 +12,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, field_validator
 
 from bluebox.data_models.resource_base import ResourceBase
-from bluebox.data_models.routine import Routine
+from bluebox.data_models.routine.routine import Routine
 
 class ChatRole(StrEnum):
     """

@@ -7,7 +7,7 @@ Shared routine execution utility for agents.
 import json
 from typing import Any
 
-from bluebox.data_models.routine import Routine
+from bluebox.data_models.routine.routine import Routine
 from bluebox.sdk.execution import RoutineExecutor
 from bluebox.utils.logger import get_logger
 

@@ -17,7 +17,7 @@ import uuid
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from bluebox.data_models.parameter_type import ParameterType, VALID_PLACEHOLDER_PREFIXES
+from bluebox.data_models.routine.parameter_type import ParameterType, VALID_PLACEHOLDER_PREFIXES
 
 
 class Parameter(BaseModel):

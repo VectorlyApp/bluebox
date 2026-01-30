@@ -35,7 +35,7 @@ from bluebox.data_models.llms.interaction import (
     SuggestedEditUnion,
     ToolInvocationStatus,
 )
-from bluebox.data_models.routine import Routine
+from bluebox.data_models.routine.routine import Routine
 from bluebox.data_models.llms.vendors import OpenAIModel
 from bluebox.llms.llm_client import LLMClient
 from bluebox.llms.tools.guide_agent_tools import validate_routine
