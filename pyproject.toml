@@ -75,7 +75,7 @@ packages = ["bluebox"]
 include = [
     "/bluebox",
     "/tests",
-    "/example_routines",
+    "/example_data/example_routines",
     "README.md",
     "LICENSE",
     "pyproject.toml",
