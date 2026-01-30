@@ -165,10 +165,11 @@ async def async_main(args: argparse.Namespace, tab_id: str | None) -> None:
     if not tab_id:
         logger.info("No tab ID provided, creating new tab...")
         try:
+            # Always create tab with about:blank - navigation happens AFTER monitoring setup
             tab_id, context_id, browser_ws = cdp_new_tab(
                 remote_debugging_address=remote_debugging_address,
                 incognito=args.incognito,
-                url=args.url if not args.no_navigate else "about:blank"
+                url="about:blank"
             )
             try:
                 browser_ws.close()
@@ -195,6 +196,7 @@ async def async_main(args: argparse.Namespace, tab_id: str | None) -> None:
         session_start_dtm=datetime.now(timezone.utc).isoformat(),
         event_callback_fn=writer.write_event,
         paths=writer.paths,
+        navigate_url=args.url if not args.no_navigate else None,
     )
 
     try:

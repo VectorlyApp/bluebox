@@ -34,6 +34,7 @@ class AsyncCDPSession:
         session_start_dtm: str,
         event_callback_fn: Callable[[str, dict], Awaitable[None]],
         paths: dict[str, str] | None = None,
+        navigate_url: str | None = None,
     ) -> None:
         """
         Initialize AsyncCDPSession.
@@ -44,6 +45,8 @@ class AsyncCDPSession:
                 Called when CDP events are captured. Caller can use this to store events, stream them, etc.
             paths: Optional dict of file paths for output.
                 If not provided, finalize() will skip file operations.
+            navigate_url: Optional URL to navigate to after CDP setup is complete.
+                This ensures monitoring captures the page load.
         NOTE:
             The CDP sessionId will be obtained automatically in run() after connecting.
             CDP sessionIds are only valid for the specific WebSocket connection where Target.attachToTarget was called.
@@ -54,6 +57,7 @@ class AsyncCDPSession:
         self.event_callback_fn = event_callback_fn
         self.session_start_dtm = session_start_dtm
         self.paths = paths or {}
+        self.navigate_url = navigate_url
         self.ws: ClientConnection | None = None
         self.seq = 0  # sequence ID for CDP commands
 
@@ -448,6 +452,11 @@ class AsyncCDPSession:
             # setup_cdp() will get the sessionId first, then enable domains
             await self.setup_cdp()
             logger.info("✅ CDP setup complete, message loop running")
+
+            # Navigate to URL AFTER monitoring is set up (to capture all events)
+            if self.navigate_url and self.navigate_url not in ("about:blank", ""):
+                logger.info("🌐 Navigating to: %s", self.navigate_url)
+                await self.send("Page.navigate", {"url": self.navigate_url})
 
             try:
                 # wait for message receiver to complete
