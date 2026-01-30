@@ -22,28 +22,14 @@ from bluebox.utils.logger import get_logger
 logger = get_logger(name=__name__)
 
 
-@dataclass
-class NetworkEntry:
-    """Represents a single HAR entry (request/response pair)."""
+def _get_host(url: str) -> str:
+    """Extract host from URL."""
+    return urlparse(url).netloc
 
-    id: int  # Same as index, used as unique identifier
-    method: str
-    url: str
-    host: str
-    path: str
-    status: int
-    status_text: str
-    mime_type: str
-    request_size: int
-    response_size: int
-    time_ms: float
-    request_headers: dict[str, str]
-    response_headers: dict[str, str]
-    request_cookies: list[dict[str, Any]]
-    response_cookies: list[dict[str, Any]]
-    query_params: dict[str, str]
-    post_data: str | None
-    response_content: str | None
+
+def _get_path(url: str) -> str:
+    """Extract path from URL."""
+    return urlparse(url).path
 
 
 @dataclass
@@ -331,7 +317,7 @@ class NetworkDataStore:
     )
 
     @staticmethod
-    def _is_relevant_entry(entry: "NetworkEntry") -> bool:
+    def _is_relevant_entry(entry: NetworkTransactionEvent) -> bool:
         """
         Check if an entry should be included in analysis.
 
@@ -356,22 +342,39 @@ class NetworkDataStore:
         if url_lower.endswith(excluded_extensions):
             return False
 
-        # Default: include if it has response content
-        return bool(entry.response_content)
+        # Default: include if it has response body
+        return bool(entry.response_body)
 
-    def __init__(self, har_content: str) -> None:
+    def __init__(self, jsonl_path: str) -> None:
         """
-        Initialize the HAR data store.
+        Initialize the NetworkDataStore from a JSONL file.
 
         Args:
-            har_content: Raw HAR file content as JSON string.
+            jsonl_path: Path to JSONL file containing NetworkTransactionEvent entries.
         """
-        self._raw_content = har_content
-        self._har_data: dict[str, Any] = {}
-        self._entries: list[NetworkEntry] = []
+        self._entries: list[NetworkTransactionEvent] = []
+        self._entry_index: dict[str, NetworkTransactionEvent] = {}  # request_id -> event
         self._stats: NetworkStats = NetworkStats()
 
-        self._parse()
+        path = Path(jsonl_path)
+        if not path.exists():
+            raise ValueError(f"JSONL file does not exist: {jsonl_path}")
+
+        # Load entries from JSONL
+        with open(path, mode="r", encoding="utf-8") as f:
+            for line_num, line in enumerate(f):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    event = NetworkTransactionEvent.model_validate(data)
+                    self._entries.append(event)
+                    self._entry_index[event.request_id] = event
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning("Failed to parse line %d: %s", line_num + 1, e)
+                    continue
+
         self._compute_stats()
 
         logger.info(
@@ -395,88 +398,11 @@ class NetworkDataStore:
         Example:
             store = NetworkDataStore.from_jsonl("cdp_captures/network/events.jsonl")
         """
-        path = Path(jsonl_path)
-        if not path.exists():
-            raise ValueError(f"JSONL file does not exist: {jsonl_path}")
-
-        # Create instance with empty content (will bypass normal parsing)
-        instance = object.__new__(cls)
-        instance._raw_content = ""
-        instance._har_data = {}
-        instance._entries = []
-        instance._stats = NetworkStats()
-
-        # Load entries from JSONL
-        with open(path, mode="r", encoding="utf-8") as f:
-            for line_num, line in enumerate(f):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                    event = NetworkTransactionEvent.model_validate(data)
-                    entry = cls._network_event_to_har_entry(line_num, event)
-                    instance._entries.append(entry)
-                except (json.JSONDecodeError, ValueError) as e:
-                    logger.warning("Failed to parse line %d: %s", line_num + 1, e)
-                    continue
-
-        # Compute stats from loaded entries
-        instance._compute_stats()
-
-        logger.info(
-            "NetworkDataStore initialized from JSONL with %d entries",
-            len(instance._entries),
-        )
-
-        return instance
-
-    @staticmethod
-    def _network_event_to_har_entry(index: int, event: NetworkTransactionEvent) -> "NetworkEntry":
-        """
-        Convert a NetworkTransactionEvent to a NetworkEntry.
-
-        Args:
-            index: Index/ID for the entry.
-            event: The NetworkTransactionEvent to convert.
-
-        Returns:
-            A NetworkEntry populated from the event data.
-        """
-        parsed_url = urlparse(event.url)
-
-        # Parse post_data to string
-        post_data: str | None = None
-        if event.post_data is not None:
-            if isinstance(event.post_data, (dict, list)):
-                post_data = json.dumps(event.post_data)
-            else:
-                post_data = str(event.post_data)
-
-        return NetworkEntry(
-            id=index,
-            method=event.method,
-            url=event.url,
-            host=parsed_url.netloc,
-            path=parsed_url.path,
-            status=event.status or 0,
-            status_text=event.status_text or "",
-            mime_type=event.mime_type,
-            request_size=0,  # Not available in NetworkTransactionEvent
-            response_size=len(event.response_body) if event.response_body else 0,
-            time_ms=0.0,  # Not available in NetworkTransactionEvent
-            request_headers=event.request_headers or {},
-            response_headers=event.response_headers or {},
-            request_cookies=[],  # Would need to parse from headers
-            response_cookies=[],  # Would need to parse from headers
-            query_params={},  # Would need to parse from URL
-            post_data=post_data,
-            response_content=event.response_body if event.response_body else None,
-        )
+        return cls(jsonl_path)
 
     @property
-    def entries(self) -> list[NetworkEntry]:
-        """Return all parsed HAR entries."""
+    def entries(self) -> list[NetworkTransactionEvent]:
+        """Return all network transaction events."""
         return self._entries
 
     @property
@@ -486,79 +412,8 @@ class NetworkDataStore:
 
     @property
     def raw_data(self) -> dict[str, Any]:
-        """Return raw parsed HAR data."""
-        return self._har_data
-
-    def _parse(self) -> None:
-        """Parse HAR content into structured entries."""
-        try:
-            self._har_data = json.loads(self._raw_content)
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse HAR JSON: %s", e)
-            raise ValueError(f"Invalid HAR JSON: {e}") from e
-
-        log = self._har_data.get("log", {})
-        raw_entries = log.get("entries", [])
-
-        for i, entry in enumerate(raw_entries):
-            try:
-                parsed = self._parse_entry(i, entry)
-                self._entries.append(parsed)
-            except Exception as e:
-                logger.warning("Failed to parse entry %d: %s", i, e)
-
-    def _parse_entry(self, index: int, entry: dict[str, Any]) -> NetworkEntry:
-        """Parse a single HAR entry."""
-        request = entry.get("request", {})
-        response = entry.get("response", {})
-
-        url = request.get("url", "")
-        parsed_url = urlparse(url)
-
-        # Parse headers into dict
-        req_headers = {
-            h.get("name", "").lower(): h.get("value", "")
-            for h in request.get("headers", [])
-        }
-        resp_headers = {
-            h.get("name", "").lower(): h.get("value", "")
-            for h in response.get("headers", [])
-        }
-
-        # Parse query params
-        query_params = {
-            q.get("name", ""): q.get("value", "")
-            for q in request.get("queryString", [])
-        }
-
-        # Get post data
-        post_data_obj = request.get("postData", {})
-        post_data = post_data_obj.get("text") if post_data_obj else None
-
-        # Get response content
-        content_obj = response.get("content", {})
-        response_content = content_obj.get("text") if content_obj else None
-
-        return NetworkEntry(
-            id=index,
-            method=request.get("method", "GET"),
-            url=url,
-            host=parsed_url.netloc,
-            path=parsed_url.path,
-            status=response.get("status", 0),
-            status_text=response.get("statusText", ""),
-            mime_type=content_obj.get("mimeType", "") if content_obj else "",
-            request_size=request.get("headersSize", 0) + request.get("bodySize", 0),
-            response_size=response.get("headersSize", 0) + content_obj.get("size", 0) if content_obj else 0,
-            time_ms=entry.get("time", 0),
-            request_headers=req_headers,
-            response_headers=resp_headers,
-            request_cookies=request.get("cookies", []),
-            response_cookies=response.get("cookies", []),
-            query_params=query_params,
-            post_data=post_data,
-            response_content=response_content,
-        )
+        """Return entries as a dict for compatibility."""
+        return {"entries": [e.model_dump() for e in self._entries]}
 
     def _compute_stats(self) -> None:
         """Compute aggregate statistics from entries."""
@@ -569,20 +424,20 @@ class NetworkDataStore:
         paths: set[str] = set()
         urls: set[str] = set()
 
-        total_req_bytes = 0
         total_resp_bytes = 0
-        total_time = 0.0
 
-        has_cookies = False
         has_auth = False
         has_json = False
         has_form = False
 
         for entry in self._entries:
             methods[entry.method] += 1
-            status_codes[entry.status] += 1
-            hosts[entry.host] += 1
-            paths.add(entry.path)
+            if entry.status:
+                status_codes[entry.status] += 1
+            host = _get_host(entry.url)
+            path = _get_path(entry.url)
+            hosts[host] += 1
+            paths.add(path)
             urls.add(entry.url)
 
             if entry.mime_type:
@@ -590,21 +445,17 @@ class NetworkDataStore:
                 ctype = entry.mime_type.split(";")[0].strip()
                 content_types[ctype] += 1
 
-            total_req_bytes += entry.request_size
-            total_resp_bytes += entry.response_size
-            total_time += entry.time_ms
+            total_resp_bytes += len(entry.response_body) if entry.response_body else 0
 
             # Feature detection
-            if entry.request_cookies or entry.response_cookies:
-                has_cookies = True
-
+            req_headers = entry.request_headers or {}
             for header in self.AUTH_HEADERS:
-                if header in entry.request_headers:
+                if header in req_headers:
                     has_auth = True
                     break
 
             if entry.post_data:
-                content_type = entry.request_headers.get("content-type", "")
+                content_type = req_headers.get("content-type", "")
                 if "json" in content_type:
                     has_json = True
                 if "form" in content_type:
@@ -612,9 +463,9 @@ class NetworkDataStore:
 
         self._stats = NetworkStats(
             total_requests=len(self._entries),
-            total_request_bytes=total_req_bytes,
+            total_request_bytes=0,
             total_response_bytes=total_resp_bytes,
-            total_time_ms=total_time,
+            total_time_ms=0.0,
             methods=dict(methods),
             status_codes=dict(status_codes),
             content_types=dict(content_types),
@@ -622,7 +473,7 @@ class NetworkDataStore:
             unique_hosts=len(hosts),
             unique_paths=len(paths),
             unique_urls=len(urls),
-            has_cookies=has_cookies,
+            has_cookies=False,
             has_auth_headers=has_auth,
             has_json_requests=has_json,
             has_form_data=has_form,
@@ -636,7 +487,7 @@ class NetworkDataStore:
         status_code: int | None = None,
         content_type_contains: str | None = None,
         has_post_data: bool | None = None,
-    ) -> list[NetworkEntry]:
+    ) -> list[NetworkTransactionEvent]:
         """
         Search entries with filters.
 
@@ -649,16 +500,18 @@ class NetworkDataStore:
             has_post_data: Filter by presence of POST data
 
         Returns:
-            List of matching NetworkEntry objects.
+            List of matching NetworkTransactionEvent objects.
         """
         results = []
 
         for entry in self._entries:
             if method and entry.method.upper() != method.upper():
                 continue
-            if host_contains and host_contains.lower() not in entry.host.lower():
+            host = _get_host(entry.url)
+            if host_contains and host_contains.lower() not in host.lower():
                 continue
-            if path_contains and path_contains.lower() not in entry.path.lower():
+            path = _get_path(entry.url)
+            if path_contains and path_contains.lower() not in path.lower():
                 continue
             if status_code is not None and entry.status != status_code:
                 continue
@@ -674,11 +527,9 @@ class NetworkDataStore:
 
         return results
 
-    def get_entry(self, index: int) -> NetworkEntry | None:
-        """Get entry by index."""
-        if 0 <= index < len(self._entries):
-            return self._entries[index]
-        return None
+    def get_entry(self, request_id: str) -> NetworkTransactionEvent | None:
+        """Get entry by request_id."""
+        return self._entry_index.get(request_id)
 
     def get_unique_urls(self) -> list[str]:
         """
@@ -695,17 +546,17 @@ class NetworkDataStore:
                 urls.add(entry.url)
         return sorted(urls)
 
-    def get_entry_ids_by_url(self, url: str) -> list[int]:
+    def get_entry_ids_by_url(self, url: str) -> list[str]:
         """
-        Get all entry IDs that match the given URL.
+        Get all request_ids that match the given URL.
 
         Args:
             url: The URL to search for (exact match).
 
         Returns:
-            List of entry IDs matching the URL.
+            List of request_ids matching the URL.
         """
-        return [entry.id for entry in self._entries if entry.url == url]
+        return [entry.request_id for entry in self._entries if entry.url == url]
 
     def get_url_counts(self) -> dict[str, int]:
         """
@@ -758,11 +609,11 @@ class NetworkDataStore:
             if not self._is_relevant_entry(entry):
                 continue
 
-            # Skip if no response content
-            if not entry.response_content:
+            # Skip if no response body
+            if not entry.response_body:
                 continue
 
-            content_lower = entry.response_content.lower()
+            content_lower = entry.response_body.lower()
 
             # Count hits for each term
             unique_terms_found = 0
@@ -783,7 +634,7 @@ class NetworkDataStore:
             score = avg_hits * unique_terms_found
 
             results.append({
-                "id": entry.id,
+                "id": entry.request_id,
                 "url": entry.url,
                 "unique_terms_found": unique_terms_found,
                 "total_hits": total_hits,
@@ -794,30 +645,6 @@ class NetworkDataStore:
         results.sort(key=lambda x: x["score"], reverse=True)
 
         return results[:top_n]
-
-    def get_api_endpoints(self) -> list[tuple[str, str, str]]:
-        """
-        Get list of likely API endpoints.
-
-        Returns:
-            List of (method, host, path) tuples for JSON/API requests.
-        """
-        endpoints: set[tuple[str, str, str]] = set()
-
-        for entry in self._entries:
-            # Check if it looks like an API call
-            is_api = (
-                "api" in entry.path.lower()
-                or "json" in entry.mime_type.lower()
-                or entry.path.startswith("/v1/")
-                or entry.path.startswith("/v2/")
-                or entry.path.startswith("/graphql")
-            )
-
-            if is_api:
-                endpoints.add((entry.method, entry.host, entry.path.split("?")[0]))
-
-        return sorted(endpoints, key=lambda x: (x[1], x[2], x[0]))
 
     def _is_excluded_third_party(self, url: str) -> bool:
         """Check if URL belongs to an excluded third-party domain."""
@@ -881,12 +708,11 @@ class NetworkDataStore:
             - request_count: Number of requests to this host
             - methods: Dict of HTTP method counts
             - status_codes: Dict of status code counts
-            - avg_time_ms: Average response time in milliseconds
         """
         host_data: dict[str, dict[str, Any]] = {}
 
         for entry in self._entries:
-            host = entry.host
+            host = _get_host(entry.url)
 
             # Apply filter if provided
             if host_filter and host_filter.lower() not in host.lower():
@@ -897,23 +723,20 @@ class NetworkDataStore:
                     "request_count": 0,
                     "methods": Counter(),
                     "status_codes": Counter(),
-                    "total_time_ms": 0.0,
                 }
 
             host_data[host]["request_count"] += 1
             host_data[host]["methods"][entry.method] += 1
-            host_data[host]["status_codes"][entry.status] += 1
-            host_data[host]["total_time_ms"] += entry.time_ms
+            if entry.status:
+                host_data[host]["status_codes"][entry.status] += 1
 
         results = []
         for host, data in sorted(host_data.items(), key=lambda x: -x[1]["request_count"]):
-            avg_time = data["total_time_ms"] / data["request_count"] if data["request_count"] > 0 else 0
             results.append({
                 "host": host,
                 "request_count": data["request_count"],
                 "methods": dict(data["methods"]),
                 "status_codes": {str(k): v for k, v in data["status_codes"].items()},
-                "avg_time_ms": round(avg_time, 1),
             })
 
         return results
@@ -932,7 +755,7 @@ class NetworkDataStore:
 
         Returns:
             List of dicts sorted by ascending id, each containing:
-            - id: Entry ID
+            - id: Entry index
             - url: Request URL
             - count: Number of occurrences in the response body
             - sample: Context string (50 chars before and after first occurrence)
@@ -945,11 +768,11 @@ class NetworkDataStore:
         search_value = value if case_sensitive else value.lower()
 
         for entry in self._entries:
-            if not entry.response_content:
+            if not entry.response_body:
                 continue
 
-            content = entry.response_content if case_sensitive else entry.response_content.lower()
-            original_content = entry.response_content
+            content = entry.response_body if case_sensitive else entry.response_body.lower()
+            original_content = entry.response_body
 
             # Count occurrences
             count = content.count(search_value)
@@ -970,38 +793,13 @@ class NetworkDataStore:
                 sample = sample + "..."
 
             results.append({
-                "id": entry.id,
+                "id": entry.request_id,
                 "url": entry.url,
                 "count": count,
                 "sample": sample,
             })
 
-        # Sort by ascending id
-        results.sort(key=lambda x: x["id"])
-
         return results
-
-    def get_cookies(self) -> dict[str, list[dict[str, Any]]]:
-        """
-        Get all cookies grouped by domain.
-
-        Returns:
-            Dict mapping domain to list of cookie objects.
-        """
-        cookies: dict[str, list[dict[str, Any]]] = {}
-
-        for entry in self._entries:
-            domain = entry.host
-
-            for cookie in entry.request_cookies + entry.response_cookies:
-                if domain not in cookies:
-                    cookies[domain] = []
-                # Avoid duplicates
-                cookie_name = cookie.get("name", "")
-                if not any(c.get("name") == cookie_name for c in cookies[domain]):
-                    cookies[domain].append(cookie)
-
-        return cookies
 
     def get_auth_headers(self) -> list[tuple[str, str, str]]:
         """
@@ -1013,7 +811,8 @@ class NetworkDataStore:
         auth_headers: list[tuple[str, str, str]] = []
 
         for entry in self._entries:
-            for header_name, header_value in entry.request_headers.items():
+            req_headers = entry.request_headers or {}
+            for header_name, header_value in req_headers.items():
                 if header_name.lower() in self.AUTH_HEADERS:
                     # Truncate value for safety
                     truncated = header_value[:50] + "..." if len(header_value) > 50 else header_value
@@ -1021,14 +820,13 @@ class NetworkDataStore:
 
         return auth_headers
 
-    def format_entry_summary(self, entry: NetworkEntry) -> str:
+    def format_entry_summary(self, entry: NetworkTransactionEvent) -> str:
         """Format a single entry as a summary string."""
         return (
-            f"[{entry.id}] {entry.method} {entry.url}\n"
-            f"    Status: {entry.status} {entry.status_text}\n"
+            f"{entry.method} {entry.url}\n"
+            f"    Status: {entry.status or 'N/A'} {entry.status_text or ''}\n"
             f"    Type: {entry.mime_type}\n"
-            f"    Time: {entry.time_ms:.0f}ms\n"
-            f"    Size: {entry.response_size} bytes"
+            f"    Size: {len(entry.response_body) if entry.response_body else 0} bytes"
         )
 
     @staticmethod
@@ -1103,64 +901,59 @@ class NetworkDataStore:
             # Leaf value - replace with None
             return None
 
-    def get_entry_key_structure(self, entry_id: int) -> dict[str, Any] | None:
+    def get_entry_key_structure(self, request_id: str) -> dict[str, Any] | None:
         """
         Get the key structure of an entry's JSON response content.
 
         Args:
-            entry_id: The ID of the entry.
+            request_id: The request_id of the entry.
 
         Returns:
             The key structure of the response JSON, or None if not found/not JSON.
         """
-        entry = self.get_entry(entry_id)
-        if not entry or not entry.response_content:
+        entry = self.get_entry(request_id)
+        if not entry or not entry.response_body:
             return None
 
         try:
-            data = json.loads(entry.response_content)
+            data = json.loads(entry.response_body)
             return self.extract_key_structure(data)
         except json.JSONDecodeError:
             return None
 
-    def format_entry_detail(self, entry: NetworkEntry) -> str:
+    def format_entry_detail(self, entry: NetworkTransactionEvent) -> str:
         """Format a single entry with full details."""
+        host = _get_host(entry.url)
+        path = _get_path(entry.url)
+
         lines = [
-            f"=== Entry {entry.id} ===",
             f"Method: {entry.method}",
             f"URL: {entry.url}",
-            f"Host: {entry.host}",
-            f"Path: {entry.path}",
-            f"Status: {entry.status} {entry.status_text}",
+            f"Host: {host}",
+            f"Path: {path}",
+            f"Status: {entry.status or 'N/A'} {entry.status_text or ''}",
             f"Content-Type: {entry.mime_type}",
-            f"Time: {entry.time_ms:.0f}ms",
-            f"Request Size: {entry.request_size} bytes",
-            f"Response Size: {entry.response_size} bytes",
-            "",
+            f"Response Size: {len(entry.response_body) if entry.response_body else 0} bytes",
             "Request Headers:",
         ]
 
-        for k, v in sorted(entry.request_headers.items()):
+        req_headers = entry.request_headers or {}
+        for k, v in sorted(req_headers.items()):
             lines.append(f"  {k}: {v[:100]}{'...' if len(v) > 100 else ''}")
-
-        if entry.query_params:
-            lines.append("")
-            lines.append("Query Parameters:")
-            for k, v in entry.query_params.items():
-                lines.append(f"  {k}: {v}")
 
         if entry.post_data:
             lines.append("")
             lines.append("Post Data:")
-            # Truncate large post data
-            if len(entry.post_data) > 1000:
-                lines.append(f"  {entry.post_data[:1000]}...")
+            post_data_str = json.dumps(entry.post_data) if isinstance(entry.post_data, (dict, list)) else str(entry.post_data)
+            if len(post_data_str) > 1000:
+                lines.append(f"  {post_data_str[:1000]}...")
             else:
-                lines.append(f"  {entry.post_data}")
+                lines.append(f"  {post_data_str}")
 
         lines.append("")
         lines.append("Response Headers:")
-        for k, v in sorted(entry.response_headers.items()):
+        resp_headers = entry.response_headers or {}
+        for k, v in sorted(resp_headers.items()):
             lines.append(f"  {k}: {v[:100]}{'...' if len(v) > 100 else ''}")
 
         return "\n".join(lines)

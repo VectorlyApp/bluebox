@@ -311,7 +311,7 @@ class TerminalNetworkSpyChat:
                 ep_table.add_column("Field", style="bold cyan")
                 ep_table.add_column("Value", style="white")
 
-                ep_table.add_row("Entry IDs", str(ep.entry_ids))
+                ep_table.add_row("Request IDs", str(ep.request_ids))
                 ep_table.add_row("URL", ep.url)
                 ep_table.add_row("Inputs", ep.endpoint_inputs)
                 ep_table.add_row("Outputs", ep.endpoint_outputs)
