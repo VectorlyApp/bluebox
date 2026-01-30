@@ -75,6 +75,7 @@ You have access to vectorstore that contains network transactions and storage da
         "JSON VALUE RULES:\n"
         "- Always use {{param_name}} as a JSON string value: \"key\": \"{{param_name}}\"\n"
         "- The parameter's type field determines the output type at runtime.\n"
+        "- CRITICAL: Choose type based on the ACTUAL CDP data. If the raw request has \"adults\": \"5\" (string), use type=string, NOT integer. integer would produce 5 (unquoted) and may break the API.\n"
         "- For substring interpolation: \"prefix {{param_name}} suffix\"\n"
         "- No escaped quotes needed. Just use {{param_name}} inside a JSON string.\n\n"
         "EXAMPLES:\n"

@@ -30,10 +30,21 @@ from urllib.parse import urlparse
 import tldextract
 from bs4 import BeautifulSoup
 
+from bluebox.data_models.routine.parameter import ParameterType
 from bluebox.utils.exceptions import UnsupportedFileFormat
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
+
+# regex matching a standalone placeholder: the entire string is "{{key}}" with optional whitespace
+_STANDALONE_PLACEHOLDER_RE = re.compile(
+    pattern=r"^\{\{\s*([^}]+?)\s*\}\}$"
+)
+
+# regex matching any {{key}} pattern (for substring replacement)
+_PLACEHOLDER_RE = re.compile(
+    pattern=r"\{\{\s*([^}]+?)\s*\}\}"
+)
 
 
 def load_data(file_path: Path) -> Union[dict, list]:
@@ -313,16 +324,15 @@ def resolve_dotted_path(
         return None
 
 
-# Regex matching a standalone placeholder: the entire string is "{{key}}" with optional whitespace
-_STANDALONE_PLACEHOLDER_RE = re.compile(r"^\{\{\s*([^}]+?)\s*\}\}$")
-
-# Regex matching any {{key}} pattern (for substring replacement)
-_PLACEHOLDER_RE = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
-
-
 def _coerce_value(value: Any, param_type: str) -> Any:
-    """Coerce a parameter value to the correct Python type based on the parameter schema type."""
-    from bluebox.data_models.routine.parameter import ParameterType
+    """
+    Coerce a parameter value to the correct Python type based on the parameter schema type.
+    Args:
+        value: The value to coerce.
+        param_type: The parameter type to coerce to.
+    Returns:
+        The coerced value.
+    """
     if param_type in (ParameterType.INTEGER,):
         return int(value)
     elif param_type in (ParameterType.NUMBER,):
@@ -332,7 +342,7 @@ def _coerce_value(value: Any, param_type: str) -> Any:
             return value.lower() in ("true", "1", "yes")
         return bool(value)
     else:
-        # string, date, datetime, email, url, enum — all string types
+        # string, date, datetime, email, url, enum; all string types
         return str(value)
 
 
@@ -366,22 +376,27 @@ def apply_params_to_dict(
 
     def _resolve_value(v: Any) -> Any:
         if isinstance(v, str):
-            # Check for standalone placeholder
+            # check for standalone placeholder
             m = _STANDALONE_PLACEHOLDER_RE.match(v)
             if m:
                 key = m.group(1)
                 if key in parameters_dict:
                     param_type = param_type_map.get(key, "string")
                     return _coerce_value(parameters_dict[key], param_type)
-                # Not a user param (e.g. sessionStorage:...) — leave as-is
+                # not a user param (e.g. sessionStorage:...), leave as-is
                 return v
-            # Substring replacement: replace all {{key}} occurrences within the string
+
+            # substring replacement: replace all {{key}} occurrences within the string
             def _sub(match: re.Match) -> str:
                 key = match.group(1)
                 if key in parameters_dict:
                     return str(parameters_dict[key])
-                return match.group(0)  # leave non-param placeholders untouched
-            return _PLACEHOLDER_RE.sub(_sub, v)
+                return match.group(0)  # leave non-parameter placeholders untouched
+
+            return _PLACEHOLDER_RE.sub(
+                repl=_sub,
+                string=v,
+            )
         elif isinstance(v, dict):
             return {k: _resolve_value(val) for k, val in v.items()}
         elif isinstance(v, list):
@@ -416,7 +431,10 @@ def apply_params_to_str(text: str, parameters_dict: dict | None) -> str:
             return str(parameters_dict[key])
         return match.group(0)
 
-    result = _PLACEHOLDER_RE.sub(_sub, text)
+    result = _PLACEHOLDER_RE.sub(
+        repl=_sub,
+        string=text,
+    )
     return result
 
 
@@ -434,34 +452,37 @@ def extract_base_url_from_url(url: str) -> str | None:
         The root domain (without protocol, subdomains, or port) or None if invalid.
     """
     try:
-        # Try to parse the URL to extract the hostname
+        # try to parse the URL to extract the hostname
         parsed_url = urlparse(url)
         hostname = parsed_url.hostname
         
         if not hostname:
             return None
         
-        # Use tldextract to properly extract the root domain, handling special TLDs
+        # use tldextract to properly extract the root domain, handling special TLDs
         extracted = tldextract.extract(hostname)
         if extracted.domain and extracted.suffix:
             return f"{extracted.domain}.{extracted.suffix}"
-        # Fallback: if domain extraction fails, return the hostname as-is
+        # fallback: if domain extraction fails, return the hostname as-is
         return hostname
         
     except Exception:
-        # If URL parsing fails (e.g., contains placeholders), try to extract hostname manually
-        # Match protocol://hostname pattern
-        match = re.match(r'^[^:]+://([^/\?\:]+)', url)
+        # if URL parsing fails (e.g., contains placeholders), try to extract hostname manually
+        # match protocol://hostname pattern
+        match = re.match(
+            pattern=r'^[^:]+://([^/\?\:]+)',
+            string=url
+        )
         if match and match.group(1):
             hostname = match.group(1)
-            # Remove port if present
+            # remove port if present
             hostname = hostname.split(':')[0]
             
-            # Use tldextract to parse the hostname even if URL parsing failed
+            # use tldextract to parse the hostname even if URL parsing failed
             extracted = tldextract.extract(hostname)
             if extracted.domain and extracted.suffix:
                 return f"{extracted.domain}.{extracted.suffix}"
-            # Fallback: return hostname as-is if parsing fails
+            # fallback: return hostname as-is if parsing fails
             return hostname
     
     return None

@@ -26,7 +26,7 @@ def extract_placeholders_from_json_str(json_string: str) -> list[str]:
     pattern = r"\{\{\s*([^}]+?)\s*\}\}"
     seen: set[str] = set()
     result: list[str] = []
-    for match in re.finditer(pattern, json_string):
+    for match in re.finditer(pattern=pattern, string=json_string):
         content = match.group(1)
         if content not in seen:
             seen.add(content)

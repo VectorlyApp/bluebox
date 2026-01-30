@@ -18,7 +18,8 @@ import json
 
 
 def _get_body_resolution_js() -> list[str]:
-    """Generate JavaScript code for resolving body placeholders.
+    """
+    Generate JavaScript code for resolving body placeholders.
 
     This handles body resolution consistently for both fetch and download operations,
     including form-urlencoded encoding when appropriate.
@@ -220,9 +221,9 @@ def _get_fetch_setup_js(
     Returns:
         List of JavaScript code lines for the fetch setup.
     """
-    hdrs_json = json.dumps(
-        {str(k): (str(v) if not isinstance(v, str) else v) for k, v in headers.items()}
-    )
+    hdrs_json = json.dumps({
+        str(k): (str(v) if not isinstance(v, str) else v) for k, v in headers.items()
+    })
 
     return [
         "(async () => {",
@@ -824,5 +825,3 @@ def generate_js_evaluate_wrapper_js(
         execution_error: __executionError
     }};
 }})()"""
-
-

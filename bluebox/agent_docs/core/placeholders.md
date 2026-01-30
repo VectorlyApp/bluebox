@@ -29,6 +29,8 @@ The parameter's `type` field in the routine schema determines how standalone pla
 
 **Substring** means the placeholder is part of a larger string (`"prefix {{x}} suffix"`). The value is always stringified.
 
+> **⚠️ Type must match the actual API expectation, not what the value "looks like."** Many APIs send numeric-looking values as JSON strings (e.g., `"adults": "5"`, `"enabled": "true"`). If the CDP capture shows `"5"` (quoted), use `type: string` so it resolves to `"5"`. Using `integer` would produce `5` (unquoted), potentially breaking the API. Always check the raw network data.
+
 ## Placeholder Types
 
 ### User Parameters

@@ -81,6 +81,7 @@ class RoutineOperationTypes(StrEnum):
     RETURN_HTML = "return_html"
     JS_EVALUATE = "js_evaluate"
 
+
 # Base operation class ____________________________________________________________________________
 
 class RoutineOperation(BaseModel):
@@ -142,7 +143,8 @@ class RoutineOperation(BaseModel):
         Implementation of operation execution.
 
         Subclasses must override this method to implement their specific behavior.
-        Operations modify routine_execution_context directly (e.g., routine_execution_context.result, routine_execution_context.current_url).
+        Operations modify routine_execution_context directly.
+        E.g., routine_execution_context.result, routine_execution_context.current_url.
         Errors should be raised as exceptions.
 
         Args:
@@ -1078,7 +1080,7 @@ class RoutineJsEvaluateOperation(RoutineOperation):
         # Also matches async variants: (async function() { ... })() or (async () => { ... })()
         # Optional semicolon at the end: })() or })();
         iife_pattern = r'^\s*\(\s*(async\s+)?(function\s*\([^)]*\)\s*\{|\(\)\s*=>\s*\{).+\}\s*\)\s*\(\s*\)\s*;?\s*$'
-        if not re.match(iife_pattern, v, re.DOTALL):
+        if not re.match(pattern=iife_pattern, string=v, flags=re.DOTALL):
             raise ValueError(
                 "JavaScript code must be wrapped in an IIFE (Immediately Invoked Function Expression). "
                 "Use format: (function() { ... })() or (() => { ... })() or (async () => { ... })()"
@@ -1086,7 +1088,7 @@ class RoutineJsEvaluateOperation(RoutineOperation):
 
         # Check each dangerous pattern (case-sensitive to allow "function" keyword in IIFEs)
         for pattern in cls.DANGEROUS_PATTERNS:
-            if re.search(pattern, v, re.MULTILINE):
+            if re.search(pattern=pattern, string=v, flags=re.MULTILINE):
                 raise ValueError(
                     f"JavaScript code contains blocked pattern: {pattern}. "
                 )
@@ -1096,7 +1098,7 @@ class RoutineJsEvaluateOperation(RoutineOperation):
         placeholder_pattern = r'\{\{([^}]*)\}\}'
         builtin_names = {bp.name for bp in BUILTIN_PARAMETERS}
 
-        for match in re.finditer(placeholder_pattern, v):
+        for match in re.finditer(pattern=placeholder_pattern, string=v):
             content = match.group(1).strip()
 
             # Check if it's a storage/meta/window placeholder (has colon prefix)

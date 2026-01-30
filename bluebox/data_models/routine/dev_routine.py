@@ -12,9 +12,9 @@ Key differences from production Routine:
 """
 
 import re
-from typing import Union, Literal
+from typing import Annotated, Union, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from bluebox.data_models.routine.endpoint import HTTPMethod, CREDENTIALS
 from bluebox.data_models.routine.operation import RoutineOperationTypes
@@ -66,11 +66,14 @@ class DevReturnOperation(BaseModel):
 
 
 # Dev routine operation union
-DevOperationUnion = Union[
-    DevNavigateOperation,
-    DevSleepOperation,
-    DevFetchOperation,
-    DevReturnOperation,
+DevOperationUnion = Annotated[
+        Union[
+        DevNavigateOperation,
+        DevSleepOperation,
+        DevFetchOperation,
+        DevReturnOperation,
+    ],
+    Field(discriminator="type"),
 ]
 
 
@@ -82,11 +85,11 @@ class DevRoutine(BaseModel):
     description: str
     operations: list[DevOperationUnion]
     parameters: list[Parameter]
-    
+
     def validate(self) -> tuple[bool, list[str], Exception | None]:
         """
         Validate the dev routine structure.
-        
+
         Returns:
             tuple containing:
                 - result: True if valid, False otherwise
@@ -96,7 +99,7 @@ class DevRoutine(BaseModel):
         result = True
         errors = []
         exception = None
-        
+
         try: 
             # Must have at least 3 operations (navigate, fetch, return)
             if len(self.operations) < 3:
@@ -181,5 +184,5 @@ class DevRoutine(BaseModel):
         """
         Extract all placeholders {{...}} from routine string.
         """
-        placeholders = re.findall(r'{{.*?}}', routine_string)
+        placeholders = re.findall(pattern=r'{{.*?}}', string=routine_string)
         return [placeholder[2:-2] for placeholder in set(placeholders)]

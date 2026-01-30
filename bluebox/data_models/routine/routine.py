@@ -260,5 +260,3 @@ class Routine(BaseModel):
                 browser_ws.close()
             except Exception:
                 pass
-
-

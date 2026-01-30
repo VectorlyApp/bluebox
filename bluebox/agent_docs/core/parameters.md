@@ -41,6 +41,8 @@ class Parameter(BaseModel):
 
 **Rule:** All placeholders use `"{{param}}"`. The parameter's `type` field determines the output type at runtime.
 
+> **⚠️ Choose type based on the actual CDP data, not the value's appearance.** Some APIs send numeric-looking values as strings (e.g., `"adults": "5"`, `"active": "true"`). If the observed network traffic has `"5"` (a JSON string), use `type: string` — not `integer`. Using `integer` would produce `"adults": 5` (unquoted), which may break the API. Always inspect the raw request body in the CDP capture.
+
 ## Naming Rules
 
 Parameter names must:

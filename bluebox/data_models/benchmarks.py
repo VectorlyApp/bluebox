@@ -516,7 +516,10 @@ def stringify_expression(expr: "SimpleExpression | CompositeExpression") -> str:
 
 # Union type with discriminator for JSON parsing
 Expression = Annotated[
-    Union[SimpleExpression, CompositeExpression],
+    Union[
+        SimpleExpression,
+        CompositeExpression,
+    ],
     Field(discriminator="type")
 ]
 
