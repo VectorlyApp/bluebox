@@ -21,6 +21,7 @@ import logging
 import os
 import re
 import time
+from collections import defaultdict
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -492,3 +493,75 @@ def build_transaction_dir(url: str, ts_ms: int, output_dir: str) -> str:
     dir_path = os.path.join(output_dir, dir_name)
     os.makedirs(dir_path, exist_ok=True)
     return dir_path
+
+
+def extract_object_schema(data: Any) -> dict[str, Any]:
+    """
+    Extract schema/structure from nested JSON data.
+
+    Recursively processes nested data and returns a schema with explicit type
+    information at every level. Useful for understanding the shape of large
+    JSON responses.
+
+    Args:
+        data: Any data structure (dict, list, or primitive).
+
+    Returns:
+        Schema dict with _type, _count, and nested structure.
+
+    Example:
+        >>> data = [{"id": 1, "name": "a"}, {"id": 2}]
+        >>> extract_object_schema(data)
+        {"_type": "list", "_count": 2, "_items": {"_type": "dict", "id": ..., "name": ...}}
+    """
+
+    def walk(value: Any) -> dict[str, Any]:
+        if isinstance(value, dict):
+            node: dict[str, Any] = {"_type": "dict"}
+            for k, v in value.items():
+                node[k] = walk(v)
+            return node
+
+        if isinstance(value, list):
+            node = {"_type": "list", "_count": len(value)}
+            if not value:
+                node["_items"] = {}
+                return node
+
+            merged: dict[str, list[Any]] = defaultdict(list)
+            for item in value:
+                if isinstance(item, dict):
+                    for k, v in item.items():
+                        merged[k].append(v)
+
+            if not merged:
+                node["_items"] = {"_type": "scalar"}
+                return node
+
+            items_schema: dict[str, Any] = {"_type": "dict"}
+            for k, vals in merged.items():
+                items_schema[k] = merge(vals)
+            node["_items"] = items_schema
+            return node
+
+        return {"_type": "scalar", "_count": 1}
+
+    def merge(values: list[Any]) -> dict[str, Any]:
+        if all(isinstance(v, dict) for v in values):
+            merged: dict[str, list[Any]] = defaultdict(list)
+            for d in values:
+                for k, v in d.items():
+                    merged[k].append(v)
+
+            node: dict[str, Any] = {"_type": "dict", "_count": len(values)}
+            for k, vals in merged.items():
+                node[k] = merge(vals)
+            return node
+
+        if all(isinstance(v, list) for v in values):
+            flattened = [x for lst in values for x in lst]
+            return walk(flattened)
+
+        return {"_type": "scalar", "_count": len(values)}
+
+    return walk(data)

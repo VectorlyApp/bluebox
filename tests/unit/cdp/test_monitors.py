@@ -84,19 +84,19 @@ class TestAsyncNetworkMonitorStaticMethods:
         """None should return False."""
         assert AsyncNetworkMonitor._is_static_asset(None) is False
 
-    def test_should_block_url_googletagmanager(self) -> None:
+    def test_should_skip_logging_googletagmanager(self) -> None:
         """googletagmanager.com should be blocked."""
-        assert AsyncNetworkMonitor._should_block_url(
+        assert AsyncNetworkMonitor._should_skip_logging(
             "https://www.googletagmanager.com/gtag/js"
         ) is True
 
-    def test_should_block_url_normal(self) -> None:
+    def test_should_skip_logging_normal(self) -> None:
         """Normal URLs should not be blocked."""
-        assert AsyncNetworkMonitor._should_block_url("https://example.com/api/data") is False
+        assert AsyncNetworkMonitor._should_skip_logging("https://example.com/api/data") is False
 
-    def test_should_block_url_internal(self) -> None:
+    def test_should_skip_logging_internal(self) -> None:
         """Internal chrome:// URLs should be blocked."""
-        assert AsyncNetworkMonitor._should_block_url("chrome://settings") is True
+        assert AsyncNetworkMonitor._should_skip_logging("chrome://settings") is True
 
     def test_get_set_cookie_values_simple(self) -> None:
         """Extract Set-Cookie from simple header."""

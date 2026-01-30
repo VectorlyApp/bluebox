@@ -9,7 +9,8 @@ Contains:
 """
 
 import json
-from typing import Type
+from functools import wraps
+from typing import Any, Callable, Type
 
 from openai import OpenAI
 from openai.types.responses import Response
@@ -21,6 +22,26 @@ from bluebox.utils.exceptions import LLMStructuredOutputError
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def token_optimized(func: Callable[..., dict[str, Any]]) -> Callable[..., str]:
+    """Decorator that encodes dict outputs with toon for token efficiency.
+
+    Use this decorator on tool functions that return dict outputs where
+    structural integrity is not critical. The output will be encoded
+    using toon for reduced token usage.
+
+    Args:
+        func: A function that returns dict[str, Any]
+
+    Returns:
+        A wrapped function that returns the toon-encoded string
+    """
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> str:
+        result = func(*args, **kwargs)
+        return encode(result)
+    return wrapper
 
 
 def manual_llm_parse_text_to_model(

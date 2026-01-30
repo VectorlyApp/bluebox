@@ -12,21 +12,10 @@ Contains:
 
 import json
 from datetime import datetime
-from functools import wraps
 from typing import Any, Callable
 from urllib.parse import urlparse, parse_qs
 
-from toon import encode
 from pydantic import BaseModel, Field
-
-
-def token_optimized(func: Callable[..., dict[str, Any]]) -> Callable[..., str]:
-    """Decorator that encodes dict outputs with toon for token efficiency."""
-    @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> str:
-        result = func(*args, **kwargs)
-        return encode(result)
-    return wrapper
 
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -44,6 +33,7 @@ from bluebox.data_models.llms.interaction import (
 from bluebox.data_models.llms.vendors import OpenAIModel
 from bluebox.llms.llm_client import LLMClient
 from bluebox.llms.infra.network_data_store import NetworkDataStore
+from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 
@@ -77,6 +67,26 @@ class EndpointDiscoveryResult(BaseModel):
 
     endpoints: list[DiscoveredEndpoint] = Field(
         description="List of discovered endpoints needed for the task"
+    )
+
+
+class DiscoveryFailureResult(BaseModel):
+    """
+    Result when autonomous endpoint discovery fails.
+
+    Returned when the agent cannot find the appropriate endpoints after exhaustive search.
+    """
+
+    reason: str = Field(
+        description="Explanation of why the endpoint could not be found"
+    )
+    searched_terms: list[str] = Field(
+        default_factory=list,
+        description="List of search terms that were tried"
+    )
+    closest_matches: list[str] = Field(
+        default_factory=list,
+        description="URLs of entries that came closest to matching (if any)"
     )
 
 
@@ -131,9 +141,9 @@ When the user asks about specific data (e.g., "train prices", "search results", 
 - **`get_entry_detail`**: Get full details of a specific HAR entry by ID.
   - Use this after finding a relevant entry to see headers, request body, response body
 
-- **`get_entry_key_structure`**: Get only the key structure of a JSON response (no values).
+- **`get_response_body_schema`**: Get the schema of a JSON response body.
   - Use this to understand the shape of large JSON responses without retrieving all the data
-  - Shows all dict keys recursively, replaces values with null
+  - Shows structure with types at every level
 
 ## Guidelines
 
@@ -152,7 +162,7 @@ Some tasks require multiple endpoints (e.g., auth -> search -> details).
 ## Process
 
 1. **Search**: Use `search_har_responses_by_terms` with 20-30 relevant terms for the task
-2. **Analyze**: Look at top results, examine their structure with `get_entry_key_structure`
+2. **Analyze**: Look at top results, examine their structure with `get_response_body_schema`
 3. **Verify**: Use `get_entry_detail` to confirm the endpoint has the right data
 4. **Finalize**: Once confident, call `finalize_result` with your findings
 
@@ -163,17 +173,25 @@ Some tasks require multiple endpoints (e.g., auth -> search -> details).
 - Prefer endpoints with structured JSON responses
 - Consider multi-step flows: authentication, search, pagination, detail fetches
 
-## When finalize_result is available
+## When finalize tools are available
 
-After sufficient exploration, the `finalize_result` tool becomes available.
+After sufficient exploration, the `finalize_result` and `finalize_failure` tools become available.
+
+### finalize_result - Use when endpoint IS found
 Call it with a list of endpoints, each containing:
-- entry_ids: The HAR entry ID(s) for this endpoint
+- request_ids: The HAR entry request_id(s) for this endpoint (MUST be valid IDs from the data store)
 - url: The API URL
 - endpoint_inputs: Brief description of inputs (e.g., "from_city, to_city, date as query params")
 - endpoint_outputs: Brief description of outputs (e.g., "JSON array of train options with prices")
 
 Order endpoints by execution sequence if they form a multi-step flow.
 Be concise with inputs/outputs - just the key fields and types, not full schema.
+
+### finalize_failure - Use when endpoint is NOT found
+If after exhaustive search you determine the required endpoint does NOT exist in the traffic:
+- Call `finalize_failure` with a clear reason explaining what was searched and why no match was found
+- Include the search terms you tried and any URLs that came close but didn't match
+- Only use this after thoroughly searching - don't give up too early!
 """
 
     def __init__(
@@ -229,6 +247,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
         self._autonomous_mode: bool = False
         self._autonomous_iteration: int = 0
         self._discovery_result: EndpointDiscoveryResult | None = None
+        self._discovery_failure: DiscoveryFailureResult | None = None
         self._finalize_tool_registered: bool = False
 
         logger.debug(
@@ -283,12 +302,12 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             },
         )
 
-        # get_entry_key_structure
+        # get_response_body_schema
         self.llm_client.register_tool(
-            name="get_entry_key_structure",
+            name="get_response_body_schema",
             description=(
-                "Get only the key structure of a HAR entry's JSON response. "
-                "Shows all dict keys recursively without the actual values. "
+                "Get the schema of a HAR entry's JSON response body. "
+                "Shows structure with types at every level. "
                 "Useful for understanding the shape of large JSON responses."
             ),
             parameters={
@@ -296,7 +315,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
                 "properties": {
                     "request_id": {
                         "type": "string",
-                        "description": "The request_id of the HAR entry to get key structure for.",
+                        "description": "The request_id of the HAR entry to get schema for.",
                     }
                 },
                 "required": ["request_id"],
@@ -367,6 +386,31 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             },
         )
 
+        # search_response_bodies
+        self.llm_client.register_tool(
+            name="search_response_bodies",
+            description=(
+                "Search response bodies for a specific value and return matches with context. "
+                "Unlike search_har_responses_by_terms which ranks by relevance across many terms, "
+                "this tool finds exact matches for a single value and shows surrounding context. "
+                "Useful for finding where specific data (IDs, tokens, values) appears."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "type": "string",
+                        "description": "The exact value to search for in response bodies.",
+                    },
+                    "case_sensitive": {
+                        "type": "boolean",
+                        "description": "Whether the search should be case-sensitive. Defaults to false.",
+                    }
+                },
+                "required": ["value"],
+            },
+        )
+
     def _register_finalize_tool(self) -> None:
         """Register the finalize_result tool for autonomous mode (available after iteration 2)."""
         if self._finalize_tool_registered:
@@ -378,7 +422,8 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
                 "Finalize the endpoint discovery with your findings. "
                 "Call this when you have identified the API endpoint(s) needed for the user's task. "
                 "You can specify multiple endpoints if the task requires a multi-step flow "
-                "(e.g., authenticate -> search -> get details)."
+                "(e.g., authenticate -> search -> get details). "
+                "NOTE: All request_ids must be valid IDs from the data store."
             ),
             parameters={
                 "type": "object",
@@ -420,8 +465,44 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
                 "required": ["endpoints"],
             },
         )
+
+        # Also register the failure tool for when no endpoint can be found
+        self.llm_client.register_tool(
+            name="finalize_failure",
+            description=(
+                "Signal that the endpoint discovery has failed. "
+                "Call this ONLY when you have exhaustively searched and are confident "
+                "that the required endpoint does NOT exist in the captured traffic. "
+                "Provide a clear explanation of what was searched and why no match was found."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": (
+                            "Detailed explanation of why the endpoint could not be found. "
+                            "E.g., 'No API endpoints found that return train pricing data. "
+                            "The traffic only contains static HTML pages and image assets.'"
+                        ),
+                    },
+                    "searched_terms": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of key search terms that were tried.",
+                    },
+                    "closest_matches": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "URLs of entries that came closest to matching (if any).",
+                    },
+                },
+                "required": ["reason"],
+            },
+        )
+
         self._finalize_tool_registered = True
-        logger.debug("Registered finalize_result tool")
+        logger.debug("Registered finalize_result and finalize_failure tools")
 
     @property
     def chat_thread_id(self) -> str:
@@ -444,7 +525,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
         )
 
         # Add likely API URLs
-        likely_urls = self._network_data_store.likely_api_urls()
+        likely_urls = self._network_data_store.api_urls
         if likely_urls:
             urls_list = "\n".join(f"- {url}" for url in likely_urls[:50])  # Limit to 50
             urls_context = (
@@ -466,8 +547,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             for hs in host_stats[:15]:  # Top 15 hosts
                 methods_str = ", ".join(f"{m}:{c}" for m, c in sorted(hs["methods"].items()))
                 host_lines.append(
-                    f"- {hs['host']}: {hs['request_count']} reqs ({methods_str}) "
-                    f"avg {hs['avg_time_ms']}ms"
+                    f"- {hs['host']}: {hs['request_count']} reqs ({methods_str})"
                 )
             host_context = (
                 f"\n\n## Host Statistics\n"
@@ -596,8 +676,8 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
         if response_content and len(response_content) > 5000:
             response_content = response_content[:5000] + f"\n... (truncated, {len(entry.response_body)} total chars)"
 
-        # Get key structure for JSON responses
-        key_structure = self._network_data_store.get_entry_key_structure(request_id)
+        # Get schema for JSON responses
+        key_structure = self._network_data_store.get_response_body_schema(request_id)
 
         # Parse query params from URL
         parsed_url = urlparse(entry.url)
@@ -618,13 +698,14 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             "response_key_structure": key_structure,
         }
 
-    def _tool_get_entry_key_structure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute get_entry_key_structure tool."""
+    @token_optimized
+    def _tool_get_response_body_schema(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute get_response_body_schema tool."""
         request_id = tool_arguments.get("request_id")
         if request_id is None:
             return {"error": "request_id is required"}
 
-        key_structure = self._network_data_store.get_entry_key_structure(request_id)
+        key_structure = self._network_data_store.get_response_body_schema(request_id)
         if key_structure is None:
             entry = self._network_data_store.get_entry(request_id)
             if entry is None:
@@ -639,7 +720,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
     @token_optimized
     def _tool_get_unique_urls(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute get_unique_urls tool."""
-        url_counts = self._network_data_store.get_url_counts()
+        url_counts = self._network_data_store.url_counts
         return {
             "total_unique_urls": len(url_counts),
             "url_counts": url_counts,
@@ -757,6 +838,33 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             "results": results[:20],  # Top 20
         }
 
+    @token_optimized
+    def _tool_search_response_bodies(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute search_response_bodies tool."""
+        value = tool_arguments.get("value", "")
+        if not value:
+            return {"error": "value is required"}
+
+        case_sensitive = tool_arguments.get("case_sensitive", False)
+
+        results = self._network_data_store.search_response_bodies(
+            value=value,
+            case_sensitive=case_sensitive,
+        )
+
+        if not results:
+            return {
+                "message": f"No matches found for '{value}'",
+                "case_sensitive": case_sensitive,
+            }
+
+        return {
+            "value_searched": value,
+            "case_sensitive": case_sensitive,
+            "results_found": len(results),
+            "results": results[:20],  # Top 20
+        }
+
     def _execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute a tool and return the result."""
         logger.debug("Executing tool %s with arguments: %s", tool_name, tool_arguments)
@@ -767,8 +875,8 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
         if tool_name == "get_entry_detail":
             return self._tool_get_entry_detail(tool_arguments)
 
-        if tool_name == "get_entry_key_structure":
-            return self._tool_get_entry_key_structure(tool_arguments)
+        if tool_name == "get_response_body_schema":
+            return self._tool_get_response_body_schema(tool_arguments)
 
         if tool_name == "get_unique_urls":
             return self._tool_get_unique_urls(tool_arguments)
@@ -779,8 +887,14 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
         if tool_name == "search_har_by_request":
             return self._tool_search_har_by_request(tool_arguments)
 
+        if tool_name == "search_response_bodies":
+            return self._tool_search_response_bodies(tool_arguments)
+
         if tool_name == "finalize_result":
             return self._tool_finalize_result(tool_arguments)
+
+        if tool_name == "finalize_failure":
+            return self._tool_finalize_failure(tool_arguments)
 
         return {"error": f"Unknown tool: {tool_name}"}
 
@@ -809,6 +923,21 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             if not endpoint_outputs:
                 return {"error": f"endpoints[{i}].endpoint_outputs is required"}
 
+            # Validate that all request_ids actually exist in the data store
+            invalid_ids = []
+            for rid in request_ids:
+                if self._network_data_store.get_entry(rid) is None:
+                    invalid_ids.append(rid)
+
+            if invalid_ids:
+                # Get some valid request_ids to help the agent
+                valid_ids_sample = [e.request_id for e in self._network_data_store.entries[:10]]
+                return {
+                    "error": f"endpoints[{i}].request_ids contains invalid IDs: {invalid_ids}",
+                    "hint": "These request_ids do not exist in the data store. Use get_entry_detail or search tools to find valid request_ids.",
+                    "sample_valid_ids": valid_ids_sample,
+                }
+
             discovered_endpoints.append(DiscoveredEndpoint(
                 request_ids=request_ids,
                 url=url,
@@ -830,6 +959,35 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             "status": "success",
             "message": f"Endpoint discovery finalized with {len(discovered_endpoints)} endpoint(s)",
             "result": self._discovery_result.model_dump(),
+        }
+
+    @token_optimized
+    def _tool_finalize_failure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Handle finalize_failure tool call when endpoint discovery fails."""
+        reason = tool_arguments.get("reason", "")
+        searched_terms = tool_arguments.get("searched_terms", [])
+        closest_matches = tool_arguments.get("closest_matches", [])
+
+        if not reason:
+            return {"error": "reason is required - explain why the endpoint could not be found"}
+
+        # Store the failure result
+        self._discovery_failure = DiscoveryFailureResult(
+            reason=reason,
+            searched_terms=searched_terms,
+            closest_matches=closest_matches,
+        )
+
+        logger.info("Endpoint discovery failed: %s", reason)
+        if searched_terms:
+            logger.info("  Searched terms: %s", searched_terms[:10])
+        if closest_matches:
+            logger.info("  Closest matches: %s", closest_matches[:5])
+
+        return {
+            "status": "failure",
+            "message": "Endpoint discovery marked as failed",
+            "result": self._discovery_failure.model_dump(),
         }
 
     def _auto_execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> str:
@@ -991,15 +1149,15 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
         task: str,
         min_iterations: int = 3,
         max_iterations: int = 10,
-    ) -> EndpointDiscoveryResult | None:
+    ) -> EndpointDiscoveryResult | DiscoveryFailureResult | None:
         """
         Run the agent autonomously to discover the main API endpoint for a task.
 
         The agent will:
         1. Search through HAR data to find relevant endpoints
         2. Analyze and verify the endpoint structure
-        3. After iteration 2, the finalize_result tool becomes available
-        4. Return when finalize_result is called or max_iterations reached
+        3. After iteration 2, the finalize tools become available
+        4. Return when finalize_result/finalize_failure is called or max_iterations reached
 
         Args:
             task: User task description (e.g., "train prices and schedules from NYC to Boston")
@@ -1007,28 +1165,35 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             max_iterations: Maximum iterations before stopping (default 10)
 
         Returns:
-            EndpointDiscoveryResult if finalize_result was called, None otherwise.
+            EndpointDiscoveryResult if endpoint was found,
+            DiscoveryFailureResult if agent determined endpoint doesn't exist,
+            None if max iterations reached without finalization.
 
         Example:
             result = agent.run_autonomous(
                 task="Find train prices and options from NYC to Chicago on March 15"
             )
-            if result:
-                print(f"Found endpoint: {result.url}")
-                print(f"Inputs: {result.endpoint_inputs}")
-                print(f"Outputs: {result.endpoint_outputs}")
+            if isinstance(result, EndpointDiscoveryResult):
+                print(f"Found {len(result.endpoints)} endpoint(s)")
+            elif isinstance(result, DiscoveryFailureResult):
+                print(f"Failed: {result.reason}")
+            else:
+                print("Reached max iterations without conclusion")
         """
         # Enable autonomous mode
         self._autonomous_mode = True
         self._autonomous_iteration = 0
         self._discovery_result = None
+        self._discovery_failure = None
         self._finalize_tool_registered = False
 
         # Add the task as initial message
         initial_message = (
             f"TASK: {task}\n\n"
             "Find the main API endpoint that returns the data needed for this task. "
-            "Search, analyze, and when confident, use finalize_result to report your findings."
+            "Search, analyze, and when confident, use finalize_result to report your findings. "
+            "If after thorough search you determine the endpoint does not exist in the traffic, "
+            "use finalize_failure to report why."
         )
         self._add_chat(ChatRole.USER, initial_message)
 
@@ -1040,7 +1205,12 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
         # Reset autonomous mode
         self._autonomous_mode = False
 
-        return self._discovery_result
+        # Return result or failure
+        if self._discovery_result is not None:
+            return self._discovery_result
+        if self._discovery_failure is not None:
+            return self._discovery_failure
+        return None
 
     def _run_autonomous_loop(self, min_iterations: int, max_iterations: int) -> None:
         """
@@ -1126,6 +1296,15 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
                         )
                         return
 
+                    # Check if finalize_failure was called
+                    if tool_name == "finalize_failure" and self._discovery_failure is not None:
+                        logger.info(
+                            "Autonomous discovery failed at iteration %d: %s",
+                            self._autonomous_iteration,
+                            self._discovery_failure.reason,
+                        )
+                        return
+
             except Exception as e:
                 logger.exception("Error in autonomous loop: %s", e)
                 self._emit_message(
@@ -1151,7 +1330,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
         )
 
         # Add likely API URLs
-        likely_urls = self._network_data_store.likely_api_urls()
+        likely_urls = self._network_data_store.api_urls
         if likely_urls:
             urls_list = "\n".join(f"- {url}" for url in likely_urls[:30])
             urls_context = (
@@ -1226,6 +1405,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
         self._autonomous_mode = False
         self._autonomous_iteration = 0
         self._discovery_result = None
+        self._discovery_failure = None
         self._finalize_tool_registered = False
 
         if self._persist_chat_thread_callable:

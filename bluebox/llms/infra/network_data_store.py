@@ -7,15 +7,24 @@ Parses JSONL files with NetworkTransactionEvent entries and provides
 structured access to network traffic data.
 """
 
+import fnmatch
 import json
-import re
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from bluebox.constants.network import (
+    API_KEY_TERMS,
+    API_VERSION_PATTERN,
+    AUTH_HEADERS,
+    EXCLUDED_MIME_PREFIXES,
+    INCLUDED_MIME_PREFIXES,
+    SKIP_FILE_EXTENSIONS,
+)
 from bluebox.data_models.cdp import NetworkTransactionEvent
+from bluebox.utils.data_utils import extract_object_schema
 from bluebox.utils.logger import get_logger
 
 
@@ -114,207 +123,7 @@ class NetworkDataStore:
 
     Parses HAR content and provides structured access to network traffic data
     including entries, statistics, and search capabilities.
-
-    Usage:
-        har_content = open("network.har").read()
-        store = NetworkDataStore(har_content)
-
-        print(store.stats.to_summary())
-        api_calls = store.search_entries(path_contains="/api/")
     """
-
-    AUTH_HEADERS = frozenset([
-        "authorization",
-        "x-api-key",
-        "x-auth-token",
-        "x-access-token",
-        "api-key",
-        "bearer",
-    ])
-
-    # MIME types to exclude (JS, images, media, fonts, etc.)
-    EXCLUDED_MIME_PREFIXES = (
-        "application/javascript",
-        "application/x-javascript",
-        "text/javascript",
-        "image/",
-        "video/",
-        "audio/",
-        "font/",
-        "application/font",
-        "application/octet-stream",
-    )
-
-    # MIME types to include (HTML, JSON, XML, text)
-    INCLUDED_MIME_PREFIXES = (
-        "application/json",
-        "text/html",
-        "text/xml",
-        "application/xml",
-        "text/plain",
-    )
-
-    # Key terms for identifying important API endpoints (singular form to catch plurals too)
-    # These are case-insensitive substring matches
-    API_KEY_TERMS = (
-        # Core API identifiers
-        "api",
-        "graphql",
-        "rest",
-        "rpc",
-        # Authentication & User
-        "auth",
-        "login",
-        "logout",
-        "oauth",
-        "token",
-        "session",
-        "user",
-        "account",
-        "profile",
-        "register",
-        "signup",
-        # Data Operations
-        "search",
-        "query",
-        "filter",
-        "fetch",
-        "create",
-        "update",
-        "delete",
-        "submit",
-        "save",
-        # E-commerce/Transactions
-        "cart",
-        "checkout",
-        "order",
-        "payment",
-        "purchase",
-        "booking",
-        "reserve",
-        "quote",
-        "price",
-        # Content
-        "content",
-        "data",
-        "item",
-        "product",
-        "result",
-        "detail",
-        "info",
-        "summary",
-        "list",
-        # Actions
-        "action",
-        "execute",
-        "process",
-        "validate",
-        "verify",
-        "confirm",
-        "send",
-        # Events & Tracking
-        "event",
-        "track",
-        "analytic",
-        "metric",
-        "log",
-        # Autocomplete & Suggestions
-        "autocomplete",
-        "typeahead",
-        "suggest",
-        "complete",
-        "hint",
-        "predict",
-        # Backend Services
-        "gateway",
-        "service",
-        "backend",
-        "internal",
-        "ajax",
-        "xhr",
-        "bff",
-        # Next.js / frameworks
-        "_next/data",
-        "__api__",
-        "_api",
-    )
-
-    # Regex pattern for versioned API endpoints (v1, v2, v3, etc.)
-    API_VERSION_PATTERN = re.compile(r"/v\d+/", re.IGNORECASE)
-
-    # Third-party domains to exclude from likely API endpoints (analytics, tracking, consent, ads)
-    EXCLUDED_THIRD_PARTY_DOMAINS = (
-        # Analytics & Performance Monitoring
-        "google-analytics.com",
-        "googletagmanager.com",
-        "analytics.google.com",
-        "go-mpulse.net",
-        "akamai.net",
-        "newrelic.com",
-        "nr-data.net",
-        "segment.io",
-        "segment.com",
-        "mixpanel.com",
-        "amplitude.com",
-        "heap.io",
-        "heapanalytics.com",
-        "fullstory.com",
-        "hotjar.com",
-        "mouseflow.com",
-        "clarity.ms",
-        "matomo.",
-        "piwik.",
-        # Consent & Privacy
-        "onetrust.com",
-        "cookielaw.org",
-        "trustarc.com",
-        "cookiebot.com",
-        "consent.cookiebot.com",
-        "privacy-center.",
-        "consentmanager.",
-        # Advertising & Marketing
-        "doubleclick.net",
-        "googlesyndication.com",
-        "googleadservices.com",
-        "facebook.net",
-        "fbcdn.net",
-        "twitter.com/i/",
-        "ads-twitter.com",
-        "linkedin.com/li/",
-        "adsrvr.org",
-        "criteo.com",
-        "criteo.net",
-        "taboola.com",
-        "outbrain.com",
-        "adnxs.com",
-        "rubiconproject.com",
-        "pubmatic.com",
-        "openx.net",
-        "casalemedia.com",
-        "demdex.net",
-        "omtrdc.net",
-        "2o7.net",
-        # Error Tracking
-        "sentry.io",
-        "bugsnag.com",
-        "rollbar.com",
-        "logrocket.com",
-        "trackjs.com",
-        # CDNs (usually static assets, not APIs)
-        "cloudflare.com/cdn-cgi/",
-        "jsdelivr.net",
-        "unpkg.com",
-        "cdnjs.cloudflare.com",
-        # Social Widgets
-        "platform.twitter.com",
-        "connect.facebook.net",
-        "platform.linkedin.com",
-        # Misc Third-party
-        "recaptcha.net",
-        "gstatic.com",
-        "fonts.googleapis.com",
-        "fonts.gstatic.com",
-    )
 
     @staticmethod
     def _is_relevant_entry(entry: NetworkTransactionEvent) -> bool:
@@ -326,20 +135,18 @@ class NetworkDataStore:
         mime = entry.mime_type.lower()
 
         # Exclude known non-relevant types
-        for prefix in NetworkDataStore.EXCLUDED_MIME_PREFIXES:
+        for prefix in EXCLUDED_MIME_PREFIXES:
             if mime.startswith(prefix):
                 return False
 
         # Include known relevant types
-        for prefix in NetworkDataStore.INCLUDED_MIME_PREFIXES:
+        for prefix in INCLUDED_MIME_PREFIXES:
             if mime.startswith(prefix):
                 return True
 
         # Exclude by URL extension as fallback
         url_lower = entry.url.lower().split("?")[0]
-        excluded_extensions = (".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
-                               ".woff", ".woff2", ".ttf", ".eot", ".mp4", ".webm", ".mp3", ".wav")
-        if url_lower.endswith(excluded_extensions):
+        if url_lower.endswith(SKIP_FILE_EXTENSIONS):
             return False
 
         # Default: include if it has response body
@@ -360,7 +167,8 @@ class NetworkDataStore:
         if not path.exists():
             raise ValueError(f"JSONL file does not exist: {jsonl_path}")
 
-        # Load entries from JSONL
+        # Load entries from JSONL, filtering to only relevant entries
+        skipped = 0
         with open(path, mode="r", encoding="utf-8") as f:
             for line_num, line in enumerate(f):
                 line = line.strip()
@@ -369,8 +177,11 @@ class NetworkDataStore:
                 try:
                     data = json.loads(line)
                     event = NetworkTransactionEvent.model_validate(data)
-                    self._entries.append(event)
-                    self._entry_index[event.request_id] = event
+                    if self._is_relevant_entry(event):
+                        self._entries.append(event)
+                        self._entry_index[event.request_id] = event
+                    else:
+                        skipped += 1
                 except (json.JSONDecodeError, ValueError) as e:
                     logger.warning("Failed to parse line %d: %s", line_num + 1, e)
                     continue
@@ -378,27 +189,10 @@ class NetworkDataStore:
         self._compute_stats()
 
         logger.info(
-            "NetworkDataStore initialized with %d entries",
+            "NetworkDataStore initialized with %d entries (skipped %d non-relevant)",
             len(self._entries),
+            skipped,
         )
-
-    @classmethod
-    def from_jsonl(cls, jsonl_path: str) -> "NetworkDataStore":
-        """
-        Create a NetworkDataStore from a JSONL file containing NetworkTransactionEvent entries.
-
-        Each line in the JSONL file should be a valid NetworkTransactionEvent JSON object.
-
-        Args:
-            jsonl_path: Path to the JSONL file.
-
-        Returns:
-            A NetworkDataStore instance populated with entries from the JSONL file.
-
-        Example:
-            store = NetworkDataStore.from_jsonl("cdp_captures/network/events.jsonl")
-        """
-        return cls(jsonl_path)
 
     @property
     def entries(self) -> list[NetworkTransactionEvent]:
@@ -414,6 +208,33 @@ class NetworkDataStore:
     def raw_data(self) -> dict[str, Any]:
         """Return entries as a dict for compatibility."""
         return {"entries": [e.model_dump() for e in self._entries]}
+
+    @property
+    def url_counts(self) -> dict[str, int]:
+        """Mapping of each unique URL to its occurrence count."""
+        url_counts: Counter[str] = Counter(entry.url for entry in self._entries)
+        return dict(url_counts.most_common())
+
+    @property
+    def api_urls(self) -> list[str]:
+        """URLs that are likely API endpoints, sorted alphabetically."""
+        matching_urls: set[str] = set()
+
+        for entry in self._entries:
+            url_lower = entry.url.lower()
+
+            # Check for versioned API pattern (/v1/, /v2/, etc.)
+            if API_VERSION_PATTERN.search(entry.url):
+                matching_urls.add(entry.url)
+                continue
+
+            # Check for key terms in URL
+            for term in API_KEY_TERMS:
+                if term in url_lower:
+                    matching_urls.add(entry.url)
+                    break
+
+        return sorted(matching_urls)
 
     def _compute_stats(self) -> None:
         """Compute aggregate statistics from entries."""
@@ -449,7 +270,7 @@ class NetworkDataStore:
 
             # Feature detection
             req_headers = entry.request_headers or {}
-            for header in self.AUTH_HEADERS:
+            for header in AUTH_HEADERS:
                 if header in req_headers:
                     has_auth = True
                     break
@@ -531,48 +352,18 @@ class NetworkDataStore:
         """Get entry by request_id."""
         return self._entry_index.get(request_id)
 
-    def get_unique_urls(self) -> list[str]:
+    def get_entry_ids_by_url_pattern(self, pattern: str) -> list[str]:
         """
-        Get all unique URLs from the HAR file.
-
-        Only includes HTML/JSON entries, excludes JS, images, media.
-
-        Returns:
-            List of unique URLs, sorted alphabetically.
-        """
-        urls: set[str] = set()
-        for entry in self._entries:
-            if self._is_relevant_entry(entry):
-                urls.add(entry.url)
-        return sorted(urls)
-
-    def get_entry_ids_by_url(self, url: str) -> list[str]:
-        """
-        Get all request_ids that match the given URL.
+        Get all request_ids whose URLs match the given glob pattern.
 
         Args:
-            url: The URL to search for (exact match).
+            pattern: Glob pattern to match URLs (e.g., "*api/v1/*", "*/users*").
+                     Supports wildcards: * (any chars), ? (single char), [seq] (char set).
 
         Returns:
-            List of request_ids matching the URL.
+            List of request_ids whose URLs match the pattern.
         """
-        return [entry.request_id for entry in self._entries if entry.url == url]
-
-    def get_url_counts(self) -> dict[str, int]:
-        """
-        Get a mapping of each unique URL to its occurrence count.
-
-        Only includes HTML/JSON entries, excludes JS, images, media.
-
-        Returns:
-            Dict mapping URL to number of times it appeared in the HAR.
-        """
-        url_counts: dict[str, int] = {}
-        for entry in self._entries:
-            if self._is_relevant_entry(entry):
-                url_counts[entry.url] = url_counts.get(entry.url, 0) + 1
-        # Sort by count descending
-        return dict(sorted(url_counts.items(), key=lambda x: -x[1]))
+        return [entry.request_id for entry in self._entries if fnmatch.fnmatch(entry.url, pattern)]
 
     def search_entries_by_terms(
         self,
@@ -586,8 +377,6 @@ class NetworkDataStore:
         - unique_terms_found: how many different terms were found
         - total_hits: total number of term matches across all terms
         - score: (total_hits / num_terms) * unique_terms_found
-
-        Only searches relevant entries (HTML/JSON), excludes JS, images, media.
 
         Args:
             terms: List of search terms (case-insensitive).
@@ -605,11 +394,6 @@ class NetworkDataStore:
             return results
 
         for entry in self._entries:
-            # Skip non-relevant entries (JS, images, media, etc.)
-            if not self._is_relevant_entry(entry):
-                continue
-
-            # Skip if no response body
             if not entry.response_body:
                 continue
 
@@ -645,55 +429,6 @@ class NetworkDataStore:
         results.sort(key=lambda x: x["score"], reverse=True)
 
         return results[:top_n]
-
-    def _is_excluded_third_party(self, url: str) -> bool:
-        """Check if URL belongs to an excluded third-party domain."""
-        url_lower = url.lower()
-        for domain in self.EXCLUDED_THIRD_PARTY_DOMAINS:
-            if domain in url_lower:
-                return True
-        return False
-
-    def likely_api_urls(self) -> list[str]:
-        """
-        Get URLs that are likely important API endpoints.
-
-        Scans all entry URLs for common API patterns including:
-        - Version patterns (/v1/, /v2/, etc.)
-        - Common API key terms (api, auth, search, checkout, etc.)
-
-        Excludes:
-        - Non-relevant entries (JS, images, media)
-        - Third-party analytics, tracking, consent, and ad services
-
-        Returns:
-            List of unique URLs matching API patterns, sorted alphabetically.
-        """
-        matching_urls: set[str] = set()
-
-        for entry in self._entries:
-            # Skip non-relevant entries
-            if not self._is_relevant_entry(entry):
-                continue
-
-            # Skip excluded third-party domains
-            if self._is_excluded_third_party(entry.url):
-                continue
-
-            url_lower = entry.url.lower()
-
-            # Check for versioned API pattern (/v1/, /v2/, etc.)
-            if self.API_VERSION_PATTERN.search(entry.url):
-                matching_urls.add(entry.url)
-                continue
-
-            # Check for key terms in URL
-            for term in self.API_KEY_TERMS:
-                if term in url_lower:
-                    matching_urls.add(entry.url)
-                    break
-
-        return sorted(matching_urls)
 
     def get_host_stats(self, host_filter: str | None = None) -> list[dict[str, Any]]:
         """
@@ -801,159 +536,14 @@ class NetworkDataStore:
 
         return results
 
-    def get_auth_headers(self) -> list[tuple[str, str, str]]:
-        """
-        Get authentication headers found in requests.
-
-        Returns:
-            List of (url, header_name, header_value) tuples.
-        """
-        auth_headers: list[tuple[str, str, str]] = []
-
-        for entry in self._entries:
-            req_headers = entry.request_headers or {}
-            for header_name, header_value in req_headers.items():
-                if header_name.lower() in self.AUTH_HEADERS:
-                    # Truncate value for safety
-                    truncated = header_value[:50] + "..." if len(header_value) > 50 else header_value
-                    auth_headers.append((entry.url, header_name, truncated))
-
-        return auth_headers
-
-    def format_entry_summary(self, entry: NetworkTransactionEvent) -> str:
-        """Format a single entry as a summary string."""
-        return (
-            f"{entry.method} {entry.url}\n"
-            f"    Status: {entry.status or 'N/A'} {entry.status_text or ''}\n"
-            f"    Type: {entry.mime_type}\n"
-            f"    Size: {len(entry.response_body) if entry.response_body else 0} bytes"
-        )
-
-    @staticmethod
-    def extract_key_structure(data: Any) -> Any:
-        """
-        Extract only the key structure from a nested dict.
-
-        Recursively processes a nested dictionary and replaces all leaf values
-        with counts (for lists) or None (for single dicts). Useful for understanding
-        the shape of large JSON responses.
-
-        For lists of dicts:
-        - Iterates through ALL elements
-        - Merges all unique keys
-        - Tracks count of how many items had each key
-        - Adds "_total" field showing total number of dicts
-
-        Args:
-            data: Any data structure (dict, list, or primitive).
-
-        Returns:
-            The structure with leaf values replaced by None or counts.
-
-        Example:
-            >>> data = [{"id": 1, "name": "a"}, {"id": 2}, {"id": 3, "extra": "x"}]
-            >>> NetworkDataStore.extract_key_structure(data)
-            [{"_total": 3, "id": 3, "name": 1, "extra": 1}]
-        """
-        if isinstance(data, dict):
-            return {k: NetworkDataStore.extract_key_structure(v) for k, v in data.items()}
-        elif isinstance(data, list):
-            if len(data) == 0:
-                return []
-
-            # Collect all dicts from the list
-            dicts_in_list = [item for item in data if isinstance(item, dict)]
-            if not dicts_in_list:
-                # List of primitives
-                return []
-
-            total_dicts = len(dicts_in_list)
-
-            # Collect all values for each key across all dicts
-            key_values: dict[str, list[Any]] = {}
-            for d in dicts_in_list:
-                for k, v in d.items():
-                    if k not in key_values:
-                        key_values[k] = []
-                    key_values[k].append(v)
-
-            # Build merged structure with counts
-            result: dict[str, Any] = {"_total": total_dicts}
-
-            for k, values in key_values.items():
-                count = len(values)
-
-                # Check if all values are dicts - merge recursively
-                if all(isinstance(v, dict) for v in values):
-                    result[k] = NetworkDataStore.extract_key_structure(values)
-                # Check if all values are lists - flatten and recurse
-                elif all(isinstance(v, list) for v in values):
-                    flattened = []
-                    for v in values:
-                        flattened.extend(v)
-                    result[k] = NetworkDataStore.extract_key_structure(flattened)
-                else:
-                    # Leaf value - use count
-                    result[k] = count
-
-            return [result]
-        else:
-            # Leaf value - replace with None
-            return None
-
-    def get_entry_key_structure(self, request_id: str) -> dict[str, Any] | None:
-        """
-        Get the key structure of an entry's JSON response content.
-
-        Args:
-            request_id: The request_id of the entry.
-
-        Returns:
-            The key structure of the response JSON, or None if not found/not JSON.
-        """
+    def get_response_body_schema(self, request_id: str) -> dict[str, Any] | None:
+        """Get the schema of an entry's JSON response body."""
         entry = self.get_entry(request_id)
         if not entry or not entry.response_body:
             return None
 
         try:
             data = json.loads(entry.response_body)
-            return self.extract_key_structure(data)
+            return extract_object_schema(data)
         except json.JSONDecodeError:
             return None
-
-    def format_entry_detail(self, entry: NetworkTransactionEvent) -> str:
-        """Format a single entry with full details."""
-        host = _get_host(entry.url)
-        path = _get_path(entry.url)
-
-        lines = [
-            f"Method: {entry.method}",
-            f"URL: {entry.url}",
-            f"Host: {host}",
-            f"Path: {path}",
-            f"Status: {entry.status or 'N/A'} {entry.status_text or ''}",
-            f"Content-Type: {entry.mime_type}",
-            f"Response Size: {len(entry.response_body) if entry.response_body else 0} bytes",
-            "Request Headers:",
-        ]
-
-        req_headers = entry.request_headers or {}
-        for k, v in sorted(req_headers.items()):
-            lines.append(f"  {k}: {v[:100]}{'...' if len(v) > 100 else ''}")
-
-        if entry.post_data:
-            lines.append("")
-            lines.append("Post Data:")
-            post_data_str = json.dumps(entry.post_data) if isinstance(entry.post_data, (dict, list)) else str(entry.post_data)
-            if len(post_data_str) > 1000:
-                lines.append(f"  {post_data_str[:1000]}...")
-            else:
-                lines.append(f"  {post_data_str}")
-
-        lines.append("")
-        lines.append("Response Headers:")
-        resp_headers = entry.response_headers or {}
-        for k, v in sorted(resp_headers.items()):
-            lines.append(f"  {k}: {v[:100]}{'...' if len(v) > 100 else ''}")
-
-        return "\n".join(lines)

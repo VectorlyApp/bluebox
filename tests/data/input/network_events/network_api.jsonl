@@ -1,0 +1,6 @@
+{"request_id": "api-001", "url": "https://api.example.com/v1/users", "method": "GET", "status": 200, "mime_type": "application/json", "response_body": "{\"users\": []}", "request_headers": {}, "response_headers": {}}
+{"request_id": "api-002", "url": "https://api.example.com/v2/products", "method": "GET", "status": 200, "mime_type": "application/json", "response_body": "{\"products\": []}", "request_headers": {}, "response_headers": {}}
+{"request_id": "api-003", "url": "https://example.com/graphql", "method": "POST", "status": 200, "mime_type": "application/json", "response_body": "{\"data\": {}}", "request_headers": {}, "response_headers": {}}
+{"request_id": "api-004", "url": "https://example.com/rest/api/orders", "method": "GET", "status": 200, "mime_type": "application/json", "response_body": "{\"orders\": []}", "request_headers": {}, "response_headers": {}}
+{"request_id": "api-005", "url": "https://example.com/page.html", "method": "GET", "status": 200, "mime_type": "text/html", "response_body": "<html></html>", "request_headers": {}, "response_headers": {}}
+{"request_id": "api-006", "url": "https://example.com/api/v3/data", "method": "GET", "status": 200, "mime_type": "application/json", "response_body": "{}", "request_headers": {}, "response_headers": {}}

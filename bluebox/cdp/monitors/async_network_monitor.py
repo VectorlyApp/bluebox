@@ -9,10 +9,10 @@ from __future__ import annotations
 import base64
 import json
 import re
-from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar
 
 from bluebox.cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
+from bluebox.constants.network import THIRD_PARTY_TRACKING_ANALYTICS_DOMAINS
 from bluebox.data_models.cdp import NetworkTransactionEvent
 from bluebox.data_models.routine.endpoint import ResourceType
 from bluebox.utils.data_utils import get_text_from_html
@@ -39,37 +39,6 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         ResourceType.SCRIPT,
         ResourceType.XHR,
     })
-    BLOCK_PATTERNS: ClassVar[list[str]] = [
-        "*://*.googletagmanager.com/*",
-        "*://fonts.gstatic.com/*",
-        "*://fonts.googleapis.com/*",
-        "*://*.google-analytics.com/*",
-        "*://analytics.google.com/*",
-        "*://*.doubleclick.net/*",
-        "*://*.g.doubleclick.net/*",
-        "*://*.facebook.com/tr/*",
-        "*://connect.facebook.net/*",
-        "*://tr.snapchat.com/*",
-        "*://sc-static.net/*",
-        "*://*.scorecardresearch.com/*",
-        "*://*.quantserve.com/*",
-        "*://*.krxd.net/*",
-        "*://*.adobedtm.com/*",
-        "*://*.omtrdc.net/*",
-        "*://*.demdex.net/*",
-        "*://*.optimizely.com/*",
-        "*://cdn.cookielaw.org/*",
-        "*://*.segment.io/*",
-        "*://*.mixpanel.com/*",
-        "*://*.hotjar.com/*",
-        "*://*.clarity.ms/*",
-        "*://*.taboola.com/*",
-        "*://*.outbrain.com/*",
-        "*://*.posthog.com/*",
-
-        # debatable exclusions
-        "*://maps.googleapis.com/*",  # sites use this for location-related functionality
-    ]
     STATIC_ASSET_HINTS: ClassVar[tuple[str, ...]] = (
         ".css", ".woff", ".woff2", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico"
     )
@@ -136,24 +105,20 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         return any(lower.endswith(ext) for ext in AsyncNetworkMonitor.STATIC_ASSET_HINTS)
 
     @staticmethod
-    def _should_block_url(url: str) -> bool:
+    def _should_skip_logging(url: str) -> bool:
         """
-        Check if a URL should be blocked (i.e., not captured and emitted) based on block_patterns.
+        Check if a URL should be skipped from logging based on THIRD_PARTY_TRACKING_ANALYTICS_DOMAINS.
         Args:
             url: The URL to check.
         Returns:
-            True if the URL should be blocked, False otherwise.
+            True if the URL should be skipped, False otherwise.
         """
         if not url:
             return False
-        url = url.lower()
-        # internal URL check
-        if AsyncNetworkMonitor._is_internal_url(url):
+        url_lower = url.lower()
+        if AsyncNetworkMonitor._is_internal_url(url_lower):
             return True
-        # block patterns check (any() returns False if iterable is empty)
-        return any(
-            fnmatch(name=url, pat=pattern) for pattern in AsyncNetworkMonitor.BLOCK_PATTERNS
-        )
+        return any(domain in url_lower for domain in THIRD_PARTY_TRACKING_ANALYTICS_DOMAINS)
 
     @staticmethod
     def _get_set_cookie_values(headers: dict) -> list:
@@ -332,7 +297,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         resource_type = p.get("resourceType")
 
         # check if URL should be blocked; if so, continue and skip all processing
-        if AsyncNetworkMonitor._should_block_url(url):
+        if AsyncNetworkMonitor._should_skip_logging(url):
             # clean up any metadata that might have been stored in request stage
             self.req_meta.pop(rid, None)
             if response_status is not None:
@@ -455,7 +420,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         resource_type = p.get("type")
 
         # check if URL should be blocked; if so, skip tracking
-        if AsyncNetworkMonitor._should_block_url(url):
+        if AsyncNetworkMonitor._should_skip_logging(url):
             return True
 
         # check if URL is a static asset; if so, skip tracking
@@ -490,7 +455,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         url = resp.get("url", "")
 
         # check if URL should be blocked; if so, skip tracking
-        if AsyncNetworkMonitor._should_block_url(url):
+        if AsyncNetworkMonitor._should_skip_logging(url):
             return True
 
         # check if URL is a static asset; if so, skip tracking
@@ -521,7 +486,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         # check if this request should be blocked (check URL from metadata if available)
         if meta:
             url = meta.get("url", "")
-            if AsyncNetworkMonitor._should_block_url(url):
+            if AsyncNetworkMonitor._should_skip_logging(url):
                 # cleanup metadata but don't emit to callback function
                 self.req_meta.pop(request_id, None)
                 return True
@@ -580,7 +545,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         # check if this request should be blocked (check URL from metadata if available)
         if meta:
             url = meta.get("url", "")
-            if AsyncNetworkMonitor._should_block_url(url):
+            if AsyncNetworkMonitor._should_skip_logging(url):
                 # cleanup metadata but don't emit
                 self.req_meta.pop(request_id, None)
                 return True
@@ -787,14 +752,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
             params={"bypass": True},
         )
         logger.debug("✅ Network cache and service worker settings configured")
-        
-        if AsyncNetworkMonitor.BLOCK_PATTERNS:
-            await cdp_session.send(
-                method="Network.setBlockedURLs",
-                params={"urls": AsyncNetworkMonitor.BLOCK_PATTERNS},
-            )
-            logger.debug("✅ Network blocking patterns configured")
-        
+
         # enable Fetch interception
         await cdp_session.enable_domain(
             domain="Fetch",

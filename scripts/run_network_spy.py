@@ -23,7 +23,12 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from bluebox.agents.network_spy import NetworkSpyAgent, EndpointDiscoveryResult, DiscoveredEndpoint
+from bluebox.agents.network_spy import (
+    NetworkSpyAgent,
+    EndpointDiscoveryResult,
+    DiscoveredEndpoint,
+    DiscoveryFailureResult,
+)
 from bluebox.llms.infra.network_data_store import NetworkDataStore
 from bluebox.data_models.llms.interaction import (
     ChatRole,
@@ -137,7 +142,7 @@ def print_welcome(model: str, data_path: str, network_store: NetworkDataStore) -
         console.print()
 
     # Show likely API endpoints
-    likely_urls = network_store.likely_api_urls()
+    likely_urls = network_store.api_urls
     if likely_urls:
         urls_table = Table(box=None, show_header=False, padding=(0, 1))
         urls_table.add_column("URL", style="white")
@@ -302,8 +307,8 @@ class TerminalNetworkSpyChat:
 
         console.print()
 
-        if result:
-            # Build result tables for each endpoint
+        if isinstance(result, EndpointDiscoveryResult):
+            # Success - build result tables for each endpoint
             endpoint_count = len(result.endpoints)
 
             for i, ep in enumerate(result.endpoints, 1):
@@ -333,10 +338,31 @@ class TerminalNetworkSpyChat:
 
             if endpoint_count > 1:
                 console.print(f"[bold green]✓ Found {endpoint_count} endpoints[/bold green] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]")
+
+        elif isinstance(result, DiscoveryFailureResult):
+            # Explicit failure - agent determined endpoint doesn't exist
+            failure_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+            failure_table.add_column("Field", style="bold red")
+            failure_table.add_column("Value", style="white")
+
+            failure_table.add_row("Reason", result.reason)
+            if result.searched_terms:
+                failure_table.add_row("Terms Searched", ", ".join(result.searched_terms[:15]))
+            if result.closest_matches:
+                failure_table.add_row("Closest Matches", "\n".join(result.closest_matches[:5]))
+
+            console.print(Panel(
+                failure_table,
+                title=f"[bold red]✗ Endpoint Not Found[/bold red] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]",
+                border_style="red",
+                box=box.ROUNDED,
+            ))
+
         else:
+            # None - max iterations without finalization
             console.print(Panel(
                 "[yellow]Could not finalize endpoint discovery. "
-                "The agent reached max iterations without calling finalize_result.[/yellow]",
+                "The agent reached max iterations without calling finalize_result or finalize_failure.[/yellow]",
                 title=f"[bold yellow]⚠ Discovery Incomplete[/bold yellow] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]",
                 border_style="yellow",
                 box=box.ROUNDED,
@@ -446,7 +472,7 @@ def main() -> None:
 
     # Parse JSONL into data store
     try:
-        network_store = NetworkDataStore.from_jsonl(str(jsonl_path))
+        network_store = NetworkDataStore(jsonl_path)
     except ValueError as e:
         console.print(f"[bold red]Error parsing JSONL file: {e}[/bold red]")
         sys.exit(1)

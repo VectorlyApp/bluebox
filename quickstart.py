@@ -7,12 +7,11 @@ Usage:
     python quickstart.py
 """
 
+import asyncio
 import json
 import sys
 import time
 from pathlib import Path
-
-import websocket
 
 from bluebox.sdk import Bluebox, BrowserMonitor
 from bluebox.data_models.routine.routine import Routine
@@ -29,6 +28,32 @@ PORT = 9222
 REMOTE_DEBUGGING_ADDRESS = f"http://127.0.0.1:{PORT}"
 CDP_CAPTURES_DIR = Path("./cdp_captures")
 DISCOVERY_OUTPUT_DIR = Path("./routine_discovery_output")
+
+
+async def _run_monitor_async(
+    cdp_captures_dir: Path,
+    remote_debugging_address: str,
+) -> dict:
+    """Run the browser monitor asynchronously."""
+    monitor = BrowserMonitor(
+        remote_debugging_address=remote_debugging_address,
+        output_dir=str(cdp_captures_dir),
+        create_tab=False,
+    )
+
+    await monitor.astart()
+    print_colored("✅ Monitoring started! Perform your actions in the browser.", GREEN)
+    print_colored("   Press Ctrl+C when done...", YELLOW)
+    print()
+
+    try:
+        # Wait for user to press Ctrl+C or tab to close
+        while monitor.is_alive:
+            await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        pass
+
+    return await monitor.astop()
 
 
 def step_1_monitor_browser(cdp_captures_dir: Path) -> bool:
@@ -72,28 +97,20 @@ def step_1_monitor_browser(cdp_captures_dir: Path) -> bool:
     print_colored(f"   Output directory: {cdp_captures_dir}", BLUE)
     print()
 
-    monitor = BrowserMonitor(
-        remote_debugging_address=REMOTE_DEBUGGING_ADDRESS,
-        output_dir=str(cdp_captures_dir),
-        create_tab=False,
-    )
-
+    summary = {}
     try:
-        monitor.start()
-        print_colored("✅ Monitoring started! Perform your actions in the browser.", GREEN)
-        print_colored("   Press Ctrl+C when done...", YELLOW)
-        print()
-
-        # Wait for user to press Ctrl+C or tab to close
-        while monitor.is_alive:
-            time.sleep(1)
-
+        summary = asyncio.run(
+            _run_monitor_async(cdp_captures_dir, REMOTE_DEBUGGING_ADDRESS)
+        )
     except KeyboardInterrupt:
         print()
         print("⏹️  Stopping monitor...")
-    finally:
-        summary = monitor.stop()
-        # Keep Chrome running for execution step
+        # Need to run cleanup in a new event loop since the previous was interrupted
+        try:
+            # The monitor was already stopped by the asyncio.run cleanup
+            pass
+        except Exception:
+            pass
 
     print()
     print_colored("✅ Monitoring complete!", GREEN)

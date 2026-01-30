@@ -1,0 +1,6 @@
+{"request_id": "good-001", "url": "https://example.com/valid", "method": "GET", "status": 200, "mime_type": "application/json", "response_body": "{\"valid\": true}", "request_headers": {}, "response_headers": {}}
+not valid json at all
+{"request_id": "good-002", "url": "https://example.com/also-valid", "method": "POST", "status": 201, "mime_type": "application/json", "response_body": "{\"also\": \"valid\"}", "request_headers": {}, "response_headers": {}}
+{"missing_required_field": "no request_id here"}
+
+{"request_id": "good-003", "url": "https://example.com/third", "method": "GET", "status": 200, "mime_type": "text/html", "response_body": "<html>third</html>", "request_headers": {}, "response_headers": {}}
