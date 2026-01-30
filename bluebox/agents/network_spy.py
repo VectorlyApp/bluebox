@@ -12,10 +12,21 @@ Contains:
 
 import json
 from datetime import datetime
+from functools import wraps
 from typing import Any, Callable
 from urllib.parse import urlparse, parse_qs
 
+from toon import encode
 from pydantic import BaseModel, Field
+
+
+def token_optimized(func: Callable[..., dict[str, Any]]) -> Callable[..., str]:
+    """Decorator that encodes dict outputs with toon for token efficiency."""
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> str:
+        result = func(*args, **kwargs)
+        return encode(result)
+    return wrapper
 
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -548,13 +559,14 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             messages.append(msg)
         return messages
 
+    @token_optimized
     def _tool_search_har_responses_by_terms(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute search_har_responses_by_terms tool."""
         terms = tool_arguments.get("terms", [])
         if not terms:
             return {"error": "No search terms provided"}
 
-        results = self._network_data_store.search_entries_by_terms(terms, top_n=10)
+        results = self._network_data_store.search_entries_by_terms(terms, top_n=20)
 
         if not results:
             return {
@@ -568,6 +580,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             "results": results,
         }
 
+    @token_optimized
     def _tool_get_entry_detail(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute get_entry_detail tool."""
         request_id = tool_arguments.get("request_id")
@@ -623,6 +636,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             "key_structure": key_structure,
         }
 
+    @token_optimized
     def _tool_get_unique_urls(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute get_unique_urls tool."""
         url_counts = self._network_data_store.get_url_counts()
@@ -669,6 +683,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
         finally:
             sys.stdout = old_stdout
 
+    @token_optimized
     def _tool_search_har_by_request(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Search request side (URL, headers, body) for terms."""
         terms = tool_arguments.get("terms", [])
@@ -769,6 +784,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
 
         return {"error": f"Unknown tool: {tool_name}"}
 
+    @token_optimized
     def _tool_finalize_result(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Handle finalize_result tool call in autonomous mode."""
         endpoints_data = tool_arguments.get("endpoints", [])

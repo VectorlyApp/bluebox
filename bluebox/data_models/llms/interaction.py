@@ -183,7 +183,7 @@ class ToolInvocationResultEmittedMessage(BaseEmittedMessage):
         ...,
         description="Tool invocation that was executed",
     )
-    tool_result: dict[str, Any] = Field(
+    tool_result: str | dict[str, Any] = Field(
         ...,
         description="Result data from tool execution",
     )
