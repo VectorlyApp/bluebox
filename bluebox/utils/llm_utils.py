@@ -17,11 +17,10 @@ from openai.types.responses import Response
 from pydantic import BaseModel
 from toon import encode
 
-from bluebox.config import Config
 from bluebox.utils.exceptions import LLMStructuredOutputError
 from bluebox.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(name=__name__)
 
 
 def token_optimized(func: Callable[..., dict[str, Any]]) -> Callable[..., str]:
