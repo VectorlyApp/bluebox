@@ -11,8 +11,6 @@ import pytest
 from bluebox.llms.infra.network_data_store import (
     NetworkDataStore,
     NetworkStats,
-    _get_host,
-    _get_path,
 )
 
 
@@ -52,44 +50,6 @@ def hosts_store(network_events_dir: Path) -> NetworkDataStore:
 def malformed_store(network_events_dir: Path) -> NetworkDataStore:
     """NetworkDataStore loaded from malformed test data (should skip bad lines)."""
     return NetworkDataStore(str(network_events_dir / "network_malformed.jsonl"))
-
-
-# --- Helper Function Tests ---
-
-class TestHelperFunctions:
-    """Tests for module-level helper functions."""
-
-    def test_get_host_simple(self) -> None:
-        """Extract host from simple URL."""
-        assert _get_host("https://example.com/path") == "example.com"
-
-    def test_get_host_with_port(self) -> None:
-        """Extract host from URL with port."""
-        assert _get_host("https://example.com:8080/path") == "example.com:8080"
-
-    def test_get_host_with_subdomain(self) -> None:
-        """Extract host from URL with subdomain."""
-        assert _get_host("https://api.example.com/v1/users") == "api.example.com"
-
-    def test_get_host_empty_url(self) -> None:
-        """Extract host from empty URL returns empty string."""
-        assert _get_host("") == ""
-
-    def test_get_path_simple(self) -> None:
-        """Extract path from simple URL."""
-        assert _get_path("https://example.com/api/users") == "/api/users"
-
-    def test_get_path_with_query(self) -> None:
-        """Extract path from URL with query string (path excludes query)."""
-        assert _get_path("https://example.com/search?q=test") == "/search"
-
-    def test_get_path_root(self) -> None:
-        """Extract path from root URL."""
-        assert _get_path("https://example.com/") == "/"
-
-    def test_get_path_no_path(self) -> None:
-        """Extract path from URL without explicit path."""
-        assert _get_path("https://example.com") == ""
 
 
 # --- NetworkStats Tests ---
