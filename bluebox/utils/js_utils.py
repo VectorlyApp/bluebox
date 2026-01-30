@@ -15,7 +15,31 @@ Contains:
 """
 
 import json
+import re
 
+
+# Constants ________________________________________________________________________________________
+
+# max line length before emitting a readability warning
+_MAX_JS_LINE_LENGTH = 200
+
+DANGEROUS_JS_PATTERNS: list[str] = [
+    r'eval\s*\(',
+    r'(?:^|[^a-zA-Z0-9_])Function\s*\(',
+    r'(?<![a-zA-Z0-9_])fetch\s*\(',
+    r'XMLHttpRequest',
+    r'WebSocket',
+    r'sendBeacon',
+    r'addEventListener\s*\(',
+    r'MutationObserver',
+    r'IntersectionObserver',
+    r'window\.close\s*\(',
+]
+
+IIFE_PATTERN = r'^\s*\(\s*(async\s+)?(function\s*\([^)]*\)\s*\{|\(\)\s*=>\s*\{).+\}\s*\)\s*\(\s*\)\s*;?\s*$'
+
+
+# Private helpers _________________________________________________________________________________
 
 def _get_body_resolution_js() -> list[str]:
     """Generate JavaScript code for resolving body placeholders.
@@ -273,6 +297,93 @@ def _get_fetch_setup_js(
     ]
 
 
+def _get_element_profile_js() -> str:
+    """Generate JavaScript helper function to extract element profile.
+
+    Returns:
+        JavaScript function definition for getElementProfile(element).
+    """
+    return """
+    function getElementProfile(el) {
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return {
+            tag: el.tagName.toLowerCase(),
+            id: el.id || null,
+            name: el.getAttribute('name') || null,
+            classes: el.className ? el.className.split(/\\s+/).filter(Boolean) : [],
+            type: el.getAttribute('type') || null,
+            placeholder: el.getAttribute('placeholder') || null,
+            value: (el.tagName.toLowerCase() === 'input' || el.tagName.toLowerCase() === 'textarea')
+                ? (el.value ? el.value.substring(0, 100) : null) : null,
+            text: el.textContent ? el.textContent.trim().substring(0, 100) : null,
+            href: el.getAttribute('href') || null,
+            disabled: el.disabled || false,
+            readonly: el.readOnly || false,
+            rect: {
+                x: Math.round(rect.x),
+                y: Math.round(rect.y),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height)
+            },
+            computed: {
+                display: style.display,
+                visibility: style.visibility,
+                opacity: style.opacity
+            }
+        };
+    }
+"""
+
+# Exports _________________________________________________________________________________________
+
+## Validation functions
+
+def validate_js(js_code: str) -> list[str]:
+    """
+    Validate JavaScript code for IIFE format, blocked patterns, and readability.
+
+    Returns a list of issues. Hard errors are plain strings; soft warnings are
+    prefixed with ``"WARNING:"``.  An empty list means the code is valid.
+
+    Args:
+        js_code: The JavaScript code to validate.
+
+    Returns:
+        A list of errors/warnings (empty = valid).
+    """
+    errors: list[str] = []
+    if not js_code or not js_code.strip():
+        errors.append("JavaScript code cannot be empty")
+        return errors
+
+    if not re.match(IIFE_PATTERN, js_code, flags=re.DOTALL):
+        errors.append(
+            "JavaScript code must be wrapped in an IIFE: (function() { ... })() or (() => { ... })()"
+        )
+
+    for pattern in DANGEROUS_JS_PATTERNS:
+        if re.search(pattern, js_code, flags=re.MULTILINE):
+            errors.append(f"Blocked pattern detected: {pattern}")
+
+    # readability check; soft warning, not a blocking error
+    first_brace = js_code.find("{")
+    last_brace = js_code.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        body = js_code[first_brace + 1:last_brace]
+        for line in body.split("\n"):
+            if len(line) > _MAX_JS_LINE_LENGTH:
+                errors.append(
+                    f"WARNING: Line exceeds {_MAX_JS_LINE_LENGTH} chars. "
+                    "Please reformat with proper line breaks and indentation for readability."
+                )
+                break  # one warning is enough
+
+    return errors
+
+
+## Generation functions
+
 def generate_fetch_js(
     fetch_url: str,
     headers: dict,
@@ -413,45 +524,6 @@ def generate_download_js(
     ]
 
     return "\n".join(js_lines)
-
-
-def _get_element_profile_js() -> str:
-    """Generate JavaScript helper function to extract element profile.
-
-    Returns:
-        JavaScript function definition for getElementProfile(element).
-    """
-    return """
-    function getElementProfile(el) {
-        const style = window.getComputedStyle(el);
-        const rect = el.getBoundingClientRect();
-        return {
-            tag: el.tagName.toLowerCase(),
-            id: el.id || null,
-            name: el.getAttribute('name') || null,
-            classes: el.className ? el.className.split(/\\s+/).filter(Boolean) : [],
-            type: el.getAttribute('type') || null,
-            placeholder: el.getAttribute('placeholder') || null,
-            value: (el.tagName.toLowerCase() === 'input' || el.tagName.toLowerCase() === 'textarea')
-                ? (el.value ? el.value.substring(0, 100) : null) : null,
-            text: el.textContent ? el.textContent.trim().substring(0, 100) : null,
-            href: el.getAttribute('href') || null,
-            disabled: el.disabled || false,
-            readonly: el.readOnly || false,
-            rect: {
-                x: Math.round(rect.x),
-                y: Math.round(rect.y),
-                width: Math.round(rect.width),
-                height: Math.round(rect.height)
-            },
-            computed: {
-                display: style.display,
-                visibility: style.visibility,
-                opacity: style.opacity
-            }
-        };
-    }
-"""
 
 
 def generate_click_js(selector: str, ensure_visible: bool) -> str:
@@ -836,5 +908,3 @@ def generate_js_evaluate_wrapper_js(
         execution_error: __executionError
     }};
 }})()"""
-
-

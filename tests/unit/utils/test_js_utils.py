@@ -6,7 +6,192 @@ Tests for JavaScript utility functions.
 
 import pytest
 
-from bluebox.utils.js_utils import generate_js_evaluate_wrapper_js
+from bluebox.utils.js_utils import (
+    DANGEROUS_JS_PATTERNS,
+    IIFE_PATTERN,
+    generate_js_evaluate_wrapper_js,
+    validate_js,
+)
+
+
+class TestValidateJs:
+    """Tests for validate_js function."""
+
+    # --- Valid code ---
+
+    def test_valid_function_iife(self) -> None:
+        """Valid (function() { ... })() passes with no errors."""
+        errors = validate_js("(function() { return 42; })()")
+        assert errors == []
+
+    def test_valid_arrow_iife(self) -> None:
+        """Valid (() => { ... })() passes with no errors."""
+        errors = validate_js("(() => { return 42; })()")
+        assert errors == []
+
+    def test_valid_async_function_iife(self) -> None:
+        """Valid (async function() { ... })() passes."""
+        errors = validate_js("(async function() { return 42; })()")
+        assert errors == []
+
+    def test_valid_async_arrow_iife(self) -> None:
+        """Valid (async () => { ... })() passes."""
+        errors = validate_js("(async () => { return 42; })()")
+        assert errors == []
+
+    def test_valid_iife_with_trailing_semicolon(self) -> None:
+        """Trailing semicolon is allowed."""
+        errors = validate_js("(function() { return 1; })();")
+        assert errors == []
+
+    def test_valid_multiline_iife(self) -> None:
+        """Multi-line IIFE with proper formatting passes cleanly."""
+        code = """(function() {
+  const x = 1;
+  const y = 2;
+  return x + y;
+})()"""
+        errors = validate_js(code)
+        assert errors == []
+
+    # --- Empty / missing code ---
+
+    def test_empty_string(self) -> None:
+        errors = validate_js("")
+        assert any("cannot be empty" in e for e in errors)
+
+    def test_whitespace_only(self) -> None:
+        errors = validate_js("   \n\t  ")
+        assert any("cannot be empty" in e for e in errors)
+
+    def test_none_code(self) -> None:
+        errors = validate_js(None)  # type: ignore[arg-type]
+        assert any("cannot be empty" in e for e in errors)
+
+    # --- IIFE format errors ---
+
+    def test_bare_expression_rejected(self) -> None:
+        """Code not wrapped in IIFE is rejected."""
+        errors = validate_js("document.title")
+        assert any("IIFE" in e for e in errors)
+
+    def test_bare_function_declaration_rejected(self) -> None:
+        errors = validate_js("function foo() { return 1; }")
+        assert any("IIFE" in e for e in errors)
+
+    def test_non_invoked_function_rejected(self) -> None:
+        """Function expression without invocation is rejected."""
+        errors = validate_js("(function() { return 1; })")
+        assert any("IIFE" in e for e in errors)
+
+    # --- Dangerous pattern detection ---
+
+    def test_eval_blocked(self) -> None:
+        errors = validate_js("(function() { eval('1+1'); })()")
+        assert any("Blocked pattern" in e for e in errors)
+
+    def test_function_constructor_blocked(self) -> None:
+        errors = validate_js("(function() { new Function('return 1')(); })()")
+        assert any("Blocked pattern" in e for e in errors)
+
+    def test_fetch_blocked(self) -> None:
+        errors = validate_js("(function() { fetch('/api'); })()")
+        assert any("Blocked pattern" in e for e in errors)
+
+    def test_xmlhttprequest_blocked(self) -> None:
+        errors = validate_js("(function() { new XMLHttpRequest(); })()")
+        assert any("Blocked pattern" in e for e in errors)
+
+    def test_websocket_blocked(self) -> None:
+        errors = validate_js("(function() { new WebSocket('ws://x'); })()")
+        assert any("Blocked pattern" in e for e in errors)
+
+    def test_sendbeacon_blocked(self) -> None:
+        errors = validate_js("(function() { navigator.sendBeacon('/log', ''); })()")
+        assert any("Blocked pattern" in e for e in errors)
+
+    def test_addeventlistener_blocked(self) -> None:
+        errors = validate_js("(function() { window.addEventListener('click', () => {}); })()")
+        assert any("Blocked pattern" in e for e in errors)
+
+    def test_mutationobserver_blocked(self) -> None:
+        errors = validate_js("(function() { new MutationObserver(() => {}); })()")
+        assert any("Blocked pattern" in e for e in errors)
+
+    def test_intersectionobserver_blocked(self) -> None:
+        errors = validate_js("(function() { new IntersectionObserver(() => {}); })()")
+        assert any("Blocked pattern" in e for e in errors)
+
+    def test_window_close_blocked(self) -> None:
+        errors = validate_js("(function() { window.close(); })()")
+        assert any("Blocked pattern" in e for e in errors)
+
+    def test_multiple_blocked_patterns(self) -> None:
+        """Multiple violations produce multiple errors."""
+        code = "(function() { eval('x'); fetch('/y'); })()"
+        errors = validate_js(code)
+        blocked = [e for e in errors if "Blocked pattern" in e]
+        assert len(blocked) >= 2
+
+    # --- Safe patterns that look similar but should pass ---
+
+    def test_fetch_as_variable_name_allowed(self) -> None:
+        """A variable named 'prefetch' should not trigger the fetch block."""
+        errors = validate_js("(function() { var prefetch = 1; return prefetch; })()")
+        assert not any("Blocked pattern" in e for e in errors)
+
+    def test_function_keyword_in_iife_allowed(self) -> None:
+        """The 'function' keyword in the IIFE wrapper itself is fine."""
+        errors = validate_js("(function() { return 1; })()")
+        assert not any("Function" in e for e in errors)
+
+    # --- Readability warnings ---
+
+    def test_long_line_produces_warning(self) -> None:
+        """A line > 200 chars in the IIFE body triggers a WARNING."""
+        long_var = "x" * 250
+        code = f"(function() {{ var {long_var} = 1; return 1; }})()"
+        errors = validate_js(code)
+        warnings = [e for e in errors if e.startswith("WARNING:")]
+        assert len(warnings) == 1
+        assert "200" in warnings[0]
+
+    def test_long_line_warning_is_soft(self) -> None:
+        """WARNING doesn't appear alongside hard errors for otherwise valid code."""
+        long_var = "x" * 250
+        code = f"(function() {{ var {long_var} = 1; return 1; }})()"
+        errors = validate_js(code)
+        hard_errors = [e for e in errors if not e.startswith("WARNING:")]
+        assert hard_errors == []
+
+    def test_short_lines_no_warning(self) -> None:
+        """Well-formatted code produces no warnings."""
+        code = "(function() {\n  var x = 1;\n  return x;\n})()"
+        errors = validate_js(code)
+        assert not any(e.startswith("WARNING:") for e in errors)
+
+    def test_exactly_200_chars_no_warning(self) -> None:
+        """A line of exactly 200 chars should not trigger the warning."""
+        # pad to exactly 200 chars inside the braces
+        inner = "x" * 190
+        code = f"(function() {{ var {inner} = 1; return 1; }})()"
+        # verify the longest body line is <= 200
+        body = code[code.find("{") + 1:code.rfind("}")]
+        max_len = max(len(line) for line in body.split("\n"))
+        if max_len <= 200:
+            errors = validate_js(code)
+            assert not any(e.startswith("WARNING:") for e in errors)
+
+    # --- Constants sanity checks ---
+
+    def test_dangerous_patterns_not_empty(self) -> None:
+        assert len(DANGEROUS_JS_PATTERNS) > 0
+
+    def test_iife_pattern_matches_basic(self) -> None:
+        import re
+        assert re.match(IIFE_PATTERN, "(function() { return 1; })()", re.DOTALL)
+        assert re.match(IIFE_PATTERN, "(() => { return 1; })()", re.DOTALL)
+        assert not re.match(IIFE_PATTERN, "function() { return 1; }", re.DOTALL)
 
 
 class TestGenerateJsEvaluateWrapperJs:

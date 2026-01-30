@@ -10,7 +10,6 @@ Two roles:
 
 from __future__ import annotations
 
-import re
 import time
 from typing import Any, Callable
 
@@ -30,7 +29,7 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import OpenAIModel
 from bluebox.llms.infra.js_data_store import JSDataStore
-from bluebox.utils.js_utils import generate_js_evaluate_wrapper_js
+from bluebox.utils.js_utils import generate_js_evaluate_wrapper_js, validate_js
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
@@ -60,71 +59,6 @@ class JSCodeFailureResult(BaseModel):
         default_factory=list,
         description="Approaches that were tried",
     )
-
-
-# --- Validation helpers (mirrors RoutineJsEvaluateOperation logic) ---
-
-DANGEROUS_PATTERNS: list[str] = [
-    r'eval\s*\(',
-    r'(?:^|[^a-zA-Z0-9_])Function\s*\(',
-    r'(?<![a-zA-Z0-9_])fetch\s*\(',
-    r'XMLHttpRequest',
-    r'WebSocket',
-    r'sendBeacon',
-    r'addEventListener\s*\(',
-    r'MutationObserver',
-    r'IntersectionObserver',
-    r'window\.close\s*\(',
-]
-
-IIFE_PATTERN = r'^\s*\(\s*(async\s+)?(function\s*\([^)]*\)\s*\{|\(\)\s*=>\s*\{).+\}\s*\)\s*\(\s*\)\s*;?\s*$'
-
-# Max line length before emitting a readability warning
-_MAX_LINE_LENGTH = 200
-
-
-def _validate_js(js_code: str) -> list[str]:
-    """
-    Validate JS code, returning list of errors (empty = valid).
-
-    Errors are hard failures; warnings (prefixed with "WARNING:") are soft
-    suggestions that don't block submission.
-
-    Args:
-        js_code: The JavaScript code to validate.
-
-    Returns:
-        A list of errors/warnings (empty = valid).
-    """
-    errors: list[str] = []
-    if not js_code or not js_code.strip():
-        errors.append("JavaScript code cannot be empty")
-        return errors
-
-    if not re.match(IIFE_PATTERN, js_code, flags=re.DOTALL):
-        errors.append(
-            "JavaScript code must be wrapped in an IIFE: (function() { ... })() or (() => { ... })()"
-        )
-
-    for pattern in DANGEROUS_PATTERNS:
-        if re.search(pattern, js_code, flags=re.MULTILINE):
-            errors.append(f"Blocked pattern detected: {pattern}")
-
-    # Readability check — soft warning, not a blocking error
-    # Find the IIFE body (between outermost { and })
-    first_brace = js_code.find("{")
-    last_brace = js_code.rfind("}")
-    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-        body = js_code[first_brace + 1:last_brace]
-        for line in body.split("\n"):
-            if len(line) > _MAX_LINE_LENGTH:
-                errors.append(
-                    f"WARNING: Line exceeds {_MAX_LINE_LENGTH} chars. "
-                    "Please reformat with proper line breaks and indentation for readability."
-                )
-                break  # one warning is enough
-
-    return errors
 
 
 class JSSpecialist(AbstractSpecialist):
@@ -516,7 +450,7 @@ Given a task, write IIFE JavaScript code that accomplishes it in the browser con
     @token_optimized
     def _tool_validate_js_code(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         js_code = tool_arguments.get("js_code", "")
-        errors = _validate_js(js_code)
+        errors = validate_js(js_code)
 
         # Separate hard errors from warnings
         hard_errors = [e for e in errors if not e.startswith("WARNING:")]
@@ -616,7 +550,7 @@ Given a task, write IIFE JavaScript code that accomplishes it in the browser con
             return {"error": "description is required"}
 
         # Validate the code
-        errors = _validate_js(js_code)
+        errors = validate_js(js_code)
         # Only block on hard errors, not warnings
         hard_errors = [e for e in errors if not e.startswith("WARNING:")]
         if hard_errors:
@@ -670,7 +604,7 @@ Given a task, write IIFE JavaScript code that accomplishes it in the browser con
         timeout_seconds = tool_arguments.get("timeout_seconds", 5.0)
 
         # Validate JS first
-        errors = _validate_js(js_code)
+        errors = validate_js(js_code)
         hard_errors = [e for e in errors if not e.startswith("WARNING:")]
         if hard_errors:
             return {"error": "Validation failed", "errors": hard_errors}
