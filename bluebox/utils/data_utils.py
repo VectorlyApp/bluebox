@@ -108,8 +108,7 @@ def get_text_from_html(html: str) -> str:
     """
     Sanitize the HTML data.
     """
-    
-    # Use the built-in html parser for robustness
+    # use built-in html parser for robustness
     soup = BeautifulSoup(html, "html.parser")
 
     # Remove non-visible elements
@@ -123,7 +122,7 @@ def get_text_from_html(html: str) -> str:
     lines = (line.strip() for line in text.splitlines())
     chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
     clean_text = "\n".join(chunk for chunk in chunks if chunk)
-    
+
     # Remove ALL consecutive newlines - replace any sequence of 2+ newlines with single newline
     # Handle both \n and \r\n line endings
     clean_text = re.sub(r'[\r\n]+', '\n', clean_text)
@@ -162,18 +161,18 @@ def save_data_to_file(
 ) -> None:
     """
     Save data to file, creating directories as needed.
-    
+
     Args:
         data: The data to save (dict, list, str, or base64-encoded string).
         file_path: Path to save the file to.
         is_base64: If True, decode data as base64 and write as binary.
     """
     os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
-    
+
     if data is None:
         logger.warning("Data is None. Skipping file save.")
         return
-    
+
     if is_base64 and isinstance(data, str):
         raw_data = base64.b64decode(data)
         with open(file_path, mode="wb") as f:
@@ -246,7 +245,11 @@ def blocked_by_regex(url: str, block_regexes: list) -> bool:
     """
     u = url or ""
     for rx in block_regexes:
-        if re.search(rx, u, flags=re.IGNORECASE):
+        if re.search(
+            pattern=rx,
+            string=u,
+            flags=re.IGNORECASE,
+        ):
             return True
     return False
 
@@ -328,8 +331,7 @@ def apply_params(text: str, parameters_dict: dict | None) -> str:
     Returns:
         str: Text with parameters replaced.
     """
-    
-    logger.info(f"Applying params to text: {text} with parameters_dict: {parameters_dict}")
+    logger.info("Applying params to text: %s with parameters_dict: %s", text, parameters_dict)
     
     if not text or not parameters_dict:
         return text
@@ -340,19 +342,19 @@ def apply_params(text: str, parameters_dict: dict | None) -> str:
             literal = value  # For strings, insert raw string (no quotes)
         else:
             literal = json.dumps(value)  # For numbers/bools/null, use JSON encoding
-        
+
         escaped_key = re.escape(key)
-        
+
         # Pattern 1: Simple quoted placeholder "{{key}}" in JSON string
         # Matches: "{{key}}" (when the JSON value itself is the string "{{key}}")
         simple_quoted = '"' + r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}' + '"'
         text = re.sub(simple_quoted, literal, text)
-        
+
         # Pattern 2: Escaped quote variant \"{{key}}\"
         # In JSON string this appears as: \\"{{key}}\\" 
         double_escaped = r'\\"' + r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}' + r'\\"'
         text = re.sub(double_escaped, literal, text)
-    
+
     logger.info(f"Applied params to text: {text}")
     return text
 
@@ -472,7 +474,10 @@ def build_transaction_dir(url: str, ts_ms: int, output_dir: str) -> str:
     Returns:
         str: The path to the directory.
     """
-    date_str = time.strftime("%Y%m%d", time.localtime(ts_ms / 1000))
+    date_str = time.strftime(
+        format="%Y%m%d",
+        time_tuple=time.localtime(ts_ms / 1000)
+    )
     url_core = (url or "").split("://", 1)[-1].split("?", 1)[0].strip("/")
     url_core = url_core.replace("/", "_")
     safe_url = sanitize_filename(url_core)[:120] or "url"

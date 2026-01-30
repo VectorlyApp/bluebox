@@ -26,10 +26,13 @@ VALID_PLACEHOLDER_PREFIXES = frozenset([
 
 class ParameterType(StrEnum):
     """Supported parameter types for MCP tools."""
+    # python primitives
     STRING = "string"
     INTEGER = "integer"
     NUMBER = "number"
     BOOLEAN = "boolean"
+
+    # non-python primitives
     DATE = "date"
     DATETIME = "datetime"
     EMAIL = "email"
