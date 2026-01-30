@@ -7,6 +7,7 @@ Captures full DOM snapshots on page load using DOMSnapshot.captureSnapshot.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar
 
 from bluebox.cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
@@ -81,6 +82,7 @@ class AsyncDOMMonitor(AbstractAsyncMonitor):
         # tracking
         self.snapshot_count: int = 0
         self.pending_snapshot_cmd: dict[int, str] = {}  # cmd_id -> url
+        self.current_url: str | None = None  # cached URL from Page.frameNavigated
 
 
     # Private methods ______________________________________________________________________________________________________
@@ -172,7 +174,7 @@ class AsyncDOMMonitor(AbstractAsyncMonitor):
     async def handle_dom_message(self, msg: dict, cdp_session: AsyncCDPSession) -> bool:
         """
         Handle CDP messages for DOM monitoring.
-        Triggers snapshot capture on Page.loadEventFired and Page.frameNavigated.
+        Tracks URL from Page.frameNavigated and triggers snapshot capture on Page.loadEventFired.
         Args:
             msg: The CDP message dict.
             cdp_session: The CDP session for sending commands.
@@ -181,28 +183,25 @@ class AsyncDOMMonitor(AbstractAsyncMonitor):
         """
         method = msg.get("method")
 
-        # Capture snapshot when page finishes loading
-        if method == "Page.loadEventFired":
-            # Get current URL
-            url = await cdp_session.get_current_url()
-            if url:
-                await self._capture_snapshot(cdp_session, url)
-            else:
-                logger.warning("⚠️ Page.loadEventFired but could not get URL")
-            return False  # allow other handlers to process this event too
-
-        # Capture snapshot on navigation (including SPA navigations)
+        # Track URL from navigation events (for main frame only)
         if method == "Page.frameNavigated":
             params = msg.get("params", {})
             frame = params.get("frame", {})
-            # Only capture for main frame navigations, not iframes
+            # Only track main frame navigations (no parentId)
             if not frame.get("parentId"):
-                url = frame.get("url")
-                if url:
-                    await self._capture_snapshot(cdp_session, url)
-                else:
-                    logger.warning("⚠️ Page.frameNavigated but no URL in frame")
+                self.current_url = frame.get("url")
+                logger.debug("📍 DOM monitor tracking URL: %s", self.current_url)
             return False
+
+        # Capture snapshot when page finishes loading
+        # Use asyncio.create_task to avoid blocking the message handler (deadlock)
+        if method == "Page.loadEventFired":
+            if self.current_url:
+                # Schedule snapshot capture as background task to avoid deadlock
+                asyncio.create_task(self._capture_snapshot(cdp_session, self.current_url))
+            else:
+                logger.warning("⚠️ Page.loadEventFired but no URL tracked from frameNavigated")
+            return False  # allow other handlers to process this event too
 
         return False
 
