@@ -1,6 +1,9 @@
 """
 bluebox/routine_discovery/data_store.py
 
+# NOTE: THIS DATA STORE IS SOON TO BE DEPRECATED!
+# NOTE: THIS DATA STORE EXITS TO SUPPORT MIGRATION FROM VECTORSTORES TO NEW DATA STORES
+
 Data store for routine discovery with vectorstore support.
 
 Contains:

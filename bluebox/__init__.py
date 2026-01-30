@@ -49,7 +49,6 @@ from .utils.exceptions import (
     BrowserConnectionError,
     TransactionIdentificationFailedError,
     LLMStructuredOutputError,
-    UnsupportedFileFormat,
 )
 
 # Core modules (for advanced usage)
@@ -82,7 +81,6 @@ __all__ = [
     "BrowserConnectionError",
     "TransactionIdentificationFailedError",
     "LLMStructuredOutputError",
-    "UnsupportedFileFormat",
     # Core modules
     "agents",
     "cdp",

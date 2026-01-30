@@ -4,18 +4,12 @@ bluebox/utils/exceptions.py
 Custom exceptions for bluebox-sdk.
 
 Contains:
-- UnsupportedFileFormat: Invalid file type
 - ApiKeyNotFoundError: Missing API key
 - BrowserConnectionError, ChromiumConnectionError: CDP connection failures
 - NavigationError, NavigationBlockedError: Page navigation failures
 - RoutineExecutionError: Routine run failures
 - HTTPClientError, HTTPServerError: HTTP request failures
 """
-
-class UnsupportedFileFormat(Exception):
-    """
-    Raised when encountering an unsupported file type for some operation.
-    """
 
 
 class ApiKeyNotFoundError(Exception):

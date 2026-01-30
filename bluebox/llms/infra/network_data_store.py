@@ -1,6 +1,9 @@
 """
 bluebox/llms/infra/network_data_store.py
 
+# NOTE: This data store is coming to production soon!
+# NOTE: This replaces the vectorstore for network traffic analysis.
+
 Data store for network traffic analysis.
 
 Parses JSONL files with NetworkTransactionEvent entries and provides
@@ -29,16 +32,6 @@ from bluebox.utils.logger import get_logger
 
 
 logger = get_logger(name=__name__)
-
-
-def _get_host(url: str) -> str:
-    """Extract host from URL."""
-    return urlparse(url).netloc
-
-
-def _get_path(url: str) -> str:
-    """Extract path from URL."""
-    return urlparse(url).path
 
 
 @dataclass
@@ -255,8 +248,9 @@ class NetworkDataStore:
             methods[entry.method] += 1
             if entry.status:
                 status_codes[entry.status] += 1
-            host = _get_host(entry.url)
-            path = _get_path(entry.url)
+            parsed_url = urlparse(entry.url)
+            host = parsed_url.netloc
+            path = parsed_url.path
             hosts[host] += 1
             paths.add(path)
             urls.add(entry.url)
@@ -328,10 +322,11 @@ class NetworkDataStore:
         for entry in self._entries:
             if method and entry.method.upper() != method.upper():
                 continue
-            host = _get_host(entry.url)
+            parsed_url = urlparse(entry.url)
+            host = parsed_url.netloc
             if host_contains and host_contains.lower() not in host.lower():
                 continue
-            path = _get_path(entry.url)
+            path = parsed_url.path
             if path_contains and path_contains.lower() not in path.lower():
                 continue
             if status_code is not None and entry.status != status_code:
@@ -447,7 +442,7 @@ class NetworkDataStore:
         host_data: dict[str, dict[str, Any]] = {}
 
         for entry in self._entries:
-            host = _get_host(entry.url)
+            host = urlparse(entry.url).netloc
 
             # Apply filter if provided
             if host_filter and host_filter.lower() not in host.lower():

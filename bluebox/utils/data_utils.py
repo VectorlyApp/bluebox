@@ -4,7 +4,6 @@ bluebox/utils/data_utils.py
 Data loading, writing, and transformation utilities.
 
 Contains:
-- load_data(): Load JSON/JSONL files
 - write_json_file(), write_jsonl(): Save data to files
 - get_text_from_html(): Extract text from HTML
 - resolve_dotted_path(): Access nested dict values by dot notation
@@ -30,37 +29,9 @@ from urllib.parse import urlparse
 import tldextract
 from bs4 import BeautifulSoup
 
-from bluebox.utils.exceptions import UnsupportedFileFormat
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
-
-
-def load_data(file_path: Path) -> dict | list:
-    """
-    Load data from a file.
-    Raises:
-        UnsupportedFileFormat: If the file is of an unsupported type.
-    Args:
-        file_path: Path to the JSON or JSONL file.
-    Returns:
-        dict | list: Data contained in file. JSONL files return a list of parsed objects.
-    """
-    file_path_str = str(file_path)
-    if file_path_str.endswith(".json"):
-        with open(file_path_str, mode="r", encoding="utf-8") as data_file:
-            return json.load(data_file)
-
-    if file_path_str.endswith(".jsonl"):
-        records: list[Any] = []
-        with open(file_path_str, mode="r", encoding="utf-8") as data_file:
-            for line in data_file:
-                line = line.strip()
-                if line:
-                    records.append(json.loads(line))
-        return records
-
-    raise UnsupportedFileFormat(f"No support for provided file type: {file_path_str}.")
 
 
 def convert_floats_to_decimals(obj: Any) -> Any:

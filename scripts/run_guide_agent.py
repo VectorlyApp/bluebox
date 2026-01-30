@@ -1001,7 +1001,7 @@ class TerminalGuideChat:
 
         console.print()
         console.print("[bold green]✓ Monitoring complete![/bold green]")
-        transaction_count = summary.get('network_transactions', 0) if summary else 0
+        transaction_count = summary.get('network', {}).get('completed_transactions', 0) if summary else 0
         if summary:
             console.print(f"[dim]Duration: {summary.get('duration', 0):.1f}s[/dim]")
             console.print(f"[dim]Transactions captured: {transaction_count}[/dim]")
@@ -1141,7 +1141,7 @@ class TerminalGuideChat:
             # Save routine to file (name -> lowercase_underscores)
             safe_name = routine.name.lower().replace(" ", "_").replace("-", "_")
             safe_name = "".join(c for c in safe_name if c.isalnum() or c == "_")
-            routines_dir = Path("./example_routines")
+            routines_dir = Path("./example_data/example_routines")
             routines_dir.mkdir(parents=True, exist_ok=True)
             routine_path = routines_dir / f"{safe_name}.json"
             routine_path.write_text(json.dumps(routine.model_dump(), indent=2))
@@ -1182,7 +1182,7 @@ class TerminalGuideChat:
             # Save routine to file (name -> lowercase_underscores)
             safe_name = routine.name.lower().replace(" ", "_").replace("-", "_")
             safe_name = "".join(c for c in safe_name if c.isalnum() or c == "_")
-            routines_dir = Path("./example_routines")
+            routines_dir = Path("./example_data/example_routines")
             routines_dir.mkdir(parents=True, exist_ok=True)
             routine_path = routines_dir / f"{safe_name}.json"
             routine_path.write_text(json.dumps(routine.model_dump(), indent=2))

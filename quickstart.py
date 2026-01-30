@@ -116,7 +116,7 @@ def step_1_monitor_browser(cdp_captures_dir: Path) -> bool:
     print_colored("✅ Monitoring complete!", GREEN)
     if summary:
         print(f"   Duration: {summary.get('duration', 0):.1f}s")
-        print(f"   Transactions captured: {summary.get('network_transactions', 0)}")
+        print(f"   Transactions captured: {summary.get('network', {}).get('completed_transactions', 0)}")
 
     return True
 

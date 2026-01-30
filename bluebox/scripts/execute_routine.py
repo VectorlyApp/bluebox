@@ -6,8 +6,8 @@ Usage:
     bluebox-execute --routine-path <path> --parameters-dict '<json>' [--output <path>] [--download-dir <dir>] [--keep-open]
 
 Examples:
-    bluebox-execute --routine-path example_routines/amtrak_one_way_train_search_routine.json --parameters-path example_routines/amtrak_one_way_train_search_input.json
-    bluebox-execute --routine-path example_routines/amtrak_one_way_train_search_routine.json --parameters-dict '{"origin": "boston", "destination": "new york", "departureDate": "2026-03-22"}' --output output.json --keep-open
+    bluebox-execute --routine-path example_data/example_routines/amtrak_one_way_train_search_routine.json --parameters-path example_data/example_routines/amtrak_one_way_train_search_input.json
+    bluebox-execute --routine-path example_data/example_routines/amtrak_one_way_train_search_routine.json --parameters-dict '{"origin": "boston", "destination": "new york", "departureDate": "2026-03-22"}' --output output.json --keep-open
 """
 
 import argparse

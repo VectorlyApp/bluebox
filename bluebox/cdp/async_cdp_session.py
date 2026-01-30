@@ -256,7 +256,7 @@ class AsyncCDPSession:
             "method": method,
             "params": params or {},
         }
-        if self.page_session_id:
+        if self.page_session_id and is_page_level:
             msg["sessionId"] = self.page_session_id
         msg_json = json.dumps(msg)
 

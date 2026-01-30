@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-scripts/run_network_spy.py
+scripts/run_network_spy_agent.py
+
+# NOTE: THIS AGENT IS IN BETA AND NOT YET READY FOR PRODUCTION
 
 Interactive CLI for the Network Spy agent.
 
 Usage:
-    python scripts/run_network_spy.py --jsonl-path ./cdp_captures/network/events.jsonl
+    python scripts/run_network_spy_agent.py --jsonl-path ./cdp_captures/network/events.jsonl
 """
 
 import argparse
@@ -23,7 +25,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from bluebox.agents.network_spy import (
+from bluebox.agents.network_spy_agent import (
     NetworkSpyAgent,
     EndpointDiscoveryResult,
     DiscoveredEndpoint,
@@ -59,7 +61,7 @@ BANNER = """\
 ║ ▀▀   ▀▀▀    ▀▀▀▀▀      ▀▀▀▀    ▀▀  ▀▀     ▀▀▀▀     ▀▀       ▀▀   ▀▀▀             ▀▀▀▀▀    ██ ▀▀▀       ██    ║
 ║                                                                                           ██         ███     ║
 ║                                                                                                              ║
-╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════╝[/bold cyan]
+╚═════════════════════════════════════════════════(beta)═══════════════════════════════════════════════════════╝[/bold cyan]
 """
 
 

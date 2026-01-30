@@ -26,6 +26,7 @@ from ..data_models.llms.vendors import OpenAIModel
 from ..data_models.routine.routine import Routine
 from ..data_models.routine_discovery.message import RoutineDiscoveryMessage
 from ..data_models.routine_discovery.llm_responses import TestParametersResponse
+from ..data_models.routine_discovery.message import RoutineDiscoveryMessageType
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -84,7 +85,6 @@ class RoutineDiscovery:
 
     def _default_message_handler(self, message: RoutineDiscoveryMessage) -> None:
         """Default message handler that logs to console."""
-        from bluebox.data_models.routine_discovery.message import RoutineDiscoveryMessageType
 
         if message.type == RoutineDiscoveryMessageType.INITIATED:
             logger.info(f"🚀 {message.content}")

@@ -15,14 +15,12 @@ from bluebox.utils.data_utils import (
     assert_balanced_js_delimiters,
     convert_decimals_to_floats,
     convert_floats_to_decimals,
-    load_data,
     serialize_datetime,
     resolve_dotted_path,
     get_text_from_html,
     apply_params,
     extract_object_schema,
 )
-from bluebox.utils.exceptions import UnsupportedFileFormat
 
 
 class TestGetTextFromHtml:
@@ -311,106 +309,6 @@ class TestGetTextFromHtml:
         result = get_text_from_html(html)
         # Should have newlines between elements
         assert result == "Title\nParagraph 1\nParagraph 2"
-
-
-class TestLoadData:
-    """Test cases for the load_data function."""
-
-    def test_load_dict_data(self, input_data_dir: Path) -> None:
-        """Test loading a JSON file containing a dictionary."""
-        file_path = input_data_dir / "sample_dict.json"
-        result = load_data(file_path)
-
-        assert isinstance(result, dict)
-        assert result["name"] == "John Doe"
-        assert result["age"] == 30
-        assert result["city"] == "New York"
-        assert result["is_active"] is True
-        assert result["scores"] == [85.5, 92.0, 78.5]
-        assert result["metadata"]["created_at"] == "2023-01-15T10:30:00"
-        assert result["metadata"]["version"] == 1.2
-        assert result["metadata"]["tags"] == ["test", "sample"]
-
-    def test_load_list_data(self, input_data_dir: Path) -> None:
-        """Test loading a JSON file containing a list."""
-        file_path = input_data_dir / "sample_list.json"
-        result = load_data(file_path)
-
-        assert isinstance(result, list)
-        assert len(result) == 3
-        assert result[0]["id"] == 1
-        assert result[0]["name"] == "Item 1"
-        assert result[0]["price"] == 19.99
-        assert result[1]["id"] == 2
-        assert result[2]["id"] == 3
-
-    def test_load_empty_dict(self, input_data_dir: Path) -> None:
-        """Test loading an empty JSON file."""
-        file_path = input_data_dir / "empty.json"
-        result = load_data(file_path)
-
-        assert isinstance(result, dict)
-        assert result == {}
-
-    def test_load_unsupported_file_format(self, input_data_dir: Path) -> None:
-        """Test that UnsupportedFileFormat is raised for unsupported file types."""
-        file_path = input_data_dir / "unsupported.txt"
-
-        with pytest.raises(UnsupportedFileFormat) as exc_info:
-            load_data(file_path)
-
-        assert "No support for provided file type" in str(exc_info.value)
-        assert "unsupported.txt" in str(exc_info.value)
-
-    def test_load_nonexistent_file(self, input_data_dir: Path) -> None:
-        """Test that FileNotFoundError is raised for nonexistent files."""
-        file_path = input_data_dir / "nonexistent.json"
-
-        with pytest.raises(FileNotFoundError):
-            load_data(file_path)
-
-    def test_load_with_path_object(self, input_data_dir: Path) -> None:
-        """Test that function works with Path objects."""
-        file_path = input_data_dir / "sample_dict.json"
-        result = load_data(file_path)
-
-        assert isinstance(result, dict)
-        assert result["name"] == "John Doe"
-
-    def test_load_jsonl(self, tmp_path: Path) -> None:
-        """Test loading a JSONL file returns list of dicts."""
-        file_path = tmp_path / "data.jsonl"
-        file_path.write_text(
-            '{"id": 1, "name": "Alice"}\n'
-            '{"id": 2, "name": "Bob"}\n'
-        )
-        result = load_data(file_path)
-
-        assert isinstance(result, list)
-        assert len(result) == 2
-        assert result[0]["name"] == "Alice"
-        assert result[1]["id"] == 2
-
-    def test_load_jsonl_empty_file(self, tmp_path: Path) -> None:
-        """Test loading an empty JSONL file returns empty list."""
-        file_path = tmp_path / "empty.jsonl"
-        file_path.write_text("")
-        result = load_data(file_path)
-
-        assert result == []
-
-    def test_load_jsonl_skips_blank_lines(self, tmp_path: Path) -> None:
-        """Test that blank lines in JSONL are skipped."""
-        file_path = tmp_path / "data.jsonl"
-        file_path.write_text('{"a": 1}\n\n\n{"b": 2}\n')
-        result = load_data(file_path)
-
-        assert len(result) == 2
-
-    def test_load_jsonl_nonexistent(self, tmp_path: Path) -> None:
-        """Test that FileNotFoundError is raised for nonexistent JSONL files."""
-        with pytest.raises(FileNotFoundError):
-            load_data(tmp_path / "missing.jsonl")
 
 
 class TestConvertFloatsToDecimals:

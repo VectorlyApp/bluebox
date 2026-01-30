@@ -1,5 +1,7 @@
 """
-bluebox/agents/network_spy.py
+bluebox/agents/network_spy_agent.py
+
+# NOTE: THIS AGENT IS IN BETA AND NOT YET READY FOR PRODUCTION
 
 Agent specialized in searching through network traffic data.
 
@@ -11,6 +13,7 @@ Contains:
 """
 
 import json
+import textwrap
 from datetime import datetime
 from typing import Any, Callable
 from urllib.parse import urlparse, parse_qs
@@ -33,6 +36,7 @@ from bluebox.data_models.llms.interaction import (
 from bluebox.data_models.llms.vendors import OpenAIModel
 from bluebox.llms.llm_client import LLMClient
 from bluebox.llms.infra.network_data_store import NetworkDataStore
+from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
@@ -109,90 +113,92 @@ class NetworkSpyAgent:
         agent.process_new_message("Find entries related to train prices", ChatRole.USER)
     """
 
-    SYSTEM_PROMPT: str = """You are a network traffic analyst specializing in HAR (HTTP Archive) file analysis.
+    SYSTEM_PROMPT: str = textwrap.dedent("""
+        You are a network traffic analyst specializing in HAR (HTTP Archive) file analysis.
 
-## Your Role
+        ## Your Role
 
-You help users find and analyze specific network requests in HAR files. Your main job is to:
-- Find the HAR entry containing the data the user is looking for
-- Identify API endpoints and their purposes
-- Analyze request/response patterns
+        You help users find and analyze specific network requests in HAR files. Your main job is to:
+        - Find the HAR entry containing the data the user is looking for
+        - Identify API endpoints and their purposes
+        - Analyze request/response patterns
 
-## Finding Relevant Entries
+        ## Finding Relevant Entries
 
-When the user asks about specific data (e.g., "train prices", "search results", "user data"):
+        When the user asks about specific data (e.g., "train prices", "search results", "user data"):
 
-1. Generate 20-30 relevant search terms that might appear in the response body
-   - Include variations: singular/plural, different casings, related terms
-   - Include data field names: "price", "amount", "cost", "fare", "total"
-   - Include domain-specific terms: "departure", "arrival", "origin", "destination"
+        1. Generate 20-30 relevant search terms that might appear in the response body
+           - Include variations: singular/plural, different casings, related terms
+           - Include data field names: "price", "amount", "cost", "fare", "total"
+           - Include domain-specific terms: "departure", "arrival", "origin", "destination"
 
-2. Use the `search_har_by_terms` tool with your terms
+        2. Use the `search_har_by_terms` tool with your terms
 
-3. Analyze the top results - the entry with the highest score is most likely to contain the data
+        3. Analyze the top results - the entry with the highest score is most likely to contain the data
 
-## Available Tools
+        ## Available Tools
 
-- **`search_har_by_terms`**: Search HAR entries by a list of terms. Returns top 10 entries ranked by relevance.
-  - Pass 20-30 search terms for best results
-  - Only searches HTML/JSON response bodies (excludes JS, images, media)
-  - Returns: id, url, unique_terms_found, total_hits, score
+        - **`search_har_by_terms`**: Search HAR entries by a list of terms. Returns top 10 entries ranked by relevance.
+          - Pass 20-30 search terms for best results
+          - Only searches HTML/JSON response bodies (excludes JS, images, media)
+          - Returns: id, url, unique_terms_found, total_hits, score
 
-- **`get_entry_detail`**: Get full details of a specific HAR entry by ID.
-  - Use this after finding a relevant entry to see headers, request body, response body
+        - **`get_entry_detail`**: Get full details of a specific HAR entry by ID.
+          - Use this after finding a relevant entry to see headers, request body, response body
 
-- **`get_response_body_schema`**: Get the schema of a JSON response body.
-  - Use this to understand the shape of large JSON responses without retrieving all the data
-  - Shows structure with types at every level
+        - **`get_response_body_schema`**: Get the schema of a JSON response body.
+          - Use this to understand the shape of large JSON responses without retrieving all the data
+          - Shows structure with types at every level
 
-## Guidelines
+        ## Guidelines
 
-- Be concise and direct in your responses
-- When you find a relevant entry, report its ID and URL
-- Always use search_har_by_terms first when looking for specific data
-"""
+        - Be concise and direct in your responses
+        - When you find a relevant entry, report its ID and URL
+        - Always use search_har_by_terms first when looking for specific data
+    """).strip()
 
-    AUTONOMOUS_SYSTEM_PROMPT: str = """You are a network traffic analyst that autonomously identifies API endpoints.
+    AUTONOMOUS_SYSTEM_PROMPT: str = textwrap.dedent("""
+        You are a network traffic analyst that autonomously identifies API endpoints.
 
-## Your Mission
+        ## Your Mission
 
-Given a user task, find the API endpoint(s) that return the data needed for that task.
-Some tasks require multiple endpoints (e.g., auth -> search -> details).
+        Given a user task, find the API endpoint(s) that return the data needed for that task.
+        Some tasks require multiple endpoints (e.g., auth -> search -> details).
 
-## Process
+        ## Process
 
-1. **Search**: Use `search_har_responses_by_terms` with 20-30 relevant terms for the task
-2. **Analyze**: Look at top results, examine their structure with `get_response_body_schema`
-3. **Verify**: Use `get_entry_detail` to confirm the endpoint has the right data
-4. **Finalize**: Once confident, call `finalize_result` with your findings
+        1. **Search**: Use `search_har_responses_by_terms` with 20-30 relevant terms for the task
+        2. **Analyze**: Look at top results, examine their structure with `get_response_body_schema`
+        3. **Verify**: Use `get_entry_detail` to confirm the endpoint has the right data
+        4. **Finalize**: Once confident, call `finalize_result` with your findings
 
-## Strategy
+        ## Strategy
 
-- Identify ALL endpoints needed to complete the task
-- Look for API/XHR calls (not HTML pages, JS files, or images)
-- Prefer endpoints with structured JSON responses
-- Consider multi-step flows: authentication, search, pagination, detail fetches
+        - Identify ALL endpoints needed to complete the task
+        - Look for API/XHR calls (not HTML pages, JS files, or images)
+        - Prefer endpoints with structured JSON responses
+        - Consider multi-step flows: authentication, search, pagination, detail fetches
 
-## When finalize tools are available
+        ## When finalize tools are available
 
-After sufficient exploration, the `finalize_result` and `finalize_failure` tools become available.
+        After sufficient exploration, the `finalize_result` and `finalize_failure` tools become available.
 
-### finalize_result - Use when endpoint IS found
-Call it with a list of endpoints, each containing:
-- request_ids: The HAR entry request_id(s) for this endpoint (MUST be valid IDs from the data store)
-- url: The API URL
-- endpoint_inputs: Brief description of inputs (e.g., "from_city, to_city, date as query params")
-- endpoint_outputs: Brief description of outputs (e.g., "JSON array of train options with prices")
+        ### finalize_result - Use when endpoint IS found
+        Call it with a list of endpoints, each containing:
+        - request_ids: The HAR entry request_id(s) for this endpoint (MUST be valid IDs from the data store)
+        - url: The API URL
+        - endpoint_inputs: Brief description of inputs (e.g., "from_city, to_city, date as query params")
+        - endpoint_outputs: Brief description of outputs (e.g., "JSON array of train options with prices")
 
-Order endpoints by execution sequence if they form a multi-step flow.
-Be concise with inputs/outputs - just the key fields and types, not full schema.
+        Order endpoints by execution sequence if they form a multi-step flow.
+        Be concise with inputs/outputs - just the key fields and types, not full schema.
 
-### finalize_failure - Use when endpoint is NOT found
-If after exhaustive search you determine the required endpoint does NOT exist in the traffic:
-- Call `finalize_failure` with a clear reason explaining what was searched and why no match was found
-- Include the search terms you tried and any URLs that came close but didn't match
-- Only use this after thoroughly searching - don't give up too early!
-"""
+        ### finalize_failure - Use when endpoint is NOT found
+        If after exhaustive search you determine the required endpoint does NOT exist in the traffic:
+        - Call `finalize_failure` with a clear reason explaining what was searched and why no match was found
+        - Include the search terms you tried and any URLs that came close but didn't match
+        - Only use this after thoroughly searching - don't give up too early!
+    """).strip()
 
     def __init__(
         self,
@@ -246,6 +252,7 @@ If after exhaustive search you determine the required endpoint does NOT exist in
         # Autonomous mode state
         self._autonomous_mode: bool = False
         self._autonomous_iteration: int = 0
+        self._autonomous_max_iterations: int = 10
         self._discovery_result: EndpointDiscoveryResult | None = None
         self._discovery_failure: DiscoveryFailureResult | None = None
         self._finalize_tool_registered: bool = False
@@ -339,11 +346,12 @@ If after exhaustive search you determine the required endpoint does NOT exist in
         self.llm_client.register_tool(
             name="execute_python",
             description=(
-                "Execute Python code to directly analyze the HAR data. "
-                "The variable `har_dict` is pre-loaded with the full HAR file as a Python dict. "
-                "Use this for complex queries that other tools can't handle. "
-                "Use print() to output results - all printed output will be returned. "
-                "Example: for e in har_dict['log']['entries'][:5]: print(e['request']['url'])"
+                "Execute Python code in a sandboxed environment to analyze network entries. "
+                "The variable `entries` is pre-loaded as a list of NetworkTransactionEvent dicts. "
+                "Each entry has: request_id, url, method, status, mime_type, request_headers, "
+                "response_headers, post_data, response_body. "
+                "Use print() to output results. "
+                "Example: for e in entries[:5]: print(e['url'])"
             ),
             parameters={
                 "type": "object",
@@ -351,8 +359,9 @@ If after exhaustive search you determine the required endpoint does NOT exist in
                     "code": {
                         "type": "string",
                         "description": (
-                            "Python code to execute. `har_dict` is available as the full HAR dict. "
-                            "Use print() statements to output results."
+                            "Python code to execute. `entries` is a list of network entry dicts. "
+                            "`json` module is available. Use print() for output. "
+                            "Note: imports are disabled for security."
                         ),
                     }
                 },
@@ -623,18 +632,16 @@ If after exhaustive search you determine the required endpoint does NOT exist in
             # Include tool_call_id for TOOL role messages
             if chat.tool_call_id:
                 msg["tool_call_id"] = chat.tool_call_id
-            # Include tool_calls for ASSISTANT role messages
+            # Include tool_calls for ASSISTANT role messages (generic format for openai_client)
             if chat.tool_calls:
                 msg["tool_calls"] = [
                     {
-                        "id": tc.call_id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.tool_name,
-                            "arguments": json.dumps(tc.tool_arguments) if isinstance(tc.tool_arguments, dict) else tc.tool_arguments,
-                        },
+                        # call_id is required by OpenAI API; generate fallback if None
+                        "call_id": tc.call_id if tc.call_id else f"call_{idx}_{chat_id[:8]}",
+                        "name": tc.tool_name,
+                        "arguments": tc.tool_arguments,
                     }
-                    for tc in chat.tool_calls
+                    for idx, tc in enumerate(chat.tool_calls)
                 ]
             messages.append(msg)
         return messages
@@ -727,42 +734,10 @@ If after exhaustive search you determine the required endpoint does NOT exist in
         }
 
     def _tool_execute_python(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute Python code with har_dict pre-loaded from NetworkDataStore."""
-        import io
-        import sys
-
+        """Execute Python code in a sandboxed environment with network entries pre-loaded."""
         code = tool_arguments.get("code", "")
-        if not code:
-            return {"error": "No code provided"}
-
-        # Capture stdout
-        old_stdout = sys.stdout
-        sys.stdout = captured_output = io.StringIO()
-
-        try:
-            # Load har_dict from the data store (already parsed and in memory)
-            har_dict = self._network_data_store.raw_data
-
-            # Execute with har_dict and json available in scope
-            exec_globals = {
-                "har_dict": har_dict,
-                "json": json,
-            }
-            exec(code, exec_globals)  # noqa: S102
-
-            output = captured_output.getvalue()
-            return {
-                "output": output if output else "(no output)",
-            }
-
-        except Exception as e:
-            return {
-                "error": str(e),
-                "output": captured_output.getvalue(),
-            }
-
-        finally:
-            sys.stdout = old_stdout
+        entries = [e.model_dump() for e in self._network_data_store.entries]
+        return execute_python_sandboxed(code, extra_globals={"entries": entries})
 
     @token_optimized
     def _tool_search_har_by_request(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
@@ -779,7 +754,7 @@ If after exhaustive search you determine the required endpoint does NOT exist in
         results: list[dict[str, Any]] = []
 
         for entry in self._network_data_store.entries:
-            unique_terms_found = 0
+            found_terms: set[str] = set()
             total_hits = 0
             matched_in: list[str] = []
 
@@ -789,7 +764,7 @@ If after exhaustive search you determine the required endpoint does NOT exist in
                 for term in terms_lower:
                     count = url_lower.count(term)
                     if count > 0:
-                        unique_terms_found += 1
+                        found_terms.add(term)
                         total_hits += count
                         if "url" not in matched_in:
                             matched_in.append("url")
@@ -800,7 +775,7 @@ If after exhaustive search you determine the required endpoint does NOT exist in
                 for term in terms_lower:
                     count = headers_str.count(term)
                     if count > 0:
-                        unique_terms_found += 1
+                        found_terms.add(term)
                         total_hits += count
                         if "headers" not in matched_in:
                             matched_in.append("headers")
@@ -812,11 +787,12 @@ If after exhaustive search you determine the required endpoint does NOT exist in
                 for term in terms_lower:
                     count = body_lower.count(term)
                     if count > 0:
-                        unique_terms_found += 1
+                        found_terms.add(term)
                         total_hits += count
                         if "body" not in matched_in:
                             matched_in.append("body")
 
+            unique_terms_found = len(found_terms)
             if unique_terms_found > 0:
                 score = (total_hits / len(terms_lower)) * unique_terms_found
                 results.append({
@@ -1183,6 +1159,7 @@ If after exhaustive search you determine the required endpoint does NOT exist in
         # Enable autonomous mode
         self._autonomous_mode = True
         self._autonomous_iteration = 0
+        self._autonomous_max_iterations = max_iterations
         self._discovery_result = None
         self._discovery_failure = None
         self._finalize_tool_registered = False
@@ -1343,7 +1320,7 @@ If after exhaustive search you determine the required endpoint does NOT exist in
         # Add finalize tool availability notice
         if self._finalize_tool_registered:
             # Get urgency based on iteration count
-            remaining_iterations = 10 - self._autonomous_iteration
+            remaining_iterations = self._autonomous_max_iterations - self._autonomous_iteration
             if remaining_iterations <= 2:
                 finalize_notice = (
                     f"\n\n## CRITICAL: YOU MUST CALL finalize_result NOW!\n"
@@ -1404,6 +1381,7 @@ If after exhaustive search you determine the required endpoint does NOT exist in
         # Reset autonomous mode state
         self._autonomous_mode = False
         self._autonomous_iteration = 0
+        self._autonomous_max_iterations = 10
         self._discovery_result = None
         self._discovery_failure = None
         self._finalize_tool_registered = False
