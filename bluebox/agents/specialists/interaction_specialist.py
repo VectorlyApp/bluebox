@@ -28,17 +28,27 @@ from bluebox.utils.logger import get_logger
 logger = get_logger(name=__name__)
 
 
-# --- Result models ---
-
 class DiscoveredParameter(BaseModel):
     """A single discovered routine parameter."""
     name: str = Field(description="snake_case parameter name")
     type: str = Field(description="ParameterType value (string, date, integer, etc.)")
     description: str = Field(description="Human-readable description of the parameter")
-    examples: list[str] = Field(default_factory=list, description="Example values observed in interactions")
-    source_element_css_path: str | None = Field(default=None, description="CSS path of the source element")
-    source_element_tag: str | None = Field(default=None, description="HTML tag of the source element")
-    source_element_name: str | None = Field(default=None, description="Name attribute of the source element")
+    examples: list[str] = Field(
+        default_factory=list,
+        description="Example values observed in interactions",
+    )
+    source_element_css_path: str | None = Field(
+        default=None,
+        description="CSS path of the source element",
+    )
+    source_element_tag: str | None = Field(
+        default=None,
+        description="HTML tag of the source element",
+    )
+    source_element_name: str | None = Field(
+        default=None,
+        description="Name attribute of the source element",
+    )
 
 
 class ParameterDiscoveryResult(BaseModel):

@@ -3,9 +3,7 @@ bluebox/agents/specialists/js_specialist.py
 
 JavaScript specialist agent.
 
-Two roles:
-1. Interpret JavaScript files served by the web server
-2. Write IIFE JavaScript for RoutineJsEvaluateOperation execution in routines
+Writes IIFE JavaScript for RoutineJsEvaluateOperation execution in routines.
 """
 
 from __future__ import annotations
@@ -29,15 +27,12 @@ from bluebox.data_models.llms.interaction import (
     EmittedMessage,
 )
 from bluebox.data_models.llms.vendors import OpenAIModel
-from bluebox.llms.infra.js_data_store import JSDataStore
 from bluebox.utils.js_utils import generate_js_evaluate_wrapper_js, validate_js
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
 
-
-# Result models
 
 class JSCodeResult(BaseModel):
     """Successful JS code submission result."""
@@ -66,7 +61,7 @@ class JSSpecialist(AbstractSpecialist):
     """
     JavaScript specialist agent.
 
-    Analyzes served JS files and writes IIFE JavaScript for browser execution.
+    Writes IIFE JavaScript for browser execution.
     """
 
     SYSTEM_PROMPT: str = textwrap.dedent("""\
@@ -74,8 +69,8 @@ class JSSpecialist(AbstractSpecialist):
 
         ## Your Capabilities
 
-        1. **Analyze served JS files**: Search and read JavaScript files from the web server to understand client-side logic, APIs, and data structures.
-        2. **Write IIFE JavaScript**: Write new JavaScript code for browser execution in routines.
+        1. **Write IIFE JavaScript**: Write JavaScript code for browser execution in routines.
+        2. **Inspect DOM**: Analyze page structure via DOM snapshots to inform your code.
 
         ## JavaScript Code Requirements
 
@@ -100,8 +95,6 @@ class JSSpecialist(AbstractSpecialist):
 
         ## Tools
 
-        - **search_js_files**: Search JS file response bodies by terms
-        - **get_js_file_detail**: Get full JS file content by request_id
         - **get_dom_snapshot**: Get DOM snapshot (latest by default)
         - **validate_js_code**: Dry-run validation of JS code
         - **submit_js_code**: Submit final validated JS code
@@ -113,6 +106,7 @@ class JSSpecialist(AbstractSpecialist):
         - Keep code concise and focused on the specific task
         - Use DOM APIs (querySelector, getElementById, etc.) for element interaction
         - Use sessionStorage for passing data between operations
+        - Use `get_dom_snapshot` to understand page structure before writing code
     """)
 
     AUTONOMOUS_SYSTEM_PROMPT: str = textwrap.dedent("""\
@@ -125,8 +119,7 @@ class JSSpecialist(AbstractSpecialist):
         ## Process
 
         1. **Understand**: Analyze the task and determine what DOM manipulation is needed
-        2. **Research**: If JS files are available, search them for relevant APIs or data structures
-        3. **Check DOM**: Use `get_dom_snapshot` to understand the current page structure
+        2. **Check DOM**: Use `get_dom_snapshot` to understand the current page structure
         4. **Write**: Write the JavaScript code, validate it, then submit
         5. **Finalize**: Call `submit_js_code` with your validated code
 
@@ -152,7 +145,6 @@ class JSSpecialist(AbstractSpecialist):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
-        js_data_store: JSDataStore | None = None,
         dom_snapshots: list[DOMSnapshotEvent] | None = None,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
@@ -162,7 +154,6 @@ class JSSpecialist(AbstractSpecialist):
         existing_chats: list[Chat] | None = None,
         remote_debugging_address: str | None = None,
     ) -> None:
-        self._js_data_store = js_data_store
         self._dom_snapshots = dom_snapshots or []
         self._remote_debugging_address = remote_debugging_address
 
@@ -181,8 +172,7 @@ class JSSpecialist(AbstractSpecialist):
         )
 
         logger.debug(
-            "JSSpecialist initialized: js_data_store=%s, dom_snapshots=%d, browser=%s",
-            "yes" if js_data_store else "no",
+            "JSSpecialist initialized: dom_snapshots=%d, browser=%s",
             len(self._dom_snapshots),
             "yes" if remote_debugging_address else "no",
         )
@@ -191,14 +181,6 @@ class JSSpecialist(AbstractSpecialist):
 
     def _get_system_prompt(self) -> str:
         context_parts = [self.SYSTEM_PROMPT]
-
-        if self._js_data_store:
-            stats = self._js_data_store.stats
-            context_parts.append(
-                f"\n\n## JS Files Context\n"
-                f"- Total JS files: {stats.total_files}\n"
-                f"- Unique URLs: {stats.unique_urls}\n"
-            )
 
         if self._dom_snapshots:
             latest = self._dom_snapshots[-1]
@@ -213,13 +195,6 @@ class JSSpecialist(AbstractSpecialist):
 
     def _get_autonomous_system_prompt(self) -> str:
         context_parts = [self.AUTONOMOUS_SYSTEM_PROMPT]
-
-        if self._js_data_store:
-            stats = self._js_data_store.stats
-            context_parts.append(
-                f"\n\n## JS Files Context\n"
-                f"- Total JS files: {stats.total_files}\n"
-            )
 
         if self._dom_snapshots:
             latest = self._dom_snapshots[-1]
@@ -271,40 +246,6 @@ class JSSpecialist(AbstractSpecialist):
                 "required": ["js_code"],
             },
         )
-
-        # search_js_files (only if data store available)
-        if self._js_data_store:
-            self.llm_client.register_tool(
-                name="search_js_files",
-                description="Search JavaScript file response bodies by terms. Returns top results ranked by relevance.",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "terms": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "List of search terms to look for in JS file contents.",
-                        }
-                    },
-                    "required": ["terms"],
-                },
-            )
-
-            # get_js_file_detail
-            self.llm_client.register_tool(
-                name="get_js_file_detail",
-                description="Get full JavaScript file content by request_id.",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "request_id": {
-                            "type": "string",
-                            "description": "The request_id of the JS file entry.",
-                        }
-                    },
-                    "required": ["request_id"],
-                },
-            )
 
         # get_dom_snapshot (only if snapshots available)
         if self._dom_snapshots:
@@ -412,10 +353,6 @@ class JSSpecialist(AbstractSpecialist):
 
         if tool_name == "validate_js_code":
             return self._tool_validate_js_code(tool_arguments)
-        if tool_name == "search_js_files":
-            return self._tool_search_js_files(tool_arguments)
-        if tool_name == "get_js_file_detail":
-            return self._tool_get_js_file_detail(tool_arguments)
         if tool_name == "get_dom_snapshot":
             return self._tool_get_dom_snapshot(tool_arguments)
         if tool_name == "submit_js_code":
@@ -474,46 +411,6 @@ class JSSpecialist(AbstractSpecialist):
         return {
             "valid": True,
             "message": "Code passes all validation checks.",
-        }
-
-    @token_optimized
-    def _tool_search_js_files(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        if not self._js_data_store:
-            return {"error": "No JS data store available"}
-
-        terms = tool_arguments.get("terms", [])
-        if not terms:
-            return {"error": "No search terms provided"}
-
-        results = self._js_data_store.search_by_terms(terms, top_n=20)
-        if not results:
-            return {"message": "No matching JS files found", "terms_searched": len(terms)}
-
-        return {
-            "terms_searched": len(terms),
-            "results_found": len(results),
-            "results": results,
-        }
-
-    @token_optimized
-    def _tool_get_js_file_detail(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        if not self._js_data_store:
-            return {"error": "No JS data store available"}
-
-        request_id = tool_arguments.get("request_id")
-        if not request_id:
-            return {"error": "request_id is required"}
-
-        entry = self._js_data_store.get_file(request_id)
-        if not entry:
-            return {"error": f"Entry {request_id} not found"}
-
-        content = self._js_data_store.get_file_content(request_id)
-
-        return {
-            "request_id": request_id,
-            "url": entry.url,
-            "content": content,
         }
 
     @token_optimized

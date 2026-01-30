@@ -5,7 +5,12 @@ scripts/run_js_specialist.py
 Interactive CLI for the JS Specialist agent.
 
 Usage:
-    python scripts/run_js_specialist.py --jsonl-path ./cdp_captures/js/javascript_events.jsonl
+    python scripts/run_js_specialist.py
+
+    python scripts/run_js_specialist.py \
+        --dom-snapshots-dir ./cdp_captures/dom/ \
+        --remote-debugging-address 127.0.0.1:9222
+
 """
 
 import argparse
@@ -32,7 +37,6 @@ from bluebox.agents.specialists.js_specialist import (
     JSCodeFailureResult,
 )
 from bluebox.data_models.dom import DOMSnapshotEvent
-from bluebox.llms.infra.js_data_store import JSDataStore
 from bluebox.data_models.llms.interaction import (
     ChatRole,
     EmittedMessage,
@@ -72,38 +76,24 @@ BANNER = """\
 """
 
 
-def print_welcome(model: str, data_path: str, js_store: JSDataStore, dom_count: int = 0) -> None:
-    """Print welcome message with JS file stats."""
+def print_welcome(model: str, dom_count: int = 0) -> None:
+    """Print welcome message."""
     console.print(BANNER)
     console.print()
 
-    stats = js_store.stats
-
-    # Build stats table
-    stats_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
-    stats_table.add_column("Label", style="dim")
-    stats_table.add_column("Value", style="white")
-
-    stats_table.add_row("Total JS Files", str(stats.total_files))
-    stats_table.add_row("Unique URLs", str(stats.unique_urls))
-    stats_table.add_row("Total Size", f"{stats.total_bytes:,} bytes")
-
-    # Top hosts
-    top_hosts = sorted(stats.hosts.items(), key=lambda x: -x[1])[:5]
-    if top_hosts:
-        hosts_str = ", ".join(f"{h} ({c})" for h, c in top_hosts)
-        stats_table.add_row("Top Hosts", hosts_str)
-
     if dom_count > 0:
+        stats_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+        stats_table.add_column("Label", style="dim")
+        stats_table.add_column("Value", style="white")
         stats_table.add_row("DOM Snapshots", str(dom_count))
 
-    console.print(Panel(
-        stats_table,
-        title=f"[bold green]JS File Stats[/bold green] [dim]({data_path})[/dim]",
-        border_style="green",
-        box=box.ROUNDED,
-    ))
-    console.print()
+        console.print(Panel(
+            stats_table,
+            title="[bold green]Context[/bold green]",
+            border_style="green",
+            box=box.ROUNDED,
+        ))
+        console.print()
 
     console.print(Panel(
         """[bold]Commands:[/bold]
@@ -187,14 +177,12 @@ class TerminalJSSpecialistChat:
 
     def __init__(
         self,
-        js_store: JSDataStore,
         dom_snapshots: list[DOMSnapshotEvent] | None = None,
         llm_model: OpenAIModel = OpenAIModel.GPT_5_1,
         remote_debugging_address: str | None = None,
     ) -> None:
         """Initialize the terminal chat interface."""
         self._streaming_started: bool = False
-        self._js_store = js_store
         self._dom_snapshots = dom_snapshots
         self._llm_model = llm_model
         self._remote_debugging_address = remote_debugging_address
@@ -204,7 +192,6 @@ class TerminalJSSpecialistChat:
         """Create a fresh JSSpecialist agent."""
         return JSSpecialist(
             emit_message_callable=self._handle_message,
-            js_data_store=self._js_store,
             dom_snapshots=self._dom_snapshots,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
@@ -382,13 +369,7 @@ class TerminalJSSpecialistChat:
 def main() -> None:
     """Run the JS Specialist agent interactively."""
     parser = argparse.ArgumentParser(
-        description="JS Specialist - Interactive JavaScript file analyzer"
-    )
-    parser.add_argument(
-        "--jsonl-path",
-        type=str,
-        required=True,
-        help="Path to the JSONL file containing JavaScript network events",
+        description="JS Specialist - Interactive JavaScript code generation"
     )
     parser.add_argument(
         "--model",
@@ -409,20 +390,6 @@ def main() -> None:
         help="Directory containing DOM snapshot JSON files",
     )
     args = parser.parse_args()
-
-    # Load JSONL file
-    jsonl_path = Path(args.jsonl_path)
-    if not jsonl_path.exists():
-        console.print(f"[bold red]Error: JSONL file not found: {jsonl_path}[/bold red]")
-        sys.exit(1)
-
-    console.print(f"[dim]Loading JSONL file: {jsonl_path}[/dim]")
-
-    try:
-        js_store = JSDataStore(str(jsonl_path))
-    except ValueError as e:
-        console.print(f"[bold red]Error parsing JSONL file: {e}[/bold red]")
-        sys.exit(1)
 
     # Load DOM snapshots if provided
     dom_snapshots: list[DOMSnapshotEvent] | None = None
@@ -448,10 +415,9 @@ def main() -> None:
     }
     llm_model = model_map.get(args.model, OpenAIModel.GPT_5_1)
 
-    print_welcome(args.model, str(jsonl_path), js_store, dom_count=len(dom_snapshots) if dom_snapshots else 0)
+    print_welcome(args.model, dom_count=len(dom_snapshots) if dom_snapshots else 0)
 
     chat = TerminalJSSpecialistChat(
-        js_store=js_store,
         dom_snapshots=dom_snapshots,
         llm_model=llm_model,
         remote_debugging_address=args.remote_debugging_address,
