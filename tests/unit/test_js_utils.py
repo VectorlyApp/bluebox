@@ -4,8 +4,6 @@ tests/unit/test_js_utils.py
 Tests for JavaScript utility functions.
 """
 
-import pytest
-
 from bluebox.utils.js_utils import generate_js_evaluate_wrapper_js
 
 

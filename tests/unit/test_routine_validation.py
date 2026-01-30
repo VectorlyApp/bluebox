@@ -1212,4 +1212,3 @@ class TestParameterTypeQuoteValidation:
         
         # Should not raise any validation errors
         routine.validate_parameter_usage()
-

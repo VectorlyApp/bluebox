@@ -10,7 +10,6 @@ Contains:
 - VALID_PLACEHOLDER_PREFIXES: sessionStorage, localStorage, cookie, windowProperty
 """
 
-from enum import StrEnum
 import re
 import time
 from typing import Any, ClassVar, Callable
@@ -18,26 +17,7 @@ import uuid
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-# Valid prefixes for storage/meta/window placeholders
-VALID_PLACEHOLDER_PREFIXES = frozenset([
-    "sessionStorage", "localStorage", "cookie", "meta", "windowProperty"
-])
-
-
-class ParameterType(StrEnum):
-    """Supported parameter types for MCP tools."""
-    # python primitives
-    STRING = "string"
-    INTEGER = "integer"
-    NUMBER = "number"
-    BOOLEAN = "boolean"
-
-    # non-python primitives
-    DATE = "date"
-    DATETIME = "datetime"
-    EMAIL = "email"
-    URL = "url"
-    ENUM = "enum"
+from bluebox.data_models.parameter_type import ParameterType, VALID_PLACEHOLDER_PREFIXES
 
 
 class Parameter(BaseModel):

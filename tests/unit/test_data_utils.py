@@ -20,7 +20,7 @@ from bluebox.utils.data_utils import (
     resolve_dotted_path,
     get_text_from_html,
     apply_params_to_str,
-    apply_params_to_dict,
+    apply_params_to_json,
 )
 from bluebox.utils.exceptions import UnsupportedFileFormat
 
@@ -886,41 +886,41 @@ class TestAssertBalancedJsDelimiters:
 
 
 class TestApplyParamsToDictStandalone:
-    """Test apply_params_to_dict with standalone placeholder replacement."""
+    """Test apply_params_to_json with standalone placeholder replacement."""
 
     def test_string_param(self) -> None:
         d = {"name": "{{user_name}}"}
         params = {"user_name": "John Doe"}
         type_map = {"user_name": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"name": "John Doe"}
 
     def test_integer_param(self) -> None:
         d = {"age": "{{user_age}}"}
         params = {"user_age": 25}
         type_map = {"user_age": "integer"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"age": 25}
 
     def test_number_param(self) -> None:
         d = {"price": "{{item_price}}"}
         params = {"item_price": 19.99}
         type_map = {"item_price": "number"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"price": 19.99}
 
     def test_boolean_true(self) -> None:
         d = {"active": "{{is_active}}"}
         params = {"is_active": True}
         type_map = {"is_active": "boolean"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"active": True}
 
     def test_boolean_false(self) -> None:
         d = {"enabled": "{{is_enabled}}"}
         params = {"is_enabled": False}
         type_map = {"is_enabled": "boolean"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"enabled": False}
 
     def test_string_typed_integer_value(self) -> None:
@@ -928,7 +928,7 @@ class TestApplyParamsToDictStandalone:
         d = {"zip": "{{zip_code}}"}
         params = {"zip_code": 2101}
         type_map = {"zip_code": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"zip": "2101"}
 
     def test_integer_from_string_value(self) -> None:
@@ -936,53 +936,53 @@ class TestApplyParamsToDictStandalone:
         d = {"age": "{{age}}"}
         params = {"age": "25"}
         type_map = {"age": "integer"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"age": 25}
 
     def test_zero_value(self) -> None:
         d = {"count": "{{item_count}}"}
         params = {"item_count": 0}
         type_map = {"item_count": "integer"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"count": 0}
 
     def test_empty_string(self) -> None:
         d = {"name": "{{user_name}}"}
         params = {"user_name": ""}
         type_map = {"user_name": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"name": ""}
 
 
 class TestApplyParamsToDictSubstring:
-    """Test apply_params_to_dict with substring interpolation."""
+    """Test apply_params_to_json with substring interpolation."""
 
     def test_substring_interpolation(self) -> None:
         d = {"label": "Price: {{direction}}"}
         params = {"direction": "Low to High"}
         type_map = {"direction": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"label": "Price: Low to High"}
 
     def test_substring_with_number(self) -> None:
         d = {"msg": "Page {{num}} of results"}
         params = {"num": 5}
         type_map = {"num": "integer"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"msg": "Page 5 of results"}
 
     def test_date_suffix(self) -> None:
         d = {"datetime": "{{date}}T00:00:00"}
         params = {"date": "2026-01-30"}
         type_map = {"date": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"datetime": "2026-01-30T00:00:00"}
 
     def test_multiple_substrings(self) -> None:
         d = {"greeting": "Hello {{first}} {{last}}!"}
         params = {"first": "John", "last": "Doe"}
         type_map = {"first": "string", "last": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"greeting": "Hello John Doe!"}
 
 
@@ -993,46 +993,46 @@ class TestApplyParamsToDictNonMatching:
         d = {"token": "{{sessionStorage:auth.token}}"}
         params = {"user_id": "123"}
         type_map = {"user_id": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"token": "{{sessionStorage:auth.token}}"}
 
     def test_leave_cookie_untouched(self) -> None:
         d = {"session": "{{cookie:session_id}}"}
         params = {"user_id": "123"}
         type_map = {"user_id": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"session": "{{cookie:session_id}}"}
 
     def test_leave_missing_param_untouched(self) -> None:
         d = {"name": "{{user_name}}", "age": "{{user_age}}"}
         params = {"user_name": "George"}
         type_map = {"user_name": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"name": "George", "age": "{{user_age}}"}
 
 
 class TestApplyParamsToDictNested:
-    """Test apply_params_to_dict with nested structures."""
+    """Test apply_params_to_json with nested structures."""
 
     def test_nested_dict(self) -> None:
         d = {"user": {"name": "{{name}}", "profile": {"age": "{{age}}"}}}
         params = {"name": "Laura", "age": 28}
         type_map = {"name": "string", "age": "integer"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"user": {"name": "Laura", "profile": {"age": 28}}}
 
     def test_list_values(self) -> None:
         d = {"items": ["{{item1}}", "{{item2}}"]}
         params = {"item1": "first", "item2": "second"}
         type_map = {"item1": "string", "item2": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"items": ["first", "second"]}
 
     def test_mixed_types(self) -> None:
         d = {"name": "{{name}}", "age": "{{age}}", "active": "{{active}}"}
         params = {"name": "Frank", "age": 35, "active": True}
         type_map = {"name": "string", "age": "integer", "active": "boolean"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"name": "Frank", "age": 35, "active": True}
 
     def test_preserves_non_string_values(self) -> None:
@@ -1040,24 +1040,24 @@ class TestApplyParamsToDictNested:
         d = {"name": "{{name}}", "hardcoded_int": 42, "hardcoded_bool": True}
         params = {"name": "test"}
         type_map = {"name": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"name": "test", "hardcoded_int": 42, "hardcoded_bool": True}
 
     def test_empty_params(self) -> None:
         d = {"name": "{{user}}"}
-        result = apply_params_to_dict(d, {}, {})
+        result = apply_params_to_json(d, {}, {})
         assert result == {"name": "{{user}}"}
 
     def test_same_param_multiple_times(self) -> None:
         d = {"first": "{{value}}", "second": "{{value}}"}
         params = {"value": "repeated"}
         type_map = {"value": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"first": "repeated", "second": "repeated"}
 
 
 class TestApplyParamsToDictRealWorld:
-    """Test real-world scenarios with apply_params_to_dict."""
+    """Test real-world scenarios with apply_params_to_json."""
 
     def test_http_headers_with_bearer_token(self) -> None:
         d = {
@@ -1067,7 +1067,7 @@ class TestApplyParamsToDictRealWorld:
         }
         params = {"token": "abc123xyz"}
         type_map = {"token": "string"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {
             "Authorization": "Bearer abc123xyz",
             "X-Request-ID": "{{uuid}}",  # builtin, left untouched
@@ -1083,7 +1083,7 @@ class TestApplyParamsToDictRealWorld:
         }
         params = {"username": "testuser", "limit": 50, "active": True}
         type_map = {"username": "string", "limit": "integer", "active": "boolean"}
-        result = apply_params_to_dict(d, params, type_map)
+        result = apply_params_to_json(d, params, type_map)
         assert result == {"username": "testuser", "limit": 50, "active": True, "type": "OW"}
 
 
@@ -1140,4 +1140,3 @@ class TestApplyParamsToStr:
         params = {"filter": "name=John&age>25"}
         result = apply_params_to_str(text, params)
         assert result == "https://example.com/api?filter=name=John&age>25"
-

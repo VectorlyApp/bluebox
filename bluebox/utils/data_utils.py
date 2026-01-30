@@ -9,7 +9,7 @@ Contains:
 - get_text_from_html(): Extract text from HTML
 - resolve_dotted_path(): Access nested dict values by dot notation
 - apply_params_to_str(): Substitute {{placeholders}} in strings
-- apply_params_to_dict(): Substitute {{placeholders}} in dicts with type-aware replacement
+- apply_params_to_json(): Substitute {{placeholders}} in dicts with type-aware replacement
 - assert_balanced_js_delimiters(): Validate JS code structure
 - sanitize_filename(): Clean filenames for filesystem
 """
@@ -30,7 +30,7 @@ from urllib.parse import urlparse
 import tldextract
 from bs4 import BeautifulSoup
 
-from bluebox.data_models.routine.parameter import ParameterType
+from bluebox.data_models.parameter_type import ParameterType
 from bluebox.utils.exceptions import UnsupportedFileFormat
 from bluebox.utils.logger import get_logger
 
@@ -346,7 +346,7 @@ def _coerce_value(value: Any, param_type: str) -> Any:
         return str(value)
 
 
-def apply_params_to_dict(
+def apply_params_to_json(
     d: dict | list,
     parameters_dict: dict,
     param_type_map: dict[str, str],

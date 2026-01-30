@@ -35,7 +35,7 @@ from bluebox.data_models.routine.endpoint import Endpoint
 from bluebox.data_models.routine.execution import RoutineExecutionContext, FetchExecutionResult, OperationExecutionMetadata
 from bluebox.data_models.routine.parameter import VALID_PLACEHOLDER_PREFIXES, BUILTIN_PARAMETERS
 from bluebox.data_models.ui_elements import MouseButton, ScrollBehavior, HTMLScope
-from bluebox.utils.data_utils import apply_params_to_str, apply_params_to_dict, assert_balanced_js_delimiters
+from bluebox.utils.data_utils import apply_params_to_str, apply_params_to_json, assert_balanced_js_delimiters
 from bluebox.utils.logger import get_logger
 from bluebox.utils.js_utils import (
     generate_fetch_js,
@@ -233,11 +233,11 @@ class RoutineFetchOperation(RoutineOperation):
         fetch_url = apply_params_to_str(self.endpoint.url, parameters_dict)
         headers: dict = {}
         if self.endpoint.headers:
-            headers = apply_params_to_dict(self.endpoint.headers, parameters_dict, param_type_map)
+            headers = apply_params_to_json(self.endpoint.headers, parameters_dict, param_type_map)
 
         body = None
         if self.endpoint.body:
-            body = apply_params_to_dict(self.endpoint.body, parameters_dict, param_type_map)
+            body = apply_params_to_json(self.endpoint.body, parameters_dict, param_type_map)
 
         # Serialize body to JS string literal
         if body is None:
@@ -894,11 +894,11 @@ class RoutineDownloadOperation(RoutineOperation):
         download_url = apply_params_to_str(self.endpoint.url, routine_execution_context.parameters_dict)
         download_headers = {}
         if self.endpoint.headers:
-            download_headers = apply_params_to_dict(self.endpoint.headers, routine_execution_context.parameters_dict, param_type_map)
+            download_headers = apply_params_to_json(self.endpoint.headers, routine_execution_context.parameters_dict, param_type_map)
 
         download_body = None
         if self.endpoint.body:
-            download_body = apply_params_to_dict(self.endpoint.body, routine_execution_context.parameters_dict, param_type_map)
+            download_body = apply_params_to_json(self.endpoint.body, routine_execution_context.parameters_dict, param_type_map)
 
         # Serialize body for JS
         if download_body is None:

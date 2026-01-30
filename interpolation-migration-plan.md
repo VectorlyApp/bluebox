@@ -18,11 +18,11 @@ The escaped-quote convention (`\"{{param}}\"`) is eliminated entirely. All place
 def apply_params(text: str, parameters_dict: dict | None) -> str
 
 # New — two functions
-def apply_params_to_dict(d: dict, parameters_dict: dict, param_type_map: dict[str, ParameterType]) -> dict
+def apply_params_to_json(d: dict, parameters_dict: dict, param_type_map: dict[str, ParameterType]) -> dict
 def apply_params_to_str(text: str, parameters_dict: dict) -> str
 ```
 
-### `apply_params_to_dict(d, parameters_dict, param_type_map)`
+### `apply_params_to_json(d, parameters_dict, param_type_map)`
 Recursively walk the dict. For each string value:
 - **Standalone placeholder** (`"{{key}}"` is the entire string): replace with typed value based on `param_type_map[key]` — string types → `str(value)`, integer → `int(value)`, number → `float(value)`, boolean → `bool(value)`
 - **Substring placeholder** (`"prefix {{key}} suffix"`): regex-replace `{{key}}` with `str(value)`, result stays a string
@@ -36,8 +36,8 @@ Simple regex: replace `{{key}}` with `str(value)` for each key in parameters_dic
 ## Files to modify
 
 ### 1. `bluebox/utils/data_utils.py`
-- Replace `apply_params` with `apply_params_to_dict` and `apply_params_to_str`
-- `apply_params_to_dict`: recursive dict walker, handles standalone vs substring, uses `param_type_map` for type coercion
+- Replace `apply_params` with `apply_params_to_json` and `apply_params_to_str`
+- `apply_params_to_json`: recursive dict walker, handles standalone vs substring, uses `param_type_map` for type coercion
 - `apply_params_to_str`: simple `{{key}}` → `str(value)` regex substitution
 
 ### 2. `bluebox/data_models/routine/operation.py` (all call sites)
@@ -46,20 +46,20 @@ Update each operation to use the appropriate function:
 | Operation | Field | Function |
 |---|---|---|
 | `RoutineFetchOperation._execute_fetch` | `endpoint.url` | `apply_params_to_str` |
-| `RoutineFetchOperation._execute_fetch` | `endpoint.headers` | `apply_params_to_dict` (pass dict directly, no serialize/deserialize) |
-| `RoutineFetchOperation._execute_fetch` | `endpoint.body` | `apply_params_to_dict` (pass dict directly, no serialize/deserialize) |
+| `RoutineFetchOperation._execute_fetch` | `endpoint.headers` | `apply_params_to_json` (pass dict directly, no serialize/deserialize) |
+| `RoutineFetchOperation._execute_fetch` | `endpoint.body` | `apply_params_to_json` (pass dict directly, no serialize/deserialize) |
 | `RoutineNavigateOperation` | `url` | `apply_params_to_str` |
 | `RoutineClickOperation` | `selector` | `apply_params_to_str` |
 | `RoutineTypeOperation` | `selector`, `text` | `apply_params_to_str` |
 | `RoutineScrollOperation` | `selector` | `apply_params_to_str` |
 | `RoutineReturnHTMLOperation` | `selector` | `apply_params_to_str` |
 | `RoutineDownloadOperation` | `url` | `apply_params_to_str` |
-| `RoutineDownloadOperation` | `headers` | `apply_params_to_dict` |
-| `RoutineDownloadOperation` | `body` | `apply_params_to_dict` |
+| `RoutineDownloadOperation` | `headers` | `apply_params_to_json` |
+| `RoutineDownloadOperation` | `body` | `apply_params_to_json` |
 | `RoutineDownloadOperation` | `filename` | `apply_params_to_str` |
 | `RoutineJsEvaluateOperation` | `js` | `apply_params_to_str` |
 
-**Key win for fetch/download**: eliminate the `json.dumps` → `apply_params` → `json.loads` round-trip. Just pass the dict directly to `apply_params_to_dict`.
+**Key win for fetch/download**: eliminate the `json.dumps` → `apply_params` → `json.loads` round-trip. Just pass the dict directly to `apply_params_to_json`.
 
 Operations need access to `param_type_map`. Add it to `RoutineExecutionContext`.
 
@@ -108,5 +108,5 @@ Add `param_type_map: dict[str, ParameterType]` field to `RoutineExecutionContext
 
 1. `pytest tests/ -v` — all tests pass
 2. Manually inspect an example routine to confirm no escaped quotes remain
-3. Spot-check that `apply_params_to_dict` correctly produces typed values (int, bool, string) in a body dict
+3. Spot-check that `apply_params_to_json` correctly produces typed values (int, bool, string) in a body dict
 4. Verify JS-resolved placeholders (sessionStorage, etc.) still work by checking the generated JS regex handles unquoted `{{sessionStorage:...}}` patterns
