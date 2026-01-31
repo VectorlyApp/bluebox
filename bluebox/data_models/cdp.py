@@ -99,6 +99,80 @@ class NetworkTransactionEvent(BaseCDPEvent):
 
 ## Storage models
 
+class StorageEventType(StrEnum):
+    """Types of browser storage events."""
+
+    # Cookie events
+    INITIAL_COOKIES = "initialCookies"
+    COOKIE_CHANGE = "cookieChange"
+
+    # LocalStorage events
+    LOCAL_STORAGE_CLEARED = "localStorageCleared"
+    LOCAL_STORAGE_ITEM_ADDED = "localStorageItemAdded"
+    LOCAL_STORAGE_ITEM_REMOVED = "localStorageItemRemoved"
+    LOCAL_STORAGE_ITEM_UPDATED = "localStorageItemUpdated"
+
+    # SessionStorage events
+    SESSION_STORAGE_CLEARED = "sessionStorageCleared"
+    SESSION_STORAGE_ITEM_ADDED = "sessionStorageItemAdded"
+    SESSION_STORAGE_ITEM_REMOVED = "sessionStorageItemRemoved"
+    SESSION_STORAGE_ITEM_UPDATED = "sessionStorageItemUpdated"
+
+    # IndexedDB events
+    INDEXED_DB_EVENT = "indexedDBEvent"
+
+    @classmethod
+    def cookie_types(cls) -> set["StorageEventType"]:
+        """Return all cookie-related event types."""
+        return {cls.INITIAL_COOKIES, cls.COOKIE_CHANGE}
+
+    @classmethod
+    def local_storage_types(cls) -> set["StorageEventType"]:
+        """Return all localStorage-related event types."""
+        return {
+            cls.LOCAL_STORAGE_CLEARED,
+            cls.LOCAL_STORAGE_ITEM_ADDED,
+            cls.LOCAL_STORAGE_ITEM_REMOVED,
+            cls.LOCAL_STORAGE_ITEM_UPDATED,
+        }
+
+    @classmethod
+    def session_storage_types(cls) -> set["StorageEventType"]:
+        """Return all sessionStorage-related event types."""
+        return {
+            cls.SESSION_STORAGE_CLEARED,
+            cls.SESSION_STORAGE_ITEM_ADDED,
+            cls.SESSION_STORAGE_ITEM_REMOVED,
+            cls.SESSION_STORAGE_ITEM_UPDATED,
+        }
+
+    @classmethod
+    def indexed_db_types(cls) -> set["StorageEventType"]:
+        """Return all IndexedDB-related event types."""
+        return {cls.INDEXED_DB_EVENT}
+
+    # Factory methods for DOM storage events
+    @classmethod
+    def cleared(cls, is_local: bool) -> "StorageEventType":
+        """Get the cleared event type for localStorage or sessionStorage."""
+        return cls.LOCAL_STORAGE_CLEARED if is_local else cls.SESSION_STORAGE_CLEARED
+
+    @classmethod
+    def item_added(cls, is_local: bool) -> "StorageEventType":
+        """Get the item added event type for localStorage or sessionStorage."""
+        return cls.LOCAL_STORAGE_ITEM_ADDED if is_local else cls.SESSION_STORAGE_ITEM_ADDED
+
+    @classmethod
+    def item_removed(cls, is_local: bool) -> "StorageEventType":
+        """Get the item removed event type for localStorage or sessionStorage."""
+        return cls.LOCAL_STORAGE_ITEM_REMOVED if is_local else cls.SESSION_STORAGE_ITEM_REMOVED
+
+    @classmethod
+    def item_updated(cls, is_local: bool) -> "StorageEventType":
+        """Get the item updated event type for localStorage or sessionStorage."""
+        return cls.LOCAL_STORAGE_ITEM_UPDATED if is_local else cls.SESSION_STORAGE_ITEM_UPDATED
+
+
 class StorageEvent(BaseCDPEvent):
     """
     Model for browser storage monitoring events.
@@ -106,14 +180,9 @@ class StorageEvent(BaseCDPEvent):
     """
     model_config = ConfigDict(extra='allow')
 
-    type: str = Field(
+    type: StorageEventType = Field(
         ...,
         description="Type of storage event",
-        examples=[
-            "initialCookies", "cookieChange",
-            "localStorageCleared", "localStorageItemAdded", "sessionStorageItemAdded",
-            "indexedDBEvent",
-        ]
     )
     source: str | None = Field(
         default=None,
