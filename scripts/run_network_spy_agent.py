@@ -25,7 +25,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from bluebox.agents.network_spy_agent import (
+from bluebox.agents.specialists.network_spy_agent import (
     NetworkSpyAgent,
     EndpointDiscoveryResult,
     DiscoveredEndpoint,

@@ -185,7 +185,6 @@ class JSSpecialist(AbstractSpecialist):
             chat_thread=chat_thread,
             existing_chats=existing_chats,
         )
-
         logger.debug(
             "JSSpecialist initialized: dom_snapshots=%d, network_data_store=%s, browser=%s",
             len(self._dom_snapshots),
