@@ -5,11 +5,16 @@ File-based event writer callback for AsyncCDPSession.
 Used by Bluebox CLI and SDK to write CDP events to disk.
 """
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 from bluebox.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from bluebox.data_models.cdp import BaseCDPEvent
 
 logger = get_logger(name=__name__)
 
@@ -91,20 +96,22 @@ class FileEventWriter:
         logger.info("   JavaScript events: %s", self.javascript_events_path)
         logger.info("   DOM events: %s", self.dom_events_path)
 
-    async def write_event(self, category: str, event: Any) -> None:
+    async def write_event(self, category: str, event: BaseCDPEvent) -> None:
         """
         Async callback that writes events to appropriate files.
 
         Args:
             category: Event category (monitor class name, e.g., "AsyncNetworkMonitor").
-            event: Event data (Pydantic model with .model_dump() or dict).
+            event: CDP event (BaseCDPEvent subclass).
         """
-        # Convert Pydantic model to dict if needed
+        # Convert Pydantic model to dict, with fallback for unexpected types
         if hasattr(event, "model_dump"):
             event_dict = event.model_dump()
         elif isinstance(event, dict):
+            logger.warning("write_event received a dict instead of BaseCDPEvent for category=%s", category)
             event_dict = event
         else:
+            logger.warning("write_event received unexpected type %s for category=%s", type(event).__name__, category)
             event_dict = {"data": str(event)}
 
         # Determine output file based on category
@@ -127,7 +134,7 @@ class FileEventWriter:
         elif category == "AsyncDOMMonitor":
             output_path = self.dom_events_path
         else:
-            # Unknown category - log warning but don't fail
+            # Unknown category; log warning but don't fail
             logger.warning("⚠️ Unknown event category: %s", category)
             return
 
