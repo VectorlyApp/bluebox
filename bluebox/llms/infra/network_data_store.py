@@ -14,7 +14,6 @@ import fnmatch
 import json
 from collections import Counter
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -27,7 +26,7 @@ from bluebox.constants.network import (
     SKIP_FILE_EXTENSIONS,
 )
 from bluebox.data_models.cdp import NetworkTransactionEvent
-from bluebox.utils.data_utils import extract_object_schema
+from bluebox.utils.data_utils import extract_object_schema, read_jsonl
 from bluebox.utils.logger import get_logger
 
 
@@ -156,28 +155,19 @@ class NetworkDataStore:
         self._entry_index: dict[str, NetworkTransactionEvent] = {}  # request_id -> event
         self._stats: NetworkStats = NetworkStats()
 
-        path = Path(jsonl_path)
-        if not path.exists():
-            raise ValueError(f"JSONL file does not exist: {jsonl_path}")
-
         # Load entries from JSONL, filtering to only relevant entries
         skipped = 0
-        with open(path, mode="r", encoding="utf-8") as f:
-            for line_num, line in enumerate(f):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                    event = NetworkTransactionEvent.model_validate(data)
-                    if self._is_relevant_entry(event):
-                        self._entries.append(event)
-                        self._entry_index[event.request_id] = event
-                    else:
-                        skipped += 1
-                except (json.JSONDecodeError, ValueError) as e:
-                    logger.warning("Failed to parse line %d: %s", line_num + 1, e)
-                    continue
+        for line_num, data in read_jsonl(jsonl_path):
+            try:
+                event = NetworkTransactionEvent.model_validate(data)
+                if self._is_relevant_entry(event):
+                    self._entries.append(event)
+                    self._entry_index[event.request_id] = event
+                else:
+                    skipped += 1
+            except ValueError as e:
+                logger.warning("Failed to validate line %d: %s", line_num + 1, e)
+                continue
 
         self._compute_stats()
 

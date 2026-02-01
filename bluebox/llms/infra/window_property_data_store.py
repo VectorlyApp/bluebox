@@ -7,16 +7,15 @@ Parses JSONL files with WindowPropertyEvent entries and provides
 structured access to window property change data.
 """
 
-import json
 from collections import Counter
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from bluebox.data_models.cdp import (
     WindowPropertyChangeType,
     WindowPropertyEvent,
 )
+from bluebox.utils.data_utils import read_jsonl
 from bluebox.utils.logger import get_logger
 
 
@@ -101,24 +100,15 @@ class WindowPropertyDataStore:
         self._entry_index: dict[int, WindowPropertyEvent] = {}  # index -> event
         self._stats: WindowPropertyStats = WindowPropertyStats()
 
-        path = Path(jsonl_path)
-        if not path.exists():
-            raise ValueError(f"JSONL file does not exist: {jsonl_path}")
-
         # Load entries from JSONL
-        with open(path, mode="r", encoding="utf-8") as f:
-            for line_num, line in enumerate(f):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                    event = WindowPropertyEvent.model_validate(data)
-                    self._entries.append(event)
-                    self._entry_index[line_num] = event
-                except (json.JSONDecodeError, ValueError) as e:
-                    logger.warning("Failed to parse line %d: %s", line_num + 1, e)
-                    continue
+        for line_num, data in read_jsonl(jsonl_path):
+            try:
+                event = WindowPropertyEvent.model_validate(data)
+                self._entries.append(event)
+                self._entry_index[line_num] = event
+            except ValueError as e:
+                logger.warning("Failed to validate line %d: %s", line_num + 1, e)
+                continue
 
         self._compute_stats()
 

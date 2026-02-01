@@ -4,7 +4,7 @@ bluebox/utils/data_utils.py
 Data loading, writing, and transformation utilities.
 
 Contains:
-- write_json_file(), write_jsonl(): Save data to files
+- write_json_file(), write_jsonl(), read_jsonl(): Save/load data to/from files
 - get_text_from_html(): Extract text from HTML
 - resolve_dotted_path(): Access nested dict values by dot notation
 - apply_params(): Substitute {{placeholders}} in text
@@ -21,6 +21,7 @@ import os
 import re
 import time
 from collections import defaultdict
+from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -126,6 +127,36 @@ def write_jsonl(path: str, obj: Any) -> None:
     """
     with open(path, mode="a", encoding="utf-8") as f:
         f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+
+def read_jsonl(path: str | Path) -> Iterator[tuple[int, dict[str, Any]]]:
+    """
+    Read a JSONL file and yield parsed JSON objects one line at a time.
+
+    Args:
+        path: Path to the JSONL file.
+
+    Yields:
+        Tuple of (line_number, parsed_dict) for each valid JSON line.
+        Line numbers are 0-indexed.
+        Skips empty lines and logs warnings for invalid JSON.
+    """
+    file_path = Path(path) if isinstance(path, str) else path
+
+    if not file_path.exists():
+        raise ValueError(f"JSONL file does not exist: {path}")
+
+    with open(file_path, mode="r", encoding="utf-8") as f:
+        for line_num, line in enumerate(f):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                yield line_num, data
+            except json.JSONDecodeError as e:
+                logger.warning("Failed to parse line %d: %s", line_num + 1, e)
+                continue
 
 
 def write_json_file(path: str, obj: Any) -> None:
