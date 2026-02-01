@@ -19,6 +19,7 @@ from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from bluebox.cdp.async_cdp_session import AsyncCDPSession
+    from bluebox.data_models.cdp import BaseCDPEvent
 
 logger = get_logger(name=__name__)
 
@@ -121,7 +122,7 @@ class AsyncInteractionMonitor(AbstractAsyncMonitor):
 
     # Magic methods _____________________________________________________________________________________________
 
-    def __init__(self, event_callback_fn: Callable[[str, dict], Awaitable[None]]) -> None:
+    def __init__(self, event_callback_fn: Callable[[str, BaseCDPEvent], Awaitable[None]]) -> None:
         """
         Initialize AsyncInteractionMonitor.
         Args:
