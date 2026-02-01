@@ -10,6 +10,7 @@ Contains:
 - Uses: LocalDiscoveryDataStore, RoutineDiscoveryAgent
 """
 
+import json
 import os
 from pathlib import Path
 from typing import Callable
@@ -145,9 +146,15 @@ class RoutineDiscovery:
             routine = self.agent.run()
             logger.info("Routine discovery completed successfully.")
 
-            # Get test parameters from the agent (agent saves to output_dir)
+            # Get test parameters from the agent
             test_parameters = self.agent.get_test_parameters(routine)
             logger.info("Test parameters generated successfully.")
+
+            # Save test parameters to output directory
+            test_params_dict = {p.name: p.value for p in test_parameters.parameters}
+            test_params_path = Path(self.output_dir) / "test_parameters.json"
+            test_params_path.write_text(json.dumps(test_params_dict, indent=2))
+            logger.info(f"Test parameters saved to: {test_params_path}")
 
             return RoutineDiscoveryResult(
                 routine=routine,

@@ -34,6 +34,8 @@ from bluebox.data_models.routine_discovery.llm_responses import (
     SessionStorageType,
     TransactionSource,
     WindowPropertySource,
+    TestParameter,
+    TestParametersResponse,
 )
 from bluebox.data_models.routine_discovery.state import (
     DiscoveryPhase,
@@ -707,7 +709,7 @@ You have access to captured browser data including:
             self._emit_progress(f"Discovery failed: {e}", RoutineDiscoveryMessageType.ERROR)
             raise
 
-    def get_test_parameters(self, routine: Routine) -> "TestParametersResponse":
+    def get_test_parameters(self, routine: Routine) -> TestParametersResponse:
         """
         Generate test parameters for the routine based on observed values from discovery.
 
@@ -728,33 +730,17 @@ You have access to captured browser data including:
                     for var in extracted.variables:
                         observed_values[var.name] = var.observed_value
 
-        # Match routine parameters with observed values
+        # Match routine parameters with observed values (all values as strings)
         for param in routine.parameters:
             value = observed_values.get(param.name, "")
-            # Convert to appropriate type
-            if param.type == "integer":
-                try:
-                    value = int(value) if value else 1
-                except ValueError:
-                    value = 1
-            elif param.type == "number":
-                try:
-                    value = float(value) if value else 1.0
-                except ValueError:
-                    value = 1.0
-            elif param.type == "boolean":
-                value = value.lower() in ("true", "1", "yes") if value else False
-            test_params.append(TestParameter(name=param.name, value=value))
+            # Use observed value or provide sensible defaults as strings
+            if not value:
+                if param.type == "integer":
+                    value = "1"
+                elif param.type == "number":
+                    value = "1.0"
+                elif param.type == "boolean":
+                    value = "false"
+            test_params.append(TestParameter(name=param.name, value=str(value)))
 
         return TestParametersResponse(parameters=test_params)
-
-
-class TestParameter(BaseModel):
-    """A test parameter with name and value."""
-    name: str
-    value: str | int | float | bool
-
-
-class TestParametersResponse(BaseModel):
-    """Response containing test parameters."""
-    parameters: list[TestParameter]
