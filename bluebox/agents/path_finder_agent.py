@@ -1,6 +1,8 @@
 """
 bluebox/agents/path_finder_agent.py
 
+# NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
+
 Agent specialized in tracing where tokens/values originated from.
 
 Contains:

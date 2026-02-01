@@ -1,7 +1,7 @@
 """
 bluebox/agents/network_spy_agent.py
 
-# NOTE: THIS AGENT IS IN BETA AND NOT YET READY FOR PRODUCTION
+# NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
 Agent specialized in searching through network traffic data.
 

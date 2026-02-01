@@ -2,6 +2,8 @@
 """
 scripts/run_path_finder_agent.py
 
+# NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
+
 Interactive CLI for the Path Finder agent - traces where tokens/values originated from.
 
 Usage:
