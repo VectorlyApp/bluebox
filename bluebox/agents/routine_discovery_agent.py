@@ -706,3 +706,55 @@ You have access to captured browser data including:
             logger.exception(f"Discovery failed: {e}")
             self._emit_progress(f"Discovery failed: {e}", RoutineDiscoveryMessageType.ERROR)
             raise
+
+    def get_test_parameters(self, routine: Routine) -> "TestParametersResponse":
+        """
+        Generate test parameters for the routine based on observed values from discovery.
+
+        Args:
+            routine: The production routine to generate test parameters for.
+
+        Returns:
+            TestParametersResponse with parameter name/value pairs.
+        """
+        test_params = []
+
+        # Get observed values from extracted variables in state
+        observed_values = {}
+        if self._state:
+            for tx_data in self._state.transaction_data.values():
+                extracted = tx_data.get("extracted_variables")
+                if extracted:
+                    for var in extracted.variables:
+                        observed_values[var.name] = var.observed_value
+
+        # Match routine parameters with observed values
+        for param in routine.parameters:
+            value = observed_values.get(param.name, "")
+            # Convert to appropriate type
+            if param.type == "integer":
+                try:
+                    value = int(value) if value else 1
+                except ValueError:
+                    value = 1
+            elif param.type == "number":
+                try:
+                    value = float(value) if value else 1.0
+                except ValueError:
+                    value = 1.0
+            elif param.type == "boolean":
+                value = value.lower() in ("true", "1", "yes") if value else False
+            test_params.append(TestParameter(name=param.name, value=value))
+
+        return TestParametersResponse(parameters=test_params)
+
+
+class TestParameter(BaseModel):
+    """A test parameter with name and value."""
+    name: str
+    value: str | int | float | bool
+
+
+class TestParametersResponse(BaseModel):
+    """Response containing test parameters."""
+    parameters: list[TestParameter]
