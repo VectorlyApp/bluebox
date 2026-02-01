@@ -191,41 +191,18 @@ class StorageDataStore:
         search_value = value if case_sensitive else value.lower()
 
         for idx, entry in enumerate(self._entries):
-            match_locations: list[str] = []
+            # Collect all searchable values with their location names
+            searchable: list[tuple[str, str]] = []
+            for field in StorageEvent.SEARCHABLE_FIELDS:
+                val = getattr(entry, field)
+                if val is not None:
+                    searchable.append((field, json.dumps(val) if isinstance(val, list) else str(val)))
 
-            # Check value field
-            if entry.value is not None:
-                val_str = str(entry.value) if case_sensitive else str(entry.value).lower()
-                if search_value in val_str:
-                    match_locations.append("value")
-
-            # Check new_value field
-            if entry.new_value is not None:
-                val_str = str(entry.new_value) if case_sensitive else str(entry.new_value).lower()
-                if search_value in val_str:
-                    match_locations.append("new_value")
-
-            # Check old_value field
-            if entry.old_value is not None:
-                val_str = str(entry.old_value) if case_sensitive else str(entry.old_value).lower()
-                if search_value in val_str:
-                    match_locations.append("old_value")
-
-            # Check added cookies/items
-            if entry.added:
-                for item in entry.added:
-                    item_str = json.dumps(item) if case_sensitive else json.dumps(item).lower()
-                    if search_value in item_str:
-                        match_locations.append("added")
-                        break
-
-            # Check modified cookies/items
-            if entry.modified:
-                for item in entry.modified:
-                    item_str = json.dumps(item) if case_sensitive else json.dumps(item).lower()
-                    if search_value in item_str:
-                        match_locations.append("modified")
-                        break
+            # Scan all values for matches
+            match_locations = [
+                location for location, val_str in searchable
+                if search_value in (val_str if case_sensitive else val_str.lower())
+            ]
 
             if match_locations:
                 results.append({

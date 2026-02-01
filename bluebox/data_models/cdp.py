@@ -6,7 +6,7 @@ Data models for async CDP events.
 
 from datetime import datetime, timezone
 from enum import StrEnum
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -179,6 +179,9 @@ class StorageEvent(BaseCDPEvent):
     Handles cookies, localStorage, sessionStorage, and IndexedDB events.
     """
     model_config = ConfigDict(extra='allow')
+
+    # Fields that can be searched for token tracing
+    SEARCHABLE_FIELDS: ClassVar[tuple[str, ...]] = ("value", "new_value", "old_value", "added", "modified")
 
     type: StorageEventType = Field(
         ...,
