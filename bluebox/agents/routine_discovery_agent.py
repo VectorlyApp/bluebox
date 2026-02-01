@@ -121,12 +121,10 @@ For each transaction in the queue:
 5. Use `mark_transaction_complete` when done with current transaction
 6. Continue until queue is empty
 
-### Phase 3: Construct Routine
-1. Use `construct_routine` to build the DevRoutine from all processed data
+### Phase 3: Construct and Finalize Routine
+1. Use `construct_routine` to build the routine from all processed data
 2. If validation fails, fix the errors and try again
-
-### Phase 4: Finalize
-1. Use `finalize_routine` to convert to production format
+3. On success, the routine is automatically finalized to production format
 
 ## Variable Classification Rules
 
@@ -481,7 +479,7 @@ You have access to captured browser data including:
         return result
 
     def _tool_construct_routine(self, args: dict) -> dict:
-        """Construct the DevRoutine from processed data."""
+        """Construct the DevRoutine from processed data and finalize it."""
         self._state.construction_attempts += 1
 
         try:
@@ -502,52 +500,31 @@ You have access to captured browser data including:
                     "attempt": self._state.construction_attempts,
                 }
 
-            # Store and advance phase
+            # Store dev routine
             self._state.dev_routine = dev_routine
-            self._state.phase = DiscoveryPhase.FINALIZE
             self._emit_progress("Routine constructed successfully", RoutineDiscoveryMessageType.PROGRESS_RESULT)
             self._save_to_output_dir("dev_routine.json", dev_routine.model_dump())
 
-            return {
-                "success": True,
-                "routine_name": dev_routine.name,
-                "operations_count": len(dev_routine.operations),
-                "parameters_count": len(dev_routine.parameters),
-            }
+            # Finalize: convert DevRoutine to production Routine
+            self._emit_progress("Productionizing routine")
 
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "attempt": self._state.construction_attempts,
-            }
+            message = (
+                f"Productionize routine:\n{encode(dev_routine.model_dump())}\n\n"
+                f"Output schema:\n{encode(Routine.model_json_schema())}\n\n"
+                f"Output valid JSON only. {self.PLACEHOLDER_INSTRUCTIONS}"
+            )
+            self._add_to_message_history("user", message)
 
-    def _tool_finalize_routine(self) -> dict:
-        """Finalize and productionize the routine."""
-        if not self._state.dev_routine:
-            return {"success": False, "error": "No dev_routine to finalize. Call construct_routine first."}
+            response = self.llm_client.call_sync(
+                messages=[self.message_history[-1]],
+                previous_response_id=self.last_response_id,
+            )
+            self.last_response_id = response.response_id
 
-        self._emit_progress("Productionizing routine")
+            response_text = response.content or ""
+            self._add_to_message_history("assistant", response_text)
 
-        # Use the LLM to convert DevRoutine to Routine
-        message = (
-            f"Productionize routine:\n{encode(self._state.dev_routine.model_dump())}\n\n"
-            f"Output schema:\n{encode(Routine.model_json_schema())}\n\n"
-            f"Output valid JSON only. {self.PLACEHOLDER_INSTRUCTIONS}"
-        )
-        self._add_to_message_history("user", message)
-
-        response = self.llm_client.call_sync(
-            messages=[self.message_history[-1]],
-            previous_response_id=self.last_response_id,
-        )
-        self.last_response_id = response.response_id
-
-        response_text = response.content or ""
-        self._add_to_message_history("assistant", response_text)
-
-        # Parse the response
-        try:
+            # Parse the response
             production_routine = manual_llm_parse_text_to_model(
                 text=response_text,
                 pydantic_model=Routine,
@@ -564,13 +541,15 @@ You have access to captured browser data including:
             return {
                 "success": True,
                 "routine_name": production_routine.name,
-                "message": "Routine finalized successfully",
+                "operations_count": len(dev_routine.operations),
+                "parameters_count": len(dev_routine.parameters),
             }
 
         except Exception as e:
             return {
                 "success": False,
-                "error": f"Failed to parse production routine: {e}",
+                "error": str(e),
+                "attempt": self._state.construction_attempts,
             }
 
     def _execute_tool(self, tool_name: str, tool_arguments: dict) -> dict:
@@ -604,8 +583,6 @@ You have access to captured browser data including:
                 return self._tool_record_resolved_variable(tool_arguments)
             elif tool_name == "construct_routine":
                 return self._tool_construct_routine(tool_arguments)
-            elif tool_name == "finalize_routine":
-                return self._tool_finalize_routine()
             else:
                 return {"error": f"Unknown tool: {tool_name}"}
 
@@ -680,8 +657,6 @@ You have access to captured browser data including:
                         prompt += "Queue is empty. Call construct_routine to build the routine."
                 elif self._state.phase == DiscoveryPhase.CONSTRUCT_ROUTINE:
                     prompt += "Build the routine using construct_routine."
-                elif self._state.phase == DiscoveryPhase.FINALIZE:
-                    prompt += "Finalize the routine using finalize_routine."
 
                 self._add_to_message_history("system", prompt)
 

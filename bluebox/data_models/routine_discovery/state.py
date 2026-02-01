@@ -22,7 +22,6 @@ class DiscoveryPhase(StrEnum):
     IDENTIFY_TRANSACTION = "identify_transaction"
     PROCESS_QUEUE = "process_queue"
     CONSTRUCT_ROUTINE = "construct_routine"
-    FINALIZE = "finalize"
     COMPLETE = "complete"
 
 

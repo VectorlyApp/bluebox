@@ -253,8 +253,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "construct_routine",
         "description": (
-            "Construct the DevRoutine from all processed transactions and resolved variables. "
-            "Call this after all transactions in the queue have been processed.\n\n"
+            "Construct and finalize the routine from all processed transactions and resolved variables. "
+            "Call this after all transactions in the queue have been processed. "
+            "On success, the routine is automatically converted to production format.\n\n"
             "PLACEHOLDER SYNTAX:\n"
             "- Parameters: {{param_name}} (no prefix)\n"
             "- Storage: {{cookie:name}}, {{localStorage:key}}, {{sessionStorage:path.to.value}}\n"
@@ -305,18 +306,6 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
             },
             "required": ["name", "description", "parameters", "operations"],
-        },
-    },
-    {
-        "name": "finalize_routine",
-        "description": (
-            "Finalize and productionize the routine. Converts from DevRoutine format "
-            "to production Routine format. Call this after construct_routine succeeds."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": [],
         },
     },
 ]
