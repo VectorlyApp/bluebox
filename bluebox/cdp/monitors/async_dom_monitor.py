@@ -144,7 +144,7 @@ class AsyncDOMMonitor(AbstractAsyncMonitor):
             self.snapshot_count += 1
             await self.event_callback_fn(
                 self.get_monitor_category(),
-                event.model_dump(),
+                event,
             )
             logger.info(
                 "✅ DOM snapshot captured: %d documents, %d strings",
@@ -167,8 +167,9 @@ class AsyncDOMMonitor(AbstractAsyncMonitor):
         """
         logger.info("🔧 Setting up DOM snapshot monitoring...")
 
-        # Enable DOMSnapshot domain
-        await cdp_session.enable_domain("DOMSnapshot")
+        # Enable DOM domain (required by DOMSnapshot.captureSnapshot)
+        # Note: DOMSnapshot is a stateless domain with no .enable() method
+        await cdp_session.enable_domain("DOM")
 
         logger.info("✅ DOM snapshot monitoring setup complete")
 
