@@ -18,7 +18,7 @@ import os
 from typing import Any, Callable
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr
 from toon import encode
 
 from bluebox.llms.infra.data_store import DiscoveryDataStore
@@ -78,7 +78,7 @@ class RoutineDiscoveryAgent(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # Internal state (not part of constructor interface)
-    _state: RoutineDiscoveryState | None = None
+    _state: RoutineDiscoveryState | None = PrivateAttr(default=None)
 
     # === Prompts ===record_identified_transaction, record_extracted_variables, record_resolved_variable
 
