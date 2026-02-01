@@ -111,6 +111,7 @@ class Bluebox:
         cdp_captures_dir: str = "./cdp_captures",
         output_dir: str = "./routine_discovery_output",
         llm_model: str | None = None,
+        validate: bool = False,
     ) -> RoutineDiscoveryResult:
         """
         Discover a routine from captured browser data.
@@ -120,6 +121,8 @@ class Bluebox:
             cdp_captures_dir: Directory containing CDP captures.
             output_dir: Directory to save discovery results.
             llm_model: LLM model to use (overrides default).
+            validate: If True, execute the routine after construction to validate it works.
+                Requires Chrome to be running with remote debugging enabled.
 
         Returns:
             RoutineDiscoveryResult containing the routine and test parameters.
@@ -130,6 +133,7 @@ class Bluebox:
             cdp_captures_dir=cdp_captures_dir,
             output_dir=output_dir,
             llm_model=llm_model or self.llm_model,
+            remote_debugging_address=self.remote_debugging_address if validate else None,
         )
         return self._discovery.run()
     

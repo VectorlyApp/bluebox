@@ -215,10 +215,20 @@ def step_2_discover_routine(
     print_colored("   ─────────────────────────────────────────────", BLUE)
 
     print()
+
+    # Check if Chrome is running for validation
+    validate_routine = False
+    if check_chrome_running(PORT):
+        print_colored("💡 Chrome is running - routine validation is available.", GREEN)
+        validate_routine = ask_yes_no("Validate routine by executing it after construction?")
+
+    print()
     print("🤖 Running routine discovery agent...")
     print_colored(f"   Task: {task}", BLUE)
     print_colored(f"   Captures: {cdp_captures_dir}", BLUE)
     print_colored(f"   Output: {discovery_output_dir}", BLUE)
+    if validate_routine:
+        print_colored(f"   Validation: enabled", GREEN)
     print()
 
     try:
@@ -226,6 +236,7 @@ def step_2_discover_routine(
             task=task,
             cdp_captures_dir=str(cdp_captures_dir),
             output_dir=str(discovery_output_dir),
+            validate=validate_routine,
         )
         routine = result.routine
 

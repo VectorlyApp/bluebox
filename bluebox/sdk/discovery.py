@@ -62,6 +62,7 @@ class RoutineDiscovery:
         output_dir: str = "./routine_discovery_output",
         llm_model: str = "gpt-5.1",
         message_callback: Callable[[RoutineDiscoveryMessage], None] | None = None,
+        remote_debugging_address: str | None = None,
     ):
         """
         Initialize the RoutineDiscovery SDK.
@@ -73,6 +74,8 @@ class RoutineDiscovery:
             output_dir: Directory to save output files
             llm_model: LLM model to use for discovery
             message_callback: Optional callback for progress messages
+            remote_debugging_address: Chrome remote debugging address for routine validation.
+                If provided, the agent will execute the routine to validate it works.
         """
         self.client = client
         self.task = task
@@ -80,6 +83,7 @@ class RoutineDiscovery:
         self.output_dir = output_dir
         self.llm_model = llm_model
         self.message_callback = message_callback or self._default_message_handler
+        self.remote_debugging_address = remote_debugging_address
 
         self.agent: RoutineDiscoveryAgent | None = None
         self.data_store: LocalDiscoveryDataStore | None = None
@@ -140,6 +144,7 @@ class RoutineDiscovery:
                 task=self.task,
                 emit_message_callable=self.message_callback,
                 output_dir=self.output_dir,
+                remote_debugging_address=self.remote_debugging_address,
             )
 
             # Run agent and get routine
