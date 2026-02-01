@@ -518,13 +518,11 @@ class AsyncInteractionMonitor(AbstractAsyncMonitor):
 
             if ui_interaction_event is not None:
                 # Successfully parsed - use structured data
-                interaction_data = ui_interaction_event.model_dump()
                 interaction_type_str = ui_interaction_event.type.value
                 url = ui_interaction_event.url
             else:
                 # Fallback to raw data if structured parsing fails
                 logger.debug("Using raw interaction data (structured parsing failed)")
-                interaction_data = raw_data
                 interaction_type_str = raw_data.get("type", "unknown")
                 url = raw_data.get("url", "unknown")
 
@@ -533,11 +531,15 @@ class AsyncInteractionMonitor(AbstractAsyncMonitor):
             self.interaction_types[interaction_type_str] += 1
             self.interactions_by_url[url] += 1
 
-            # Emit event via callback
+            # Emit event via callback (only if we have a valid Pydantic model)
+            if ui_interaction_event is None:
+                logger.warning("Skipping event callback - could not parse interaction event")
+                return True
+
             try:
                 await self.event_callback_fn(
                     self.get_monitor_category(),
-                    interaction_data
+                    ui_interaction_event
                 )
             except Exception as e:
                 logger.error("Error in event callback: %s", e, exc_info=True)
