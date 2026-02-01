@@ -514,14 +514,14 @@ class AsyncInteractionMonitor(AbstractAsyncMonitor):
             raw_data = json.loads(payload)
 
             # Try to convert to UIInteractionEvent
-            ui_interaction_event = self._parse_interaction_event(raw_data)
+            ui_interaction_event: UIInteractionEvent | None = self._parse_interaction_event(raw_data)
 
             if ui_interaction_event is not None:
-                # Successfully parsed - use structured data
+                # successfully parsed, use structured data
                 interaction_type_str = ui_interaction_event.type.value
                 url = ui_interaction_event.url
             else:
-                # Fallback to raw data if structured parsing fails
+                # fallback to raw data if structured parsing fails
                 logger.debug("Using raw interaction data (structured parsing failed)")
                 interaction_type_str = raw_data.get("type", "unknown")
                 url = raw_data.get("url", "unknown")
