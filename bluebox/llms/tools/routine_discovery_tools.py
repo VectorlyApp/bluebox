@@ -299,10 +299,57 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "operations": {
                     "type": "array",
                     "items": {
-                        "type": "object",
-                        "description": "Operation object (navigate, sleep, fetch, or return)",
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "description": "Navigate to a URL",
+                                "properties": {
+                                    "type": {"type": "string", "enum": ["navigate"]},
+                                    "url": {"type": "string", "description": "URL to navigate to"},
+                                },
+                                "required": ["type", "url"],
+                            },
+                            {
+                                "type": "object",
+                                "description": "Sleep for a duration",
+                                "properties": {
+                                    "type": {"type": "string", "enum": ["sleep"]},
+                                    "timeout_seconds": {"type": "number", "description": "Seconds to sleep (typically 2-3)"},
+                                },
+                                "required": ["type", "timeout_seconds"],
+                            },
+                            {
+                                "type": "object",
+                                "description": "Fetch from an endpoint and store result",
+                                "properties": {
+                                    "type": {"type": "string", "enum": ["fetch"]},
+                                    "endpoint": {
+                                        "type": "object",
+                                        "properties": {
+                                            "url": {"type": "string"},
+                                            "method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"]},
+                                            "headers": {"type": "string", "description": "JSON string of headers"},
+                                            "body": {"type": "string", "description": "JSON string of request body"},
+                                            "credentials": {"type": "string", "enum": ["same-origin", "include", "omit"], "default": "same-origin"},
+                                        },
+                                        "required": ["url", "method", "headers", "body"],
+                                    },
+                                    "session_storage_key": {"type": "string", "description": "Key to store response in sessionStorage"},
+                                },
+                                "required": ["type", "endpoint", "session_storage_key"],
+                            },
+                            {
+                                "type": "object",
+                                "description": "Return value from sessionStorage",
+                                "properties": {
+                                    "type": {"type": "string", "enum": ["return"]},
+                                    "session_storage_key": {"type": "string", "description": "Key to return from sessionStorage (must match last fetch's key)"},
+                                },
+                                "required": ["type", "session_storage_key"],
+                            },
+                        ],
                     },
-                    "description": "List of operations in execution order",
+                    "description": "List of operations in execution order. Structure: 1) navigate to page, 2) sleep 2-3s, 3) fetch operations, 4) return",
                 },
             },
             "required": ["name", "description", "parameters", "operations"],

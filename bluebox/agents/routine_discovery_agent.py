@@ -515,11 +515,11 @@ You have access to captured browser data including:
             )
             self._add_to_message_history("user", message)
 
+            # Don't use previous_response_id here - we're inside a tool execution
+            # and the previous response has an unresolved tool call
             response = self.llm_client.call_sync(
                 messages=[self.message_history[-1]],
-                previous_response_id=self.last_response_id,
             )
-            self.last_response_id = response.response_id
 
             response_text = response.content or ""
             self._add_to_message_history("assistant", response_text)
