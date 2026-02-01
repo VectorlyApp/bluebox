@@ -1,6 +1,9 @@
 """
 bluebox/routine_discovery/data_store.py
 
+# NOTE: THIS DATA STORE IS SOON TO BE DEPRECATED!
+# NOTE: THIS DATA STORE EXITS TO SUPPORT MIGRATION FROM VECTORSTORES TO NEW DATA STORES
+
 Data store for routine discovery with vectorstore support.
 
 Contains:
@@ -13,17 +16,30 @@ Contains:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from threading import Event
 
 from openai import OpenAI
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from bluebox.utils.data_utils import get_text_from_html
 from bluebox.utils.infra_utils import resolve_glob_patterns
+from bluebox.utils.logger import get_logger
+
+logger = get_logger(name=__name__)
+
+# Known keys in network transaction events (for grouping)
+_TRANSACTION_KNOWN_KEYS = frozenset({
+    'timestamp', 'request_id',
+    'url', 'method', 'type', 'request_headers', 'post_data',
+    'status', 'status_text', 'response_headers', 'response_body',
+    'response_body_base64', 'mime_type', 'errorText', 'failed',
+})
 
 
 class DiscoveryDataStore(BaseModel, ABC):
@@ -102,29 +118,25 @@ class DiscoveryDataStore(BaseModel, ABC):
 class LocalDiscoveryDataStore(DiscoveryDataStore):
     """
     File-based implementation of DiscoveryDataStore with OpenAI vectorstores.
-    Manages CDP captures and documentation/code vectorstores.
+    Manages CDP captures (events.jsonl format) and documentation/code vectorstores.
     """
 
     # openai client for vector store management
     client: OpenAI
 
-    # cdp captures related fields (all optional - only required if using CDP captures)
-    cdp_captures_vectorstore_id: str | None = None
+    # CDP captures input directory (contains network/, storage/, window_properties/ subdirs with events.jsonl)
+    cdp_captures_dir: str | None = None
+
+    # Processed output paths (generated from events.jsonl processing)
     tmp_dir: str | None = None
-    transactions_dir: str | None = None
-    consolidated_transactions_path: str | None = None
-    storage_jsonl_path: str | None = None
-    window_properties_path: str | None = None
-    cached_transaction_ids: list[str] | None = Field(default=None, exclude=True)
+    network_transactions_dir: str | None = None
+    consolidated_transactions_file_path: str | None = None
+    consolidated_storage_items_file_path: str | None = None
+    consolidated_window_properties_file_path: str | None = None
+
+    # CDP captures vectorstore
+    cdp_captures_vectorstore_id: str | None = None
     uploaded_transaction_ids: set[str] = Field(default_factory=set, exclude=True)
-    transaction_response_supported_file_extensions: list[str] = Field(
-        default_factory=lambda: [
-            ".txt",
-            ".json",
-            ".html",
-            ".xml",
-        ],
-    )
 
     # documentation and code related fields (both go into same vectorstore)
     documentation_vectorstore_id: str | None = None
@@ -141,25 +153,37 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
     uploaded_docs_info: list[dict] = Field(default_factory=list, exclude=True)
     uploaded_code_info: list[dict] = Field(default_factory=list, exclude=True)
 
-    @field_validator('transactions_dir', 'consolidated_transactions_path', 'storage_jsonl_path', 'window_properties_path')
-    @classmethod
-    def validate_paths(cls, v: str | None) -> str | None:
-        if v is not None and not Path(v).exists():
-            raise ValueError(f"Path {v} does not exist")
-        return v
-
     @model_validator(mode='after')
-    def populate_cache_from_existing_vectorstore(self) -> LocalDiscoveryDataStore:
+    def setup_cdp_captures_paths(self) -> LocalDiscoveryDataStore:
         """
-        If documentation_vectorstore_id is provided but caches are empty,
-        fetch file info from the existing vectorstore to populate the cache.
+        Set up CDP captures paths if cdp_captures_dir is provided.
+        Also populates documentation cache if vectorstore_id is provided.
         """
+        # Set up CDP captures paths from cdp_captures_dir
+        if self.cdp_captures_dir is not None:
+            cdp_dir = Path(self.cdp_captures_dir)
+            if not cdp_dir.exists():
+                raise ValueError(f"CDP captures directory does not exist: {self.cdp_captures_dir}")
+
+            # Set up tmp_dir for processed files
+            if self.tmp_dir is None:
+                self.tmp_dir = str(cdp_dir / ".processed")
+
+            # Set up processed output paths
+            tmp_path = Path(self.tmp_dir)
+            self.network_transactions_dir = str(tmp_path / "network_transactions")
+            self.consolidated_transactions_file_path = str(tmp_path / "consolidated_transactions.json")
+            self.consolidated_storage_items_file_path = str(tmp_path / "consolidated_storage_items.json")
+            self.consolidated_window_properties_file_path = str(tmp_path / "consolidated_window_properties.json")
+
+        # Populate documentation cache if vectorstore_id is provided but caches are empty
         if (
             self.documentation_vectorstore_id is not None
             and not self.uploaded_docs_info
             and not self.uploaded_code_info
         ):
             self._populate_cache_from_vectorstore()
+
         return self
 
     def _populate_cache_from_vectorstore(self) -> None:
@@ -203,143 +227,331 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
             })
 
     def make_cdp_captures_vectorstore(self) -> None:
-        """Make a vectorstore from the CDP captures."""
-        # Validate required paths are set
-        if self.tmp_dir is None:
-            raise ValueError("tmp_dir is required for CDP captures vectorstore")
-        if self.transactions_dir is None:
-            raise ValueError("transactions_dir is required for CDP captures vectorstore")
-        if self.consolidated_transactions_path is None:
-            raise ValueError("consolidated_transactions_path is required for CDP captures vectorstore")
-        if self.storage_jsonl_path is None:
-            raise ValueError("storage_jsonl_path is required for CDP captures vectorstore")
-        if self.window_properties_path is None:
-            raise ValueError("window_properties_path is required for CDP captures vectorstore")
+        """
+        Make a vectorstore from the CDP captures (events.jsonl format).
 
-        tmp_path = Path(self.tmp_dir)
-        tmp_path.mkdir(parents=True, exist_ok=True)
+        Steps:
+            1. In parallel: create vectorstore + process all CDP capture JSONL files
+            2. Each file type uploads after processing, but waits for vectorstore to be ready
+        """
+        # Validate required paths are set
+        if self.cdp_captures_dir is None:
+            raise ValueError("cdp_captures_dir is required for CDP captures vectorstore")
+
+        # Validate events.jsonl files exist
+        network_events_path = Path(self.cdp_captures_dir) / "network" / "events.jsonl"
+        storage_events_path = Path(self.cdp_captures_dir) / "storage" / "events.jsonl"
+        window_props_events_path = Path(self.cdp_captures_dir) / "window_properties" / "events.jsonl"
+
+        if not network_events_path.exists():
+            raise ValueError(f"Network events file not found: {network_events_path}")
+        if not storage_events_path.exists():
+            raise ValueError(f"Storage events file not found: {storage_events_path}")
+        if not window_props_events_path.exists():
+            raise ValueError(f"Window properties events file not found: {window_props_events_path}")
 
         if self.cdp_captures_vectorstore_id is not None:
             raise ValueError(f"Vectorstore ID already exists: {self.cdp_captures_vectorstore_id}")
 
-        vs = self.client.vector_stores.create(
-            name=f"cdp-captures-{int(time.time())}",
-            expires_after={"anchor": "last_active_at", "days": 1}
-        )
-        self.cdp_captures_vectorstore_id = vs.id
+        # Create directories for processed output
+        tmp_path = Path(self.tmp_dir)
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        Path(self.network_transactions_dir).mkdir(parents=True, exist_ok=True)
 
-        # Upload consolidated transactions
-        self._upload_file_to_vectorstore(
-            self.cdp_captures_vectorstore_id,
-            self.consolidated_transactions_path,
-            {"filename": "consolidated_transactions.json"}
-        )
+        # Event to signal when vectorstore is ready for uploads
+        vectorstore_ready = Event()
 
-        # Convert jsonl to json (jsonl not supported by openai)
-        storage_data = []
-        with open(self.storage_jsonl_path, mode="r", encoding="utf-8") as f:
+        # Helper to create vectorstore and signal ready
+        def create_vectorstore() -> None:
+            vs = self.client.vector_stores.create(
+                name=f"cdp-captures-{int(time.time())}",
+                expires_after={"anchor": "last_active_at", "days": 1}
+            )
+            self.cdp_captures_vectorstore_id = vs.id
+            vectorstore_ready.set()
+
+        # Helper to process files and upload (waits for vectorstore before upload)
+        def process_and_upload(process_fn, consolidated_file_path: str) -> None:
+            process_fn()
+            vectorstore_ready.wait()
+            self.add_file_to_vectorstore(file_path=consolidated_file_path, metadata={})
+
+        # Run all tasks in parallel
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [
+                executor.submit(create_vectorstore),
+                executor.submit(
+                    process_and_upload,
+                    self._process_network_transaction_files,
+                    self.consolidated_transactions_file_path,
+                ),
+                executor.submit(
+                    process_and_upload,
+                    self._process_storage_files,
+                    self.consolidated_storage_items_file_path,
+                ),
+                executor.submit(
+                    process_and_upload,
+                    self._process_window_properties_files,
+                    self.consolidated_window_properties_file_path,
+                ),
+            ]
+            # Wait for all to complete and raise any exceptions
+            for future in as_completed(futures):
+                future.result()
+
+        logger.info("CDP captures vectorstore created: %s", self.cdp_captures_vectorstore_id)
+
+    def _group_transaction_details(self, transaction_details: dict) -> dict:
+        """
+        Group flat transaction details into request/response structure.
+
+        Args:
+            transaction_details: Flat dict from NetworkTransactionEvent.
+
+        Returns:
+            Grouped dict with timestamp, request_id, request{}, response{}, and other{}.
+        """
+        td = transaction_details
+        request_headers = td.get('request_headers') or {}
+        response_headers = td.get('response_headers') or {}
+        response_body = td.get('response_body') or ""
+        response_body_base64 = td.get('response_body_base64', False)
+        post_data = td.get('post_data')
+
+        request = {
+            "url": td.get('url'),
+            "method": td.get('method'),
+            "type": td.get('type'),
+            "headers": request_headers,
+            "post_data": post_data,
+        }
+
+        response = {
+            "status": td.get('status'),
+            "status_text": td.get('status_text'),
+            "headers": response_headers,
+            "body": response_body,
+            "body_truncated": False,
+            "body_base64": response_body_base64,
+            "mime_type": td.get('mime_type') or "",
+            "error_text": td.get('errorText'),
+            "failed": td.get('failed', False),
+        }
+
+        other = None
+        for key, value in td.items():
+            if key not in _TRANSACTION_KNOWN_KEYS:
+                if other is None:
+                    other = {}
+                other[key] = value
+
+        return {
+            "timestamp": td.get('timestamp'),
+            "request_id": td.get('request_id'),
+            "request": request,
+            "response": response,
+            "other": other if other else None,
+        }
+
+    def _process_network_transaction_files(self) -> None:
+        """
+        Process network/events.jsonl into consolidated transactions.
+
+        Steps:
+            1. Read JSONL file line by line
+            2. Generate transaction_id (timestamp_url)
+            3. Group into request/response structure
+            4. Save individual tx files + consolidated JSON
+        """
+        network_events_path = Path(self.cdp_captures_dir) / "network" / "events.jsonl"
+        consolidated_transactions: dict[str, dict] = {}
+
+        logger.info("Processing network events from: %s", network_events_path)
+
+        with open(network_events_path, mode="r", encoding="utf-8") as f:
             for line in f:
-                storage_data.append(json.loads(line))
+                if not line.strip():
+                    continue
 
-        storage_file_path = tmp_path / "storage.json"
-        storage_file_path.write_text(json.dumps(storage_data, ensure_ascii=False, indent=2), encoding="utf-8")
+                try:
+                    # Parse the event (NetworkTransactionEvent format)
+                    transaction_details = json.loads(line)
 
-        self._upload_file_to_vectorstore(
-            self.cdp_captures_vectorstore_id,
-            str(storage_file_path),
-            {"filename": "storage.json"}
-        )
+                    # Generate transaction_id (timestamp_url format)
+                    url = transaction_details.get('url', 'unknown')
+                    timestamp = transaction_details.get('timestamp', 0)
+                    safe_url = url.replace('/', '_').replace(':', '_')[:100]
+                    transaction_id = f"{timestamp}_{safe_url}"
 
-        # Upload window properties
-        self._upload_file_to_vectorstore(
-            self.cdp_captures_vectorstore_id,
-            self.window_properties_path,
-            {"filename": "window_properties.json"}
-        )
+                    # Group transaction details
+                    grouped_transaction = self._group_transaction_details(transaction_details)
 
-        shutil.rmtree(tmp_path)
+                    # Save full transaction to individual file
+                    transaction_file_path = Path(self.network_transactions_dir) / f"{transaction_id}.json"
+                    with open(transaction_file_path, mode="w", encoding="utf-8") as out_f:
+                        json.dump(grouped_transaction, out_f, indent=1, ensure_ascii=False)
+
+                    # Create truncated version for consolidated file
+                    response_body = grouped_transaction['response']['body']
+                    if response_body and len(str(response_body)) > 1000:
+                        truncated_response = dict(grouped_transaction['response'])
+                        truncated_response['body'] = str(response_body)[:1000] + "...[truncated]"
+                        truncated_response['body_truncated'] = True
+                        consolidated_transactions[transaction_id] = {
+                            **grouped_transaction,
+                            'response': truncated_response,
+                        }
+                    else:
+                        consolidated_transactions[transaction_id] = grouped_transaction
+
+                except json.JSONDecodeError as e:
+                    logger.warning("Failed to parse network event line: %s", e)
+                except Exception as e:
+                    logger.error("Error processing network event: %s", e)
+
+        # Write consolidated transactions file
+        with open(self.consolidated_transactions_file_path, mode="w", encoding="utf-8") as f:
+            json.dump(consolidated_transactions, f, indent=1, ensure_ascii=False)
+
+        logger.info("Processed %d network transactions", len(consolidated_transactions))
+
+    def _process_storage_files(self) -> None:
+        """
+        Process storage/events.jsonl into consolidated storage items.
+        """
+        storage_events_path = Path(self.cdp_captures_dir) / "storage" / "events.jsonl"
+        consolidated_storage_items: list[dict] = []
+
+        logger.info("Processing storage events from: %s", storage_events_path)
+
+        with open(storage_events_path, mode="r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    storage_event = json.loads(line)
+                    consolidated_storage_items.append(storage_event)
+                except json.JSONDecodeError as e:
+                    logger.warning("Failed to parse storage event line: %s", e)
+
+        # Write consolidated storage file
+        with open(self.consolidated_storage_items_file_path, mode="w", encoding="utf-8") as f:
+            json.dump(consolidated_storage_items, f, indent=1, ensure_ascii=False)
+
+        logger.info("Processed %d storage events", len(consolidated_storage_items))
+
+    def _process_window_properties_files(self) -> None:
+        """
+        Process window_properties/events.jsonl into consolidated window properties.
+        """
+        window_props_events_path = Path(self.cdp_captures_dir) / "window_properties" / "events.jsonl"
+        consolidated_window_properties: list[dict] = []
+
+        logger.info("Processing window properties events from: %s", window_props_events_path)
+
+        with open(window_props_events_path, mode="r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    window_prop_event = json.loads(line)
+                    consolidated_window_properties.append(window_prop_event)
+                except json.JSONDecodeError as e:
+                    logger.warning("Failed to parse window property event line: %s", e)
+
+        # Write consolidated window properties file
+        with open(self.consolidated_window_properties_file_path, mode="w", encoding="utf-8") as f:
+            json.dump(consolidated_window_properties, f, indent=1, ensure_ascii=False)
+
+        logger.info("Processed %d window property events", len(consolidated_window_properties))
 
 
     def get_all_transaction_ids(self) -> list[str]:
         """
-        Get all transaction ids from the data store that have a response body file with a supported extension.
-        Cached per instance to avoid repeated filesystem operations.
+        Get all transaction ids from the data store.
+        Reads from consolidated_transactions_file_path.
         """
-        if self.cached_transaction_ids is not None:
-            return self.cached_transaction_ids
+        if self.consolidated_transactions_file_path is None:
+            raise ValueError("consolidated_transactions_file_path is not set")
 
-        transactions_path = Path(self.transactions_dir)
-        supported_transaction_ids = [
-            item.name for item in transactions_path.iterdir()
-            if (
-                item.is_dir()
-                and self.get_response_body_file_extension(item.name) in self.transaction_response_supported_file_extensions
-            )
-        ]
+        if not Path(self.consolidated_transactions_file_path).exists():
+            raise ValueError(f"Consolidated transactions file not found: {self.consolidated_transactions_file_path}")
 
-        self.cached_transaction_ids = supported_transaction_ids
-        return supported_transaction_ids
+        with open(self.consolidated_transactions_file_path, mode="r", encoding="utf-8") as f:
+            consolidated_transactions = json.load(f)
 
+        return list(consolidated_transactions.keys())
 
     def get_transaction_by_id(self, transaction_id: str, clean_response_body: bool = False) -> dict:
         """
         Get a transaction by id from the data store.
-        Returns: {"request": ..., "response": ..., "response_body": ...}
+        Returns grouped structure: {timestamp, request_id, request{}, response{}}
+
+        If the response body was truncated in the consolidated file,
+        loads the full version from the individual transaction file.
         """
-        transaction_path = Path(self.transactions_dir) / transaction_id
-        result = {}
+        if self.consolidated_transactions_file_path is None:
+            raise ValueError("consolidated_transactions_file_path is not set")
 
-        # Load request
-        request_path = transaction_path / "request.json"
-        try:
-            result["request"] = json.loads(request_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, FileNotFoundError):
-            result["request"] = f"No request found for transaction {transaction_id}"
+        # Load from consolidated transactions
+        with open(self.consolidated_transactions_file_path, mode="r", encoding="utf-8") as f:
+            consolidated_transactions = json.load(f)
 
-        # Load response
-        response_path = transaction_path / "response.json"
-        try:
-            result["response"] = json.loads(response_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, FileNotFoundError):
-            result["response"] = f"No response found for transaction {transaction_id}"
+        if transaction_id not in consolidated_transactions:
+            raise ValueError(f"Transaction id not found: {transaction_id}")
 
-        # Load response body
-        response_body_extension = self.get_response_body_file_extension(transaction_id)
-        if response_body_extension is None:
-            result["response_body"] = f"No response body found for transaction {transaction_id}"
-        else:
-            response_body_path = transaction_path / f"response_body{response_body_extension}"
-            if response_body_extension == ".json":
-                try:
-                    result["response_body"] = json.loads(response_body_path.read_text(encoding="utf-8"))
-                except json.JSONDecodeError:
-                    result["response_body"] = response_body_path.read_text(encoding="utf-8", errors="replace")
-            else:
-                result["response_body"] = response_body_path.read_text(encoding="utf-8", errors="replace")
-                if response_body_extension == ".html" and clean_response_body:
-                    result["response_body"] = get_text_from_html(result["response_body"])
+        transaction_details = consolidated_transactions[transaction_id]
 
-        return result
+        # If body was truncated, load full version from individual file
+        if transaction_details.get('response', {}).get('body_truncated', False):
+            transaction_file_path = Path(self.network_transactions_dir) / f"{transaction_id}.json"
+            if transaction_file_path.exists():
+                with open(transaction_file_path, mode="r", encoding="utf-8") as f:
+                    transaction_details = json.load(f)
+
+        # Clean HTML response body if requested
+        mime_type = transaction_details.get('response', {}).get('mime_type', '')
+        if clean_response_body and "html" in mime_type.lower():
+            try:
+                response_body = transaction_details.get('response', {}).get('body', '')
+                if response_body:
+                    transaction_details['response']['body'] = get_text_from_html(html=response_body)
+            except Exception as e:
+                logger.warning("Error cleaning response body (leaving as-is): %s", e)
+
+        return transaction_details
 
     def clean_up(self) -> None:
         """
         Clean up all data store resources (CDP captures and documentation vectorstores).
+        Also cleans up processed temporary files.
         """
         # Clean up CDP captures vectorstore if set
         if self.cdp_captures_vectorstore_id is not None:
             try:
                 self.client.vector_stores.delete(vector_store_id=self.cdp_captures_vectorstore_id)
+                logger.info("Deleted CDP captures vectorstore: %s", self.cdp_captures_vectorstore_id)
             except Exception as e:
-                raise ValueError(f"Failed to delete CDP captures vectorstore: {e}")
+                logger.error("Failed to delete CDP captures vectorstore: %s", e)
             self.cdp_captures_vectorstore_id = None
 
         # Clean up documentation vectorstore if set
         if self.documentation_vectorstore_id is not None:
             try:
                 self.client.vector_stores.delete(vector_store_id=self.documentation_vectorstore_id)
+                logger.info("Deleted documentation vectorstore: %s", self.documentation_vectorstore_id)
             except Exception as e:
-                raise ValueError(f"Failed to delete documentation vectorstore: {e}")
+                logger.error("Failed to delete documentation vectorstore: %s", e)
             self.documentation_vectorstore_id = None
+
+        # Clean up processed temporary files
+        if self.tmp_dir and Path(self.tmp_dir).exists():
+            try:
+                shutil.rmtree(self.tmp_dir)
+                logger.info("Deleted temporary directory: %s", self.tmp_dir)
+            except Exception as e:
+                logger.warning("Failed to delete temporary directory: %s", e)
 
     def get_vectorstore_ids(self) -> list[str]:
         """Get all available vectorstore IDs."""
@@ -363,12 +575,14 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         if transaction_id in self.uploaded_transaction_ids:
             return
 
-        tmp_path = Path(self.tmp_dir)
-        tmp_path.mkdir(parents=True, exist_ok=True)
+        # Use a separate subdirectory for individual transaction uploads
+        # to avoid deleting the consolidated files in tmp_dir
+        upload_tmp_path = Path(self.tmp_dir) / "upload_tmp"
+        upload_tmp_path.mkdir(parents=True, exist_ok=True)
 
+        transaction_file_path = upload_tmp_path / f"{transaction_id}.json"
         try:
             transaction_data = self.get_transaction_by_id(transaction_id, clean_response_body=True)
-            transaction_file_path = tmp_path / f"{transaction_id}.json"
             transaction_file_path.write_text(
                 json.dumps(transaction_data, ensure_ascii=False, indent=2),
                 encoding="utf-8"
@@ -379,7 +593,9 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
                 metadata
             )
         finally:
-            shutil.rmtree(tmp_path)
+            # Only delete the specific file, not the entire tmp_dir
+            if transaction_file_path.exists():
+                transaction_file_path.unlink()
             self.uploaded_transaction_ids.add(transaction_id)
 
 
@@ -421,41 +637,45 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
     def get_transaction_ids_by_request_url(self, request_url: str) -> list[str]:
         """
         Get all transaction ids by request url.
-        Efficiently reads only the request.json file instead of the entire transaction.
         """
-        transactions_path = Path(self.transactions_dir)
-        transaction_ids = []
-        for transaction_id in self.get_all_transaction_ids():
-            try:
-                request_path = transactions_path / transaction_id / "request.json"
-                request_data = json.loads(request_path.read_text(encoding="utf-8"))
-                if request_data.get("url") == request_url:
-                    transaction_ids.append(transaction_id)
-            except (FileNotFoundError, json.JSONDecodeError, KeyError):
-                continue
-        return transaction_ids
+        if self.consolidated_transactions_file_path is None:
+            raise ValueError("consolidated_transactions_file_path is not set")
 
+        with open(self.consolidated_transactions_file_path, mode="r", encoding="utf-8") as f:
+            consolidated_transactions = json.load(f)
+
+        transaction_ids = [
+            transaction_id for transaction_id, details in consolidated_transactions.items()
+            if request_url in details.get('request', {}).get('url', '')
+        ]
+        return transaction_ids
 
     def get_transaction_timestamp(self, transaction_id: str) -> float:
         """
         Get the timestamp of a transaction.
+
         Args:
             transaction_id: The id of the transaction.
         Returns:
             The timestamp of the transaction.
         """
-        #TODO: cleaner way to get the timestamp
-        parts = transaction_id.split("_")
-        if len(parts) < 2:
-            raise ValueError(f"Invalid transaction_id format: {transaction_id}. Expected format: 'prefix_timestamp'")
-        unix_timestamp = parts[1]
-        try:
-            return float(unix_timestamp)
-        except ValueError as e:
-            raise ValueError(
-                f"Invalid timestamp in transaction_id '{transaction_id}'; {unix_timestamp} is not a valid number: {str(e)}"
-            )
+        # Try to read from individual transaction file first
+        if self.network_transactions_dir:
+            transaction_file_path = Path(self.network_transactions_dir) / f"{transaction_id}.json"
+            if transaction_file_path.exists():
+                with open(transaction_file_path, mode="r", encoding="utf-8") as f:
+                    transaction_details = json.load(f)
+                return float(transaction_details.get('timestamp', 0))
 
+        # Fall back to parsing from transaction_id (format: timestamp_url)
+        parts = transaction_id.split("_")
+        if len(parts) >= 1:
+            try:
+                return float(parts[0])
+            except ValueError:
+                pass
+
+        raise ValueError(f"Could not determine timestamp for transaction: {transaction_id}")
 
     def scan_transaction_responses(self, value: str, max_timestamp: float | None = None) -> list[str]:
         """
@@ -467,62 +687,73 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         Returns:
             A list of transaction ids that contain the value in the response body.
         """
-        all_transaction_ids = self.get_all_transaction_ids()
-        results = []
+        if self.consolidated_transactions_file_path is None:
+            raise ValueError("consolidated_transactions_file_path is not set")
+
+        with open(self.consolidated_transactions_file_path, mode="r", encoding="utf-8") as f:
+            consolidated_transactions = json.load(f)
+
+        # Sort by timestamp (ascending)
+        all_transaction_ids = sorted(
+            consolidated_transactions.keys(),
+            key=lambda x: float(x.split('_')[0]) if x.split('_')[0].replace('.', '').isdigit() else 0
+        )
+
+        results: list[str] = []
         for transaction_id in all_transaction_ids:
-            transaction = self.get_transaction_by_id(transaction_id)
-            if (
-                value in str(transaction["response_body"])
-                and
-                (
-                    max_timestamp is None
-                    or self.get_transaction_timestamp(transaction_id) < max_timestamp
-                )
-            ):
+            transaction_details = self.get_transaction_by_id(transaction_id)
+
+            # Check timestamp constraint
+            timestamp = transaction_details.get('timestamp', 0)
+            if max_timestamp is not None and float(timestamp) > max_timestamp:
+                break
+
+            # Check if value is in response body
+            response_body = transaction_details.get('response', {}).get('body')
+            if response_body is not None and value in str(response_body):
                 results.append(transaction_id)
 
-        return list(set(results))
-
+        return results
 
     def scan_storage_for_value(self, value: str) -> list[str]:
         """
         Scan the storage for a value.
+
         Args:
             value: The value to scan for in the storage.
         Returns:
-            A list of storage items that contain the value.
+            A list of storage items (as JSON strings) that contain the value.
         """
-        storage_path = Path(self.storage_jsonl_path)
-        return [line for line in storage_path.read_text(encoding="utf-8", errors="replace").splitlines() if value in line]
+        if self.consolidated_storage_items_file_path is None:
+            raise ValueError("consolidated_storage_items_file_path is not set")
+
+        if not Path(self.consolidated_storage_items_file_path).exists():
+            return []
+
+        with open(self.consolidated_storage_items_file_path, mode="r", encoding="utf-8") as f:
+            storage_items = json.load(f)
+
+        return [json.dumps(item) for item in storage_items if value in str(item)]
 
     def scan_window_properties_for_value(self, value: str) -> list[dict]:
         """
         Scan the window properties for a value.
+
         Args:
             value: The value to scan for in the window properties.
         Returns:
-            A list of window properties that contain the value.
+            A list of window property events that contain the value.
         """
-        window_props_path = Path(self.window_properties_path)
-        window_properties = json.loads(window_props_path.read_text(encoding="utf-8", errors="replace"))
-        return [
-            {key: val} for key, val in window_properties.items()
-            if value in str(val)
-        ]
+        if self.consolidated_window_properties_file_path is None:
+            raise ValueError("consolidated_window_properties_file_path is not set")
 
-    def get_response_body_file_extension(self, transaction_id: str) -> str | None:
-        """
-        Get the extension of the response body file for a transaction.
-        Args:
-            transaction_id: The id of the transaction.
-        Returns:
-            The extension of the response body file, or None if not found.
-        """
-        transaction_path = Path(self.transactions_dir) / transaction_id
-        for file in transaction_path.iterdir():
-            if file.name.startswith("response_body"):
-                return file.suffix.lower()
-        return None
+        if not Path(self.consolidated_window_properties_file_path).exists():
+            return []
+
+        with open(self.consolidated_window_properties_file_path, mode="r", encoding="utf-8") as f:
+            window_properties = json.load(f)
+
+        return [prop for prop in window_properties if value in str(prop)]
 
     def make_documentation_vectorstore(self) -> None:
         """

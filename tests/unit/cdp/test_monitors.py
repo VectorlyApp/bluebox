@@ -1579,10 +1579,10 @@ class TestAsyncInteractionMonitorMessageHandling:
         assert result is True
         mock_event_callback.assert_called_once()
         call_args = mock_event_callback.call_args
-        category, data = call_args[0]
+        category, event = call_args[0]
         assert category == "AsyncInteractionMonitor"
-        # Data should be the parsed model dump
-        assert data["type"] == "click"
+        # Data should be a UIInteractionEvent Pydantic model
+        assert event.type.value == "click"
 
     @pytest.mark.asyncio
     async def test_handle_binding_called_updates_counters(

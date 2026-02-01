@@ -16,6 +16,7 @@ from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:  # avoid circular import
     from bluebox.cdp.async_cdp_session import AsyncCDPSession
+    from bluebox.data_models.cdp import BaseCDPEvent
 
 logger = get_logger(name=__name__)
 
@@ -69,7 +70,7 @@ class AsyncDOMMonitor(AbstractAsyncMonitor):
 
     def __init__(
         self,
-        event_callback_fn: Callable[[str, dict], Awaitable[None]]
+        event_callback_fn: Callable[[str, BaseCDPEvent], Awaitable[None]]
     ) -> None:
         """
         Initialize AsyncDOMMonitor.
@@ -143,7 +144,7 @@ class AsyncDOMMonitor(AbstractAsyncMonitor):
             self.snapshot_count += 1
             await self.event_callback_fn(
                 self.get_monitor_category(),
-                event.model_dump(),
+                event,
             )
             logger.info(
                 "✅ DOM snapshot captured: %d documents, %d strings",
@@ -166,8 +167,9 @@ class AsyncDOMMonitor(AbstractAsyncMonitor):
         """
         logger.info("🔧 Setting up DOM snapshot monitoring...")
 
-        # Enable DOMSnapshot domain
-        await cdp_session.enable_domain("DOMSnapshot")
+        # Enable DOM domain (required by DOMSnapshot.captureSnapshot)
+        # Note: DOMSnapshot is a stateless domain with no .enable() method
+        await cdp_session.enable_domain("DOM")
 
         logger.info("✅ DOM snapshot monitoring setup complete")
 

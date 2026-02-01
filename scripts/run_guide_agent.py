@@ -23,6 +23,7 @@ Commands:
 """
 
 import argparse
+import asyncio
 import difflib
 import json
 import logging
@@ -971,24 +972,36 @@ class TerminalGuideChat:
             create_tab=False,
         )
 
-        try:
-            monitor.start()
+        # Run monitor in async context so the event loop stays active
+        async def run_monitor() -> dict:
+            await monitor.astart()
             console.print("[green]Monitoring started! Perform your actions in the browser.[/green]")
             console.print("[yellow]Press Ctrl+C when done...[/yellow]")
             console.print()
 
-            while monitor.is_alive:
-                time.sleep(1)
+            try:
+                while monitor.is_alive:
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                pass
 
+            return await monitor.astop()
+
+        summary: dict = {}
+        try:
+            summary = asyncio.run(run_monitor())
         except KeyboardInterrupt:
             console.print()
             console.print("Stopping monitor...")
-        finally:
-            summary = monitor.stop()
+            # Need to stop in a new event loop since the previous was interrupted
+            try:
+                summary = asyncio.run(monitor.astop())
+            except Exception:
+                pass
 
         console.print()
         console.print("[bold green]✓ Monitoring complete![/bold green]")
-        transaction_count = summary.get('network_transactions', 0) if summary else 0
+        transaction_count = summary.get('network', {}).get('completed_transactions', 0) if summary else 0
         if summary:
             console.print(f"[dim]Duration: {summary.get('duration', 0):.1f}s[/dim]")
             console.print(f"[dim]Transactions captured: {transaction_count}[/dim]")
@@ -1013,13 +1026,12 @@ class TerminalGuideChat:
             )
             return
 
-        # Update data store with CDP capture paths
+        # Update data store with CDP captures directory (events.jsonl format)
+        # The model validator will set up the processed output paths automatically
+        self._data_store.cdp_captures_dir = str(cdp_captures_dir)
         self._data_store.tmp_dir = str(cdp_captures_dir / "tmp")
-        self._data_store.transactions_dir = str(cdp_captures_dir / "network" / "transactions")
-        self._data_store.consolidated_transactions_path = str(cdp_captures_dir / "network" / "consolidated_transactions.json")
-        self._data_store.storage_jsonl_path = str(cdp_captures_dir / "storage" / "events.jsonl")
-        self._data_store.window_properties_path = str(cdp_captures_dir / "window_properties" / "window_properties.json")
-        self._data_store.cached_transaction_ids = None  # Clear cache
+        # Trigger the model validator to set up derived paths
+        self._data_store.setup_cdp_captures_paths()
 
         # Delete old CDP vectorstore if it exists
         if self._data_store.cdp_captures_vectorstore_id is not None:
@@ -1129,7 +1141,7 @@ class TerminalGuideChat:
             # Save routine to file (name -> lowercase_underscores)
             safe_name = routine.name.lower().replace(" ", "_").replace("-", "_")
             safe_name = "".join(c for c in safe_name if c.isalnum() or c == "_")
-            routines_dir = Path("./example_routines")
+            routines_dir = Path("./example_data/example_routines")
             routines_dir.mkdir(parents=True, exist_ok=True)
             routine_path = routines_dir / f"{safe_name}.json"
             routine_path.write_text(json.dumps(routine.model_dump(), indent=2))
@@ -1170,7 +1182,7 @@ class TerminalGuideChat:
             # Save routine to file (name -> lowercase_underscores)
             safe_name = routine.name.lower().replace(" ", "_").replace("-", "_")
             safe_name = "".join(c for c in safe_name if c.isalnum() or c == "_")
-            routines_dir = Path("./example_routines")
+            routines_dir = Path("./example_data/example_routines")
             routines_dir.mkdir(parents=True, exist_ok=True)
             routine_path = routines_dir / f"{safe_name}.json"
             routine_path.write_text(json.dumps(routine.model_dump(), indent=2))
@@ -1436,11 +1448,8 @@ def main() -> None:
         # Add CDP captures paths if provided
         if args.cdp_captures_dir:
             data_store_kwargs.update({
+                "cdp_captures_dir": args.cdp_captures_dir,
                 "tmp_dir": str(Path(args.output_dir) / "tmp"),
-                "transactions_dir": str(Path(args.cdp_captures_dir) / "network" / "transactions"),
-                "consolidated_transactions_path": str(Path(args.cdp_captures_dir) / "network" / "consolidated_transactions.json"),
-                "storage_jsonl_path": str(Path(args.cdp_captures_dir) / "storage" / "events.jsonl"),
-                "window_properties_path": str(Path(args.cdp_captures_dir) / "window_properties" / "window_properties.json"),
             })
 
         # Create data store with status
@@ -1475,6 +1484,8 @@ def main() -> None:
             with console.status("[dim]Cleaning up vectorstores...[/dim]"):
                 try:
                     data_store.clean_up()
+                except KeyboardInterrupt:
+                    console.print("[yellow]Cleanup interrupted[/yellow]")
                 except Exception as e:
                     console.print(f"[yellow]Warning: Cleanup failed: {e}[/yellow]")
             console.print("[green]✓ Cleanup complete![/green]")

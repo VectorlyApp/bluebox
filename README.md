@@ -534,13 +534,13 @@ Run the example routine:
 # Using a parameters file:
 
 bluebox-execute \
-  --routine-path example_routines/amtrak_one_way_train_search_routine.json \
-  --parameters-path example_routines/amtrak_one_way_train_search_input.json
+  --routine-path example_data/example_routines/amtrak_one_way_train_search_routine.json \
+  --parameters-path example_data/example_routines/amtrak_one_way_train_search_input.json
 
 # Or pass parameters inline (JSON string):
 
 bluebox-execute \
-  --routine-path example_routines/amtrak_one_way_train_search_routine.json \
+  --routine-path example_data/example_routines/amtrak_one_way_train_search_routine.json \
   --parameters-dict '{"origin": "BOS", "destination": "NYP", "departureDate": "2026-03-22"}'
 ```
 

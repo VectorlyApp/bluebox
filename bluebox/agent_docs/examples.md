@@ -1,6 +1,6 @@
 # Example Routines
 
-Example routines are in [example_routines/](example_routines/). Each has a `*_routine.json` and `*_input.json` file.
+Example routines are in [example_data/example_routines/](example_data/example_routines/). Each has a `*_routine.json` and `*_input.json` file.
 
 ## Amtrak Train Search
 

@@ -15,6 +15,7 @@ from bluebox.cdp.monitors.async_interaction_monitor import AsyncInteractionMonit
 from bluebox.cdp.monitors.async_network_monitor import AsyncNetworkMonitor
 from bluebox.cdp.monitors.async_storage_monitor import AsyncStorageMonitor
 from bluebox.cdp.monitors.async_window_property_monitor import AsyncWindowPropertyMonitor
+from bluebox.data_models.cdp import BaseCDPEvent
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -32,7 +33,7 @@ class AsyncCDPSession:
         self,
         ws_url: str,
         session_start_dtm: str,
-        event_callback_fn: Callable[[str, dict], Awaitable[None]],
+        event_callback_fn: Callable[[str, BaseCDPEvent], Awaitable[None]],
         paths: dict[str, str] | None = None,
     ) -> None:
         """
@@ -240,7 +241,7 @@ class AsyncCDPSession:
 
         # warn if trying to use page-level domain without sessionId;        
         # page-level domains need sessionId; browser-level domains (Target, Fetch) do not
-        page_level_domains = {"Page", "Runtime", "Network", "DOMStorage", "IndexedDB"}
+        page_level_domains = {"Page", "Runtime", "Network", "DOMStorage", "IndexedDB", "DOM", "DOMSnapshot"}
         domain_name = method.split(".")[0] if "." in method else None
         is_page_level = domain_name in page_level_domains if domain_name else False
         if is_page_level and not self.page_session_id:
@@ -256,7 +257,7 @@ class AsyncCDPSession:
             "method": method,
             "params": params or {},
         }
-        if self.page_session_id:
+        if self.page_session_id and is_page_level:
             msg["sessionId"] = self.page_session_id
         msg_json = json.dumps(msg)
 

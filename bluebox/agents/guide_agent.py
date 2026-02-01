@@ -733,12 +733,9 @@ and improve web automation routines.
             if chat.tool_calls:
                 msg["tool_calls"] = [
                     {
-                        "id": tc.call_id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.tool_name,
-                            "arguments": json.dumps(tc.tool_arguments) if isinstance(tc.tool_arguments, dict) else tc.tool_arguments,
-                        },
+                        "name": tc.tool_name,
+                        "arguments": tc.tool_arguments,
+                        "call_id": tc.call_id,
                     }
                     for tc in chat.tool_calls
                 ]

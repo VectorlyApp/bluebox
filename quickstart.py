@@ -116,7 +116,7 @@ def step_1_monitor_browser(cdp_captures_dir: Path) -> bool:
     print_colored("✅ Monitoring complete!", GREEN)
     if summary:
         print(f"   Duration: {summary.get('duration', 0):.1f}s")
-        print(f"   Transactions captured: {summary.get('network_transactions', 0)}")
+        print(f"   Transactions captured: {summary.get('network', {}).get('completed_transactions', 0)}")
 
     return True
 
@@ -129,11 +129,12 @@ def step_2_discover_routine(
     """Step 2: Discover routine from captured data."""
     print_header("Step 2: Discover Routine")
 
-    # Check if capture data exists
-    transactions_dir = cdp_captures_dir / "network" / "transactions"
-    if not transactions_dir.exists() or not any(transactions_dir.iterdir()):
+    # Check if capture data exists (events.jsonl format)
+    network_events_file = cdp_captures_dir / "network" / "events.jsonl"
+    if not network_events_file.exists() or network_events_file.stat().st_size == 0:
         print_colored("⚠️  No capture data found. Cannot run discovery.", YELLOW)
         print("   Make sure you performed actions during monitoring.")
+        print(f"   Expected: {network_events_file}")
         return None
 
     if ask_yes_no("Skip discovery step?"):

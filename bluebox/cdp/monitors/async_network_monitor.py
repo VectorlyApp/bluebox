@@ -20,6 +20,7 @@ from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:  # avoid circular import
     from bluebox.cdp.async_cdp_session import AsyncCDPSession
+    from bluebox.data_models.cdp import BaseCDPEvent
 
 logger = get_logger(name=__name__)
 
@@ -74,7 +75,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
 
     def __init__(
         self,
-        event_callback_fn: Callable[[str, dict], Awaitable[None]]
+        event_callback_fn: Callable[[str, BaseCDPEvent], Awaitable[None]]
     ) -> None:
         """
         Initialize AsyncNetworkMonitor.
@@ -87,6 +88,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         # network request tracking
         self.req_meta: dict[str, dict[str, Any]] = {}  # request_id -> metadata
         self.fetch_get_body_wait: dict[int, dict[str, Any]] = {}  # cmd_id -> context
+        self.completed_transactions: int = 0  # counter for emitted transactions
 
 
     # Static methods _______________________________________________________________________________________________________
@@ -703,6 +705,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
                 len(cleaned_body) if cleaned_body else 0
             )
             await self.event_callback_fn(self.get_monitor_category(), event)
+            self.completed_transactions += 1
         except Exception as e:
             logger.error("❌ Error calling event_callback_fn: %s", e, exc_info=True)
 
@@ -820,6 +823,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
             Dictionary with network monitoring statistics.
         """
         return {
+            "completed_transactions": self.completed_transactions,
             "requests_tracked": len(self.req_meta),
             "pending_bodies": len(self.fetch_get_body_wait),
         }

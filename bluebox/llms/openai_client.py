@@ -112,6 +112,44 @@ class OpenAIClient(AbstractLLMVendorClient):
             return [{"role": "system", "content": system_prompt}] + messages
         return messages
 
+    def _convert_messages_for_chat_completions(
+        self,
+        messages: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """
+        Convert messages from generic format to Chat Completions API format.
+
+        Handles tool_calls conversion from generic format:
+        - Generic: {"call_id": ..., "name": ..., "arguments": {...}}
+        - Chat Completions: {"id": ..., "type": "function", "function": {"name": ..., "arguments": "..."}}
+
+        Args:
+            messages: Messages in generic format
+
+        Returns:
+            Messages converted to Chat Completions API format
+        """
+        converted: list[dict[str, Any]] = []
+        for msg in messages:
+            if msg.get("tool_calls"):
+                # Convert tool_calls from generic to Chat Completions format
+                converted_msg = {k: v for k, v in msg.items() if k != "tool_calls"}
+                converted_msg["tool_calls"] = [
+                    {
+                        "id": tc.get("call_id"),
+                        "type": "function",
+                        "function": {
+                            "name": tc.get("name"),
+                            "arguments": json.dumps(tc.get("arguments", {})) if isinstance(tc.get("arguments"), dict) else tc.get("arguments", "{}"),
+                        },
+                    }
+                    for tc in msg["tool_calls"]
+                ]
+                converted.append(converted_msg)
+            else:
+                converted.append(msg)
+        return converted
+
     def _has_file_search_tools(self) -> bool:
         """Check if file_search vectorstores are configured (Responses API only)."""
         return bool(self._file_search_vectorstores)
@@ -166,7 +204,9 @@ class OpenAIClient(AbstractLLMVendorClient):
         stream: bool = False,
     ) -> dict[str, Any]:
         """Build kwargs for Chat Completions API call."""
-        all_messages = self._prepend_system_prompt(messages, system_prompt)
+        # Convert messages from generic format to Chat Completions format
+        converted_messages = self._convert_messages_for_chat_completions(messages)
+        all_messages = self._prepend_system_prompt(converted_messages, system_prompt)
 
         kwargs: dict[str, Any] = {
             "model": self.model.value,

@@ -26,6 +26,7 @@ from ..data_models.llms.vendors import OpenAIModel
 from ..data_models.routine.routine import Routine
 from ..data_models.routine_discovery.message import RoutineDiscoveryMessage
 from ..data_models.routine_discovery.llm_responses import TestParametersResponse
+from ..data_models.routine_discovery.message import RoutineDiscoveryMessageType
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -84,7 +85,6 @@ class RoutineDiscovery:
 
     def _default_message_handler(self, message: RoutineDiscoveryMessage) -> None:
         """Default message handler that logs to console."""
-        from bluebox.data_models.routine_discovery.message import RoutineDiscoveryMessageType
 
         if message.type == RoutineDiscoveryMessageType.INITIATED:
             logger.info(f"🚀 {message.content}")
@@ -111,11 +111,8 @@ class RoutineDiscovery:
             # Initialize data store
             self.data_store = LocalDiscoveryDataStore(
                 client=self.client,
+                cdp_captures_dir=self.cdp_captures_dir,
                 tmp_dir=str(Path(self.output_dir) / "tmp"),
-                transactions_dir=str(Path(self.cdp_captures_dir) / "network" / "transactions"),
-                consolidated_transactions_path=str(Path(self.cdp_captures_dir) / "network" / "consolidated_transactions.json"),
-                storage_jsonl_path=str(Path(self.cdp_captures_dir) / "storage" / "events.jsonl"),
-                window_properties_path=str(Path(self.cdp_captures_dir) / "window_properties" / "window_properties.json"),
                 documentation_paths=[str(PACKAGE_ROOT / "agent_docs")],
                 code_paths=[
                     str(PACKAGE_ROOT / "data_models" / "routine"),

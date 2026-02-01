@@ -23,7 +23,7 @@ This file provides context and guidelines for working with the bluebox-sdk codeb
 
 - `bluebox-monitor --host 127.0.0.1 --port 9222 --output-dir ./cdp_captures --url about:blank --incognito` - Start browser monitoring
 - `bluebox-discover --task "your task description" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5.1` - Discover routines from captures
-- `bluebox-execute --routine-path example_routines/amtrak_one_way_train_search_routine.json --parameters-path example_routines/amtrak_one_way_train_search_input.json` - Execute a routine
+- `bluebox-execute --routine-path example_data/example_routines/amtrak_one_way_train_search_routine.json --parameters-path example_data/example_routines/amtrak_one_way_train_search_input.json` - Execute a routine
 
 ### Chrome Debug Mode
 
@@ -202,8 +202,8 @@ from bluebox.llms.infra.data_store import DiscoveryDataStore, LocalDiscoveryData
 
 ## Example Routines
 
-- `example_routines/amtrak_one_way_train_search_routine.json` - Train search example
-- `example_routines/download_arxive_paper_routine.json` - Paper download example
-- `example_routines/massachusetts_corp_search_routine.json` - Corporate search example
+- `example_data/example_routines/amtrak_one_way_train_search_routine.json` - Train search example
+- `example_data/example_routines/download_arxive_paper_routine.json` - Paper download example
+- `example_data/example_routines/massachusetts_corp_search_routine.json` - Corporate search example
 
 Use these as references when creating new routines or understanding the routine format.
