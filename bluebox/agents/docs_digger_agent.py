@@ -38,6 +38,7 @@ from bluebox.llms.infra.documentation_data_store import (
     DocumentationDataStore,
     FileType,
 )
+from bluebox.utils.data_utils import format_bytes
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
@@ -103,123 +104,78 @@ class DocsDiggerAgent:
 
     The agent maintains a ChatThread with Chat messages and uses LLM with tools
     to search and analyze documentation and code.
-
-    Usage:
-        def handle_message(message: EmittedMessage) -> None:
-            print(f"[{message.type}] {message.content}")
-
-        docs_store = DocumentationDataStore(
-            documentation_paths=["docs/**/*.md"],
-            code_paths=["src/**/*.py"],
-        )
-        agent = DocsDiggerAgent(
-            emit_message_callable=handle_message,
-            documentation_data_store=docs_store,
-        )
-        agent.process_new_message("How do I configure the SDK?", ChatRole.USER)
     """
 
     SYSTEM_PROMPT: str = textwrap.dedent("""
-        You are a documentation and code analyst specializing in helping users find information.
+        You are a documentation and code analyst. You have access to a small documentation set
+        and can see the full file index below.
 
         ## Your Role
 
-        You help users find and understand documentation and code in their project. Your main job is to:
-        - Find documentation files that answer the user's questions
-        - Locate relevant code files and understand their structure
-        - Explain how different parts of the codebase work together
-
-        ## Finding Relevant Information
-
-        When the user asks about specific topics:
-
-        1. Generate 15-25 relevant search terms that might appear in documentation or code
-           - Include variations: singular/plural, different casings, synonyms
-           - Include technical terms: function names, class names, config keys
-           - Include domain-specific terms related to the project
-
-        2. Use the `search_docs_by_terms` tool with your terms
-
-        3. Analyze the top results - examine files with highest scores first
-
-        4. Use `get_file_content` to read promising files and extract relevant information
+        Help users find information in the documentation and code. The file index is in the
+        system prompt - you can see all file titles and summaries.
 
         ## Available Tools
 
-        - **`search_docs_by_terms`**: Search documentation and code by a list of terms.
-          - Pass 15-25 search terms for best results
-          - Returns top files ranked by relevance
-          - Can filter by file_type: "documentation" or "code"
+        - **`search_content`**: Search for exact strings (like Cmd+F).
+          - Returns LINE NUMBERS where matches are found
+          - Use this to find specific terms, function names, or error messages
+          - Then use get_file_content to read around those lines
 
-        - **`search_content`**: Search for exact content in files.
-          - Useful for finding specific strings, function names, or error messages
-          - Returns matches with surrounding context
+        - **`get_file_content`**: Read file content.
+          - Supports OPTIONAL line range: use start_line and end_line to read specific sections
+          - Example: After search_content finds a match on line 45, read lines 40-60
 
-        - **`get_file_content`**: Get the full content of a file by path.
-          - Use after finding a relevant file to read its contents
-          - Supports partial path matching
+        ## Workflow
 
-        - **`get_file_index`**: Get a list of all indexed files.
-          - Shows paths, titles, and summaries
-          - Useful for understanding project structure
-
-        - **`search_functions`**: Search for function definitions in code.
-          - Can filter by function name pattern
-          - Returns function signatures and locations
-
-        - **`search_classes`**: Search for class definitions in code.
-          - Can filter by class name pattern
-          - Returns class names, bases, and locations
-
-        - **`search_by_pattern`**: Search files by path pattern (glob-style).
-          - Useful for finding files in specific directories
-          - Example: "**/test_*.py" for test files
+        1. **Look at the file index below** - find files with relevant titles/summaries
+        2. **Use search_content** to find specific terms and get line numbers
+        3. **Use get_file_content** to read the relevant lines/files
 
         ## Guidelines
 
-        - Be concise and direct in your responses
-        - When you find relevant documentation, summarize the key points
+        - Be concise and direct
+        - Summarize key points from documentation
         - Quote relevant code snippets when helpful
-        - Always use search_docs_by_terms first when looking for information
-        - Verify information by reading the actual file content
+        - Use line ranges to focus on relevant sections
     """).strip()
 
     AUTONOMOUS_SYSTEM_PROMPT: str = textwrap.dedent("""
-        You are a documentation analyst that autonomously finds information in documentation and code.
+        You are a documentation analyst. You have access to a small documentation set
+        and can see the full file index below.
 
         ## Your Mission
 
         Given a user query, find the documentation and/or code files that best answer their question.
         Provide a comprehensive summary based on the found documents.
 
+        ## Available Tools
+
+        - **`search_content`**: Search for exact strings (like Cmd+F).
+          - Returns LINE NUMBERS where matches are found
+          - Use this to locate specific content
+
+        - **`get_file_content`**: Read file content.
+          - Supports line range: use start_line/end_line for focused reading
+
         ## Process
 
-        1. **Search**: Use `search_docs_by_terms` with 15-25 relevant terms
-        2. **Analyze**: Look at top results, examine their content with `get_file_content`
-        3. **Verify**: Read the actual files to confirm they contain relevant information
-        4. **Finalize**: Once confident, call `finalize_result` with your findings
-
-        ## Strategy
-
-        - Search for both documentation (.md) and code (.py) files
-        - Look at file titles and summaries in search results
-        - Read promising files to extract key information
-        - Consider multiple related files for comprehensive answers
+        1. **Look at the file index below** - identify promising files by title/summary
+        2. **Search**: Use `search_content` to find specific terms
+        3. **Read**: Use `get_file_content` to examine relevant sections
+        4. **Finalize**: Call `finalize_result` with your findings
 
         ## When finalize tools are available
 
-        After sufficient exploration, the `finalize_result` and `finalize_failure` tools become available.
+        After exploration, `finalize_result` and `finalize_failure` tools become available.
 
         ### finalize_result - Use when relevant documentation IS found
-        Call it with:
         - documents: List of relevant files with paths, types, reasons, and key content
-        - summary: A comprehensive answer to the user's question based on found documents
+        - summary: A comprehensive answer based on found documents
 
         ### finalize_failure - Use when documentation is NOT found
-        If after exhaustive search you determine the information does NOT exist in the indexed files:
-        - Call `finalize_failure` with a clear reason explaining what was searched
-        - Include the search terms you tried and any files that came close
-        - Only use this after thoroughly searching - don't give up too early!
+        - Call only after thorough search
+        - Include what was searched and any close matches
     """).strip()
 
     def __init__(
@@ -288,44 +244,13 @@ class DocsDiggerAgent:
 
     def _register_tools(self) -> None:
         """Register tools for documentation analysis."""
-        # search_docs_by_terms
-        self.llm_client.register_tool(
-            name="search_docs_by_terms",
-            description=(
-                "Search documentation and code files by a list of terms. "
-                "Returns top files ranked by relevance score. "
-                "Pass 15-25 search terms for best results."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "terms": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": (
-                            "List of 15-25 search terms to look for in file contents. "
-                            "Include variations, related terms, and technical names."
-                        ),
-                    },
-                    "file_type": {
-                        "type": "string",
-                        "enum": ["documentation", "code"],
-                        "description": (
-                            "Optional filter to search only documentation or code files."
-                        ),
-                    },
-                },
-                "required": ["terms"],
-            },
-        )
-
-        # search_content
+        # search_content - Cmd+F style search with line numbers
         self.llm_client.register_tool(
             name="search_content",
             description=(
-                "Search file contents for an exact query string. "
-                "Returns matches with surrounding context. "
-                "Useful for finding specific strings, function names, or error messages."
+                "Search file contents for an exact query string (like Cmd+F). "
+                "Returns LINE NUMBERS where matches are found. "
+                "Use this to find specific terms, then use get_file_content to read around those lines."
             ),
             parameters={
                 "type": "object",
@@ -348,12 +273,12 @@ class DocsDiggerAgent:
             },
         )
 
-        # get_file_content
+        # get_file_content - read full file or specific line range
         self.llm_client.register_tool(
             name="get_file_content",
             description=(
-                "Get the full content of a file by its path. "
-                "Supports exact path or partial path matching."
+                "Get file content by path. Can read the full file or specific LINE RANGE. "
+                "Use start_line/end_line to read around matches from search_content."
             ),
             parameters={
                 "type": "object",
@@ -362,104 +287,16 @@ class DocsDiggerAgent:
                         "type": "string",
                         "description": "The file path (can be partial, will match).",
                     },
+                    "start_line": {
+                        "type": "integer",
+                        "description": "Starting line number (1-indexed, inclusive). Omit to start from beginning.",
+                    },
+                    "end_line": {
+                        "type": "integer",
+                        "description": "Ending line number (1-indexed, inclusive). Omit to read to end.",
+                    },
                 },
                 "required": ["path"],
-            },
-        )
-
-        # get_file_index
-        self.llm_client.register_tool(
-            name="get_file_index",
-            description=(
-                "Get a list of all indexed files with their metadata. "
-                "Shows paths, file types, titles, and summaries."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {},
-            },
-        )
-
-        # search_functions
-        self.llm_client.register_tool(
-            name="search_functions",
-            description=(
-                "Search for function/method definitions in code files. "
-                "Returns function signatures and line numbers."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "name_pattern": {
-                        "type": "string",
-                        "description": (
-                            "Regex pattern to match function names. "
-                            "Example: 'get_.*' matches functions starting with 'get_'."
-                        ),
-                    },
-                    "file_pattern": {
-                        "type": "string",
-                        "description": (
-                            "Glob pattern to filter files. "
-                            "Example: '**/test_*.py' for test files."
-                        ),
-                    },
-                },
-            },
-        )
-
-        # search_classes
-        self.llm_client.register_tool(
-            name="search_classes",
-            description=(
-                "Search for class definitions in code files. "
-                "Returns class names, base classes, and line numbers."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "name_pattern": {
-                        "type": "string",
-                        "description": (
-                            "Regex pattern to match class names. "
-                            "Example: '.*Agent' matches classes ending with 'Agent'."
-                        ),
-                    },
-                    "file_pattern": {
-                        "type": "string",
-                        "description": (
-                            "Glob pattern to filter files. "
-                            "Example: '**/models/*.py' for model files."
-                        ),
-                    },
-                },
-            },
-        )
-
-        # search_by_pattern
-        self.llm_client.register_tool(
-            name="search_by_pattern",
-            description=(
-                "Search files by path pattern (glob-style). "
-                "Useful for finding files in specific directories or with specific names."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": (
-                            "Glob pattern to match paths. "
-                            "Examples: '**/test_*.py', 'docs/**/*.md', '**/README*'."
-                        ),
-                    },
-                    "file_type": {
-                        "type": "string",
-                        "enum": ["documentation", "code"],
-                        "description": "Optional filter by file type.",
-                    },
-                },
-                "required": ["pattern"],
             },
         )
 
@@ -558,42 +395,46 @@ class DocsDiggerAgent:
         return self._autonomous_iteration
 
     def _get_system_prompt(self) -> str:
-        """Get system prompt with documentation stats context."""
+        """Get system prompt with full file index."""
         stats = self._documentation_data_store.stats
         stats_context = (
-            f"\n\n## Documentation Context\n"
-            f"- Total Files: {stats.total_files}\n"
-            f"- Documentation Files: {stats.total_docs}\n"
-            f"- Code Files: {stats.total_code}\n"
-            f"- Total Size: {stats._format_bytes(stats.total_bytes)}\n"
+            f"\n\n## File Index ({stats.total_files} files, {format_bytes(stats.total_bytes)})\n"
         )
 
-        # Add extension breakdown
-        if stats.extensions:
-            ext_lines = []
-            for ext, count in sorted(stats.extensions.items(), key=lambda x: -x[1])[:10]:
-                ext_lines.append(f"  - {ext}: {count} files")
-            stats_context += "\n- Extensions:\n" + "\n".join(ext_lines)
-
-        # Add documentation index (titles and summaries)
+        # Add FULL documentation index with titles and summaries
         doc_index = self._documentation_data_store.get_documentation_index()
         if doc_index:
-            doc_lines = []
-            for doc in doc_index[:20]:  # Limit to 20
-                if doc["title"]:
-                    doc_lines.append(f"- `{doc['filename']}`: {doc['title']}")
+            doc_lines = ["\n### Documentation Files"]
+            for doc in doc_index:
+                title = doc.get("title", "")
+                summary = doc.get("summary", "")
+                if title and summary:
+                    # Truncate long summaries
+                    if len(summary) > 100:
+                        summary = summary[:100] + "..."
+                    doc_lines.append(f"- `{doc['filename']}`: **{title}** - {summary}")
+                elif title:
+                    doc_lines.append(f"- `{doc['filename']}`: **{title}**")
                 else:
                     doc_lines.append(f"- `{doc['filename']}`")
-            doc_context = (
-                f"\n\n## Documentation Files Overview\n"
-                + "\n".join(doc_lines)
-            )
-            if len(doc_index) > 20:
-                doc_context += f"\n... and {len(doc_index) - 20} more documentation files"
-        else:
-            doc_context = ""
+            stats_context += "\n".join(doc_lines)
 
-        return self.SYSTEM_PROMPT + stats_context + doc_context
+        # Add FULL code index with docstrings
+        code_index = self._documentation_data_store.get_code_index()
+        if code_index:
+            code_lines = ["\n\n### Code Files"]
+            for code in code_index:
+                docstring = code.get("docstring", "")
+                if docstring:
+                    # Truncate long docstrings
+                    if len(docstring) > 100:
+                        docstring = docstring[:100] + "..."
+                    code_lines.append(f"- `{code['filename']}`: {docstring}")
+                else:
+                    code_lines.append(f"- `{code['filename']}`")
+            stats_context += "\n".join(code_lines)
+
+        return self.SYSTEM_PROMPT + stats_context
 
     def _emit_message(self, message: EmittedMessage) -> None:
         """Emit a message via the callback."""
@@ -674,36 +515,8 @@ class DocsDiggerAgent:
         return messages
 
     @token_optimized
-    def _tool_search_docs_by_terms(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute search_docs_by_terms tool."""
-        terms = tool_arguments.get("terms", [])
-        if not terms:
-            return {"error": "No search terms provided"}
-
-        file_type_str = tool_arguments.get("file_type")
-        file_type = FileType(file_type_str) if file_type_str else None
-
-        results = self._documentation_data_store.search_by_terms(
-            terms=terms,
-            file_type=file_type,
-            top_n=20,
-        )
-
-        if not results:
-            return {
-                "message": "No matching files found",
-                "terms_searched": len(terms),
-            }
-
-        return {
-            "terms_searched": len(terms),
-            "results_found": len(results),
-            "results": results,
-        }
-
-    @token_optimized
     def _tool_search_content(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute search_content tool."""
+        """Execute search_content tool - returns line numbers for matches."""
         query = tool_arguments.get("query", "")
         if not query:
             return {"error": "query is required"}
@@ -712,10 +525,11 @@ class DocsDiggerAgent:
         file_type = FileType(file_type_str) if file_type_str else None
         case_sensitive = tool_arguments.get("case_sensitive", False)
 
-        results = self._documentation_data_store.search_content(
+        results = self._documentation_data_store.search_content_with_lines(
             query=query,
             file_type=file_type,
             case_sensitive=case_sensitive,
+            max_matches_per_file=10,
         )
 
         if not results:
@@ -727,23 +541,50 @@ class DocsDiggerAgent:
         return {
             "query": query,
             "case_sensitive": case_sensitive,
-            "results_found": len(results),
-            "results": results[:20],  # Top 20
+            "files_with_matches": len(results),
+            "results": results[:20],  # Top 20 files
         }
 
     @token_optimized
     def _tool_get_file_content(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute get_file_content tool."""
+        """Execute get_file_content tool - supports line range reading."""
         path = tool_arguments.get("path", "")
         if not path:
             return {"error": "path is required"}
 
+        start_line = tool_arguments.get("start_line")
+        end_line = tool_arguments.get("end_line")
+
+        # If line range specified, use get_file_lines
+        if start_line is not None or end_line is not None:
+            result = self._documentation_data_store.get_file_lines(
+                path=path,
+                start_line=start_line,
+                end_line=end_line,
+            )
+            if result is None:
+                return {"error": f"File '{path}' not found"}
+
+            content, total_lines = result
+            actual_start = start_line or 1
+            actual_end = end_line or total_lines
+
+            return {
+                "path": path,
+                "lines_shown": f"{actual_start}-{actual_end}",
+                "total_lines": total_lines,
+                "content": content,
+            }
+
+        # Otherwise, read full file
         entry = self._documentation_data_store.get_file_by_path(path)
         if entry is None:
             return {"error": f"File '{path}' not found"}
 
-        # Truncate large content
         content = entry.content
+        total_lines = content.count("\n") + 1
+
+        # Truncate large content
         if len(content) > 10000:
             content = content[:10000] + f"\n... (truncated, {len(entry.content)} total chars)"
 
@@ -752,89 +593,8 @@ class DocsDiggerAgent:
             "file_type": entry.file_type,
             "title": entry.title,
             "summary": entry.summary,
-            "size_bytes": entry.size_bytes,
+            "total_lines": total_lines,
             "content": content,
-        }
-
-    @token_optimized
-    def _tool_get_file_index(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute get_file_index tool."""
-        index = self._documentation_data_store.get_file_index()
-        return {
-            "total_files": len(index),
-            "files": index,
-        }
-
-    @token_optimized
-    def _tool_search_functions(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute search_functions tool."""
-        name_pattern = tool_arguments.get("name_pattern")
-        file_pattern = tool_arguments.get("file_pattern")
-
-        results = self._documentation_data_store.search_functions(
-            name_pattern=name_pattern,
-            file_pattern=file_pattern,
-        )
-
-        if not results:
-            return {"message": "No matching functions found"}
-
-        return {
-            "results_found": len(results),
-            "results": results[:50],  # Top 50
-        }
-
-    @token_optimized
-    def _tool_search_classes(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute search_classes tool."""
-        name_pattern = tool_arguments.get("name_pattern")
-        file_pattern = tool_arguments.get("file_pattern")
-
-        results = self._documentation_data_store.search_classes(
-            name_pattern=name_pattern,
-            file_pattern=file_pattern,
-        )
-
-        if not results:
-            return {"message": "No matching classes found"}
-
-        return {
-            "results_found": len(results),
-            "results": results[:50],  # Top 50
-        }
-
-    @token_optimized
-    def _tool_search_by_pattern(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute search_by_pattern tool."""
-        pattern = tool_arguments.get("pattern", "")
-        if not pattern:
-            return {"error": "pattern is required"}
-
-        file_type_str = tool_arguments.get("file_type")
-        file_type = FileType(file_type_str) if file_type_str else None
-
-        entries = self._documentation_data_store.search_by_pattern(
-            pattern=pattern,
-            file_type=file_type,
-        )
-
-        if not entries:
-            return {"message": f"No files matching pattern '{pattern}'"}
-
-        results = [
-            {
-                "path": str(e.path),
-                "file_type": e.file_type,
-                "title": e.title,
-                "summary": e.summary,
-            }
-            for e in entries[:30]  # Top 30
-        ]
-
-        return {
-            "pattern": pattern,
-            "results_found": len(entries),
-            "results": results,
         }
 
     @token_optimized
@@ -926,26 +686,11 @@ class DocsDiggerAgent:
         """Execute a tool and return the result."""
         logger.debug("Executing tool %s with arguments: %s", tool_name, tool_arguments)
 
-        if tool_name == "search_docs_by_terms":
-            return self._tool_search_docs_by_terms(tool_arguments)
-
         if tool_name == "search_content":
             return self._tool_search_content(tool_arguments)
 
         if tool_name == "get_file_content":
             return self._tool_get_file_content(tool_arguments)
-
-        if tool_name == "get_file_index":
-            return self._tool_get_file_index(tool_arguments)
-
-        if tool_name == "search_functions":
-            return self._tool_search_functions(tool_arguments)
-
-        if tool_name == "search_classes":
-            return self._tool_search_classes(tool_arguments)
-
-        if tool_name == "search_by_pattern":
-            return self._tool_search_by_pattern(tool_arguments)
 
         if tool_name == "finalize_result":
             return self._tool_finalize_result(tool_arguments)

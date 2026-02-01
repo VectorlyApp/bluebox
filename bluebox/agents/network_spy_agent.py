@@ -100,17 +100,6 @@ class NetworkSpyAgent:
 
     The agent maintains a ChatThread with Chat messages and uses LLM with tools
     to search and analyze network traffic.
-
-    Usage:
-        def handle_message(message: EmittedMessage) -> None:
-            print(f"[{message.type}] {message.content}")
-
-        network_store = NetworkDataStore.from_jsonl("events.jsonl")
-        agent = NetworkSpyAgent(
-            emit_message_callable=handle_message,
-            network_data_store=network_store,
-        )
-        agent.process_new_message("Find entries related to train prices", ChatRole.USER)
     """
 
     SYSTEM_PROMPT: str = textwrap.dedent("""

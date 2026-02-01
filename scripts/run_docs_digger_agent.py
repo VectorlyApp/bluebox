@@ -7,6 +7,10 @@ scripts/run_docs_digger_agent.py
 Interactive CLI for the Docs Digger agent - searches documentation and code.
 
 Usage:
+    # Run with defaults (bluebox agent_docs and core modules)
+    python scripts/run_docs_digger_agent.py
+
+    # Or specify custom paths
     python scripts/run_docs_digger_agent.py \
         --docs-paths "docs/**/*.md" \
         --code-paths "src/**/*.py"
@@ -16,9 +20,25 @@ import argparse
 import json
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 from rich import box
+
+# Package root for default paths (scripts/ is sibling to bluebox/)
+BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent / "bluebox"
+
+# Default documentation and code paths (same as run_guide_agent.py)
+DEFAULT_DOCS_DIR = str(BLUEBOX_PACKAGE_ROOT / "agent_docs")
+DEFAULT_CODE_PATHS = [
+    str(BLUEBOX_PACKAGE_ROOT / "data_models" / "routine"),
+    str(BLUEBOX_PACKAGE_ROOT / "data_models" / "ui_elements.py"),
+    str(BLUEBOX_PACKAGE_ROOT / "agents" / "routine_discovery_agent.py"),
+    str(BLUEBOX_PACKAGE_ROOT / "llms" / "infra" / "data_store.py"),
+    str(BLUEBOX_PACKAGE_ROOT / "utils" / "js_utils.py"),
+    str(BLUEBOX_PACKAGE_ROOT / "utils" / "data_utils.py"),
+    "!" + str(BLUEBOX_PACKAGE_ROOT / "**" / "__init__.py"),
+]
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.markup import escape
@@ -42,6 +62,7 @@ from bluebox.data_models.llms.interaction import (
     ToolInvocationStatus,
 )
 from bluebox.data_models.llms.vendors import OpenAIModel
+from bluebox.utils.data_utils import format_bytes
 from bluebox.utils.logger import get_logger
 
 
@@ -85,7 +106,7 @@ def print_welcome(
     stats_table.add_row("Total Files", str(stats.total_files))
     stats_table.add_row("Documentation Files", str(stats.total_docs))
     stats_table.add_row("Code Files", str(stats.total_code))
-    stats_table.add_row("Total Size", stats._format_bytes(stats.total_bytes))
+    stats_table.add_row("Total Size", format_bytes(stats.total_bytes))
 
     # Extensions breakdown
     if stats.extensions:
@@ -497,13 +518,15 @@ def main() -> None:
         "--docs-paths",
         type=str,
         nargs="+",
-        help="Glob patterns for documentation files (e.g., 'docs/**/*.md')",
+        default=None,
+        help="Glob patterns for documentation files (default: bluebox/agent_docs)",
     )
     parser.add_argument(
         "--code-paths",
         type=str,
         nargs="+",
-        help="Glob patterns for code files (e.g., 'src/**/*.py')",
+        default=None,
+        help="Glob patterns for code files (default: bluebox core modules)",
     )
     parser.add_argument(
         "--model",
@@ -513,24 +536,17 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Validate that at least one path is provided
-    if not args.docs_paths and not args.code_paths:
-        console.print("[bold red]Error: At least one path must be provided[/bold red]")
-        console.print("[dim]Use --docs-paths and/or --code-paths[/dim]")
-        console.print()
-        console.print("[bold]Examples:[/bold]")
-        console.print("  python scripts/run_docs_digger_agent.py --docs-paths 'docs/**/*.md'")
-        console.print("  python scripts/run_docs_digger_agent.py --code-paths 'src/**/*.py'")
-        console.print("  python scripts/run_docs_digger_agent.py --docs-paths 'docs/**/*.md' --code-paths 'src/**/*.py'")
-        sys.exit(1)
+    # Use defaults if not provided
+    docs_paths = args.docs_paths if args.docs_paths else [DEFAULT_DOCS_DIR]
+    code_paths = args.code_paths if args.code_paths else DEFAULT_CODE_PATHS
 
     console.print("[dim]Loading documentation data store...[/dim]")
 
     # Create documentation data store
     try:
         docs_store = DocumentationDataStore(
-            documentation_paths=args.docs_paths,
-            code_paths=args.code_paths,
+            documentation_paths=docs_paths,
+            code_paths=code_paths,
         )
     except Exception as e:
         console.print(f"[bold red]Error loading files: {e}[/bold red]")

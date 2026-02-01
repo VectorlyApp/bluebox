@@ -26,7 +26,7 @@ from bluebox.constants.network import (
     SKIP_FILE_EXTENSIONS,
 )
 from bluebox.data_models.cdp import NetworkTransactionEvent
-from bluebox.utils.data_utils import extract_object_schema, read_jsonl
+from bluebox.utils.data_utils import extract_object_schema, format_bytes, read_jsonl
 from bluebox.utils.logger import get_logger
 
 
@@ -62,8 +62,8 @@ class NetworkStats:
             f"Total Requests: {self.total_requests}",
             f"Unique Hosts: {self.unique_hosts}",
             f"Unique Paths: {self.unique_paths}",
-            f"Total Request Size: {self._format_bytes(self.total_request_bytes)}",
-            f"Total Response Size: {self._format_bytes(self.total_response_bytes)}",
+            f"Total Request Size: {format_bytes(self.total_request_bytes)}",
+            f"Total Response Size: {format_bytes(self.total_response_bytes)}",
             f"Total Time: {self.total_time_ms:.0f}ms",
             "",
             "Methods:",
@@ -98,15 +98,6 @@ class NetworkStats:
             lines.append("  - Form data present")
 
         return "\n".join(lines)
-
-    @staticmethod
-    def _format_bytes(num_bytes: int) -> str:
-        """Format bytes as human-readable string."""
-        for unit in ["B", "KB", "MB", "GB"]:
-            if abs(num_bytes) < 1024:
-                return f"{num_bytes:.1f} {unit}"
-            num_bytes /= 1024  # type: ignore
-        return f"{num_bytes:.1f} TB"
 
 
 class NetworkDataStore:

@@ -102,18 +102,6 @@ class TraceHoundAgent:
     Searches across network traffic, browser storage (cookies, localStorage,
     sessionStorage, IndexedDB), and window object properties to find where
     a specific value first appeared and how it propagates.
-
-    Usage:
-        def handle_message(message: EmittedMessage) -> None:
-            print(f"[{message.type}] {message.content}")
-
-        agent = TraceHoundAgent(
-            emit_message_callable=handle_message,
-            network_data_store=network_store,
-            storage_data_store=storage_store,
-            window_property_data_store=window_store,
-        )
-        agent.process_new_message("Where did this token come from: abc123?", ChatRole.USER)
     """
 
     SYSTEM_PROMPT: str = textwrap.dedent("""

@@ -15,6 +15,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from bluebox.utils.data_utils import format_bytes
 from bluebox.utils.infra_utils import resolve_glob_patterns
 from bluebox.utils.logger import get_logger
 
@@ -78,7 +79,7 @@ class DocumentationStats:
             f"Total Files: {self.total_files}",
             f"  Documentation: {self.total_docs}",
             f"  Code: {self.total_code}",
-            f"Total Size: {self._format_bytes(self.total_bytes)}",
+            f"Total Size: {format_bytes(self.total_bytes)}",
             "",
             "File Extensions:",
         ]
@@ -95,15 +96,6 @@ class DocumentationStats:
         lines.append(f"  With Docstring: {self.code_with_docstring}/{self.total_code}")
 
         return "\n".join(lines)
-
-    @staticmethod
-    def _format_bytes(num_bytes: int) -> str:
-        """Format bytes as human-readable string."""
-        for unit in ["B", "KB", "MB", "GB"]:
-            if abs(num_bytes) < 1024:
-                return f"{num_bytes:.1f} {unit}"
-            num_bytes /= 1024  # type: ignore
-        return f"{num_bytes:.1f} TB"
 
 
 class DocumentationDataStore:
@@ -464,6 +456,105 @@ class DocumentationDataStore:
         results.sort(key=lambda x: x["count"], reverse=True)
 
         return results
+
+    def search_content_with_lines(
+        self,
+        query: str,
+        file_type: FileType | None = None,
+        case_sensitive: bool = False,
+        max_matches_per_file: int = 10,
+    ) -> list[dict[str, Any]]:
+        """
+        Search file contents and return matches WITH LINE NUMBERS.
+
+        Like Cmd+F - finds exact query occurrences and returns line numbers.
+
+        Args:
+            query: The string to search for.
+            file_type: Optional filter by file type (documentation/code).
+            case_sensitive: Whether search is case-sensitive.
+            max_matches_per_file: Maximum matches to return per file.
+
+        Returns:
+            List of dicts with:
+            - path: str
+            - file_type: str
+            - matches: list of {line_number: int, line_content: str}
+        """
+        results: list[dict[str, Any]] = []
+
+        if not query:
+            return results
+
+        search_query = query if case_sensitive else query.lower()
+
+        for entry in self._entries:
+            if file_type and entry.file_type != file_type:
+                continue
+
+            lines = entry.content.splitlines()
+            matches: list[dict[str, Any]] = []
+
+            for line_num, line in enumerate(lines, start=1):
+                search_line = line if case_sensitive else line.lower()
+                if search_query in search_line:
+                    matches.append({
+                        "line_number": line_num,
+                        "line_content": line.strip(),
+                    })
+                    if len(matches) >= max_matches_per_file:
+                        break
+
+            if matches:
+                results.append({
+                    "path": str(entry.path),
+                    "file_type": entry.file_type,
+                    "title": entry.title,
+                    "total_matches": len(matches),
+                    "matches": matches,
+                })
+
+        # Sort by number of matches descending
+        results.sort(key=lambda x: x["total_matches"], reverse=True)
+
+        return results
+
+    def get_file_lines(
+        self,
+        path: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+    ) -> tuple[str, int] | None:
+        """
+        Read specific line range from a file.
+
+        Args:
+            path: File path (supports partial matching).
+            start_line: Starting line (1-indexed, inclusive). None = from beginning.
+            end_line: Ending line (1-indexed, inclusive). None = to end.
+
+        Returns:
+            Tuple of (content, total_lines) or None if file not found.
+        """
+        entry = self.get_file_by_path(path)
+        if not entry:
+            return None
+
+        lines = entry.content.splitlines()
+        total_lines = len(lines)
+
+        # Handle line range
+        start_idx = (start_line - 1) if start_line else 0
+        end_idx = end_line if end_line else total_lines
+
+        # Clamp to valid range
+        start_idx = max(0, min(start_idx, total_lines))
+        end_idx = max(start_idx, min(end_idx, total_lines))
+
+        selected_lines = lines[start_idx:end_idx]
+        content = "\n".join(selected_lines)
+
+        return content, total_lines
 
     def search_by_pattern(
         self,

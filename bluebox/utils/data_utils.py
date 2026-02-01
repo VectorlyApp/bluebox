@@ -477,6 +477,29 @@ def sanitize_filename(s: str, default: str = "file") -> str:
     return s or default
 
 
+def format_bytes(num_bytes: int | float) -> str:
+    """
+    Format bytes as human-readable string.
+
+    Args:
+        num_bytes: Number of bytes to format.
+
+    Returns:
+        Human-readable string with appropriate unit (B, KB, MB, GB, TB).
+
+    Example:
+        >>> format_bytes(1024)
+        "1.0 KB"
+        >>> format_bytes(1536)
+        "1.5 KB"
+    """
+    for unit in ["B", "KB", "MB", "GB"]:
+        if abs(num_bytes) < 1024:
+            return f"{num_bytes:.1f} {unit}"
+        num_bytes /= 1024
+    return f"{num_bytes:.1f} TB"
+
+
 def build_transaction_dir(url: str, ts_ms: int, output_dir: str) -> str:
     """
     Build per-transaction directory: date_timestamp_url.

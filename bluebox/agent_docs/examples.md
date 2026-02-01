@@ -1,5 +1,7 @@
 # Example Routines
 
+Reference examples demonstrating routine patterns: train search with sessionStorage chaining, PDF downloads, and corporate database searches.
+
 Example routines are in [example_data/example_routines/](example_data/example_routines/). Each has a `*_routine.json` and `*_input.json` file.
 
 ## Amtrak Train Search

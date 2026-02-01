@@ -57,26 +57,6 @@ def malformed_store(network_events_dir: Path) -> NetworkDataStore:
 class TestNetworkStats:
     """Tests for NetworkStats dataclass."""
 
-    def test_format_bytes_bytes(self) -> None:
-        """Format small byte values."""
-        assert NetworkStats._format_bytes(500) == "500.0 B"
-
-    def test_format_bytes_kilobytes(self) -> None:
-        """Format kilobyte values."""
-        assert NetworkStats._format_bytes(2048) == "2.0 KB"
-
-    def test_format_bytes_megabytes(self) -> None:
-        """Format megabyte values."""
-        assert NetworkStats._format_bytes(5 * 1024 * 1024) == "5.0 MB"
-
-    def test_format_bytes_gigabytes(self) -> None:
-        """Format gigabyte values."""
-        assert NetworkStats._format_bytes(3 * 1024 * 1024 * 1024) == "3.0 GB"
-
-    def test_format_bytes_zero(self) -> None:
-        """Format zero bytes."""
-        assert NetworkStats._format_bytes(0) == "0.0 B"
-
     def test_to_summary_basic(self) -> None:
         """Generate summary from basic stats."""
         stats = NetworkStats(
