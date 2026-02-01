@@ -238,6 +238,14 @@ class StorageEvent(BaseCDPEvent):
 
 ## Window property models
 
+class WindowPropertyChangeType(StrEnum):
+    """Types of window property changes."""
+
+    ADDED = "added"
+    CHANGED = "changed"
+    DELETED = "deleted"
+
+
 class WindowPropertyChange(BaseModel):
     """
     Model for a single window property change.
@@ -250,9 +258,9 @@ class WindowPropertyChange(BaseModel):
         ...,
         description="The new value of the property (None for deletions)",
     )
-    change_type: str = Field(
+    change_type: WindowPropertyChangeType = Field(
         ...,
-        description="Type of change: 'added', 'changed', or 'deleted'",
+        description="Type of change: added, changed, or deleted",
     )
 
 
