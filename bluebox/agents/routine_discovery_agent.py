@@ -122,9 +122,9 @@ For each transaction in the queue:
 3. For each DYNAMIC_TOKEN, use `scan_for_value` to find its source
 4. Use `record_resolved_variable` to record where each token comes from
    - If source is another transaction, it will be auto-added to the queue
-   - IMPORTANT: If value is found in BOTH storage AND a prior transaction, provide
-     the transaction as `alternative_transaction_source` to ensure the routine
-     fetches fresh values via network rather than relying on potentially stale storage
+   - IMPORTANT: If value is found in BOTH storage AND a prior transaction,
+     use source_type='transaction' as the primary source. Session storage may
+     be empty in a fresh session - prefer network sources for reliability.
 5. Use `mark_transaction_complete` when done with current transaction
 6. Continue until queue is empty
 
@@ -165,8 +165,8 @@ For each transaction in the queue:
 - If only one value was observed and it could be hardcoded, hardcode it
 - Credentials for fetch operations: same-origin > include > omit
 - PREFER NETWORK SOURCES: When a value appears in both session storage AND a prior
-  transaction response, always include the transaction as alternative_transaction_source.
-  This ensures the routine works in fresh sessions where storage may be empty.
+  transaction response, use source_type='transaction' as the PRIMARY source, not storage.
+  Session storage may be empty in a fresh session, so the routine must fetch via network.
 
 {placeholder_instructions}
 """
@@ -449,8 +449,6 @@ You have access to captured browser data including:
         window_property_source = None
         needs_dependency = False
         dependency_tx_id = None
-        alternative_dependency_added = False
-        alternative_tx_id = None
 
         if source_type == "storage" and args.get("storage_source"):
             ss = args["storage_source"]
@@ -475,18 +473,6 @@ You have access to captured browser data including:
                     needs_dependency = True
                     dependency_tx_id = dep_tx_id
 
-        # If an alternative transaction source is provided (value found in both storage
-        # and a prior network request), add that transaction to the queue to ensure
-        # the routine can fetch fresh values rather than relying on session storage
-        if args.get("alternative_transaction_source"):
-            alt_ts = args["alternative_transaction_source"]
-            alt_tx_id = alt_ts["transaction_id"]
-            if alt_tx_id not in self._state.processed_transactions:
-                added, _ = self._state.add_to_queue(alt_tx_id)
-                if added:
-                    alternative_dependency_added = True
-                    alternative_tx_id = alt_tx_id
-
         resolved = ResolvedVariableResponse(
             variable=variable,
             session_storage_source=session_storage_source,
@@ -507,9 +493,6 @@ You have access to captured browser data including:
         if dependency_tx_id:
             result["dependency_transaction_id"] = dependency_tx_id
             result["message"] = f"Added {dependency_tx_id} to queue for processing"
-        if alternative_dependency_added:
-            result["alternative_transaction_added"] = alternative_tx_id
-            result["message"] = result.get("message", "") + f" Also added {alternative_tx_id} (network source) to queue for fresh value retrieval"
 
         return result
 

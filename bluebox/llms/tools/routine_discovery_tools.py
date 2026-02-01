@@ -202,8 +202,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "- hardcode: Cannot be resolved, hardcode the observed value\n\n"
             "If source_type is 'transaction', the source transaction will be auto-added to the queue.\n\n"
             "IMPORTANT: If scan_for_value found the value in BOTH storage AND a prior transaction,\n"
-            "always provide alternative_transaction_source even when using storage as the primary source.\n"
-            "This ensures the routine fetches fresh values via network rather than relying on session storage."
+            "use source_type='transaction' as the PRIMARY source, not storage.\n"
+            "Session storage may be empty in a fresh session - the routine must fetch values via network."
         ),
         "parameters": {
             "type": "object",
@@ -246,14 +246,6 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "dot_path": {"type": "string"},
                     },
                     "description": "For transaction sources: source transaction ID and path in response",
-                },
-                "alternative_transaction_source": {
-                    "type": "object",
-                    "properties": {
-                        "transaction_id": {"type": "string"},
-                        "dot_path": {"type": "string"},
-                    },
-                    "description": "When value is found in both storage AND a prior transaction, provide the transaction source here. The transaction will be added to the queue to ensure fresh value retrieval.",
                 },
             },
             "required": ["variable_name", "transaction_id", "source_type"],
