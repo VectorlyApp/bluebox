@@ -46,9 +46,9 @@ class RoutineDiscoveryState(BaseModel):
         default_factory=list,
         description="Pending transactions to process"
     )
-    processed_transactions: set[str] = Field(
-        default_factory=set,
-        description="Transactions that have been fully processed"
+    processed_transactions: list[str] = Field(
+        default_factory=list,
+        description="Transactions that have been fully processed (in BFS order)"
     )
     current_transaction: str | None = Field(
         default=None,
@@ -124,7 +124,8 @@ class RoutineDiscoveryState(BaseModel):
         Returns:
             The next transaction ID, or None if queue is empty.
         """
-        self.processed_transactions.add(transaction_id)
+        if transaction_id not in self.processed_transactions:
+            self.processed_transactions.append(transaction_id)
         if self.current_transaction == transaction_id:
             self.current_transaction = None
         return self.get_next_transaction()
@@ -179,7 +180,7 @@ class RoutineDiscoveryState(BaseModel):
         """Reset all state for a fresh discovery run."""
         self.root_transaction = None
         self.transaction_queue = []
-        self.processed_transactions = set()
+        self.processed_transactions = []
         self.current_transaction = None
         self.transaction_data = {}
         self.all_resolved_variables = []
