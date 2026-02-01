@@ -22,6 +22,7 @@ class DiscoveryPhase(StrEnum):
     IDENTIFY_TRANSACTION = "identify_transaction"
     PROCESS_QUEUE = "process_queue"
     CONSTRUCT_ROUTINE = "construct_routine"
+    VALIDATE_ROUTINE = "validate_routine"
     COMPLETE = "complete"
 
 
@@ -86,6 +87,7 @@ class RoutineDiscoveryState(BaseModel):
     # Retry counters
     identification_attempts: int = Field(default=0)
     construction_attempts: int = Field(default=0)
+    validation_attempts: int = Field(default=0)
 
     def add_to_queue(self, transaction_id: str) -> tuple[bool, int]:
         """
@@ -186,3 +188,4 @@ class RoutineDiscoveryState(BaseModel):
         self.phase = DiscoveryPhase.IDENTIFY_TRANSACTION
         self.identification_attempts = 0
         self.construction_attempts = 0
+        self.validation_attempts = 0

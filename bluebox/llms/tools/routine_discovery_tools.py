@@ -249,6 +249,32 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
 
+    # === Validation Tools ===
+    {
+        "name": "execute_routine",
+        "description": (
+            "Execute the constructed routine to validate it works correctly. "
+            "Use this AFTER construct_routine succeeds to test the routine with real parameters. "
+            "Returns detailed diagnostics on any failures:\n"
+            "- failed_placeholders: List of placeholders that couldn't be resolved (e.g., storage keys not found)\n"
+            "- operation_errors: List of (operation_type, error_message) for operations that failed\n"
+            "- warnings: Non-fatal issues encountered\n\n"
+            "If execution fails due to placeholder resolution, re-examine where those values should come from "
+            "using scan_for_value, update the routine, and try again."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "parameters": {
+                    "type": "object",
+                    "description": "Parameters to pass to the routine (key-value pairs matching routine parameter definitions)",
+                    "additionalProperties": True,
+                },
+            },
+            "required": ["parameters"],
+        },
+    },
+
     # === Construction Tools ===
     {
         "name": "construct_routine",

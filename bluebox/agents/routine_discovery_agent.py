@@ -24,6 +24,7 @@ from toon import encode
 from bluebox.llms.infra.data_store import DiscoveryDataStore
 from bluebox.llms.llm_client import LLMClient
 from bluebox.llms.tools.routine_discovery_tools import TOOL_DEFINITIONS
+from bluebox.llms.tools.execute_routine_tool import execute_routine
 from bluebox.data_models.routine_discovery.llm_responses import (
     TransactionIdentificationResponse,
     ExtractedVariableResponse,
@@ -73,6 +74,7 @@ class RoutineDiscoveryAgent(BaseModel):
     n_transaction_identification_attempts: int = Field(default=3)
     max_iterations: int = Field(default=50)
     timeout: int = Field(default=600)
+    remote_debugging_address: str | None = Field(default=None, description="Chrome remote debugging address for routine validation (e.g., http://127.0.0.1:9222)")
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # Internal state (not part of constructor interface)
@@ -127,6 +129,14 @@ For each transaction in the queue:
 1. Use `construct_routine` to build the routine from all processed data
 2. If validation fails, fix the errors and try again
 3. On success, the routine is automatically finalized to production format
+
+### Phase 4: Validate Routine (Optional, if browser available)
+1. Use `execute_routine` to test the routine with real parameters
+2. If execution fails, check the diagnostics:
+   - `failed_placeholders`: Variables that couldn't be resolved at runtime
+   - `operation_errors`: Operations that threw errors
+3. For failed placeholders, use `scan_for_value` to re-verify the source
+4. Update the routine with `construct_routine` and test again
 
 ## Variable Classification Rules
 
@@ -537,15 +547,26 @@ You have access to captured browser data including:
             )
 
             self._state.production_routine = production_routine
-            self._state.phase = DiscoveryPhase.COMPLETE
             self._save_to_output_dir("routine.json", production_routine.model_dump())
 
-            return {
-                "success": True,
-                "routine_name": production_routine.name,
-                "operations_count": len(dev_routine.operations),
-                "parameters_count": len(dev_routine.parameters),
-            }
+            # Transition to validation phase if browser available, otherwise complete
+            if self.remote_debugging_address:
+                self._state.phase = DiscoveryPhase.VALIDATE_ROUTINE
+                return {
+                    "success": True,
+                    "routine_name": production_routine.name,
+                    "operations_count": len(dev_routine.operations),
+                    "parameters_count": len(dev_routine.parameters),
+                    "next_step": "Use execute_routine to validate the routine works correctly",
+                }
+            else:
+                self._state.phase = DiscoveryPhase.COMPLETE
+                return {
+                    "success": True,
+                    "routine_name": production_routine.name,
+                    "operations_count": len(dev_routine.operations),
+                    "parameters_count": len(dev_routine.parameters),
+                }
 
         except Exception as e:
             return {
@@ -553,6 +574,99 @@ You have access to captured browser data including:
                 "error": str(e),
                 "attempt": self._state.construction_attempts,
             }
+
+    def _tool_execute_routine(self, args: dict) -> dict:
+        """Execute the constructed routine to validate it works."""
+        if not self._state.production_routine:
+            return {
+                "success": False,
+                "error": "No routine has been constructed yet. Call construct_routine first.",
+            }
+
+        if not self.remote_debugging_address:
+            return {
+                "success": False,
+                "error": "No remote_debugging_address configured. Cannot execute routine without a browser connection.",
+            }
+
+        self._state.validation_attempts += 1
+        parameters = args.get("parameters", {})
+        self._emit_progress(f"Executing routine with parameters: {list(parameters.keys())}")
+
+        result = execute_routine(
+            routine=self._state.production_routine.model_dump(),
+            parameters=parameters,
+            remote_debugging_address=self.remote_debugging_address,
+            timeout=self.timeout,
+            close_tab_when_done=True,
+        )
+
+        if not result.get("success"):
+            return {
+                "success": False,
+                "error": result.get("error", "Unknown execution error"),
+            }
+
+        exec_result = result.get("result")
+        if exec_result is None:
+            return {
+                "success": False,
+                "error": "Execution returned no result",
+            }
+
+        # Extract diagnostic information for the agent
+        if not exec_result.ok:
+            # Identify failed placeholders
+            failed_placeholders = [
+                key for key, value in exec_result.placeholder_resolution.items()
+                if value is None
+            ]
+
+            # Identify operation errors
+            operation_errors = [
+                (op.type, op.error)
+                for op in exec_result.operations_metadata
+                if op.error is not None
+            ]
+
+            self._emit_progress(
+                f"Routine execution failed: {len(failed_placeholders)} placeholder failures, {len(operation_errors)} operation errors",
+                RoutineDiscoveryMessageType.PROGRESS_RESULT
+            )
+
+            # Build guidance for fixing the issues
+            next_steps = []
+            if failed_placeholders:
+                next_steps.append(
+                    f"Use scan_for_value to verify the sources for: {failed_placeholders}. "
+                    "The placeholders couldn't be resolved at runtime."
+                )
+            if operation_errors:
+                next_steps.append(
+                    "Check the operation_errors for details on which operations failed and why."
+                )
+            next_steps.append("After fixing, call construct_routine again with the corrected values.")
+
+            return {
+                "success": False,
+                "error": exec_result.error or "Routine execution failed",
+                "failed_placeholders": failed_placeholders,
+                "operation_errors": operation_errors,
+                "warnings": exec_result.warnings,
+                "placeholder_resolution": exec_result.placeholder_resolution,
+                "attempt": self._state.validation_attempts,
+                "next_steps": next_steps,
+            }
+
+        # Success - mark as complete
+        self._state.phase = DiscoveryPhase.COMPLETE
+        self._emit_progress("Routine validated successfully", RoutineDiscoveryMessageType.PROGRESS_RESULT)
+        return {
+            "success": True,
+            "message": "Routine executed and validated successfully",
+            "placeholder_resolution": exec_result.placeholder_resolution,
+            "data_preview": str(exec_result.data)[:500] if exec_result.data else None,
+        }
 
     def _execute_tool(self, tool_name: str, tool_arguments: dict) -> dict:
         """Execute a tool and return the result."""
@@ -585,6 +699,8 @@ You have access to captured browser data including:
                 return self._tool_record_resolved_variable(tool_arguments)
             elif tool_name == "construct_routine":
                 return self._tool_construct_routine(tool_arguments)
+            elif tool_name == "execute_routine":
+                return self._tool_execute_routine(tool_arguments)
             else:
                 return {"error": f"Unknown tool: {tool_name}"}
 
@@ -659,6 +775,8 @@ You have access to captured browser data including:
                         prompt += "Queue is empty. Call construct_routine to build the routine."
                 elif self._state.phase == DiscoveryPhase.CONSTRUCT_ROUTINE:
                     prompt += "Build the routine using construct_routine."
+                elif self._state.phase == DiscoveryPhase.VALIDATE_ROUTINE:
+                    prompt += "Validate the routine using execute_routine with test parameters."
 
                 self._add_to_message_history("system", prompt)
 
