@@ -526,28 +526,30 @@ You have access to captured browser data including:
             # Finalize: convert DevRoutine to production Routine
             self._emit_progress("Productionizing routine")
 
-            message = (
-                f"Productionize routine:\n{encode(dev_routine.model_dump())}\n\n"
-                f"Output schema:\n{encode(Routine.model_json_schema())}\n\n"
-                f"Output valid JSON only. {self.PLACEHOLDER_INSTRUCTIONS}"
-            )
-            self._add_to_message_history("user", message)
+            productionize_message = {
+                "role": "user",
+                "content": (
+                    f"Productionize routine:\n{encode(dev_routine.model_dump())}\n\n"
+                    f"Output schema:\n{encode(Routine.model_json_schema())}\n\n"
+                    f"Output valid JSON only. {self.PLACEHOLDER_INSTRUCTIONS}"
+                ),
+            }
 
-            # Don't use previous_response_id here - we're inside a tool execution
-            # and the previous response has an unresolved tool call
+            # Use a separate message list for this LLM call - don't inject into main
+            # message_history during tool execution, as that would corrupt the
+            # conversation sequence (must be: assistant(tool_call) -> tool_result)
             response = self.llm_client.call_sync(
-                messages=[self.message_history[-1]],
+                messages=[productionize_message],
             )
 
             response_text = response.content or ""
-            self._add_to_message_history("assistant", response_text)
 
             # Parse the response
             production_routine = manual_llm_parse_text_to_model(
                 text=response_text,
                 pydantic_model=Routine,
                 client=self.llm_client._client._client,
-                context=encode(self.message_history[-2:]) + f"\n\n{self.PLACEHOLDER_INSTRUCTIONS}",
+                context=encode([productionize_message, {"role": "assistant", "content": response_text}]) + f"\n\n{self.PLACEHOLDER_INSTRUCTIONS}",
                 llm_model=self.llm_client.llm_model.value,
                 n_tries=5,
             )
