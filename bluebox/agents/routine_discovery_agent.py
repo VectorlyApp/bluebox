@@ -782,7 +782,15 @@ You have access to captured browser data including:
                 elif self._state.phase == DiscoveryPhase.CONSTRUCT_ROUTINE:
                     prompt += "Build the routine using construct_routine."
                 elif self._state.phase == DiscoveryPhase.VALIDATE_ROUTINE:
-                    prompt += "Validate the routine using execute_routine with test parameters."
+                    if self._state.validation_attempts > 0:
+                        prompt += (
+                            f"Previous validation attempt {self._state.validation_attempts} failed. "
+                            "Review the execution errors above. If there are failed placeholders or operation errors, "
+                            "use scan_for_value to re-verify sources, then call construct_routine with fixes. "
+                            "If the issue is with test parameters, try execute_routine again with corrected values."
+                        )
+                    else:
+                        prompt += "Validate the routine using execute_routine with test parameters."
 
                 self._add_to_message_history("system", prompt)
 
