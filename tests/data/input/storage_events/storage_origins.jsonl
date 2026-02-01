@@ -1,0 +1,6 @@
+{"type": "localStorageItemAdded", "timestamp": 1700000000000, "origin": "https://app.example.com", "key": "setting_1", "value": "value_1"}
+{"type": "localStorageItemAdded", "timestamp": 1700000001000, "origin": "https://app.example.com", "key": "setting_2", "value": "value_2"}
+{"type": "localStorageItemAdded", "timestamp": 1700000002000, "origin": "https://api.example.com", "key": "cache_key", "value": "cached_data"}
+{"type": "sessionStorageItemAdded", "timestamp": 1700000003000, "origin": "https://app.example.com", "key": "session_data", "value": "temp"}
+{"type": "cookieChange", "timestamp": 1700000004000, "origin": "https://auth.example.com", "source": "network", "added": [{"name": "token", "value": "abc"}]}
+{"type": "localStorageItemAdded", "timestamp": 1700000005000, "origin": "https://api.example.com", "key": "setting_1", "value": "different_value"}
