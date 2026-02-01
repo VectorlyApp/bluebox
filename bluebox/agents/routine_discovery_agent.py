@@ -76,7 +76,7 @@ class RoutineDiscoveryAgent(BaseModel):
     # Internal state (not part of constructor interface)
     _state: RoutineDiscoveryState | None = None
 
-    # === Prompts ===
+    # === Prompts ===record_identified_transaction, record_extracted_variables, record_resolved_variable
 
     PLACEHOLDER_INSTRUCTIONS: str = (
         "PLACEHOLDER SYNTAX:\n"
