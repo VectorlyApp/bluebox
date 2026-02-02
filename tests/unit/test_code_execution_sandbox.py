@@ -4,6 +4,9 @@ tests/unit/test_code_execution_sandbox.py
 Unit tests for the sandboxed Python code execution utility.
 """
 
+from unittest.mock import patch, MagicMock
+import subprocess
+
 import pytest
 
 from bluebox.utils.code_execution_sandbox import (
@@ -13,6 +16,9 @@ from bluebox.utils.code_execution_sandbox import (
     check_code_safety,
     create_safe_builtins,
     execute_python_sandboxed,
+    _is_docker_available,
+    _execute_in_docker,
+    _execute_blocklist_sandbox,
 )
 
 
@@ -688,3 +694,234 @@ print('after error')
         assert "error" in result
         assert "mid error" in result["error"]
         assert "before error" in result["output"]
+
+
+class TestDockerAvailability:
+    """Tests for Docker availability detection."""
+
+    def test_docker_not_available_when_binary_missing(self) -> None:
+        """Should return False when docker binary is not in PATH."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        sandbox_module._docker_available = None  # Reset cache
+
+        with patch("shutil.which", return_value=None):
+            result = _is_docker_available()
+            assert result is False
+
+        sandbox_module._docker_available = None  # Reset for other tests
+
+    def test_docker_not_available_when_daemon_not_running(self) -> None:
+        """Should return False when docker daemon is not running."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        sandbox_module._docker_available = None  # Reset cache
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+
+        with patch("shutil.which", return_value="/usr/bin/docker"):
+            with patch("subprocess.run", return_value=mock_result):
+                result = _is_docker_available()
+                assert result is False
+
+        sandbox_module._docker_available = None  # Reset for other tests
+
+    def test_docker_available_when_daemon_running(self) -> None:
+        """Should return True when docker daemon is running."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        sandbox_module._docker_available = None  # Reset cache
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("shutil.which", return_value="/usr/bin/docker"):
+            with patch("subprocess.run", return_value=mock_result):
+                result = _is_docker_available()
+                assert result is True
+
+        sandbox_module._docker_available = None  # Reset for other tests
+
+    def test_docker_availability_cached(self) -> None:
+        """Should cache docker availability check."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        sandbox_module._docker_available = True  # Set cache
+
+        # Even with docker binary missing, cached value should be returned
+        with patch("shutil.which", return_value=None):
+            result = _is_docker_available()
+            assert result is True
+
+        sandbox_module._docker_available = None  # Reset for other tests
+
+
+class TestDockerExecution:
+    """Tests for Docker-based code execution."""
+
+    def test_docker_execution_success(self) -> None:
+        """Should execute code in Docker and return output."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "hello from docker\n"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            result = _execute_in_docker("print('hello from docker')")
+            assert "error" not in result
+            assert result["output"] == "hello from docker\n"
+            mock_run.assert_called_once()
+
+    def test_docker_execution_with_extra_globals(self) -> None:
+        """Should pass extra globals to Docker execution."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "5\n"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            result = _execute_in_docker(
+                "print(len(data))",
+                extra_globals={"data": [1, 2, 3, 4, 5]}
+            )
+            assert "error" not in result
+            # Verify docker run was called with correct args
+            call_args = mock_run.call_args
+            assert "--network" in call_args[0][0]
+            assert "none" in call_args[0][0]
+
+    def test_docker_execution_error(self) -> None:
+        """Should return error when Docker execution fails."""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        mock_result.stderr = "NameError: name 'undefined' is not defined"
+
+        with patch("subprocess.run", return_value=mock_result):
+            result = _execute_in_docker("print(undefined)")
+            assert "error" in result
+            assert "NameError" in result["error"]
+
+    def test_docker_execution_timeout(self) -> None:
+        """Should handle Docker execution timeout."""
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("docker", 30)):
+            result = _execute_in_docker("while True: pass")
+            assert "error" in result
+            assert "timed out" in result["error"]
+
+    def test_docker_security_flags(self) -> None:
+        """Should include security flags in Docker command."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "ok\n"
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            _execute_in_docker("print('ok')")
+            docker_cmd = mock_run.call_args[0][0]
+
+            # Verify security flags
+            assert "--network" in docker_cmd
+            assert "none" in docker_cmd
+            assert "--read-only" in docker_cmd
+            assert "--memory" in docker_cmd
+            assert "--user" in docker_cmd
+            assert "nobody" in docker_cmd
+            assert "--security-opt" in docker_cmd
+            assert "no-new-privileges" in docker_cmd
+
+
+class TestSandboxModeSelection:
+    """Tests for sandbox mode selection."""
+
+    def test_blocklist_mode_uses_blocklist(self) -> None:
+        """Should use blocklist sandbox when mode is 'blocklist'."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        original_mode = sandbox_module.SANDBOX_MODE
+
+        try:
+            sandbox_module.SANDBOX_MODE = "blocklist"
+            # Should work without Docker
+            result = execute_python_sandboxed("print('hello')")
+            assert "error" not in result
+            assert "hello" in result["output"]
+        finally:
+            sandbox_module.SANDBOX_MODE = original_mode
+
+    def test_docker_mode_fails_without_docker(self) -> None:
+        """Should fail when Docker mode requested but Docker unavailable."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        original_mode = sandbox_module.SANDBOX_MODE
+        sandbox_module._docker_available = None
+
+        try:
+            sandbox_module.SANDBOX_MODE = "docker"
+            with patch("shutil.which", return_value=None):
+                result = execute_python_sandboxed("print('hello')")
+                assert "error" in result
+                assert "Docker" in result["error"]
+        finally:
+            sandbox_module.SANDBOX_MODE = original_mode
+            sandbox_module._docker_available = None
+
+    def test_auto_mode_falls_back_to_blocklist(self) -> None:
+        """Should fall back to blocklist when Docker unavailable in auto mode."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        original_mode = sandbox_module.SANDBOX_MODE
+        sandbox_module._docker_available = None
+
+        try:
+            sandbox_module.SANDBOX_MODE = "auto"
+            with patch("shutil.which", return_value=None):
+                result = execute_python_sandboxed("print('fallback')")
+                assert "error" not in result
+                assert "fallback" in result["output"]
+        finally:
+            sandbox_module.SANDBOX_MODE = original_mode
+            sandbox_module._docker_available = None
+
+    def test_auto_mode_uses_docker_when_available(self) -> None:
+        """Should use Docker when available in auto mode."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        original_mode = sandbox_module.SANDBOX_MODE
+        sandbox_module._docker_available = None
+
+        mock_docker_info = MagicMock()
+        mock_docker_info.returncode = 0
+
+        mock_docker_run = MagicMock()
+        mock_docker_run.returncode = 0
+        mock_docker_run.stdout = "docker output\n"
+        mock_docker_run.stderr = ""
+
+        try:
+            sandbox_module.SANDBOX_MODE = "auto"
+            with patch("shutil.which", return_value="/usr/bin/docker"):
+                with patch("subprocess.run", side_effect=[mock_docker_info, mock_docker_run]):
+                    result = execute_python_sandboxed("print('test')")
+                    assert "error" not in result
+                    assert result["output"] == "docker output\n"
+        finally:
+            sandbox_module.SANDBOX_MODE = original_mode
+            sandbox_module._docker_available = None
+
+
+class TestBlocklistSandboxDirect:
+    """Tests for the blocklist sandbox function directly."""
+
+    def test_blocklist_sandbox_basic(self) -> None:
+        """Should execute basic code."""
+        result = _execute_blocklist_sandbox("print('direct')")
+        assert "error" not in result
+        assert "direct" in result["output"]
+
+    def test_blocklist_sandbox_with_globals(self) -> None:
+        """Should accept extra globals."""
+        result = _execute_blocklist_sandbox(
+            "print(sum(numbers))",
+            extra_globals={"numbers": [1, 2, 3]}
+        )
+        assert "error" not in result
+        assert "6" in result["output"]
+
+    def test_blocklist_sandbox_blocks_os(self) -> None:
+        """Should block os import even directly."""
+        result = _execute_blocklist_sandbox("import os")
+        assert "error" in result
+        assert "blocked" in result["error"].lower()

@@ -36,6 +36,13 @@ class Config():
     # API keys
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
 
+    # Code execution sandbox configuration
+    # Mode: "docker" (require Docker), "blocklist" (no Docker), "auto" (Docker if available)
+    SANDBOX_MODE: str = os.getenv("BLUEBOX_SANDBOX_MODE", "auto")
+    SANDBOX_IMAGE: str = os.getenv("BLUEBOX_SANDBOX_IMAGE", "python:3.11-slim")
+    SANDBOX_TIMEOUT: int = int(os.getenv("BLUEBOX_SANDBOX_TIMEOUT", "30"))
+    SANDBOX_MEMORY: str = os.getenv("BLUEBOX_SANDBOX_MEMORY", "128m")
+
     @classmethod
     def as_dict(cls) -> dict[str, Any]:
         """

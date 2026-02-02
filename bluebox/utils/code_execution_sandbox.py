@@ -1,17 +1,37 @@
 """
 bluebox/utils/code_execution_sandbox.py
 
-Sandboxed Python code execution with blocklist-based security.
+Sandboxed Python code execution with Docker-based isolation.
 
-Allows most Python functionality while blocking dangerous operations
-like file I/O, network access, subprocess execution, etc.
+Uses Docker containers for secure execution when available, with
+blocklist-based fallback for development environments.
+
+Security layers:
+1. Static pattern analysis (blocks dangerous code patterns)
+2. Docker container isolation (network disabled, read-only, resource-limited)
+3. Blocklist-based builtins/imports (fallback when Docker unavailable)
 """
 
 import builtins as real_builtins
 import io
 import json
+import logging
+import os
+import shutil
+import subprocess
 import sys
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# Configuration
+SANDBOX_MODE: str = os.getenv("BLUEBOX_SANDBOX_MODE", "auto")  # "docker", "blocklist", "auto"
+DOCKER_IMAGE: str = os.getenv("BLUEBOX_SANDBOX_IMAGE", "python:3.11-slim")
+DOCKER_TIMEOUT: int = int(os.getenv("BLUEBOX_SANDBOX_TIMEOUT", "30"))
+DOCKER_MEMORY_LIMIT: str = os.getenv("BLUEBOX_SANDBOX_MEMORY", "128m")
+
+# Cache for Docker availability check
+_docker_available: bool | None = None
 
 
 # Blocked modules - dangerous for file/network/system access
@@ -63,6 +83,114 @@ BLOCKED_BUILTINS: tuple[str, ...] = (
     "globals", "locals", "vars", "getattr", "setattr",
     "delattr", "breakpoint", "input", "memoryview",
 )
+
+
+def _is_docker_available() -> bool:
+    """
+    Check if Docker is available and running.
+
+    Returns:
+        True if Docker is available and can run containers.
+    """
+    global _docker_available
+    if _docker_available is not None:
+        return _docker_available
+
+    # Check if docker binary exists
+    if not shutil.which("docker"):
+        logger.debug("Docker binary not found in PATH")
+        _docker_available = False
+        return False
+
+    # Check if Docker daemon is running
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            timeout=5,
+        )
+        _docker_available = result.returncode == 0
+        if not _docker_available:
+            logger.debug("Docker daemon not running")
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        _docker_available = False
+
+    return _docker_available
+
+
+def _execute_in_docker(
+    code: str,
+    extra_globals: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Execute Python code in an isolated Docker container.
+
+    Security measures:
+    - No network access (--network none)
+    - Read-only filesystem (--read-only)
+    - Limited memory and CPU
+    - No privilege escalation
+    - Runs as non-root user
+    - Automatic cleanup (--rm)
+
+    Args:
+        code: Python source code to execute
+        extra_globals: Variables to inject (serialized as JSON)
+
+    Returns:
+        Dict with 'output' and optionally 'error'.
+    """
+    # Build the wrapper script that deserializes globals and runs user code
+    globals_json = json.dumps(extra_globals) if extra_globals else "{}"
+
+    # Escape for shell - we use base64 to avoid quote issues
+    import base64
+    code_b64 = base64.b64encode(code.encode()).decode()
+    globals_b64 = base64.b64encode(globals_json.encode()).decode()
+
+    wrapper_script = f"""
+import json, base64, sys
+extra_globals = json.loads(base64.b64decode("{globals_b64}").decode())
+code = base64.b64decode("{code_b64}").decode()
+exec_globals = {{"json": json, **extra_globals}}
+exec(code, exec_globals)
+"""
+
+    docker_cmd = [
+        "docker", "run",
+        "--rm",                          # Auto-cleanup
+        "--network", "none",             # No network access
+        "--read-only",                   # Read-only filesystem
+        "--memory", DOCKER_MEMORY_LIMIT, # Memory limit
+        "--cpus", "0.5",                 # CPU limit
+        "--pids-limit", "50",            # Process limit
+        "--security-opt", "no-new-privileges",  # No privilege escalation
+        "--user", "nobody",              # Non-root user
+        "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",  # Writable /tmp for Python
+        DOCKER_IMAGE,
+        "python", "-c", wrapper_script,
+    ]
+
+    try:
+        result = subprocess.run(
+            docker_cmd,
+            capture_output=True,
+            text=True,
+            timeout=DOCKER_TIMEOUT,
+        )
+
+        if result.returncode == 0:
+            return {"output": result.stdout if result.stdout else "(no output)"}
+        else:
+            return {
+                "error": result.stderr.strip() if result.stderr else f"Exit code {result.returncode}",
+                "output": result.stdout,
+            }
+
+    except subprocess.TimeoutExpired:
+        return {"error": f"Execution timed out after {DOCKER_TIMEOUT}s"}
+    except Exception as e:
+        return {"error": f"Docker execution failed: {e}"}
 
 
 def _create_safe_import() -> Any:
@@ -118,28 +246,16 @@ def create_safe_builtins() -> dict[str, Any]:
     return safe_builtins
 
 
-def execute_python_sandboxed(
+def _execute_blocklist_sandbox(
     code: str,
     extra_globals: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
-    Execute Python code in a sandboxed environment.
+    Execute code using blocklist-based sandboxing (fallback method).
 
-    Args:
-        code: Python source code to execute
-        extra_globals: Additional variables to inject into the execution namespace
-
-    Returns:
-        Dict with 'output' (stdout) and optionally 'error' if execution failed.
+    WARNING: This method is not secure against adversarial input.
+    Use only when Docker is unavailable.
     """
-    if not code:
-        return {"error": "No code provided"}
-
-    # Check for blocked patterns before execution
-    safety_error = check_code_safety(code)
-    if safety_error:
-        return {"error": f"Blocked: {safety_error}"}
-
     # Capture stdout
     old_stdout = sys.stdout
     sys.stdout = captured_output = io.StringIO()
@@ -168,3 +284,56 @@ def execute_python_sandboxed(
 
     finally:
         sys.stdout = old_stdout
+
+
+def execute_python_sandboxed(
+    code: str,
+    extra_globals: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Execute Python code in a sandboxed environment.
+
+    Uses Docker container isolation when available for secure execution.
+    Falls back to blocklist-based sandboxing when Docker is unavailable.
+
+    Configure via environment variables:
+    - BLUEBOX_SANDBOX_MODE: "docker", "blocklist", or "auto" (default: "auto")
+    - BLUEBOX_SANDBOX_IMAGE: Docker image to use (default: "python:3.11-slim")
+    - BLUEBOX_SANDBOX_TIMEOUT: Execution timeout in seconds (default: 30)
+    - BLUEBOX_SANDBOX_MEMORY: Container memory limit (default: "128m")
+
+    Args:
+        code: Python source code to execute
+        extra_globals: Additional variables to inject into the execution namespace
+
+    Returns:
+        Dict with 'output' (stdout) and optionally 'error' if execution failed.
+    """
+    if not code:
+        return {"error": "No code provided"}
+
+    # Always check for blocked patterns first (fast, catches obvious issues)
+    safety_error = check_code_safety(code)
+    if safety_error:
+        return {"error": f"Blocked: {safety_error}"}
+
+    # Determine execution mode
+    use_docker = False
+    if SANDBOX_MODE == "docker":
+        use_docker = True
+        if not _is_docker_available():
+            return {"error": "Docker sandbox requested but Docker is not available"}
+    elif SANDBOX_MODE == "auto":
+        use_docker = _is_docker_available()
+    # else: SANDBOX_MODE == "blocklist" -> use_docker stays False
+
+    if use_docker:
+        logger.debug("Executing code in Docker sandbox")
+        return _execute_in_docker(code, extra_globals)
+    else:
+        if SANDBOX_MODE == "auto":
+            logger.warning(
+                "Docker unavailable, using blocklist sandbox. "
+                "This is not secure against adversarial input."
+            )
+        return _execute_blocklist_sandbox(code, extra_globals)
