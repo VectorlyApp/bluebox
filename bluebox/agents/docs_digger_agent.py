@@ -630,7 +630,7 @@ class DocsDiggerAgent:
             if entry is None:
                 return {
                     "error": f"documents[{i}].path '{path}' not found in data store",
-                    "hint": "Use get_file_index to see available files.",
+                    "hint": "Check the file index in the system prompt for available files.",
                 }
 
             discovered_docs.append(DiscoveredDocument(

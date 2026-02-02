@@ -6,6 +6,8 @@ Data loading, writing, and transformation utilities.
 Contains:
 - write_json_file(), write_jsonl(), read_jsonl(): Save/load data to/from files
 - get_text_from_html(): Extract text from HTML
+- parse_markdown_title(), parse_markdown_summary(): Extract title/summary from markdown
+- parse_python_docstring(): Extract module docstring from Python code
 - resolve_dotted_path(): Access nested dict values by dot notation
 - apply_params(): Substitute {{placeholders}} in text
 - assert_balanced_js_delimiters(): Validate JS code structure
@@ -116,6 +118,75 @@ def get_text_from_html(html: str) -> str:
     clean_text = clean_text.strip()
 
     return clean_text
+
+
+def parse_markdown_title(content: str) -> str | None:
+    """
+    Parse title from markdown content (first # heading).
+
+    Args:
+        content: Markdown text content.
+
+    Returns:
+        The title text (without the # prefix) or None if no title found.
+    """
+    lines = content.split("\n")
+    for line in lines[:10]:
+        line = line.strip()
+        if line.startswith("# "):
+            return line[2:].strip()
+    return None
+
+
+def parse_markdown_summary(content: str) -> str | None:
+    """
+    Parse summary from markdown content (first blockquote).
+
+    Looks for a blockquote (line starting with "> ") in the first 6 lines.
+
+    Args:
+        content: Markdown text content.
+
+    Returns:
+        The summary text (without the > prefix) or None if no blockquote found.
+    """
+    lines = content.split("\n")
+    for i, line in enumerate(lines):
+        if line.startswith("> "):
+            return line[2:].strip()
+        if i > 5:
+            break
+    return None
+
+
+def parse_python_docstring(content: str) -> str | None:
+    """
+    Extract module-level docstring from Python code content.
+
+    Looks for a triple-quoted docstring near the start of the file (within first 50 chars).
+    Returns the docstring with newlines replaced by semicolons for compact display.
+
+    Args:
+        content: Python source code content.
+
+    Returns:
+        The docstring text (newlines replaced with "; ") or None if not found.
+    """
+    # Read only first 2000 chars for efficiency
+    content = content[:2000]
+
+    # Look for triple-quoted docstring at the start
+    for quote in ['"""', "'''"]:
+        if quote in content:
+            start = content.find(quote)
+            if start < 50:  # Must be near the top
+                end = content.find(quote, start + 3)
+                if end != -1:
+                    docstring = content[start + 3:end].strip()
+                    if docstring:
+                        # Replace newlines with semicolons for compact display
+                        return docstring.replace("\n", "; ")
+    return None
 
 
 def write_jsonl(path: str, obj: Any) -> None:

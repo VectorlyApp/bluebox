@@ -7,15 +7,18 @@ Replaces the OpenAI vectorstore-based approach with local indexing
 and search capabilities for documentation and code files.
 """
 
-import fnmatch
-import re
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from bluebox.utils.data_utils import format_bytes
+from bluebox.utils.data_utils import (
+    format_bytes,
+    parse_markdown_summary,
+    parse_markdown_title,
+    parse_python_docstring,
+)
 from bluebox.utils.infra_utils import resolve_glob_patterns
 from bluebox.utils.logger import get_logger
 
@@ -197,8 +200,8 @@ class DocumentationDataStore:
         """Load a single documentation file."""
         try:
             content = file_path.read_text(encoding="utf-8", errors="replace")
-            title = self._parse_doc_title(content)
-            summary = self._parse_doc_summary(content)
+            title = parse_markdown_title(content)
+            summary = parse_markdown_summary(content)
 
             entry = FileEntry(
                 path=file_path,
@@ -219,7 +222,7 @@ class DocumentationDataStore:
         """Load a single code file."""
         try:
             content = file_path.read_text(encoding="utf-8", errors="replace")
-            docstring = self._parse_code_docstring(content)
+            docstring = parse_python_docstring(content)
 
             entry = FileEntry(
                 path=file_path,
@@ -235,43 +238,6 @@ class DocumentationDataStore:
 
         except Exception as e:
             logger.warning("Failed to load code file %s: %s", file_path, e)
-
-    def _parse_doc_title(self, content: str) -> str | None:
-        """Parse title from markdown content (first # heading)."""
-        lines = content.split("\n")
-        for line in lines[:10]:
-            line = line.strip()
-            if line.startswith("# "):
-                return line[2:].strip()
-        return None
-
-    def _parse_doc_summary(self, content: str) -> str | None:
-        """Parse summary from markdown content (blockquote after title)."""
-        lines = content.split("\n")
-        for i, line in enumerate(lines):
-            if line.startswith("> "):
-                return line[2:].strip()
-            if i > 5:
-                break
-        return None
-
-    def _parse_code_docstring(self, content: str) -> str | None:
-        """Extract module-level docstring from code content."""
-        # Read only first 2000 chars for efficiency
-        content = content[:2000]
-
-        # Look for triple-quoted docstring at the start
-        for quote in ['"""', "'''"]:
-            if quote in content:
-                start = content.find(quote)
-                if start < 50:  # Must be near the top
-                    end = content.find(quote, start + 3)
-                    if end != -1:
-                        docstring = content[start + 3:end].strip()
-                        if docstring:
-                            # Replace newlines with semicolons for compact display
-                            return docstring.replace("\n", "; ")
-        return None
 
     def _compute_stats(self) -> None:
         """Compute aggregate statistics from entries."""
@@ -326,75 +292,6 @@ class DocumentationDataStore:
         """Get the content of a file by its path."""
         entry = self.get_file_by_path(path)
         return entry.content if entry else None
-
-    def search_by_terms(
-        self,
-        terms: list[str],
-        file_type: FileType | None = None,
-        top_n: int = 20,
-    ) -> list[dict[str, Any]]:
-        """
-        Search files by a list of terms and rank by relevance.
-
-        For each file, searches content for each term and computes:
-        - unique_terms_found: how many different terms were found
-        - total_hits: total number of term matches
-        - score: (total_hits / num_terms) * unique_terms_found
-
-        Args:
-            terms: List of search terms (case-insensitive).
-            file_type: Optional filter by file type.
-            top_n: Number of top results to return.
-
-        Returns:
-            List of dicts with keys: path, file_type, unique_terms_found, total_hits, score
-            Sorted by score descending, limited to top_n.
-        """
-        results: list[dict[str, Any]] = []
-        terms_lower = [t.lower() for t in terms]
-        num_terms = len(terms_lower)
-
-        if num_terms == 0:
-            return results
-
-        for entry in self._entries:
-            if file_type and entry.file_type != file_type:
-                continue
-
-            content_lower = entry.content.lower()
-
-            # Count hits for each term
-            unique_terms_found = 0
-            total_hits = 0
-
-            for term in terms_lower:
-                count = content_lower.count(term)
-                if count > 0:
-                    unique_terms_found += 1
-                    total_hits += count
-
-            # Skip entries with no hits
-            if unique_terms_found == 0:
-                continue
-
-            # Calculate score
-            avg_hits = total_hits / num_terms
-            score = avg_hits * unique_terms_found
-
-            results.append({
-                "path": str(entry.path),
-                "file_type": entry.file_type,
-                "title": entry.title,
-                "summary": entry.summary,
-                "unique_terms_found": unique_terms_found,
-                "total_hits": total_hits,
-                "score": score,
-            })
-
-        # Sort by score descending
-        results.sort(key=lambda x: x["score"], reverse=True)
-
-        return results[:top_n]
 
     def search_content(
         self,
@@ -556,170 +453,6 @@ class DocumentationDataStore:
 
         return content, total_lines
 
-    def search_by_pattern(
-        self,
-        pattern: str,
-        file_type: FileType | None = None,
-    ) -> list[FileEntry]:
-        """
-        Search files by path pattern (glob-style).
-
-        Args:
-            pattern: Glob pattern to match paths (e.g., "**/test_*.py").
-            file_type: Optional filter by file type.
-
-        Returns:
-            List of matching FileEntry objects.
-        """
-        results = []
-
-        for entry in self._entries:
-            if file_type and entry.file_type != file_type:
-                continue
-
-            if fnmatch.fnmatch(str(entry.path), pattern):
-                results.append(entry)
-
-        return results
-
-    def search_by_extension(self, extension: str) -> list[FileEntry]:
-        """
-        Get all files with a specific extension.
-
-        Args:
-            extension: File extension (e.g., ".py" or "py").
-
-        Returns:
-            List of matching FileEntry objects.
-        """
-        if not extension.startswith("."):
-            extension = "." + extension
-
-        return [e for e in self._entries if e.extension == extension]
-
-    def search_functions(
-        self,
-        name_pattern: str | None = None,
-        file_pattern: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """
-        Search for function/method definitions in code files.
-
-        Args:
-            name_pattern: Regex pattern to match function names.
-            file_pattern: Glob pattern to filter files.
-
-        Returns:
-            List of dicts with path, function_name, line_number, signature.
-        """
-        results: list[dict[str, Any]] = []
-
-        # Pattern to match Python function definitions
-        func_pattern = re.compile(r"^\s*(async\s+)?def\s+(\w+)\s*\(([^)]*)\)", re.MULTILINE)
-
-        for entry in self._entries:
-            if entry.file_type != FileType.CODE:
-                continue
-
-            if file_pattern and not fnmatch.fnmatch(str(entry.path), file_pattern):
-                continue
-
-            # Only search Python files for now
-            if entry.extension != ".py":
-                continue
-
-            for match in func_pattern.finditer(entry.content):
-                async_prefix = match.group(1) or ""
-                func_name = match.group(2)
-                params = match.group(3)
-
-                # Apply name filter if provided
-                if name_pattern and not re.search(name_pattern, func_name):
-                    continue
-
-                # Calculate line number
-                line_number = entry.content[:match.start()].count("\n") + 1
-
-                results.append({
-                    "path": str(entry.path),
-                    "function_name": func_name,
-                    "line_number": line_number,
-                    "signature": f"{async_prefix}def {func_name}({params})",
-                    "is_async": bool(async_prefix),
-                })
-
-        return results
-
-    def search_classes(
-        self,
-        name_pattern: str | None = None,
-        file_pattern: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """
-        Search for class definitions in code files.
-
-        Args:
-            name_pattern: Regex pattern to match class names.
-            file_pattern: Glob pattern to filter files.
-
-        Returns:
-            List of dicts with path, class_name, line_number, bases.
-        """
-        results: list[dict[str, Any]] = []
-
-        # Pattern to match Python class definitions
-        class_pattern = re.compile(r"^\s*class\s+(\w+)\s*(?:\(([^)]*)\))?:", re.MULTILINE)
-
-        for entry in self._entries:
-            if entry.file_type != FileType.CODE:
-                continue
-
-            if file_pattern and not fnmatch.fnmatch(str(entry.path), file_pattern):
-                continue
-
-            # Only search Python files for now
-            if entry.extension != ".py":
-                continue
-
-            for match in class_pattern.finditer(entry.content):
-                class_name = match.group(1)
-                bases = match.group(2) or ""
-
-                # Apply name filter if provided
-                if name_pattern and not re.search(name_pattern, class_name):
-                    continue
-
-                # Calculate line number
-                line_number = entry.content[:match.start()].count("\n") + 1
-
-                results.append({
-                    "path": str(entry.path),
-                    "class_name": class_name,
-                    "line_number": line_number,
-                    "bases": bases,
-                })
-
-        return results
-
-    def get_file_index(self) -> list[dict[str, Any]]:
-        """
-        Get an index of all files with their metadata.
-
-        Returns:
-            List of dicts with path, file_type, title, summary, extension.
-        """
-        return [
-            {
-                "path": str(entry.path),
-                "file_type": entry.file_type,
-                "title": entry.title,
-                "summary": entry.summary,
-                "extension": entry.extension,
-                "size_bytes": entry.size_bytes,
-            }
-            for entry in self._entries
-        ]
-
     def get_documentation_index(self) -> list[dict[str, Any]]:
         """
         Get an index of documentation files with titles and summaries.
@@ -753,42 +486,3 @@ class DocumentationDataStore:
                 "extension": entry.extension,
             })
         return sorted(results, key=lambda x: x["path"])
-
-    def generate_context_prompt(self) -> str:
-        """
-        Generate a prompt describing the documentation/code contents.
-
-        Useful for providing context to LLMs about available documentation.
-
-        Returns:
-            Formatted string describing the indexed files.
-        """
-        lines = ["# Available Documentation and Code"]
-
-        # Documentation section
-        if self.documentation_files:
-            lines.append("")
-            lines.append("## Documentation Files")
-            for entry in sorted(self.documentation_files, key=lambda x: str(x.path)):
-                if entry.title and entry.summary:
-                    lines.append(f"- `{entry.path.name}`: {entry.title} - {entry.summary}")
-                elif entry.title:
-                    lines.append(f"- `{entry.path.name}`: {entry.title}")
-                elif entry.summary:
-                    lines.append(f"- `{entry.path.name}`: {entry.summary}")
-                else:
-                    lines.append(f"- `{entry.path.name}`")
-
-        # Code section
-        if self.code_files:
-            lines.append("")
-            lines.append("## Code Files")
-            for entry in sorted(self.code_files, key=lambda x: str(x.path)):
-                if entry.summary:
-                    # Truncate long docstrings
-                    docstring = entry.summary[:100] + "..." if len(entry.summary) > 100 else entry.summary
-                    lines.append(f"- `{entry.path.name}`: {docstring}")
-                else:
-                    lines.append(f"- `{entry.path.name}`")
-
-        return "\n".join(lines)
