@@ -1,0 +1,8 @@
+{"type": "initialCookies", "timestamp": 1700000000000, "origin": "https://example.com", "source": "network", "added": [{"name": "session_id", "value": "abc123"}, {"name": "user_pref", "value": "dark_mode"}], "total_count": 2}
+{"type": "cookieChange", "timestamp": 1700000001000, "origin": "https://example.com", "source": "script", "triggered_by": "document.cookie", "added": [{"name": "tracking_id", "value": "xyz789"}], "total_count": 3}
+{"type": "localStorageItemAdded", "timestamp": 1700000002000, "origin": "https://example.com", "key": "auth_token", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"}
+{"type": "localStorageItemUpdated", "timestamp": 1700000003000, "origin": "https://example.com", "key": "auth_token", "old_value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "new_value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.updated"}
+{"type": "sessionStorageItemAdded", "timestamp": 1700000004000, "origin": "https://example.com", "key": "cart_items", "value": "[{\"id\": 1, \"qty\": 2}]"}
+{"type": "sessionStorageItemAdded", "timestamp": 1700000005000, "origin": "https://api.example.com", "key": "request_cache", "value": "{\"lastFetch\": 1700000000}"}
+{"type": "indexedDBEvent", "timestamp": 1700000006000, "origin": "https://example.com", "params": {"dbName": "myDB", "objectStore": "users", "key": 1, "value": {"name": "Alice"}}}
+{"type": "localStorageItemRemoved", "timestamp": 1700000007000, "origin": "https://example.com", "key": "temp_data"}

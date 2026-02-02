@@ -1,0 +1,7 @@
+{"type": "localStorageItemAdded", "timestamp": 1700000000000, "origin": "https://shop.example.com", "key": "user_profile", "value": "{\"name\": \"Alice Johnson\", \"email\": \"alice@example.com\", \"token\": \"secret_token_12345\"}"}
+{"type": "localStorageItemUpdated", "timestamp": 1700000001000, "origin": "https://shop.example.com", "key": "user_profile", "old_value": "{\"name\": \"Alice Johnson\"}", "new_value": "{\"name\": \"Alice Smith\", \"email\": \"alice.smith@example.com\"}"}
+{"type": "sessionStorageItemAdded", "timestamp": 1700000002000, "origin": "https://shop.example.com", "key": "cart", "value": "{\"items\": [{\"name\": \"Widget\", \"price\": 29.99}, {\"name\": \"Gadget\", \"price\": 49.99}], \"total\": 79.98}"}
+{"type": "cookieChange", "timestamp": 1700000003000, "origin": "https://auth.example.com", "source": "network", "added": [{"name": "access_token", "value": "secret_token_12345"}, {"name": "refresh_token", "value": "refresh_abc"}]}
+{"type": "cookieChange", "timestamp": 1700000004000, "origin": "https://auth.example.com", "source": "script", "modified": [{"name": "access_token", "value": "new_secret_token_67890"}]}
+{"type": "localStorageItemAdded", "timestamp": 1700000005000, "origin": "https://analytics.example.com", "key": "tracking_id", "value": "TRACK-ABC-123"}
+{"type": "sessionStorageItemAdded", "timestamp": 1700000006000, "origin": "https://shop.example.com", "key": "checkout_state", "value": "{\"step\": 2, \"shipping\": \"express\", \"secret_token_12345\": true}"}

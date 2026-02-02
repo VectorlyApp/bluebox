@@ -2,7 +2,7 @@
 """
 scripts/run_network_spy_agent.py
 
-# NOTE: THIS AGENT IS IN BETA AND NOT YET READY FOR PRODUCTION
+# NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
 Interactive CLI for the Network Spy agent.
 
@@ -166,10 +166,10 @@ def print_welcome(model: str, data_path: str, network_store: NetworkDataStore) -
 
     console.print(Panel(
         """[bold]Commands:[/bold]
-  [cyan]/autonomous <task>[/cyan]  Run autonomous endpoint discovery
-  [cyan]/reset[/cyan]              Start a new conversation
-  [cyan]/help[/cyan]               Show help
-  [cyan]/quit[/cyan]               Exit
+  [cyan]/discover <task>[/cyan]  Discover API endpoints for a task
+  [cyan]/reset[/cyan]             Start a new conversation
+  [cyan]/help[/cyan]              Show help
+  [cyan]/quit[/cyan]              Exit
 
 Just ask questions about the network traffic!""",
         title="[bold cyan]Network Spy[/bold cyan]",
@@ -400,11 +400,11 @@ class TerminalNetworkSpyChat:
                     console.print()
                     console.print(Panel(
                         """[bold]Commands:[/bold]
-  [cyan]/autonomous <task>[/cyan]  Run autonomous endpoint discovery
-                        Example: /autonomous find train prices from NYC to Boston
-  [cyan]/reset[/cyan]              Start a new conversation
-  [cyan]/help[/cyan]               Show this help message
-  [cyan]/quit[/cyan]               Exit
+  [cyan]/discover <task>[/cyan]  Discover API endpoints for a task
+                      Example: /discover train prices from NYC to Boston
+  [cyan]/reset[/cyan]            Start a new conversation
+  [cyan]/help[/cyan]             Show this help message
+  [cyan]/quit[/cyan]             Exit
 
 [bold]Tips:[/bold]
   - Ask about specific endpoints, headers, or cookies
@@ -417,13 +417,13 @@ class TerminalNetworkSpyChat:
                     console.print()
                     continue
 
-                # Handle /autonomous command
-                if user_input.strip().lower().startswith("/autonomous"):
-                    task = user_input.strip()[len("/autonomous"):].strip()
+                # Handle /discover command
+                if user_input.strip().lower().startswith("/discover"):
+                    task = user_input.strip()[len("/discover"):].strip()
                     if not task:
                         console.print()
-                        console.print("[bold yellow]Usage:[/bold yellow] /autonomous <task description>")
-                        console.print("[dim]Example: /autonomous find train prices from NYC to Boston[/dim]")
+                        console.print("[bold yellow]Usage:[/bold yellow] /discover <task description>")
+                        console.print("[dim]Example: /discover train prices from NYC to Boston[/dim]")
                         console.print()
                         continue
 

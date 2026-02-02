@@ -1,0 +1,5 @@
+{"type": "localStorageItemAdded", "timestamp": 1700000000000, "origin": "https://good.com", "key": "good_key_1", "value": "good_value_1"}
+not valid json at all
+{"type": "localStorageItemAdded", "timestamp": 1700000001000, "origin": "https://good.com", "key": "good_key_2", "value": "good_value_2"}
+{"missing_required_type_field": "bad", "origin": "https://bad.com"}
+{"type": "sessionStorageItemAdded", "timestamp": 1700000002000, "origin": "https://good.com", "key": "good_key_3", "value": "good_value_3"}
