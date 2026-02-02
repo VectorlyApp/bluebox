@@ -326,15 +326,15 @@ python scripts/run_guide_agent.py
 
 **Commands:**
 
-| Command | Description |
-|---------|-------------|
-| `/load <file.json>` | Load a routine file (auto-reloads on edits) |
-| `/execute [params.json]` | Execute the loaded routine |
-| `/monitor` | Start browser monitoring session |
-| `/validate` | Validate the current routine |
-| `/diff`, `/accept`, `/reject` | Review agent-suggested edits |
-| `/show`, `/status` | Display routine details and state |
-| `/help` | Show all commands |
+| Command                             | Description                                 |
+| ----------------------------------- | ------------------------------------------- |
+| `/load <file.json>`               | Load a routine file (auto-reloads on edits) |
+| `/execute [params.json]`          | Execute the loaded routine                  |
+| `/monitor`                        | Start browser monitoring session            |
+| `/validate`                       | Validate the current routine                |
+| `/diff`, `/accept`, `/reject` | Review agent-suggested edits                |
+| `/show`, `/status`              | Display routine details and state           |
+| `/help`                           | Show all commands                           |
 
 **When to use Guide Agent vs Quickstart:**
 
@@ -345,13 +345,11 @@ python scripts/run_guide_agent.py
 
 In addition to the Guide Agent, we provide specialized agents for analyzing captured browser data:
 
-| Agent | Purpose |
-|-------|---------|
-| **Network Spy** | Search and analyze network traffic. Find API endpoints, inspect request/response patterns, discover authentication flows. |
+| Agent                 | Purpose                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Network Spy** | Search and analyze network traffic. Find API endpoints, inspect request/response patterns, discover authentication flows.                                     |
 | **Trace Hound** | Trace where tokens and values originate. Search across network, cookies, localStorage, sessionStorage, and window properties to find the source of any value. |
-| **Docs Digger** | Search through documentation and code files. Find relevant docs, examples, and implementation details in a codebase. |
-
-These agents are in beta and available in `bluebox/agents/`. They can be used programmatically or integrated into custom workflows for deeper analysis of captured browser sessions.
+| **Docs Digger** | Search through documentation and code files. Find relevant docs, examples, and implementation details in a codebase.                                          |
 
 ## Reverse Engineer Web Apps
 
@@ -638,6 +636,7 @@ python bluebox/scripts/run_benchmarks.py --output-dir ./my_benchmarks
 ```
 
 Results are saved to the output directory:
+
 - `{benchmark_name}.json` — Full evaluation results for each benchmark
 - `_summary.json` — Aggregated summary of all benchmark runs
 
