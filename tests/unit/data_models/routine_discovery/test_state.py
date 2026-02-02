@@ -24,7 +24,7 @@ from bluebox.data_models.routine.endpoint import HTTPMethod
 class TestDiscoveryPhase:
     """Tests for DiscoveryPhase enum."""
 
-    def test_phase_values(self):
+    def test_phase_values(self) -> None:
         """All phases should have expected string values."""
         assert DiscoveryPhase.IDENTIFY_TRANSACTION.value == "identify_transaction"
         assert DiscoveryPhase.PROCESS_QUEUE.value == "process_queue"
@@ -32,7 +32,7 @@ class TestDiscoveryPhase:
         assert DiscoveryPhase.VALIDATE_ROUTINE.value == "validate_routine"
         assert DiscoveryPhase.COMPLETE.value == "complete"
 
-    def test_phase_count(self):
+    def test_phase_count(self) -> None:
         """Should have exactly 5 phases."""
         assert len(DiscoveryPhase) == 5
 
@@ -40,7 +40,7 @@ class TestDiscoveryPhase:
 class TestRoutineDiscoveryStateInit:
     """Tests for RoutineDiscoveryState initialization."""
 
-    def test_default_initialization(self):
+    def test_default_initialization(self) -> None:
         """State should initialize with sensible defaults."""
         state = RoutineDiscoveryState()
 
@@ -61,7 +61,7 @@ class TestRoutineDiscoveryStateInit:
 class TestAddToQueue:
     """Tests for add_to_queue method."""
 
-    def test_add_new_transaction(self):
+    def test_add_new_transaction(self) -> None:
         """Adding a new transaction should succeed."""
         state = RoutineDiscoveryState()
 
@@ -71,7 +71,7 @@ class TestAddToQueue:
         assert position == 0
         assert "tx_001" in state.transaction_queue
 
-    def test_add_multiple_transactions(self):
+    def test_add_multiple_transactions(self) -> None:
         """Adding multiple transactions should assign correct positions."""
         state = RoutineDiscoveryState()
 
@@ -84,7 +84,7 @@ class TestAddToQueue:
         assert added3 is True and pos3 == 2
         assert state.transaction_queue == ["tx_001", "tx_002", "tx_003"]
 
-    def test_add_duplicate_transaction(self):
+    def test_add_duplicate_transaction(self) -> None:
         """Adding a transaction already in queue should return existing position."""
         state = RoutineDiscoveryState()
         state.add_to_queue("tx_001")
@@ -96,7 +96,7 @@ class TestAddToQueue:
         assert position == 0  # Already at position 0
         assert state.transaction_queue.count("tx_001") == 1
 
-    def test_add_already_processed_transaction(self):
+    def test_add_already_processed_transaction(self) -> None:
         """Adding a transaction that was already processed should fail."""
         state = RoutineDiscoveryState()
         state.processed_transactions.append("tx_001")
@@ -111,7 +111,7 @@ class TestAddToQueue:
 class TestGetNextTransaction:
     """Tests for get_next_transaction method."""
 
-    def test_get_next_from_populated_queue(self):
+    def test_get_next_from_populated_queue(self) -> None:
         """Should return and set the next transaction as current."""
         state = RoutineDiscoveryState()
         state.transaction_queue = ["tx_001", "tx_002", "tx_003"]
@@ -122,7 +122,7 @@ class TestGetNextTransaction:
         assert state.current_transaction == "tx_001"
         assert state.transaction_queue == ["tx_002", "tx_003"]
 
-    def test_get_next_from_empty_queue(self):
+    def test_get_next_from_empty_queue(self) -> None:
         """Should return None when queue is empty."""
         state = RoutineDiscoveryState()
 
@@ -131,7 +131,7 @@ class TestGetNextTransaction:
         assert result is None
         assert state.current_transaction is None
 
-    def test_get_next_exhausts_queue(self):
+    def test_get_next_exhausts_queue(self) -> None:
         """Should handle getting all transactions from queue."""
         state = RoutineDiscoveryState()
         state.transaction_queue = ["tx_001", "tx_002"]
@@ -149,7 +149,7 @@ class TestGetNextTransaction:
 class TestMarkTransactionComplete:
     """Tests for mark_transaction_complete method."""
 
-    def test_mark_complete_adds_to_processed(self):
+    def test_mark_complete_adds_to_processed(self) -> None:
         """Completed transaction should be added to processed list."""
         state = RoutineDiscoveryState()
         state.current_transaction = "tx_001"
@@ -159,7 +159,7 @@ class TestMarkTransactionComplete:
         assert "tx_001" in state.processed_transactions
         assert state.current_transaction is None
 
-    def test_mark_complete_returns_next_transaction(self):
+    def test_mark_complete_returns_next_transaction(self) -> None:
         """Should return the next transaction from queue."""
         state = RoutineDiscoveryState()
         state.current_transaction = "tx_001"
@@ -171,7 +171,7 @@ class TestMarkTransactionComplete:
         assert state.current_transaction == "tx_002"
         assert state.processed_transactions == ["tx_001"]
 
-    def test_mark_complete_with_empty_queue(self):
+    def test_mark_complete_with_empty_queue(self) -> None:
         """Should return None when queue is empty after completion."""
         state = RoutineDiscoveryState()
         state.current_transaction = "tx_001"
@@ -181,7 +181,7 @@ class TestMarkTransactionComplete:
         assert next_tx is None
         assert state.current_transaction is None
 
-    def test_mark_complete_idempotent(self):
+    def test_mark_complete_idempotent(self) -> None:
         """Marking the same transaction complete twice should not duplicate."""
         state = RoutineDiscoveryState()
         state.current_transaction = "tx_001"
@@ -191,7 +191,7 @@ class TestMarkTransactionComplete:
 
         assert state.processed_transactions.count("tx_001") == 1
 
-    def test_mark_complete_different_transaction(self):
+    def test_mark_complete_different_transaction(self) -> None:
         """Marking a different transaction should still process it and call get_next."""
         state = RoutineDiscoveryState()
         state.current_transaction = "tx_001"
@@ -207,7 +207,7 @@ class TestMarkTransactionComplete:
 class TestStoreTransactionData:
     """Tests for store_transaction_data method."""
 
-    def test_store_request_data(self):
+    def test_store_request_data(self) -> None:
         """Should store request data for a transaction."""
         state = RoutineDiscoveryState()
         request = {"url": "https://api.example.com", "method": "GET"}
@@ -216,7 +216,7 @@ class TestStoreTransactionData:
 
         assert state.transaction_data["tx_001"]["request"] == request
 
-    def test_store_extracted_variables(self):
+    def test_store_extracted_variables(self) -> None:
         """Should store extracted variables for a transaction."""
         state = RoutineDiscoveryState()
         extracted = ExtractedVariableResponse(
@@ -236,7 +236,7 @@ class TestStoreTransactionData:
 
         assert state.transaction_data["tx_001"]["extracted_variables"] == extracted
 
-    def test_store_resolved_variable(self):
+    def test_store_resolved_variable(self) -> None:
         """Should store resolved variable and add to global list."""
         state = RoutineDiscoveryState()
         variable = Variable(
@@ -256,7 +256,7 @@ class TestStoreTransactionData:
         assert resolved in state.transaction_data["tx_001"]["resolved_variables"]
         assert resolved in state.all_resolved_variables
 
-    def test_store_multiple_resolved_variables(self):
+    def test_store_multiple_resolved_variables(self) -> None:
         """Should accumulate multiple resolved variables."""
         state = RoutineDiscoveryState()
         var1 = Variable(
@@ -282,7 +282,7 @@ class TestStoreTransactionData:
         assert len(state.transaction_data["tx_001"]["resolved_variables"]) == 2
         assert len(state.all_resolved_variables) == 2
 
-    def test_store_data_creates_entry_if_missing(self):
+    def test_store_data_creates_entry_if_missing(self) -> None:
         """Should initialize transaction data structure if not present."""
         state = RoutineDiscoveryState()
 
@@ -297,7 +297,7 @@ class TestStoreTransactionData:
 class TestGetQueueStatus:
     """Tests for get_queue_status method."""
 
-    def test_empty_state_status(self):
+    def test_empty_state_status(self) -> None:
         """Should return correct status for empty state."""
         state = RoutineDiscoveryState()
 
@@ -309,7 +309,7 @@ class TestGetQueueStatus:
         assert status["pending_count"] == 0
         assert status["processed_count"] == 0
 
-    def test_populated_state_status(self):
+    def test_populated_state_status(self) -> None:
         """Should return correct status for populated state."""
         state = RoutineDiscoveryState()
         state.transaction_queue = ["tx_002", "tx_003"]
@@ -328,7 +328,7 @@ class TestGetQueueStatus:
 class TestGetOrderedTransactions:
     """Tests for get_ordered_transactions method."""
 
-    def test_reverse_order(self):
+    def test_reverse_order(self) -> None:
         """Should return transactions in reverse processing order."""
         state = RoutineDiscoveryState()
         state.processed_transactions = ["root", "dep1", "dep2"]
@@ -344,7 +344,7 @@ class TestGetOrderedTransactions:
         keys = list(ordered.keys())
         assert keys == ["dep2", "dep1", "root"]
 
-    def test_handles_missing_transaction_data(self):
+    def test_handles_missing_transaction_data(self) -> None:
         """Should return empty dict for transactions without stored data."""
         state = RoutineDiscoveryState()
         state.processed_transactions = ["tx_001", "tx_002"]
@@ -359,7 +359,7 @@ class TestGetOrderedTransactions:
 class TestReset:
     """Tests for reset method."""
 
-    def test_reset_clears_all_state(self):
+    def test_reset_clears_all_state(self) -> None:
         """Reset should return state to initial values."""
         state = RoutineDiscoveryState()
         # Populate state
@@ -395,7 +395,7 @@ class TestReset:
 class TestBFSWorkflow:
     """Integration tests for typical BFS workflow patterns."""
 
-    def test_typical_workflow(self):
+    def test_typical_workflow(self) -> None:
         """Test a typical BFS workflow with root and dependencies."""
         state = RoutineDiscoveryState()
 
@@ -416,7 +416,7 @@ class TestBFSWorkflow:
         assert state.transaction_queue == []
         assert state.processed_transactions == ["root_tx", "dep_tx"]
 
-    def test_complex_dependency_chain(self):
+    def test_complex_dependency_chain(self) -> None:
         """Test processing a more complex dependency graph."""
         state = RoutineDiscoveryState()
 
