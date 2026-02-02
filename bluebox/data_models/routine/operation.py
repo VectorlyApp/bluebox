@@ -19,11 +19,13 @@ Contains:
 - RoutineReturnHTMLOperation: Return page HTML
 - RoutineDownloadOperation: Download binary files
 - RoutineJsEvaluateOperation: Execute custom JavaScript
+- RoutineExecutePythonOperation: Execute Python code in subprocess
 """
 
 import ast
 import json
 import re
+import subprocess
 import time
 from enum import StrEnum
 from typing import Annotated, ClassVar, Literal, Union
@@ -80,6 +82,7 @@ class RoutineOperationTypes(StrEnum):
 
     RETURN_HTML = "return_html"
     JS_EVALUATE = "js_evaluate"
+    EXECUTE_PYTHON = "execute_python"
 
 # Base operation class ____________________________________________________________________________
 
@@ -1201,6 +1204,175 @@ class RoutineJsEvaluateOperation(RoutineOperation):
                 raise RuntimeError(f"JS evaluation failed: {result_value['storage_error']}")
 
 
+class RoutineExecutePythonOperation(RoutineOperation):
+    """
+    Execute Python code in a subprocess and optionally store the result.
+
+    This operation runs Python code in an isolated subprocess with a configurable timeout.
+    The code's stdout is captured and can be stored in session storage for use by subsequent
+    operations.
+
+    SECURITY CONSIDERATIONS:
+    - Code runs in a subprocess, providing process-level isolation
+    - Timeout prevents runaway execution
+    - Certain dangerous patterns are blocked by validation
+
+    Args:
+        type (Literal[RoutineOperationTypes.EXECUTE_PYTHON]): The type of operation.
+        code (str): Python code to execute.
+        timeout_seconds (float): Maximum execution time in seconds. Defaults to 30.
+        session_storage_key (str | None): Optional session storage key to store stdout.
+
+    Returns:
+        RoutineExecutePythonOperation: The operation instance.
+
+    Raises:
+        ValueError: If the Python code contains dangerous patterns.
+        RuntimeError: If execution fails or times out.
+    """
+    type: Literal[RoutineOperationTypes.EXECUTE_PYTHON] = RoutineOperationTypes.EXECUTE_PYTHON
+    code: str
+    timeout_seconds: float = Field(
+        default=30.0,
+        ge=0.1,
+        le=300.0,
+        description="Maximum execution time in seconds"
+    )
+    session_storage_key: str | None = Field(
+        default=None,
+        description="Optional session storage key to store the execution result (stdout)"
+    )
+
+    # Dangerous patterns that are blocked for security
+    DANGEROUS_PATTERNS: ClassVar[list[tuple[str, str]]] = [
+        # System-level access
+        (r'\bos\.system\s*\(', "os.system() - use subprocess instead if needed"),
+        (r'\bos\.popen\s*\(', "os.popen() - direct shell access not allowed"),
+        (r'\bos\.exec[lv]p?e?\s*\(', "os.exec*() - process replacement not allowed"),
+        (r'\bos\.spawn[lv]p?e?\s*\(', "os.spawn*() - process spawning not allowed"),
+        (r'\bos\.fork\s*\(', "os.fork() - process forking not allowed"),
+
+        # Subprocess with shell=True
+        (r'subprocess\.[^(]*\([^)]*shell\s*=\s*True', "subprocess with shell=True not allowed"),
+
+        # Code execution from strings
+        (r'\bexec\s*\(', "exec() - dynamic code execution not allowed"),
+        (r'\beval\s*\(', "eval() - dynamic code evaluation not allowed"),
+        (r'\bcompile\s*\(', "compile() - code compilation not allowed"),
+
+        # Import manipulation
+        (r'__import__\s*\(', "__import__() - dynamic imports not allowed"),
+        (r'\bimportlib\.', "importlib - dynamic import manipulation not allowed"),
+
+        # File system manipulation (allow reading, block destructive operations)
+        (r'\bos\.remove\s*\(', "os.remove() - file deletion not allowed"),
+        (r'\bos\.unlink\s*\(', "os.unlink() - file deletion not allowed"),
+        (r'\bos\.rmdir\s*\(', "os.rmdir() - directory deletion not allowed"),
+        (r'\bshutil\.rmtree\s*\(', "shutil.rmtree() - recursive deletion not allowed"),
+        (r'\bshutil\.move\s*\(', "shutil.move() - file moving not allowed"),
+
+        # Network operations (use RoutineFetchOperation instead)
+        (r'\burllib\.request\.urlopen\s*\(', "urllib - use RoutineFetchOperation for HTTP requests"),
+        (r'\brequests\.(get|post|put|delete|patch|head|options)\s*\(', "requests - use RoutineFetchOperation for HTTP requests"),
+        (r'\bhttpx\.(get|post|put|delete|patch|head|options|request)\s*\(', "httpx - use RoutineFetchOperation for HTTP requests"),
+        (r'\baiohttp\.', "aiohttp - use RoutineFetchOperation for HTTP requests"),
+
+        # Socket operations
+        (r'\bsocket\.socket\s*\(', "socket - direct socket access not allowed"),
+    ]
+
+    @field_validator("code")
+    @classmethod
+    def validate_python_code(cls, v: str) -> str:
+        """
+        Validate that Python code doesn't contain dangerous patterns.
+
+        Raises:
+            ValueError: If dangerous patterns are detected or syntax errors are found.
+        """
+        if not v or not v.strip():
+            raise ValueError("Python code cannot be empty")
+
+        # Check for syntax errors
+        try:
+            ast.parse(v)
+        except SyntaxError as e:
+            raise ValueError(f"Python syntax error: {e}")
+
+        # Check each dangerous pattern
+        for pattern, description in cls.DANGEROUS_PATTERNS:
+            if re.search(pattern, v, re.MULTILINE):
+                raise ValueError(
+                    f"Python code contains blocked pattern: {description}"
+                )
+
+        return v
+
+    def _execute_operation(self, routine_execution_context: RoutineExecutionContext) -> None:
+        """Execute Python code in a subprocess and optionally store result."""
+        # Apply parameter interpolation
+        code = apply_params(self.code, routine_execution_context.parameters_dict)
+
+        # Re-validate after parameter interpolation to prevent injection
+        RoutineExecutePythonOperation.validate_python_code(code)
+
+        logger.info(f"Executing Python code with timeout={self.timeout_seconds}s")
+
+        try:
+            result = subprocess.run(
+                ["python", "-c", code],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+            )
+
+            stdout = result.stdout
+            stderr = result.stderr
+            return_code = result.returncode
+
+            # Store metadata
+            if routine_execution_context.current_operation_metadata is not None:
+                routine_execution_context.current_operation_metadata.details["return_code"] = return_code
+                routine_execution_context.current_operation_metadata.details["stdout_length"] = len(stdout)
+                routine_execution_context.current_operation_metadata.details["stderr_length"] = len(stderr)
+                if stderr:
+                    routine_execution_context.current_operation_metadata.details["stderr"] = stderr[:1000]
+
+            if return_code != 0:
+                raise RuntimeError(f"Python execution failed (exit code {return_code}): {stderr}")
+
+            logger.info(f"Python execution completed, stdout length: {len(stdout)}")
+
+        except subprocess.TimeoutExpired:
+            if routine_execution_context.current_operation_metadata is not None:
+                routine_execution_context.current_operation_metadata.details["timeout"] = True
+            raise RuntimeError(f"Python execution timed out after {self.timeout_seconds} seconds")
+
+        # Store result in session storage if key provided
+        if self.session_storage_key and stdout:
+            store_js = generate_store_in_session_storage_js(
+                self.session_storage_key,
+                stdout,
+            )
+
+            eval_id = routine_execution_context.send_cmd(
+                "Runtime.evaluate",
+                {"expression": store_js, "returnByValue": True},
+                session_id=routine_execution_context.session_id,
+            )
+            reply = routine_execution_context.recv_until(
+                lambda m: m.get("id") == eval_id,
+                time.time() + 5,
+            )
+
+            if "error" in reply:
+                raise RuntimeError(f"Failed to store Python result in session storage: {reply['error']}")
+
+            store_result = reply["result"]["result"].get("value", {})
+            if not store_result.get("ok"):
+                raise RuntimeError(f"Failed to store Python result: {store_result.get('error')}")
+
+
 # Routine operation unions ________________________________________________________________________
 
 RoutineOperationUnion = Annotated[
@@ -1218,6 +1390,7 @@ RoutineOperationUnion = Annotated[
         RoutineReturnHTMLOperation,
         RoutineDownloadOperation,
         RoutineJsEvaluateOperation,
+        RoutineExecutePythonOperation,
         # TODO: RoutineHoverOperation
         # TODO: RoutineWaitForSelectorOperation
         # TODO: RoutineWaitForTitleOperation
