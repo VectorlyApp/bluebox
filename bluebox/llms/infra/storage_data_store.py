@@ -196,7 +196,7 @@ class StorageDataStore:
             for field in StorageEvent.SEARCHABLE_FIELDS:
                 val = getattr(entry, field)
                 if val is not None:
-                    searchable.append((field, json.dumps(val) if isinstance(val, list) else str(val)))
+                    searchable.append((field, val if isinstance(val, str) else json.dumps(val)))
 
             # Scan all values for matches
             match_locations = [
