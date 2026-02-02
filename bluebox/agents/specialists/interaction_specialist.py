@@ -9,12 +9,12 @@ Analyzes UI interaction recordings to discover routine parameters
 
 from __future__ import annotations
 
-import textwrap
+from textwrap import dedent
 from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, specialist_tool
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, SpecialistMode, specialist_tool
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -69,7 +69,7 @@ class InteractionSpecialist(AbstractSpecialist):
     Analyzes recorded UI interactions to discover routine parameters.
     """
 
-    SYSTEM_PROMPT: str = textwrap.dedent("""\
+    SYSTEM_PROMPT: str = dedent("""\
         You are a UI interaction analyst specializing in discovering routine parameters from recorded browser interactions.
 
         ## Your Role
@@ -108,7 +108,7 @@ class InteractionSpecialist(AbstractSpecialist):
         - **get_unique_elements**: Deduplicated elements with interaction counts
     """)
 
-    AUTONOMOUS_SYSTEM_PROMPT: str = textwrap.dedent("""\
+    AUTONOMOUS_SYSTEM_PROMPT: str = dedent("""\
         You are a UI interaction analyst that autonomously discovers routine parameters from recorded browser interactions.
 
         ## Your Mission
@@ -197,7 +197,7 @@ class InteractionSpecialist(AbstractSpecialist):
         )
 
         # urgency notices
-        if self._finalize_tools_registered:
+        if self.mode == SpecialistMode.FINALIZING:
             remaining = 10 - self._autonomous_iteration
             if remaining <= 2:
                 urgency = (
@@ -222,8 +222,8 @@ class InteractionSpecialist(AbstractSpecialist):
 
         return self.AUTONOMOUS_SYSTEM_PROMPT + context + urgency
 
-    # _register_tools, _register_finalize_tools, and _execute_tool are
-    # provided by the base class via @specialist_tool decorators below.
+    # _register_tools and _execute_tool are provided by the base class
+    # via @specialist_tool decorators below.
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         return (
@@ -250,12 +250,11 @@ class InteractionSpecialist(AbstractSpecialist):
     ## Tool handlers
 
     @specialist_tool(
-        name="get_interaction_summary",
         description="Get summary statistics of all recorded interactions.",
         parameters={"type": "object", "properties": {}},
     )
     @token_optimized
-    def _tool_get_interaction_summary(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _get_interaction_summary(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         stats = self._interaction_data_store.stats
         return {
             "total_events": stats.total_events,
@@ -265,7 +264,6 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
     @specialist_tool(
-        name="search_interactions_by_type",
         description="Filter interactions by type (e.g., click, input, change, keydown, focus).",
         parameters={
             "type": "object",
@@ -280,7 +278,7 @@ class InteractionSpecialist(AbstractSpecialist):
         },
     )
     @token_optimized
-    def _tool_search_interactions_by_type(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _search_interactions_by_type(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         types = tool_arguments.get("types", [])
         if not types:
             return {"error": "types list is required"}
@@ -308,7 +306,6 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
     @specialist_tool(
-        name="search_interactions_by_element",
         description="Filter interactions by element attributes (tag, id, class, type).",
         parameters={
             "type": "object",
@@ -321,7 +318,7 @@ class InteractionSpecialist(AbstractSpecialist):
         },
     )
     @token_optimized
-    def _tool_search_interactions_by_element(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _search_interactions_by_element(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         events = self._interaction_data_store.filter_by_element(
             tag_name=tool_arguments.get("tag_name"),
             element_id=tool_arguments.get("element_id"),
@@ -351,7 +348,6 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
     @specialist_tool(
-        name="get_interaction_detail",
         description="Get full details of a specific interaction event by index.",
         parameters={
             "type": "object",
@@ -365,7 +361,7 @@ class InteractionSpecialist(AbstractSpecialist):
         },
     )
     @token_optimized
-    def _tool_get_interaction_detail(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _get_interaction_detail(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         index = tool_arguments.get("index")
         if index is None:
             return {"error": "index is required"}
@@ -377,12 +373,11 @@ class InteractionSpecialist(AbstractSpecialist):
         return detail
 
     @specialist_tool(
-        name="get_form_inputs",
         description="Get all input/change events with their values and element info.",
         parameters={"type": "object", "properties": {}},
     )
     @token_optimized
-    def _tool_get_form_inputs(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _get_form_inputs(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         inputs = self._interaction_data_store.get_form_inputs()
         return {
             "total_inputs": len(inputs),
@@ -390,12 +385,11 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
     @specialist_tool(
-        name="get_unique_elements",
         description="Get deduplicated elements with interaction counts and types.",
         parameters={"type": "object", "properties": {}},
     )
     @token_optimized
-    def _tool_get_unique_elements(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _get_unique_elements(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         elements = self._interaction_data_store.get_unique_elements()
         return {
             "total_unique_elements": len(elements),
@@ -403,8 +397,8 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
     @specialist_tool(
-        name="finalize_result",
         description="Submit discovered parameters. Call when you have identified all parameterizable inputs.",
+        availability=lambda self: self.mode == SpecialistMode.FINALIZING,
         parameters={
             "type": "object",
             "properties": {
@@ -432,10 +426,9 @@ class InteractionSpecialist(AbstractSpecialist):
             },
             "required": ["parameters"],
         },
-        finalize=True,
     )
     @token_optimized
-    def _tool_finalize_result(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _finalize_result(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         params_data = tool_arguments.get("parameters", [])
 
         if not params_data:
@@ -477,8 +470,8 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
     @specialist_tool(
-        name="finalize_failure",
         description="Report that no parameters could be discovered from the interactions.",
+        availability=lambda self: self.mode == SpecialistMode.FINALIZING,
         parameters={
             "type": "object",
             "properties": {
@@ -493,10 +486,9 @@ class InteractionSpecialist(AbstractSpecialist):
             },
             "required": ["reason", "interaction_summary"],
         },
-        finalize=True,
     )
     @token_optimized
-    def _tool_finalize_failure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _finalize_failure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         reason = tool_arguments.get("reason", "")
         interaction_summary = tool_arguments.get("interaction_summary", "")
 

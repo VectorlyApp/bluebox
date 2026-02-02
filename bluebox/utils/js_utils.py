@@ -16,7 +16,7 @@ Contains:
 
 import json
 import re
-import textwrap
+from textwrap import dedent
 
 
 # Constants ________________________________________________________________________________________
@@ -304,7 +304,7 @@ def _get_element_profile_js() -> str:
     Returns:
         JavaScript function definition for getElementProfile(element).
     """
-    return textwrap.dedent("""\
+    return dedent("""\
         function getElementProfile(el) {
             const style = window.getComputedStyle(el);
             const rect = el.getBoundingClientRect();
@@ -539,7 +539,7 @@ def generate_click_js(selector: str, ensure_visible: bool) -> str:
     Returns:
         JavaScript code that returns element coordinates or error info.
     """
-    return textwrap.dedent(f"""\
+    return dedent(f"""\
         (function() {{
             const selector = {json.dumps(selector)};
             const element = document.querySelector(selector);
@@ -605,7 +605,7 @@ def generate_type_js(selector: str, clear: bool) -> str:
     Returns:
         JavaScript code that focuses the element or returns error.
     """
-    return textwrap.dedent(f"""\
+    return dedent(f"""\
         (function() {{
             const selector = {json.dumps(selector)};
             const element = document.querySelector(selector);
@@ -656,7 +656,7 @@ def generate_scroll_element_js(selector: str, delta_x: int, delta_y: int, behavi
     Returns:
         JavaScript code that scrolls the element.
     """
-    return textwrap.dedent(f"""\
+    return dedent(f"""\
         (function() {{
             const selector = {json.dumps(selector)};
             const element = document.querySelector(selector);
@@ -701,7 +701,7 @@ def generate_scroll_window_js(
     Returns:
         JavaScript code that scrolls the window.
     """
-    return textwrap.dedent(f"""\
+    return dedent(f"""\
         (function() {{
             const x = {json.dumps(x)};
             const y = {json.dumps(y)};
@@ -739,7 +739,7 @@ def generate_wait_for_url_js(url_regex: str) -> str:
     Returns:
         JavaScript code that checks URL match.
     """
-    return textwrap.dedent(f"""\
+    return dedent(f"""\
         (function() {{
             const urlRegex = new RegExp({json.dumps(url_regex)});
             const currentUrl = window.location.href;
@@ -765,7 +765,7 @@ def generate_store_in_session_storage_js(key: str, value_json: str) -> str:
     Returns:
         JavaScript code that stores the value.
     """
-    return textwrap.dedent(f"""\
+    return dedent(f"""\
         (function() {{
             try {{
                 window.sessionStorage.setItem({json.dumps(key)}, {json.dumps(value_json)});
@@ -802,7 +802,7 @@ def generate_get_session_storage_chunk_js(key: str, offset: int, end: int) -> st
     Returns:
         JavaScript code that returns the substring.
     """
-    return textwrap.dedent(f"""\
+    return dedent(f"""\
         (function() {{
             const val = window.sessionStorage.getItem({json.dumps(key)});
             return val.substring({offset}, {end});

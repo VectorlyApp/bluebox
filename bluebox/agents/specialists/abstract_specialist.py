@@ -49,52 +49,50 @@ logger = get_logger(name=__name__)
 
 
 class SpecialistMode(StrEnum):
-    """Which mode(s) a tool is available in."""
-    ALWAYS = "always"
-    CONVERSATIONAL = "conversational"
-    AUTONOMOUS = "autonomous"
+    """Lifecycle mode of a specialist agent."""
+    CONVERSATIONAL = "conversational"  # interactive chat with a user
+    AUTONOMOUS = "autonomous"          # autonomous loop, exploring/analyzing
+    FINALIZING = "finalizing"          # autonomous loop, finalize tools available
 
 
 @dataclass(frozen=True)
 class _ToolMeta:
     """Metadata attached to a handler method by @specialist_tool."""
-    name: str                       # tool name registered with the LLM client
-    description: str                # tool description shown to the LLM
-    parameters: dict[str, Any]      # JSON Schema for tool parameters
-    condition: str | None           # instance attr that must be truthy to register
-    finalize: bool                  # True = only registered after min_iterations
-    mode: SpecialistMode            # which specialist mode(s) this tool is available in
+    name: str                                           # tool name registered with the LLM client
+    description: str                                    # tool description shown to the LLM
+    parameters: dict[str, Any]                          # JSON Schema for tool parameters
+    availability: bool | Callable[..., bool]            # whether the tool should be registered right now
 
 
 def specialist_tool(
-    name: str,
     description: str,
     parameters: dict[str, Any],
     *,
-    condition: str | None = None,
-    finalize: bool = False,
-    mode: SpecialistMode = SpecialistMode.ALWAYS,
+    availability: bool | Callable[..., bool] = True,
 ) -> Callable:
     """
     Decorator that marks a method as a specialist tool handler.
 
+    The tool name is derived from the method name by stripping leading
+    underscores. For example, ``_get_dom_snapshot`` becomes ``get_dom_snapshot``.
+
     Args:
-        name: Tool name registered with the LLM client.
         description: Tool description for the LLM.
         parameters: JSON Schema for tool parameters.
-        condition: Instance attribute name; tool is only registered when the
-                   attribute is truthy (e.g. "_dom_snapshots").
-        finalize: If True, tool is registered after min_iterations in autonomous mode.
-        mode: Which mode the tool is available in (BOTH, CONVERSATIONAL, AUTONOMOUS).
+        availability: Controls when the tool is registered with the LLM.
+            - True (default): always registered at init.
+            - Callable[[self], bool]: evaluated each time _register_tools() is
+              called; registered only when it returns True. Use this for tools
+              gated behind optional dependencies or lifecycle state (e.g.
+              ``availability=lambda self: self.mode == SpecialistMode.FINALIZING``).
     """
     def decorator(method: Callable) -> Callable:
-        method._tool_meta = _ToolMeta(  # type: ignore[attr-defined]
-            name=name,
+        tool_name = method.__name__ + "_tool"
+        method._tool_meta = _ToolMeta(
+            name=tool_name,
             description=description,
             parameters=parameters,
-            condition=condition,
-            finalize=finalize,
-            mode=mode,
+            availability=availability,
         )
         return method
     return decorator
@@ -110,10 +108,11 @@ class AbstractSpecialist(ABC):
       - _get_autonomous_initial_message()
       - _check_autonomous_completion() — inspect tool results for finalize signals
 
-    Tools can be defined declaratively via the @specialist_tool decorator on
-    handler methods. The base class provides default _register_tools(),
-    _register_finalize_tools(), and _execute_tool() that use decorated methods.
-    Subclasses may still override these for custom logic.
+    Tools are defined declaratively via the @specialist_tool decorator on handler
+    methods. Each tool's ``availability`` controls when it is registered: True
+    (always), or a callable evaluated each time _register_tools() is called.
+    The base class provides default _register_tools() and _execute_tool() that
+    use decorated methods. Subclasses may still override these for custom logic.
 
     The base class handles all LLM conversation mechanics:
       - Chat history, threading, persistence
@@ -136,74 +135,6 @@ class AbstractSpecialist(ABC):
         Called every iteration, so it can include dynamic context
         (e.g., iteration count, urgency notices).
         """
-
-    def _register_tools(self, active_mode: SpecialistMode = SpecialistMode.CONVERSATIONAL) -> None:
-        """
-        Register specialist-specific tools on self.llm_client.
-
-        Default implementation registers all @specialist_tool methods whose
-        mode matches active_mode (or BOTH), are not finalize-only, and
-        whose condition is met.
-
-        Args:
-            active_mode: The mode being entered. __init__ passes CONVERSATIONAL;
-                         run_autonomous passes AUTONOMOUS.
-        """
-        for meta, _ in self._collect_tools():
-            if meta.finalize:
-                continue
-            if meta.mode not in (SpecialistMode.ALWAYS, active_mode):
-                continue
-            if meta.condition and not bool(getattr(self, meta.condition, None)):
-                continue
-            self.llm_client.register_tool(
-                name=meta.name,
-                description=meta.description,
-                parameters=meta.parameters,
-            )
-
-    def _register_finalize_tools(self) -> None:
-        """
-        Register finalize tools for autonomous mode.
-
-        Default implementation registers all @specialist_tool methods where
-        finalize=True. Guarded by self._finalize_tools_registered in the
-        autonomous loop.
-        """
-        if self._finalize_tools_registered:
-            return
-        for meta, _ in self._collect_tools():
-            if not meta.finalize:
-                continue
-            self.llm_client.register_tool(
-                name=meta.name,
-                description=meta.description,
-                parameters=meta.parameters,
-            )
-
-    def _execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """
-        Dispatch a tool call to the appropriate decorated handler.
-
-        Default implementation builds a dispatch dict from @specialist_tool
-        methods. Subclasses may override for custom dispatch logic.
-        """
-        dispatch = {meta.name: method for meta, method in self._collect_tools()}
-        handler = dispatch.get(tool_name)
-        if handler is None:
-            return {"error": f"Unknown tool: {tool_name}"}
-        return handler(self, tool_arguments)
-
-    @classmethod
-    def _collect_tools(cls) -> list[tuple[_ToolMeta, Callable]]:
-        """Collect all methods decorated with @specialist_tool."""
-        results: list[tuple[_ToolMeta, Callable]] = []
-        for attr_name in dir(cls):
-            method = getattr(cls, attr_name, None)
-            meta = getattr(method, "_tool_meta", None)
-            if isinstance(meta, _ToolMeta):
-                results.append((meta, method))
-        return results
 
     @abstractmethod
     def _get_autonomous_initial_message(self, task: str) -> str:
@@ -243,6 +174,19 @@ class AbstractSpecialist(ABC):
             or None if max iterations were reached without finalization.
         """
 
+    ## Class methods
+
+    @classmethod
+    def _collect_tools(cls) -> list[tuple[_ToolMeta, Callable]]:
+        """Collect all methods decorated with @specialist_tool."""
+        results: list[tuple[_ToolMeta, Callable]] = []
+        for attr_name in dir(cls):
+            method = getattr(cls, attr_name, None)
+            tool_meta = getattr(method, "_tool_meta", None)
+            if isinstance(tool_meta, _ToolMeta):
+                results.append((tool_meta, method))
+        return results
+
     ## Magic methods
 
     def __init__(
@@ -277,7 +221,10 @@ class AbstractSpecialist(ABC):
         self.llm_model = llm_model
         self.llm_client = LLMClient(llm_model)
 
-        # Subclass registers its tools
+        # Track which tools have been registered to avoid double-registration
+        self._registered_tool_names: set[str] = set()
+
+        # Register tools whose availability is satisfied at init time
         self._register_tools()
 
         # Conversation state
@@ -291,10 +238,46 @@ class AbstractSpecialist(ABC):
         if self._persist_chat_thread_callable and chat_thread is None:
             self._thread = self._persist_chat_thread_callable(self._thread)
 
-        # Autonomous mode state
-        self._autonomous_mode: bool = False
+        # Lifecycle state
+        self.mode: SpecialistMode = SpecialistMode.CONVERSATIONAL
         self._autonomous_iteration: int = 0
-        self._finalize_tools_registered: bool = False
+
+    ## Tools
+
+    def _register_tools(self) -> None:
+        """
+        Register specialist-specific tools on self.llm_client.
+
+        Iterates all @specialist_tool methods, evaluates each tool's
+        ``availability``, and registers any newly-available tools that
+        haven't been registered yet. Safe to call multiple times (e.g.
+        at init and again when finalize gate opens).
+        """
+        for tool_meta, _ in self._collect_tools():
+            if tool_meta.name in self._registered_tool_names:
+                continue
+            available = tool_meta.availability(self) if callable(tool_meta.availability) else tool_meta.availability
+            if not available:
+                continue
+            self.llm_client.register_tool(
+                name=tool_meta.name,
+                description=tool_meta.description,
+                parameters=tool_meta.parameters,
+            )
+            self._registered_tool_names.add(tool_meta.name)
+
+    def _execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """
+        Dispatch a tool call to the appropriate decorated handler.
+
+        Default implementation builds a dispatch dict from @specialist_tool
+        methods. Subclasses may override for custom dispatch logic.
+        """
+        dispatch = {tool_meta.name: method for tool_meta, method in self._collect_tools()}
+        handler = dispatch.get(tool_name)
+        if handler is None:
+            return {"error": f"Unknown tool: {tool_name}"}
+        return handler(self, tool_arguments)
 
     ## Properties
 
@@ -384,7 +367,7 @@ class AbstractSpecialist(ABC):
             messages.append(msg)
         return messages
 
-    ## Tool execution (concrete)
+    ## Tools
 
     def _auto_execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> str:
         """Auto-execute a tool, emit result message, return JSON string."""
@@ -503,12 +486,8 @@ class AbstractSpecialist(ABC):
         Returns:
             Specialist-specific result model, or None if max iterations reached.
         """
-        self._autonomous_mode = True
+        self.mode = SpecialistMode.AUTONOMOUS
         self._autonomous_iteration = 0
-        self._finalize_tools_registered = False
-
-        # Register autonomous-only tools
-        self._register_tools(active_mode=SpecialistMode.AUTONOMOUS)
 
         # Subclass should reset its own result fields in _reset_autonomous_state()
         self._reset_autonomous_state()
@@ -521,7 +500,7 @@ class AbstractSpecialist(ABC):
 
         self._run_autonomous_loop(min_iterations, max_iterations)
 
-        self._autonomous_mode = False
+        self.mode = SpecialistMode.CONVERSATIONAL
 
         return self._get_autonomous_result()
 
@@ -544,9 +523,9 @@ class AbstractSpecialist(ABC):
             logger.debug("Autonomous loop iteration %d/%d", self._autonomous_iteration, max_iterations)
 
             # Gate finalize tools behind min_iterations
-            if self._autonomous_iteration >= min_iterations - 1 and not self._finalize_tools_registered:
-                self._register_finalize_tools()
-                self._finalize_tools_registered = True
+            if self._autonomous_iteration >= min_iterations - 1 and self.mode != SpecialistMode.FINALIZING:
+                self.mode = SpecialistMode.FINALIZING
+                self._register_tools()  # re-evaluate availability lambdas
                 logger.info("Finalize tools now available (iteration %d)", self._autonomous_iteration)
 
             messages = self._build_messages_for_llm()
@@ -665,9 +644,9 @@ class AbstractSpecialist(ABC):
         self._previous_response_id = None
         self._response_id_to_chat_index = {}
 
-        self._autonomous_mode = False
+        self.mode = SpecialistMode.CONVERSATIONAL
         self._autonomous_iteration = 0
-        self._finalize_tools_registered = False
+        self._registered_tool_names = set()
         self._reset_autonomous_state()
 
         if self._persist_chat_thread_callable:

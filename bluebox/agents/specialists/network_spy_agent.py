@@ -19,7 +19,7 @@ from urllib.parse import urlparse, parse_qs
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, SpecialistMode
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -303,7 +303,7 @@ class NetworkSpyAgent(AbstractSpecialist):
             urls_context = ""
 
         # Add finalize tool availability notice
-        if self._finalize_tools_registered:
+        if self.mode == SpecialistMode.FINALIZING:
             remaining_iterations = self._autonomous_max_iterations - self._autonomous_iteration
             if remaining_iterations <= 2:
                 finalize_notice = (
@@ -335,7 +335,23 @@ class NetworkSpyAgent(AbstractSpecialist):
         return self.AUTONOMOUS_SYSTEM_PROMPT + stats_context + urls_context + finalize_notice
 
     def _register_tools(self) -> None:
-        """Register tools for HAR analysis."""
+        """Register tools for HAR analysis (and finalize tools when gate opens)."""
+        if self._registered_tool_names:
+            # Non-finalize tools already registered; only check finalize tools below
+            pass
+        else:
+            self._register_non_finalize_tools()
+
+        # Finalize tools — only registered after min_iterations gate opens
+        if self.mode != SpecialistMode.FINALIZING:
+            return
+        if "finalize_result" in self._registered_tool_names:
+            return
+
+        self._register_finalize_tools_impl()
+
+    def _register_non_finalize_tools(self) -> None:
+        """Register the core analysis tools."""
         self.llm_client.register_tool(
             name="search_har_responses_by_terms",
             description=(
@@ -482,12 +498,13 @@ class NetworkSpyAgent(AbstractSpecialist):
                 "required": ["value"],
             },
         )
+        self._registered_tool_names.update([
+            "search_har_responses_by_terms", "get_entry_detail", "get_response_body_schema",
+            "get_unique_urls", "execute_python", "search_har_by_request", "search_response_bodies",
+        ])
 
-    def _register_finalize_tools(self) -> None:
-        """Register finalize_result and finalize_failure tools for autonomous mode."""
-        if self._finalize_tools_registered:
-            return
-
+    def _register_finalize_tools_impl(self) -> None:
+        """Register finalize_result and finalize_failure tools."""
         self.llm_client.register_tool(
             name="finalize_result",
             description=(
@@ -572,6 +589,7 @@ class NetworkSpyAgent(AbstractSpecialist):
             },
         )
 
+        self._registered_tool_names.update(["finalize_result", "finalize_failure"])
         logger.debug("Registered finalize_result and finalize_failure tools")
 
     def _execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
@@ -579,23 +597,23 @@ class NetworkSpyAgent(AbstractSpecialist):
         logger.debug("Executing tool %s with arguments: %s", tool_name, tool_arguments)
 
         if tool_name == "search_har_responses_by_terms":
-            return self._tool_search_har_responses_by_terms(tool_arguments)
+            return self._search_har_responses_by_terms(tool_arguments)
         if tool_name == "get_entry_detail":
-            return self._tool_get_entry_detail(tool_arguments)
+            return self._get_entry_detail(tool_arguments)
         if tool_name == "get_response_body_schema":
-            return self._tool_get_response_body_schema(tool_arguments)
+            return self._get_response_body_schema(tool_arguments)
         if tool_name == "get_unique_urls":
-            return self._tool_get_unique_urls(tool_arguments)
+            return self._get_unique_urls(tool_arguments)
         if tool_name == "execute_python":
-            return self._tool_execute_python(tool_arguments)
+            return self._execute_python(tool_arguments)
         if tool_name == "search_har_by_request":
-            return self._tool_search_har_by_request(tool_arguments)
+            return self._search_har_by_request(tool_arguments)
         if tool_name == "search_response_bodies":
-            return self._tool_search_response_bodies(tool_arguments)
+            return self._search_response_bodies(tool_arguments)
         if tool_name == "finalize_result":
-            return self._tool_finalize_result(tool_arguments)
+            return self._finalize_result(tool_arguments)
         if tool_name == "finalize_failure":
-            return self._tool_finalize_failure(tool_arguments)
+            return self._finalize_failure(tool_arguments)
 
         return {"error": f"Unknown tool: {tool_name}"}
 
@@ -653,7 +671,7 @@ class NetworkSpyAgent(AbstractSpecialist):
     ## Tool handlers
 
     @token_optimized
-    def _tool_search_har_responses_by_terms(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _search_har_responses_by_terms(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute search_har_responses_by_terms tool."""
         terms = tool_arguments.get("terms", [])
         if not terms:
@@ -674,7 +692,7 @@ class NetworkSpyAgent(AbstractSpecialist):
         }
 
     @token_optimized
-    def _tool_get_entry_detail(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _get_entry_detail(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute get_entry_detail tool."""
         request_id = tool_arguments.get("request_id")
         if request_id is None:
@@ -712,7 +730,7 @@ class NetworkSpyAgent(AbstractSpecialist):
         }
 
     @token_optimized
-    def _tool_get_response_body_schema(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _get_response_body_schema(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute get_response_body_schema tool."""
         request_id = tool_arguments.get("request_id")
         if request_id is None:
@@ -731,7 +749,7 @@ class NetworkSpyAgent(AbstractSpecialist):
         }
 
     @token_optimized
-    def _tool_get_unique_urls(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _get_unique_urls(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute get_unique_urls tool."""
         url_counts = self._network_data_store.url_counts
         return {
@@ -739,14 +757,14 @@ class NetworkSpyAgent(AbstractSpecialist):
             "url_counts": url_counts,
         }
 
-    def _tool_execute_python(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _execute_python(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute Python code in a sandboxed environment with network entries pre-loaded."""
         code = tool_arguments.get("code", "")
         entries = [e.model_dump() for e in self._network_data_store.entries]
         return execute_python_sandboxed(code, extra_globals={"entries": entries})
 
     @token_optimized
-    def _tool_search_har_by_request(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _search_har_by_request(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Search request side (URL, headers, body) for terms."""
         terms = tool_arguments.get("terms", [])
         if not terms:
@@ -817,7 +835,7 @@ class NetworkSpyAgent(AbstractSpecialist):
         }
 
     @token_optimized
-    def _tool_search_response_bodies(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _search_response_bodies(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute search_response_bodies tool."""
         value = tool_arguments.get("value", "")
         if not value:
@@ -844,7 +862,7 @@ class NetworkSpyAgent(AbstractSpecialist):
         }
 
     @token_optimized
-    def _tool_finalize_result(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _finalize_result(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Handle finalize_result tool call in autonomous mode."""
         endpoints_data = tool_arguments.get("endpoints", [])
 
@@ -904,7 +922,7 @@ class NetworkSpyAgent(AbstractSpecialist):
         }
 
     @token_optimized
-    def _tool_finalize_failure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _finalize_failure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Handle finalize_failure tool call when endpoint discovery fails."""
         reason = tool_arguments.get("reason", "")
         searched_terms = tool_arguments.get("searched_terms", [])

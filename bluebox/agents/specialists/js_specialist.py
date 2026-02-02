@@ -8,13 +8,13 @@ Writes IIFE JavaScript for RoutineJsEvaluateOperation execution in routines.
 
 from __future__ import annotations
 
-import textwrap
 import time
+from textwrap import dedent
 from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, specialist_tool
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, SpecialistMode, specialist_tool
 from bluebox.cdp.connection import (
     cdp_new_tab,
     create_cdp_helpers,
@@ -65,7 +65,7 @@ class JSSpecialist(AbstractSpecialist):
     Writes IIFE JavaScript for browser execution.
     """
 
-    SYSTEM_PROMPT: str = textwrap.dedent("""\
+    SYSTEM_PROMPT: str = dedent("""\
         You are a JavaScript expert specializing in browser DOM manipulation.
 
         ## Your Capabilities
@@ -110,7 +110,7 @@ class JSSpecialist(AbstractSpecialist):
         - Use `get_dom_snapshot` to understand page structure before writing code
     """)
 
-    _NETWORK_TRAFFIC_PROMPT_SECTION: str = textwrap.dedent("""
+    _NETWORK_TRAFFIC_PROMPT_SECTION: str = dedent("""
         ## Network Traffic Data
 
         You have access to captured network traffic from the browser session:
@@ -120,7 +120,7 @@ class JSSpecialist(AbstractSpecialist):
         Use these to understand API endpoints, response formats, and data available on the page.
     """)
 
-    AUTONOMOUS_SYSTEM_PROMPT: str = textwrap.dedent("""\
+    AUTONOMOUS_SYSTEM_PROMPT: str = dedent("""\
         You are a JavaScript expert that autonomously writes browser DOM manipulation code.
 
         ## Your Mission
@@ -226,7 +226,7 @@ class JSSpecialist(AbstractSpecialist):
             context_parts.append(self._NETWORK_TRAFFIC_PROMPT_SECTION)
 
         # Urgency notices
-        if self._finalize_tools_registered:
+        if self.mode == SpecialistMode.FINALIZING:
             remaining = 10 - self._autonomous_iteration
             if remaining <= 2:
                 context_parts.append(
@@ -251,8 +251,8 @@ class JSSpecialist(AbstractSpecialist):
 
         return "".join(context_parts)
 
-    # _register_tools, _register_finalize_tools, and _execute_tool are
-    # provided by the base class via @specialist_tool decorators below.
+    # _register_tools and _execute_tool are provided by the base class
+    # via @specialist_tool decorators below.
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         return (
@@ -278,7 +278,6 @@ class JSSpecialist(AbstractSpecialist):
     ## Tool handlers
 
     @specialist_tool(
-        name="validate_js_code",
         description="Dry-run validation of JavaScript code. Checks IIFE format and blocked patterns without submitting.",
         parameters={
             "type": "object",
@@ -292,7 +291,7 @@ class JSSpecialist(AbstractSpecialist):
         },
     )
     @token_optimized
-    def _tool_validate_js_code(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _validate_js_code(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         js_code = tool_arguments.get("js_code", "")
         errors = validate_js(js_code)
 
@@ -318,8 +317,8 @@ class JSSpecialist(AbstractSpecialist):
         }
 
     @specialist_tool(
-        name="get_dom_snapshot",
         description="Get a DOM snapshot. Returns the document structure and truncated strings table. Defaults to latest snapshot.",
+        availability=lambda self: bool(self._dom_snapshots),
         parameters={
             "type": "object",
             "properties": {
@@ -329,10 +328,9 @@ class JSSpecialist(AbstractSpecialist):
                 }
             },
         },
-        condition="_dom_snapshots",
     )
     @token_optimized
-    def _tool_get_dom_snapshot(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _get_dom_snapshot(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         if not self._dom_snapshots:
             return {"error": "No DOM snapshots available"}
 
@@ -358,11 +356,11 @@ class JSSpecialist(AbstractSpecialist):
         }
 
     @specialist_tool(
-        name="submit_js_code",
         description=(
             "Submit validated JavaScript code as the final result. "
             "The code must be IIFE-wrapped and pass all validation checks."
         ),
+        availability=lambda self: self.mode == SpecialistMode.FINALIZING,
         parameters={
             "type": "object",
             "properties": {
@@ -385,10 +383,9 @@ class JSSpecialist(AbstractSpecialist):
             },
             "required": ["js_code", "description"],
         },
-        finalize=True,
     )
     @token_optimized
-    def _tool_submit_js_code(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _submit_js_code(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         js_code = tool_arguments.get("js_code", "")
         description = tool_arguments.get("description", "")
         session_storage_key = tool_arguments.get("session_storage_key")
@@ -421,8 +418,8 @@ class JSSpecialist(AbstractSpecialist):
         }
 
     @specialist_tool(
-        name="finalize_failure",
         description="Report that the JavaScript task cannot be accomplished.",
+        availability=lambda self: self.mode == SpecialistMode.FINALIZING,
         parameters={
             "type": "object",
             "properties": {
@@ -438,10 +435,9 @@ class JSSpecialist(AbstractSpecialist):
             },
             "required": ["reason"],
         },
-        finalize=True,
     )
     @token_optimized
-    def _tool_finalize_failure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _finalize_failure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         reason = tool_arguments.get("reason", "")
         attempted_approaches = tool_arguments.get("attempted_approaches", [])
 
@@ -462,11 +458,11 @@ class JSSpecialist(AbstractSpecialist):
         }
 
     @specialist_tool(
-        name="search_network_traffic",
         description=(
             "Search/filter captured HTTP requests. Returns abbreviated results (no bodies). "
             "All parameters are optional filters."
         ),
+        availability=lambda self: self._network_data_store is not None,
         parameters={
             "type": "object",
             "properties": {
@@ -496,10 +492,9 @@ class JSSpecialist(AbstractSpecialist):
                 },
             },
         },
-        condition="_network_data_store",
     )
     @token_optimized
-    def _tool_search_network_traffic(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _search_network_traffic(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Search captured network traffic with optional filters."""
         if self._network_data_store is None:
             return {"error": "No network data store available"}
@@ -536,8 +531,8 @@ class JSSpecialist(AbstractSpecialist):
         return {"count": len(results), "entries": results}
 
     @specialist_tool(
-        name="get_network_entry",
         description="Get full details of a single captured HTTP request by request_id, including headers and response body.",
+        availability=lambda self: self._network_data_store is not None,
         parameters={
             "type": "object",
             "properties": {
@@ -556,10 +551,9 @@ class JSSpecialist(AbstractSpecialist):
             },
             "required": ["request_id"],
         },
-        condition="_network_data_store",
     )
     @token_optimized
-    def _tool_get_network_entry(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _get_network_entry(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Get full details of a single network entry by request_id."""
         if self._network_data_store is None:
             return {"error": "No network data store available"}
@@ -596,13 +590,13 @@ class JSSpecialist(AbstractSpecialist):
         return result
 
     @specialist_tool(
-        name="execute_js_in_browser",
         description=(
             "Test JavaScript code against the live website. "
             "Navigates to the URL and executes your IIFE, returning the result and any console output. "
             "Use this to verify your code works before submitting. "
             "Set keep_open=true to keep the browser tab open after execution (useful for visual changes)."
         ),
+        availability=lambda self: bool(self._remote_debugging_address),
         parameters={
             "type": "object",
             "properties": {
@@ -625,10 +619,9 @@ class JSSpecialist(AbstractSpecialist):
             },
             "required": ["url", "js_code"],
         },
-        condition="_remote_debugging_address",
     )
     @token_optimized
-    def _tool_execute_js_in_browser(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _execute_js_in_browser(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Navigate to a URL and execute JS code via CDP, returning the result."""
         if not self._remote_debugging_address:
             return {"error": "No browser connection configured"}
