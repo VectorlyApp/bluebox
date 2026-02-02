@@ -263,6 +263,7 @@ class InteractionSpecialist(AbstractSpecialist):
             "events_by_type": stats.events_by_type,
         }
 
+
     @specialist_tool(
         description="Filter interactions by type (e.g., click, input, change, keydown, focus).",
         parameters={
@@ -304,6 +305,7 @@ class InteractionSpecialist(AbstractSpecialist):
             "showing": len(results),
             "results": results,
         }
+
 
     @specialist_tool(
         description="Filter interactions by element attributes (tag, id, class, type).",
@@ -347,6 +349,7 @@ class InteractionSpecialist(AbstractSpecialist):
             "results": results,
         }
 
+
     @specialist_tool(
         description="Get full details of a specific interaction event by index.",
         parameters={
@@ -372,6 +375,7 @@ class InteractionSpecialist(AbstractSpecialist):
 
         return detail
 
+
     @specialist_tool(
         description="Get all input/change events with their values and element info.",
         parameters={"type": "object", "properties": {}},
@@ -384,6 +388,7 @@ class InteractionSpecialist(AbstractSpecialist):
             "inputs": inputs[:100],
         }
 
+
     @specialist_tool(
         description="Get deduplicated elements with interaction counts and types.",
         parameters={"type": "object", "properties": {}},
@@ -395,6 +400,7 @@ class InteractionSpecialist(AbstractSpecialist):
             "total_unique_elements": len(elements),
             "elements": elements[:50],
         }
+
 
     @specialist_tool(
         description="Submit discovered parameters. Call when you have identified all parameterizable inputs.",
@@ -468,6 +474,7 @@ class InteractionSpecialist(AbstractSpecialist):
             "message": f"Discovered {len(discovered)} parameter(s)",
             "result": self._discovery_result.model_dump(),
         }
+
 
     @specialist_tool(
         description="Report that no parameters could be discovered from the interactions.",

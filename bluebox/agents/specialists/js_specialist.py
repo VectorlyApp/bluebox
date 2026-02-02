@@ -275,7 +275,7 @@ class JSSpecialist(AbstractSpecialist):
         self._js_result = None
         self._js_failure = None
 
-    ## Tool handlers
+    ## Tools
 
     @specialist_tool(
         description="Dry-run validation of JavaScript code. Checks IIFE format and blocked patterns without submitting.",
@@ -316,8 +316,12 @@ class JSSpecialist(AbstractSpecialist):
             "message": "Code passes all validation checks.",
         }
 
+
     @specialist_tool(
-        description="Get a DOM snapshot. Returns the document structure and truncated strings table. Defaults to latest snapshot.",
+        description=(
+            "Get a DOM snapshot. Returns the document structure and truncated strings table. "
+            "Defaults to latest snapshot."
+        ),
         availability=lambda self: bool(self._dom_snapshots),
         parameters={
             "type": "object",
@@ -354,6 +358,7 @@ class JSSpecialist(AbstractSpecialist):
             "documents_count": len(snapshot.documents),
             "documents": snapshot.documents,
         }
+
 
     @specialist_tool(
         description=(
@@ -417,6 +422,7 @@ class JSSpecialist(AbstractSpecialist):
             "result": self._js_result.model_dump(),
         }
 
+
     @specialist_tool(
         description="Report that the JavaScript task cannot be accomplished.",
         availability=lambda self: self.mode == SpecialistMode.FINALIZING,
@@ -456,6 +462,7 @@ class JSSpecialist(AbstractSpecialist):
             "message": "JavaScript task marked as failed",
             "result": self._js_failure.model_dump(),
         }
+
 
     @specialist_tool(
         description=(
@@ -530,6 +537,7 @@ class JSSpecialist(AbstractSpecialist):
 
         return {"count": len(results), "entries": results}
 
+
     @specialist_tool(
         description="Get full details of a single captured HTTP request by request_id, including headers and response body.",
         availability=lambda self: self._network_data_store is not None,
@@ -588,6 +596,7 @@ class JSSpecialist(AbstractSpecialist):
                 result["response_body_truncated"] = False
 
         return result
+
 
     @specialist_tool(
         description=(

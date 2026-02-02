@@ -74,7 +74,7 @@ def specialist_tool(
     Decorator that marks a method as a specialist tool handler.
 
     The tool name is derived from the method name by stripping leading
-    underscores. For example, ``_get_dom_snapshot`` becomes ``get_dom_snapshot``.
+    underscores. For example, ``get_dom_snapshot`` becomes ``get_dom_snapshot_tool``.
 
     Args:
         description: Tool description for the LLM.
@@ -87,7 +87,7 @@ def specialist_tool(
               ``availability=lambda self: self.mode == SpecialistMode.FINALIZING``).
     """
     def decorator(method: Callable) -> Callable:
-        tool_name = method.__name__ + "_tool"
+        tool_name = method.__name__
         method._tool_meta = _ToolMeta(
             name=tool_name,
             description=description,
