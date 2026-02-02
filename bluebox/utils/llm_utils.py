@@ -10,6 +10,7 @@ Contains:
 
 import json
 from functools import wraps
+from textwrap import dedent
 from typing import Any, Callable, Type
 
 from openai import OpenAI
@@ -66,11 +67,11 @@ def manual_llm_parse_text_to_model(
         BaseModel: The parsed pydantic model.
     """
     # define system prompt
-    SYSTEM_PROMPT = f"""
-    You are a helpful assistant that extracts information and structures it into a JSON object.
-    You must output ONLY the valid JSON object that matches the provided schema.
-    Do not include any explanations, markdown formatting, or code blocks.
-    """
+    SYSTEM_PROMPT = dedent("""\
+        You are a helpful assistant that extracts information and structures it into a JSON object.
+        You must output ONLY the valid JSON object that matches the provided schema.
+        Do not include any explanations, markdown formatting, or code blocks.
+    """)
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -116,7 +117,7 @@ def manual_llm_parse_text_to_model(
                 },
             )
 
-    logger.error(f"Failed to parse text to model after {n_tries} tries")
+    logger.error("Failed to parse text to model after %s tries", n_tries)
     raise LLMStructuredOutputError(f"Failed to parse text to model after {n_tries} tries")
 
 

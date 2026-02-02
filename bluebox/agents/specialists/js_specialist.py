@@ -65,13 +65,19 @@ class JSSpecialist(AbstractSpecialist):
     Writes IIFE JavaScript for browser execution.
     """
 
-    SYSTEM_PROMPT: str = dedent("""\
-        You are a JavaScript expert specializing in browser DOM manipulation.
+    _BASE_CONTEXT: str = dedent("""\
+        ## Context
 
-        ## Your Capabilities
+        Your code executes inside a live browser session as part of a web automation routine.
+        Typical tasks include:
+        - Extracting cookies, auth tokens, or CSRF tokens from the page
+        - Reading values from `document.cookie`, `localStorage`, or `sessionStorage`
+        - Scraping rendered DOM content (text, attributes, hidden fields)
+        - Setting up page state (e.g. filling inputs, clicking elements) for downstream operations
+        - Computing or transforming values needed by subsequent fetch operations
 
-        1. **Write IIFE JavaScript**: Write JavaScript code for browser execution in routines.
-        2. **Inspect DOM**: Analyze page structure via DOM snapshots to inform your code.
+        Your JavaScript is one step in a larger routine — other steps handle network requests
+        (via RoutineFetchOperation). Your job is to interact with the browser page itself.
 
         ## JavaScript Code Requirements
 
@@ -93,13 +99,22 @@ class JSSpecialist(AbstractSpecialist):
         - `fetch()`, `XMLHttpRequest`, `WebSocket`, `sendBeacon` — no network requests (use RoutineFetchOperation instead)
         - `addEventListener()`, `MutationObserver`, `IntersectionObserver` — no persistent event hooks
         - `window.close()` — no navigation/lifecycle control
+    """)
+
+    SYSTEM_PROMPT: str = dedent("""\
+        You are a JavaScript expert specializing in browser DOM manipulation.
+
+        ## Your Capabilities
+
+        1. **Write IIFE JavaScript**: Write JavaScript code for browser execution in routines.
+        2. **Inspect DOM**: Analyze page structure via DOM snapshots to inform your code.
 
         ## Tools
 
         - **get_dom_snapshot**: Get DOM snapshot (latest by default)
         - **validate_js_code**: Dry-run validation of JS code
         - **submit_js_code**: Submit final validated JS code
-        - **execute_js_in_browser**: Test your JavaScript code against the live website. Navigates to the URL and executes your IIFE, returning the result and any console output. Use this to verify your code works before submitting.
+        - **execute_js_in_browser**: Test your JavaScript code against the live website. Navigates to the URL and executes your IIFE, returning the result and any console output. Use this selectively — it's most valuable when your code depends on live page state (e.g. reading cookies, sessionStorage, or dynamically rendered DOM). Simple, deterministic code can go straight to submit.
 
         ## Guidelines
 
@@ -131,26 +146,14 @@ class JSSpecialist(AbstractSpecialist):
 
         1. **Understand**: Analyze the task and determine what DOM manipulation is needed
         2. **Check DOM**: Use `get_dom_snapshot` to understand the current page structure
-        4. **Write**: Write the JavaScript code, validate it, then submit
-        5. **Finalize**: Call `submit_js_code` with your validated code
-
-        ## Code Requirements
-
-        - IIFE format: `(function() { ... })()` or `(() => { ... })()`
-        - Blocked: eval, fetch, XMLHttpRequest, WebSocket, sendBeacon, addEventListener, MutationObserver, IntersectionObserver, window.close
-        - Use `return` to produce output; optionally use `session_storage_key` for cross-operation data
-
-        ## Code Formatting
-
-        - Write readable, well-formatted JavaScript. Never write extremely long single-line IIFEs.
-        - Use proper indentation (2 spaces), line breaks between statements, and descriptive variable names.
-        - Each statement should be on its own line. Complex expressions should be broken across lines.
+        3. **Write**: Write the JavaScript code, validate it, then submit
+        4. **Finalize**: Call `submit_js_code` with your validated code
 
         ## When finalize tools are available
 
         - **submit_js_code**: Submit your final validated JavaScript code
         - **finalize_failure**: Report that the task cannot be accomplished with JS
-        - **execute_js_in_browser**: Test your JavaScript code against the live website before submitting
+        - **execute_js_in_browser**: Test your code against the live website. Most useful when code depends on live page state (cookies, storage, dynamic DOM). Simple, deterministic code can skip this.
     """)
 
     ## Magic methods
@@ -195,7 +198,7 @@ class JSSpecialist(AbstractSpecialist):
     ## Abstract method implementations
 
     def _get_system_prompt(self) -> str:
-        context_parts = [self.SYSTEM_PROMPT]
+        context_parts = [self.SYSTEM_PROMPT, "\n", self._BASE_CONTEXT]
 
         if self._dom_snapshots:
             latest = self._dom_snapshots[-1]
@@ -212,7 +215,7 @@ class JSSpecialist(AbstractSpecialist):
         return "".join(context_parts)
 
     def _get_autonomous_system_prompt(self) -> str:
-        context_parts = [self.AUTONOMOUS_SYSTEM_PROMPT]
+        context_parts = [self.AUTONOMOUS_SYSTEM_PROMPT, "\n", self._BASE_CONTEXT]
 
         if self._dom_snapshots:
             latest = self._dom_snapshots[-1]
@@ -342,13 +345,16 @@ class JSSpecialist(AbstractSpecialist):
         if index < 0:
             index = len(self._dom_snapshots) + index
         if index < 0 or index >= len(self._dom_snapshots):
-            return {"error": f"Snapshot index {index} out of range (0-{len(self._dom_snapshots) - 1})"}
+            return {
+                "error": f"Snapshot index {index} out of range (0-{len(self._dom_snapshots) - 1})",
+            }
 
         snapshot = self._dom_snapshots[index]
 
         # Truncate strings table to keep token usage reasonable
         strings = snapshot.strings
-        truncated_strings = strings[:500] if len(strings) > 500 else strings
+        truncate_length = 1_000  # chars
+        truncated_strings = strings[:truncate_length] if len(strings) > truncate_length else strings
 
         return {
             "url": snapshot.url,
