@@ -167,8 +167,9 @@ exec(code, exec_globals)
         "--security-opt", "no-new-privileges",  # No privilege escalation
         "--user", "nobody",              # Non-root user
         "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",  # Writable /tmp for Python
+        "-i",                            # Accept stdin
         DOCKER_IMAGE,
-        "python", "-c", wrapper_script,
+        "python", "-",                   # Read script from stdin
     ]
 
     try:
@@ -177,6 +178,7 @@ exec(code, exec_globals)
             capture_output=True,
             text=True,
             timeout=DOCKER_TIMEOUT,
+            input=wrapper_script,        # Pass script via stdin
         )
 
         if result.returncode == 0:
