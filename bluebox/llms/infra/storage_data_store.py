@@ -10,6 +10,7 @@ methods for token tracing - finding where values originated from.
 import json
 from collections import Counter
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from bluebox.data_models.cdp import StorageEvent, StorageEventType
@@ -59,7 +60,13 @@ class StorageDataStore:
 
         Args:
             jsonl_path: Path to JSONL file containing StorageEvent entries.
+
+        Raises:
+            FileNotFoundError: If jsonl_path does not exist.
         """
+        if not Path(jsonl_path).exists():
+            raise FileNotFoundError(f"Storage data file not found: {jsonl_path}")
+
         self._entries: list[StorageEvent] = []
         self._entry_index: dict[int, StorageEvent] = {}
 

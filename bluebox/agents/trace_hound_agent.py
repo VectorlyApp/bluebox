@@ -938,10 +938,10 @@ class TraceHoundAgent:
         origins: list[TokenOrigin] = []
         for origin_data in origins_data:
             origins.append(TokenOrigin(
-                source_type=origin_data.get("source_type", ""),
-                location=origin_data.get("location", ""),
-                context=origin_data.get("context", ""),
-                entry_id=origin_data.get("entry_id", ""),
+                source_type=origin_data.get("source_type"),
+                location=origin_data.get("location"),
+                context=origin_data.get("context"),
+                entry_id=origin_data.get("entry_id"),
             ))
 
         likely_source = None
