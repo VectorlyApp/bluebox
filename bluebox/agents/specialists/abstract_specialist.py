@@ -87,7 +87,7 @@ def specialist_tool(
               ``availability=lambda self: self.mode == SpecialistMode.FINALIZING``).
     """
     def decorator(method: Callable) -> Callable:
-        tool_name = method.__name__
+        tool_name = method.__name__.lstrip("_")
         method._tool_meta = _ToolMeta(
             name=tool_name,
             description=description,
