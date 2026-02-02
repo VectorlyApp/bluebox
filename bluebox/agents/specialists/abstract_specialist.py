@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Callable
 
 from pydantic import BaseModel
@@ -46,6 +48,58 @@ from bluebox.utils.logger import get_logger
 logger = get_logger(name=__name__)
 
 
+class SpecialistMode(StrEnum):
+    """Which mode(s) a tool is available in."""
+    ALWAYS = "always"
+    CONVERSATIONAL = "conversational"
+    AUTONOMOUS = "autonomous"
+
+
+@dataclass(frozen=True)
+class _ToolMeta:
+    """Metadata attached to a handler method by @specialist_tool."""
+    name: str                       # tool name registered with the LLM client
+    description: str                # tool description shown to the LLM
+    parameters: dict[str, Any]      # JSON Schema for tool parameters
+    condition: str | None           # instance attr that must be truthy to register
+    finalize: bool                  # True = only registered after min_iterations
+    mode: SpecialistMode            # which specialist mode(s) this tool is available in
+
+
+def specialist_tool(
+    name: str,
+    description: str,
+    parameters: dict[str, Any],
+    *,
+    condition: str | None = None,
+    finalize: bool = False,
+    mode: SpecialistMode = SpecialistMode.ALWAYS,
+) -> Callable:
+    """
+    Decorator that marks a method as a specialist tool handler.
+
+    Args:
+        name: Tool name registered with the LLM client.
+        description: Tool description for the LLM.
+        parameters: JSON Schema for tool parameters.
+        condition: Instance attribute name; tool is only registered when the
+                   attribute is truthy (e.g. "_dom_snapshots").
+        finalize: If True, tool is registered after min_iterations in autonomous mode.
+        mode: Which mode the tool is available in (BOTH, CONVERSATIONAL, AUTONOMOUS).
+    """
+    def decorator(method: Callable) -> Callable:
+        method._tool_meta = _ToolMeta(  # type: ignore[attr-defined]
+            name=name,
+            description=description,
+            parameters=parameters,
+            condition=condition,
+            finalize=finalize,
+            mode=mode,
+        )
+        return method
+    return decorator
+
+
 class AbstractSpecialist(ABC):
     """
     Abstract base class for specialist agents.
@@ -53,11 +107,13 @@ class AbstractSpecialist(ABC):
     Subclasses implement domain-specific logic by overriding:
       - _get_system_prompt()
       - _get_autonomous_system_prompt()
-      - _register_tools()
-      - _register_finalize_tools()
-      - _execute_tool()
       - _get_autonomous_initial_message()
       - _check_autonomous_completion() — inspect tool results for finalize signals
+
+    Tools can be defined declaratively via the @specialist_tool decorator on
+    handler methods. The base class provides default _register_tools(),
+    _register_finalize_tools(), and _execute_tool() that use decorated methods.
+    Subclasses may still override these for custom logic.
 
     The base class handles all LLM conversation mechanics:
       - Chat history, threading, persistence
@@ -81,31 +137,73 @@ class AbstractSpecialist(ABC):
         (e.g., iteration count, urgency notices).
         """
 
-    @abstractmethod
-    def _register_tools(self) -> None:
-        """Register specialist-specific tools on self.llm_client."""
-
-    @abstractmethod
-    def _register_finalize_tools(self) -> None:
+    def _register_tools(self, active_mode: SpecialistMode = SpecialistMode.CONVERSATIONAL) -> None:
         """
-        Register finalize_result / finalize_failure tools for autonomous mode.
+        Register specialist-specific tools on self.llm_client.
 
-        Called once when the autonomous loop reaches min_iterations - 1.
-        Implementations should be idempotent (guard with self._finalize_tools_registered).
-        """
-
-    @abstractmethod
-    def _execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """
-        Dispatch a tool call to the appropriate handler.
+        Default implementation registers all @specialist_tool methods whose
+        mode matches active_mode (or BOTH), are not finalize-only, and
+        whose condition is met.
 
         Args:
-            tool_name: Name of the tool being called.
-            tool_arguments: Arguments passed by the LLM.
-
-        Returns:
-            Tool result dict (serializable to JSON).
+            active_mode: The mode being entered. __init__ passes CONVERSATIONAL;
+                         run_autonomous passes AUTONOMOUS.
         """
+        for meta, _ in self._collect_tools():
+            if meta.finalize:
+                continue
+            if meta.mode not in (SpecialistMode.ALWAYS, active_mode):
+                continue
+            if meta.condition and not bool(getattr(self, meta.condition, None)):
+                continue
+            self.llm_client.register_tool(
+                name=meta.name,
+                description=meta.description,
+                parameters=meta.parameters,
+            )
+
+    def _register_finalize_tools(self) -> None:
+        """
+        Register finalize tools for autonomous mode.
+
+        Default implementation registers all @specialist_tool methods where
+        finalize=True. Guarded by self._finalize_tools_registered in the
+        autonomous loop.
+        """
+        if self._finalize_tools_registered:
+            return
+        for meta, _ in self._collect_tools():
+            if not meta.finalize:
+                continue
+            self.llm_client.register_tool(
+                name=meta.name,
+                description=meta.description,
+                parameters=meta.parameters,
+            )
+
+    def _execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """
+        Dispatch a tool call to the appropriate decorated handler.
+
+        Default implementation builds a dispatch dict from @specialist_tool
+        methods. Subclasses may override for custom dispatch logic.
+        """
+        dispatch = {meta.name: method for meta, method in self._collect_tools()}
+        handler = dispatch.get(tool_name)
+        if handler is None:
+            return {"error": f"Unknown tool: {tool_name}"}
+        return handler(self, tool_arguments)
+
+    @classmethod
+    def _collect_tools(cls) -> list[tuple[_ToolMeta, Callable]]:
+        """Collect all methods decorated with @specialist_tool."""
+        results: list[tuple[_ToolMeta, Callable]] = []
+        for attr_name in dir(cls):
+            method = getattr(cls, attr_name, None)
+            meta = getattr(method, "_tool_meta", None)
+            if isinstance(meta, _ToolMeta):
+                results.append((meta, method))
+        return results
 
     @abstractmethod
     def _get_autonomous_initial_message(self, task: str) -> str:
@@ -408,6 +506,9 @@ class AbstractSpecialist(ABC):
         self._autonomous_mode = True
         self._autonomous_iteration = 0
         self._finalize_tools_registered = False
+
+        # Register autonomous-only tools
+        self._register_tools(active_mode=SpecialistMode.AUTONOMOUS)
 
         # Subclass should reset its own result fields in _reset_autonomous_state()
         self._reset_autonomous_state()

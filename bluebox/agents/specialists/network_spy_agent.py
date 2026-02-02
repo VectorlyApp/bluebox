@@ -31,7 +31,6 @@ from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
-
 logger = get_logger(name=__name__)
 
 
@@ -229,7 +228,6 @@ class NetworkSpyAgent(AbstractSpecialist):
             chat_thread=chat_thread,
             existing_chats=existing_chats,
         )
-
         logger.debug(
             "Instantiated NetworkSpyAgent with model: %s, chat_thread_id: %s, entries: %d",
             llm_model,

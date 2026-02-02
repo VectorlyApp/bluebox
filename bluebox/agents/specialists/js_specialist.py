@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, specialist_tool
 from bluebox.cdp.connection import (
     cdp_new_tab,
     create_cdp_helpers,
@@ -251,210 +251,8 @@ class JSSpecialist(AbstractSpecialist):
 
         return "".join(context_parts)
 
-    def _register_tools(self) -> None:
-        # validate_js_code
-        self.llm_client.register_tool(
-            name="validate_js_code",
-            description="Dry-run validation of JavaScript code. Checks IIFE format and blocked patterns without submitting.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "js_code": {
-                        "type": "string",
-                        "description": "JavaScript code to validate.",
-                    }
-                },
-                "required": ["js_code"],
-            },
-        )
-
-        # get_dom_snapshot (only if snapshots available)
-        if self._dom_snapshots:
-            self.llm_client.register_tool(
-                name="get_dom_snapshot",
-                description="Get a DOM snapshot. Returns the document structure and truncated strings table. Defaults to latest snapshot.",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "index": {
-                            "type": "integer",
-                            "description": "Snapshot index (0-based). Defaults to latest (-1).",
-                        }
-                    },
-                },
-            )
-
-        # network traffic tools (only if data store available)
-        if self._network_data_store is not None:
-            self.llm_client.register_tool(
-                name="search_network_traffic",
-                description=(
-                    "Search/filter captured HTTP requests. Returns abbreviated results (no bodies). "
-                    "All parameters are optional filters."
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "method": {
-                            "type": "string",
-                            "description": "HTTP method filter (e.g. GET, POST).",
-                        },
-                        "host_contains": {
-                            "type": "string",
-                            "description": "Substring match on the request host.",
-                        },
-                        "path_contains": {
-                            "type": "string",
-                            "description": "Substring match on the request path.",
-                        },
-                        "status_code": {
-                            "type": "integer",
-                            "description": "Exact HTTP status code filter.",
-                        },
-                        "content_type_contains": {
-                            "type": "string",
-                            "description": "Substring match on response content type.",
-                        },
-                        "response_body_contains": {
-                            "type": "string",
-                            "description": "Search for text within response bodies.",
-                        },
-                    },
-                },
-            )
-
-            self.llm_client.register_tool(
-                name="get_network_entry",
-                description="Get full details of a single captured HTTP request by request_id, including headers and response body.",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "request_id": {
-                            "type": "string",
-                            "description": "The request_id from search_network_traffic results.",
-                        },
-                        "include_response_body": {
-                            "type": "boolean",
-                            "description": "Whether to include the response body (default true).",
-                        },
-                        "max_body_length": {
-                            "type": "integer",
-                            "description": "Max characters for the response body (default 5000).",
-                        },
-                    },
-                    "required": ["request_id"],
-                },
-            )
-
-        # execute_js_in_browser (only if browser available)
-        if self._remote_debugging_address:
-            self.llm_client.register_tool(
-                name="execute_js_in_browser",
-                description=(
-                    "Test JavaScript code against the live website. "
-                    "Navigates to the URL and executes your IIFE, returning the result and any console output. "
-                    "Use this to verify your code works before submitting. "
-                    "Set keep_open=true to keep the browser tab open after execution (useful for visual changes)."
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "url": {
-                            "type": "string",
-                            "description": "URL to navigate to first (or empty string to skip navigation).",
-                        },
-                        "js_code": {
-                            "type": "string",
-                            "description": "IIFE JavaScript code to execute.",
-                        },
-                        "timeout_seconds": {
-                            "type": "number",
-                            "description": "Max execution time in seconds (default 5.0).",
-                        },
-                        "keep_open": {
-                            "type": "boolean",
-                            "description": "If true, keep the browser tab open after execution instead of closing it. Useful for visual changes. Default false.",
-                        },
-                    },
-                    "required": ["url", "js_code"],
-                },
-            )
-
-    def _register_finalize_tools(self) -> None:
-        if self._finalize_tools_registered:
-            return
-
-        self.llm_client.register_tool(
-            name="submit_js_code",
-            description=(
-                "Submit validated JavaScript code as the final result. "
-                "The code must be IIFE-wrapped and pass all validation checks."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "js_code": {
-                        "type": "string",
-                        "description": "IIFE-wrapped JavaScript code.",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Brief description of what the code does.",
-                    },
-                    "session_storage_key": {
-                        "type": "string",
-                        "description": "Optional sessionStorage key to store the result.",
-                    },
-                    "timeout_seconds": {
-                        "type": "number",
-                        "description": "Max execution time in seconds (default 5.0).",
-                    },
-                },
-                "required": ["js_code", "description"],
-            },
-        )
-
-        self.llm_client.register_tool(
-            name="finalize_failure",
-            description="Report that the JavaScript task cannot be accomplished.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "reason": {
-                        "type": "string",
-                        "description": "Why the task cannot be accomplished with JavaScript.",
-                    },
-                    "attempted_approaches": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of approaches that were tried.",
-                    },
-                },
-                "required": ["reason"],
-            },
-        )
-
-        logger.debug("Registered JS finalize tools")
-
-    def _execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        logger.debug("Executing tool %s", tool_name)
-
-        if tool_name == "validate_js_code":
-            return self._tool_validate_js_code(tool_arguments)
-        if tool_name == "get_dom_snapshot":
-            return self._tool_get_dom_snapshot(tool_arguments)
-        if tool_name == "submit_js_code":
-            return self._tool_submit_js_code(tool_arguments)
-        if tool_name == "finalize_failure":
-            return self._tool_finalize_failure(tool_arguments)
-        if tool_name == "execute_js_in_browser":
-            return self._tool_execute_js_in_browser(tool_arguments)
-        if tool_name == "search_network_traffic":
-            return self._tool_search_network_traffic(tool_arguments)
-        if tool_name == "get_network_entry":
-            return self._tool_get_network_entry(tool_arguments)
-
-        return {"error": f"Unknown tool: {tool_name}"}
+    # _register_tools, _register_finalize_tools, and _execute_tool are
+    # provided by the base class via @specialist_tool decorators below.
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         return (
@@ -479,6 +277,20 @@ class JSSpecialist(AbstractSpecialist):
 
     ## Tool handlers
 
+    @specialist_tool(
+        name="validate_js_code",
+        description="Dry-run validation of JavaScript code. Checks IIFE format and blocked patterns without submitting.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "js_code": {
+                    "type": "string",
+                    "description": "JavaScript code to validate.",
+                }
+            },
+            "required": ["js_code"],
+        },
+    )
     @token_optimized
     def _tool_validate_js_code(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         js_code = tool_arguments.get("js_code", "")
@@ -505,6 +317,20 @@ class JSSpecialist(AbstractSpecialist):
             "message": "Code passes all validation checks.",
         }
 
+    @specialist_tool(
+        name="get_dom_snapshot",
+        description="Get a DOM snapshot. Returns the document structure and truncated strings table. Defaults to latest snapshot.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "integer",
+                    "description": "Snapshot index (0-based). Defaults to latest (-1).",
+                }
+            },
+        },
+        condition="_dom_snapshots",
+    )
     @token_optimized
     def _tool_get_dom_snapshot(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         if not self._dom_snapshots:
@@ -531,6 +357,36 @@ class JSSpecialist(AbstractSpecialist):
             "documents": snapshot.documents,
         }
 
+    @specialist_tool(
+        name="submit_js_code",
+        description=(
+            "Submit validated JavaScript code as the final result. "
+            "The code must be IIFE-wrapped and pass all validation checks."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "js_code": {
+                    "type": "string",
+                    "description": "IIFE-wrapped JavaScript code.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Brief description of what the code does.",
+                },
+                "session_storage_key": {
+                    "type": "string",
+                    "description": "Optional sessionStorage key to store the result.",
+                },
+                "timeout_seconds": {
+                    "type": "number",
+                    "description": "Max execution time in seconds (default 5.0).",
+                },
+            },
+            "required": ["js_code", "description"],
+        },
+        finalize=True,
+    )
     @token_optimized
     def _tool_submit_js_code(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         js_code = tool_arguments.get("js_code", "")
@@ -564,6 +420,26 @@ class JSSpecialist(AbstractSpecialist):
             "result": self._js_result.model_dump(),
         }
 
+    @specialist_tool(
+        name="finalize_failure",
+        description="Report that the JavaScript task cannot be accomplished.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "Why the task cannot be accomplished with JavaScript.",
+                },
+                "attempted_approaches": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of approaches that were tried.",
+                },
+            },
+            "required": ["reason"],
+        },
+        finalize=True,
+    )
     @token_optimized
     def _tool_finalize_failure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         reason = tool_arguments.get("reason", "")
@@ -585,6 +461,43 @@ class JSSpecialist(AbstractSpecialist):
             "result": self._js_failure.model_dump(),
         }
 
+    @specialist_tool(
+        name="search_network_traffic",
+        description=(
+            "Search/filter captured HTTP requests. Returns abbreviated results (no bodies). "
+            "All parameters are optional filters."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "method": {
+                    "type": "string",
+                    "description": "HTTP method filter (e.g. GET, POST).",
+                },
+                "host_contains": {
+                    "type": "string",
+                    "description": "Substring match on the request host.",
+                },
+                "path_contains": {
+                    "type": "string",
+                    "description": "Substring match on the request path.",
+                },
+                "status_code": {
+                    "type": "integer",
+                    "description": "Exact HTTP status code filter.",
+                },
+                "content_type_contains": {
+                    "type": "string",
+                    "description": "Substring match on response content type.",
+                },
+                "response_body_contains": {
+                    "type": "string",
+                    "description": "Search for text within response bodies.",
+                },
+            },
+        },
+        condition="_network_data_store",
+    )
     @token_optimized
     def _tool_search_network_traffic(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Search captured network traffic with optional filters."""
@@ -622,6 +535,29 @@ class JSSpecialist(AbstractSpecialist):
 
         return {"count": len(results), "entries": results}
 
+    @specialist_tool(
+        name="get_network_entry",
+        description="Get full details of a single captured HTTP request by request_id, including headers and response body.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "request_id": {
+                    "type": "string",
+                    "description": "The request_id from search_network_traffic results.",
+                },
+                "include_response_body": {
+                    "type": "boolean",
+                    "description": "Whether to include the response body (default true).",
+                },
+                "max_body_length": {
+                    "type": "integer",
+                    "description": "Max characters for the response body (default 5000).",
+                },
+            },
+            "required": ["request_id"],
+        },
+        condition="_network_data_store",
+    )
     @token_optimized
     def _tool_get_network_entry(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Get full details of a single network entry by request_id."""
@@ -659,6 +595,38 @@ class JSSpecialist(AbstractSpecialist):
 
         return result
 
+    @specialist_tool(
+        name="execute_js_in_browser",
+        description=(
+            "Test JavaScript code against the live website. "
+            "Navigates to the URL and executes your IIFE, returning the result and any console output. "
+            "Use this to verify your code works before submitting. "
+            "Set keep_open=true to keep the browser tab open after execution (useful for visual changes)."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "URL to navigate to first (or empty string to skip navigation).",
+                },
+                "js_code": {
+                    "type": "string",
+                    "description": "IIFE JavaScript code to execute.",
+                },
+                "timeout_seconds": {
+                    "type": "number",
+                    "description": "Max execution time in seconds (default 5.0).",
+                },
+                "keep_open": {
+                    "type": "boolean",
+                    "description": "If true, keep the browser tab open after execution instead of closing it. Useful for visual changes. Default false.",
+                },
+            },
+            "required": ["url", "js_code"],
+        },
+        condition="_remote_debugging_address",
+    )
     @token_optimized
     def _tool_execute_js_in_browser(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Navigate to a URL and execute JS code via CDP, returning the result."""

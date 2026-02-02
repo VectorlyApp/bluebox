@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, specialist_tool
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -169,7 +169,6 @@ class InteractionSpecialist(AbstractSpecialist):
             chat_thread=chat_thread,
             existing_chats=existing_chats,
         )
-
         logger.debug(
             "InteractionSpecialist initialized with %d events",
             len(interaction_data_store.events),
@@ -197,7 +196,7 @@ class InteractionSpecialist(AbstractSpecialist):
             f"- Unique Elements: {stats.unique_elements}\n"
         )
 
-        # Urgency notices
+        # urgency notices
         if self._finalize_tools_registered:
             remaining = 10 - self._autonomous_iteration
             if remaining <= 2:
@@ -223,148 +222,8 @@ class InteractionSpecialist(AbstractSpecialist):
 
         return self.AUTONOMOUS_SYSTEM_PROMPT + context + urgency
 
-    def _register_tools(self) -> None:
-        self.llm_client.register_tool(
-            name="get_interaction_summary",
-            description="Get summary statistics of all recorded interactions.",
-            parameters={"type": "object", "properties": {}},
-        )
-
-        self.llm_client.register_tool(
-            name="search_interactions_by_type",
-            description="Filter interactions by type (e.g., click, input, change, keydown, focus).",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "types": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of InteractionType values to filter by.",
-                    }
-                },
-                "required": ["types"],
-            },
-        )
-
-        self.llm_client.register_tool(
-            name="search_interactions_by_element",
-            description="Filter interactions by element attributes (tag, id, class, type).",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "tag_name": {"type": "string", "description": "HTML tag name (e.g., input, select, button)."},
-                    "element_id": {"type": "string", "description": "Element ID attribute."},
-                    "class_name": {"type": "string", "description": "CSS class name (substring match)."},
-                    "type_attr": {"type": "string", "description": "Input type attribute (e.g., text, email, date)."},
-                },
-            },
-        )
-
-        self.llm_client.register_tool(
-            name="get_interaction_detail",
-            description="Get full details of a specific interaction event by index.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "index": {
-                        "type": "integer",
-                        "description": "Zero-based index of the interaction event.",
-                    }
-                },
-                "required": ["index"],
-            },
-        )
-
-        self.llm_client.register_tool(
-            name="get_form_inputs",
-            description="Get all input/change events with their values and element info.",
-            parameters={"type": "object", "properties": {}},
-        )
-
-        self.llm_client.register_tool(
-            name="get_unique_elements",
-            description="Get deduplicated elements with interaction counts and types.",
-            parameters={"type": "object", "properties": {}},
-        )
-
-    def _register_finalize_tools(self) -> None:
-        if self._finalize_tools_registered:
-            return
-
-        self.llm_client.register_tool(
-            name="finalize_result",
-            description="Submit discovered parameters. Call when you have identified all parameterizable inputs.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "parameters": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "name": {"type": "string", "description": "snake_case parameter name."},
-                                "type": {"type": "string", "description": "Parameter type (string, date, integer, etc.)."},
-                                "description": {"type": "string", "description": "What the parameter represents."},
-                                "examples": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "description": "Example values observed.",
-                                },
-                                "source_element_css_path": {"type": "string", "description": "CSS path of the source element."},
-                                "source_element_tag": {"type": "string", "description": "HTML tag of the source element."},
-                                "source_element_name": {"type": "string", "description": "Name attribute of the source element."},
-                            },
-                            "required": ["name", "type", "description"],
-                        },
-                        "description": "List of discovered parameters.",
-                    }
-                },
-                "required": ["parameters"],
-            },
-        )
-
-        self.llm_client.register_tool(
-            name="finalize_failure",
-            description="Report that no parameters could be discovered from the interactions.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "reason": {
-                        "type": "string",
-                        "description": "Why no parameters could be discovered.",
-                    },
-                    "interaction_summary": {
-                        "type": "string",
-                        "description": "Summary of what interactions were analyzed.",
-                    },
-                },
-                "required": ["reason", "interaction_summary"],
-            },
-        )
-
-        logger.debug("Registered interaction finalize tools")
-
-    def _execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        logger.debug("Executing tool %s", tool_name)
-
-        if tool_name == "get_interaction_summary":
-            return self._tool_get_interaction_summary(tool_arguments)
-        if tool_name == "search_interactions_by_type":
-            return self._tool_search_interactions_by_type(tool_arguments)
-        if tool_name == "search_interactions_by_element":
-            return self._tool_search_interactions_by_element(tool_arguments)
-        if tool_name == "get_interaction_detail":
-            return self._tool_get_interaction_detail(tool_arguments)
-        if tool_name == "get_form_inputs":
-            return self._tool_get_form_inputs(tool_arguments)
-        if tool_name == "get_unique_elements":
-            return self._tool_get_unique_elements(tool_arguments)
-        if tool_name == "finalize_result":
-            return self._tool_finalize_result(tool_arguments)
-        if tool_name == "finalize_failure":
-            return self._tool_finalize_failure(tool_arguments)
-
-        return {"error": f"Unknown tool: {tool_name}"}
+    # _register_tools, _register_finalize_tools, and _execute_tool are
+    # provided by the base class via @specialist_tool decorators below.
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         return (
@@ -390,6 +249,11 @@ class InteractionSpecialist(AbstractSpecialist):
 
     ## Tool handlers
 
+    @specialist_tool(
+        name="get_interaction_summary",
+        description="Get summary statistics of all recorded interactions.",
+        parameters={"type": "object", "properties": {}},
+    )
     @token_optimized
     def _tool_get_interaction_summary(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         stats = self._interaction_data_store.stats
@@ -400,6 +264,21 @@ class InteractionSpecialist(AbstractSpecialist):
             "events_by_type": stats.events_by_type,
         }
 
+    @specialist_tool(
+        name="search_interactions_by_type",
+        description="Filter interactions by type (e.g., click, input, change, keydown, focus).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "types": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of InteractionType values to filter by.",
+                }
+            },
+            "required": ["types"],
+        },
+    )
     @token_optimized
     def _tool_search_interactions_by_type(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         types = tool_arguments.get("types", [])
@@ -428,6 +307,19 @@ class InteractionSpecialist(AbstractSpecialist):
             "results": results,
         }
 
+    @specialist_tool(
+        name="search_interactions_by_element",
+        description="Filter interactions by element attributes (tag, id, class, type).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "tag_name": {"type": "string", "description": "HTML tag name (e.g., input, select, button)."},
+                "element_id": {"type": "string", "description": "Element ID attribute."},
+                "class_name": {"type": "string", "description": "CSS class name (substring match)."},
+                "type_attr": {"type": "string", "description": "Input type attribute (e.g., text, email, date)."},
+            },
+        },
+    )
     @token_optimized
     def _tool_search_interactions_by_element(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         events = self._interaction_data_store.filter_by_element(
@@ -458,6 +350,20 @@ class InteractionSpecialist(AbstractSpecialist):
             "results": results,
         }
 
+    @specialist_tool(
+        name="get_interaction_detail",
+        description="Get full details of a specific interaction event by index.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "integer",
+                    "description": "Zero-based index of the interaction event.",
+                }
+            },
+            "required": ["index"],
+        },
+    )
     @token_optimized
     def _tool_get_interaction_detail(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         index = tool_arguments.get("index")
@@ -470,6 +376,11 @@ class InteractionSpecialist(AbstractSpecialist):
 
         return detail
 
+    @specialist_tool(
+        name="get_form_inputs",
+        description="Get all input/change events with their values and element info.",
+        parameters={"type": "object", "properties": {}},
+    )
     @token_optimized
     def _tool_get_form_inputs(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         inputs = self._interaction_data_store.get_form_inputs()
@@ -478,6 +389,11 @@ class InteractionSpecialist(AbstractSpecialist):
             "inputs": inputs[:100],
         }
 
+    @specialist_tool(
+        name="get_unique_elements",
+        description="Get deduplicated elements with interaction counts and types.",
+        parameters={"type": "object", "properties": {}},
+    )
     @token_optimized
     def _tool_get_unique_elements(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         elements = self._interaction_data_store.get_unique_elements()
@@ -486,6 +402,38 @@ class InteractionSpecialist(AbstractSpecialist):
             "elements": elements[:50],
         }
 
+    @specialist_tool(
+        name="finalize_result",
+        description="Submit discovered parameters. Call when you have identified all parameterizable inputs.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "parameters": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "snake_case parameter name."},
+                            "type": {"type": "string", "description": "Parameter type (string, date, integer, etc.)."},
+                            "description": {"type": "string", "description": "What the parameter represents."},
+                            "examples": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Example values observed.",
+                            },
+                            "source_element_css_path": {"type": "string", "description": "CSS path of the source element."},
+                            "source_element_tag": {"type": "string", "description": "HTML tag of the source element."},
+                            "source_element_name": {"type": "string", "description": "Name attribute of the source element."},
+                        },
+                        "required": ["name", "type", "description"],
+                    },
+                    "description": "List of discovered parameters.",
+                }
+            },
+            "required": ["parameters"],
+        },
+        finalize=True,
+    )
     @token_optimized
     def _tool_finalize_result(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         params_data = tool_arguments.get("parameters", [])
@@ -528,6 +476,25 @@ class InteractionSpecialist(AbstractSpecialist):
             "result": self._discovery_result.model_dump(),
         }
 
+    @specialist_tool(
+        name="finalize_failure",
+        description="Report that no parameters could be discovered from the interactions.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "Why no parameters could be discovered.",
+                },
+                "interaction_summary": {
+                    "type": "string",
+                    "description": "Summary of what interactions were analyzed.",
+                },
+            },
+            "required": ["reason", "interaction_summary"],
+        },
+        finalize=True,
+    )
     @token_optimized
     def _tool_finalize_failure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         reason = tool_arguments.get("reason", "")
