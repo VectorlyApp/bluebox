@@ -1,0 +1,5 @@
+{"timestamp": 1700000000000, "url": "https://good.com/", "changes": [{"path": "good_prop_1", "value": "good_value_1", "change_type": "added"}], "total_keys": 1}
+not valid json at all
+{"timestamp": 1700000001000, "url": "https://good.com/", "changes": [{"path": "good_prop_2", "value": "good_value_2", "change_type": "added"}], "total_keys": 2}
+{"missing_required_url_field": "bad", "changes": []}
+{"timestamp": 1700000002000, "url": "https://good.com/", "changes": [{"path": "good_prop_3", "value": "good_value_3", "change_type": "changed"}], "total_keys": 3}

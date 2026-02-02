@@ -326,20 +326,44 @@ python scripts/run_guide_agent.py
 
 **Commands:**
 
-| Command | Description |
-|---------|-------------|
-| `/load <file.json>` | Load a routine file (auto-reloads on edits) |
-| `/execute [params.json]` | Execute the loaded routine |
-| `/monitor` | Start browser monitoring session |
-| `/validate` | Validate the current routine |
-| `/diff`, `/accept`, `/reject` | Review agent-suggested edits |
-| `/show`, `/status` | Display routine details and state |
-| `/help` | Show all commands |
+| Command                             | Description                                 |
+| ----------------------------------- | ------------------------------------------- |
+| `/load <file.json>`               | Load a routine file (auto-reloads on edits) |
+| `/execute [params.json]`          | Execute the loaded routine                  |
+| `/monitor`                        | Start browser monitoring session            |
+| `/validate`                       | Validate the current routine                |
+| `/diff`, `/accept`, `/reject` | Review agent-suggested edits                |
+| `/show`, `/status`              | Display routine details and state           |
+| `/help`                           | Show all commands                           |
 
 **When to use Guide Agent vs Quickstart:**
 
 - **Quickstart (`quickstart.py`)**: First-time users, demos, simple one-off automation tasks
 - **Guide Agent (`scripts/run_guide_agent.py`)**: Iterative routine development, debugging, complex workflows requiring back-and-forth with the agent
+
+## Specialized Agents (Beta)
+
+In addition to the Guide Agent, we provide specialized agents for analyzing captured browser data:
+
+| Agent                 | Purpose                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Network Spy** | Search and analyze network traffic. Find API endpoints, inspect request/response patterns, discover authentication flows.                                     |
+| **Trace Hound** | Trace where tokens and values originate. Search across network, cookies, localStorage, sessionStorage, and window properties to find the source of any value. |
+| **Docs Digger** | Search through documentation and code files. Find relevant docs, examples, and implementation details in a codebase.                                          |
+
+```bash
+# Network Spy - analyze captured network traffic
+python scripts/run_network_spy_agent.py --jsonl-path ./cdp_captures/network/events.jsonl
+
+# Trace Hound - trace token origins across network, storage, and window properties
+python scripts/run_trace_hound_agent.py \
+    --network-jsonl ./cdp_captures/network/events.jsonl \
+    --storage-jsonl ./cdp_captures/storage/events.jsonl \
+    --window-props-jsonl ./cdp_captures/window_properties/events.jsonl
+
+# Docs Digger - search documentation and code (runs with defaults if no args)
+python scripts/run_docs_digger_agent.py
+```
 
 ## Reverse Engineer Web Apps
 
@@ -626,6 +650,7 @@ python bluebox/scripts/run_benchmarks.py --output-dir ./my_benchmarks
 ```
 
 Results are saved to the output directory:
+
 - `{benchmark_name}.json` — Full evaluation results for each benchmark
 - `_summary.json` — Aggregated summary of all benchmark runs
 

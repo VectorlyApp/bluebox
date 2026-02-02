@@ -10,7 +10,7 @@ import time
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from bluebox.cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
-from bluebox.data_models.cdp import StorageEvent
+from bluebox.data_models.cdp import StorageEvent, StorageEventType
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -252,7 +252,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
             # emit changes if any
             if added_cookies or modified_cookies or removed_cookies:
                 event = StorageEvent(
-                    type="cookieChange",
+                    type=StorageEventType.COOKIE_CHANGE,
                     source="native_cdp",
                     triggered_by=triggered_by,
                     added=added_cookies,
@@ -286,7 +286,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
                 del self.session_storage_state[origin]
 
         event = StorageEvent(
-            type=f"{storage_type}Cleared",
+            type=StorageEventType.cleared(is_local),
             origin=origin,
         )
         try:
@@ -313,7 +313,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
                 del self.session_storage_state[origin][key]
 
         event = StorageEvent(
-            type=f"{storage_type}ItemRemoved",
+            type=StorageEventType.item_removed(is_local),
             origin=origin,
             key=key,
         )
@@ -344,7 +344,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
             self.session_storage_state[origin][key] = new_value
 
         event = StorageEvent(
-            type=f"{storage_type}ItemAdded",
+            type=StorageEventType.item_added(is_local),
             origin=origin,
             key=key,
             value=new_value,
@@ -377,7 +377,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
             self.session_storage_state[origin][key] = new_value
 
         event = StorageEvent(
-            type=f"{storage_type}ItemUpdated",
+            type=StorageEventType.item_updated(is_local),
             origin=origin,
             key=key,
             old_value=old_value,
@@ -409,7 +409,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
         """Handle IndexedDB events."""
         params = msg.get("params", {})
         event = StorageEvent(
-            type="indexedDBEvent",
+            type=StorageEventType.INDEXED_DB_EVENT,
             params=params,
         )
         try:
