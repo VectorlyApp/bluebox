@@ -351,6 +351,20 @@ In addition to the Guide Agent, we provide specialized agents for analyzing capt
 | **Trace Hound** | Trace where tokens and values originate. Search across network, cookies, localStorage, sessionStorage, and window properties to find the source of any value. |
 | **Docs Digger** | Search through documentation and code files. Find relevant docs, examples, and implementation details in a codebase.                                          |
 
+```bash
+# Network Spy - analyze captured network traffic
+python scripts/run_network_spy_agent.py --jsonl-path ./cdp_captures/network/events.jsonl
+
+# Trace Hound - trace token origins across network, storage, and window properties
+python scripts/run_trace_hound_agent.py \
+    --network-jsonl ./cdp_captures/network/events.jsonl \
+    --storage-jsonl ./cdp_captures/storage/events.jsonl \
+    --window-props-jsonl ./cdp_captures/window_properties/events.jsonl
+
+# Docs Digger - search documentation and code (runs with defaults if no args)
+python scripts/run_docs_digger_agent.py
+```
+
 ## Reverse Engineer Web Apps
 
 The reverse engineering process follows a simple three-step workflow:
