@@ -96,7 +96,7 @@ class TestWindowPropertyDataStoreInit:
 
     def test_init_file_not_found(self, window_property_events_dir: Path) -> None:
         """Raise FileNotFoundError when file doesn't exist."""
-        with pytest.raises(FileNotFoundError, match="not found"):
+        with pytest.raises(FileNotFoundError):
             WindowPropertyDataStore(str(window_property_events_dir / "nonexistent.jsonl"))
 
     def test_init_empty_file(self, window_property_events_dir: Path) -> None:

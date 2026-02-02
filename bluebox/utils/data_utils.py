@@ -211,13 +211,11 @@ def read_jsonl(path: str | Path) -> Iterator[tuple[int, dict[str, Any]]]:
         Tuple of (line_number, parsed_dict) for each valid JSON line.
         Line numbers are 0-indexed.
         Skips empty lines and logs warnings for invalid JSON.
+
+    Raises:
+        FileNotFoundError: If path does not exist.
     """
-    file_path = Path(path) if isinstance(path, str) else path
-
-    if not file_path.exists():
-        raise ValueError(f"JSONL file does not exist: {path}")
-
-    with open(file_path, mode="r", encoding="utf-8") as f:
+    with open(path, mode="r", encoding="utf-8") as f:
         for line_num, line in enumerate(f):
             line = line.strip()
             if not line:

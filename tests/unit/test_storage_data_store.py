@@ -94,7 +94,7 @@ class TestStorageDataStoreInit:
 
     def test_init_file_not_found(self, storage_events_dir: Path) -> None:
         """Raise FileNotFoundError when file doesn't exist."""
-        with pytest.raises(FileNotFoundError, match="not found"):
+        with pytest.raises(FileNotFoundError):
             StorageDataStore(str(storage_events_dir / "nonexistent.jsonl"))
 
     def test_init_empty_file(self, storage_events_dir: Path) -> None:

@@ -97,8 +97,8 @@ class TestNetworkDataStoreInit:
         assert len(basic_store.entries) >= 4
 
     def test_init_file_not_found(self, network_events_dir: Path) -> None:
-        """Raise error when file doesn't exist."""
-        with pytest.raises(ValueError, match="does not exist"):
+        """Raise FileNotFoundError when file doesn't exist."""
+        with pytest.raises(FileNotFoundError):
             NetworkDataStore(str(network_events_dir / "nonexistent.jsonl"))
 
     def test_init_empty_file(self, network_events_dir: Path) -> None:
