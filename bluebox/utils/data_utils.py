@@ -4,8 +4,10 @@ bluebox/utils/data_utils.py
 Data loading, writing, and transformation utilities.
 
 Contains:
-- write_json_file(), write_jsonl(): Save data to files
+- write_json_file(), write_jsonl(), read_jsonl(): Save/load data to/from files
 - get_text_from_html(): Extract text from HTML
+- parse_markdown_title(), parse_markdown_summary(): Extract title/summary from markdown
+- parse_python_docstring(): Extract module docstring from Python code
 - resolve_dotted_path(): Access nested dict values by dot notation
 - apply_params(): Substitute {{placeholders}} in text
 - assert_balanced_js_delimiters(): Validate JS code structure
@@ -21,6 +23,7 @@ import os
 import re
 import time
 from collections import defaultdict
+from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -117,6 +120,75 @@ def get_text_from_html(html: str) -> str:
     return clean_text
 
 
+def parse_markdown_title(content: str) -> str | None:
+    """
+    Parse title from markdown content (first # heading).
+
+    Args:
+        content: Markdown text content.
+
+    Returns:
+        The title text (without the # prefix) or None if no title found.
+    """
+    lines = content.split("\n")
+    for line in lines[:10]:
+        line = line.strip()
+        if line.startswith("# "):
+            return line[2:].strip()
+    return None
+
+
+def parse_markdown_summary(content: str) -> str | None:
+    """
+    Parse summary from markdown content (first blockquote).
+
+    Looks for a blockquote (line starting with "> ") in the first 6 lines.
+
+    Args:
+        content: Markdown text content.
+
+    Returns:
+        The summary text (without the > prefix) or None if no blockquote found.
+    """
+    lines = content.split("\n")
+    for i, line in enumerate(lines):
+        if line.startswith("> "):
+            return line[2:].strip()
+        if i > 5:
+            break
+    return None
+
+
+def parse_python_docstring(content: str) -> str | None:
+    """
+    Extract module-level docstring from Python code content.
+
+    Looks for a triple-quoted docstring near the start of the file (within first 50 chars).
+    Returns the docstring with newlines replaced by semicolons for compact display.
+
+    Args:
+        content: Python source code content.
+
+    Returns:
+        The docstring text (newlines replaced with "; ") or None if not found.
+    """
+    # Read only first 2000 chars for efficiency
+    content = content[:2000]
+
+    # Look for triple-quoted docstring at the start
+    for quote in ['"""', "'''"]:
+        if quote in content:
+            start = content.find(quote)
+            if start < 50:  # Must be near the top
+                end = content.find(quote, start + 3)
+                if end != -1:
+                    docstring = content[start + 3:end].strip()
+                    if docstring:
+                        # Replace newlines with semicolons for compact display
+                        return docstring.replace("\n", "; ")
+    return None
+
+
 def write_jsonl(path: str, obj: Any) -> None:
     """
     Write object as JSON line to file.
@@ -126,6 +198,34 @@ def write_jsonl(path: str, obj: Any) -> None:
     """
     with open(path, mode="a", encoding="utf-8") as f:
         f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+
+def read_jsonl(path: str | Path) -> Iterator[tuple[int, dict[str, Any]]]:
+    """
+    Read a JSONL file and yield parsed JSON objects one line at a time.
+
+    Args:
+        path: Path to the JSONL file.
+
+    Yields:
+        Tuple of (line_number, parsed_dict) for each valid JSON line.
+        Line numbers are 0-indexed.
+        Skips empty lines and logs warnings for invalid JSON.
+
+    Raises:
+        FileNotFoundError: If path does not exist.
+    """
+    with open(path, mode="r", encoding="utf-8") as f:
+        for line_num, line in enumerate(f):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                yield line_num, data
+            except json.JSONDecodeError as e:
+                logger.warning("Failed to parse line %d: %s", line_num + 1, e)
+                continue
 
 
 def write_json_file(path: str, obj: Any) -> None:
@@ -444,6 +544,29 @@ def sanitize_filename(s: str, default: str = "file") -> str:
     """
     s = "".join(c for c in s if c.isalnum() or c in ("-", "_", "."))
     return s or default
+
+
+def format_bytes(num_bytes: int | float) -> str:
+    """
+    Format bytes as human-readable string.
+
+    Args:
+        num_bytes: Number of bytes to format.
+
+    Returns:
+        Human-readable string with appropriate unit (B, KB, MB, GB, TB).
+
+    Example:
+        >>> format_bytes(1024)
+        "1.0 KB"
+        >>> format_bytes(1536)
+        "1.5 KB"
+    """
+    for unit in ["B", "KB", "MB", "GB"]:
+        if abs(num_bytes) < 1024:
+            return f"{num_bytes:.1f} {unit}"
+        num_bytes /= 1024
+    return f"{num_bytes:.1f} TB"
 
 
 def build_transaction_dir(url: str, ts_ms: int, output_dir: str) -> str:

@@ -11,7 +11,11 @@ import time
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from bluebox.cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
-from bluebox.data_models.cdp import WindowPropertyChange, WindowPropertyEvent
+from bluebox.data_models.cdp import (
+    WindowPropertyChange,
+    WindowPropertyChangeType,
+    WindowPropertyEvent,
+)
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:  # avoid circular import
@@ -445,7 +449,7 @@ class AsyncWindowPropertyMonitor(AbstractAsyncMonitor):
                         WindowPropertyChange(
                             path=key,
                             value=value,
-                            change_type="added"
+                            change_type=WindowPropertyChangeType.ADDED,
                         )
                     )
                 else:
@@ -462,7 +466,7 @@ class AsyncWindowPropertyMonitor(AbstractAsyncMonitor):
                             WindowPropertyChange(
                                 path=key,
                                 value=value,
-                                change_type="changed"
+                                change_type=WindowPropertyChangeType.CHANGED,
                             )
                         )
 
@@ -483,7 +487,7 @@ class AsyncWindowPropertyMonitor(AbstractAsyncMonitor):
                                 WindowPropertyChange(
                                     path=key,
                                     value=None,
-                                    change_type="deleted"
+                                    change_type=WindowPropertyChangeType.DELETED,
                                 )
                             )
 
