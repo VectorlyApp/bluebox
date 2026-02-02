@@ -95,8 +95,10 @@ class RoutineDiscoveryState(BaseModel):
 
         Returns:
             Tuple of (was_added, queue_position).
-            If already processed, returns (False, -1).
+            If already processed or currently being processed, returns (False, -1).
         """
+        if transaction_id == self.current_transaction:
+            return False, -1
         if transaction_id in self.processed_transactions:
             return False, -1
         if transaction_id in self.transaction_queue:
