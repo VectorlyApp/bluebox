@@ -341,6 +341,18 @@ python scripts/run_guide_agent.py
 - **Quickstart (`quickstart.py`)**: First-time users, demos, simple one-off automation tasks
 - **Guide Agent (`scripts/run_guide_agent.py`)**: Iterative routine development, debugging, complex workflows requiring back-and-forth with the agent
 
+## Specialized Agents (Beta)
+
+In addition to the Guide Agent, we provide specialized agents for analyzing captured browser data:
+
+| Agent | Purpose |
+|-------|---------|
+| **Network Spy** | Search and analyze network traffic. Find API endpoints, inspect request/response patterns, discover authentication flows. |
+| **Trace Hound** | Trace where tokens and values originate. Search across network, cookies, localStorage, sessionStorage, and window properties to find the source of any value. |
+| **Docs Digger** | Search through documentation and code files. Find relevant docs, examples, and implementation details in a codebase. |
+
+These agents are in beta and available in `bluebox/agents/`. They can be used programmatically or integrated into custom workflows for deeper analysis of captured browser sessions.
+
 ## Reverse Engineer Web Apps
 
 The reverse engineering process follows a simple three-step workflow:
