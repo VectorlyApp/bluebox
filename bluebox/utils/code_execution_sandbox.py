@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 SANDBOX_MODE: str = os.getenv("BLUEBOX_SANDBOX_MODE", "auto")  # "docker", "blocklist", "auto"
-DOCKER_IMAGE: str = os.getenv("BLUEBOX_SANDBOX_IMAGE", "python:3.11-slim")
+DOCKER_IMAGE: str = os.getenv("BLUEBOX_SANDBOX_IMAGE", "python:3.12-slim")
 DOCKER_TIMEOUT: int = int(os.getenv("BLUEBOX_SANDBOX_TIMEOUT", "30"))
 DOCKER_MEMORY_LIMIT: str = os.getenv("BLUEBOX_SANDBOX_MEMORY", "128m")
 
@@ -298,7 +298,7 @@ def execute_python_sandboxed(
 
     Configure via environment variables:
     - BLUEBOX_SANDBOX_MODE: "docker", "blocklist", or "auto" (default: "auto")
-    - BLUEBOX_SANDBOX_IMAGE: Docker image to use (default: "python:3.11-slim")
+    - BLUEBOX_SANDBOX_IMAGE: Docker image to use (default: "python:3.12-slim")
     - BLUEBOX_SANDBOX_TIMEOUT: Execution timeout in seconds (default: 30)
     - BLUEBOX_SANDBOX_MEMORY: Container memory limit (default: "128m")
 
