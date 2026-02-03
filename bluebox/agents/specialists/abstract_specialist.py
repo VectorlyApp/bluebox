@@ -645,8 +645,14 @@ class AbstractSpecialist(ABC):
 
         self.mode = SpecialistMode.CONVERSATIONAL
         self._autonomous_iteration = 0
+
+        # Clear tools from llm_client before clearing tracking set to avoid duplication
+        self.llm_client.clear_tools()
         self._registered_tool_names = set()
         self._reset_autonomous_state()
+
+        # Re-register base tools (finalize tools won't register since mode is CONVERSATIONAL)
+        self._register_tools()
 
         if self._persist_chat_thread_callable:
             self._thread = self._persist_chat_thread_callable(self._thread)
