@@ -381,53 +381,55 @@ for e in entries:
         assert "error" in result
         assert "Blocked" in result["error"]
 
-    # Security tests - blocked imports
+    # Security tests - blocked imports (blocklist mode only)
+    # Note: Docker mode allows imports but provides isolation via containerization.
+    # These tests verify blocklist-mode import blocking.
 
     def test_blocks_os_import(self) -> None:
-        """Should block os module import."""
-        result = execute_python_sandboxed("import os")
+        """Should block os module import in blocklist mode."""
+        result = _execute_blocklist_sandbox("import os")
         assert "error" in result
         assert "blocked" in result["error"].lower()
 
     def test_blocks_subprocess_import(self) -> None:
-        """Should block subprocess module import."""
-        result = execute_python_sandboxed("import subprocess")
+        """Should block subprocess module import in blocklist mode."""
+        result = _execute_blocklist_sandbox("import subprocess")
         assert "error" in result
         assert "blocked" in result["error"].lower()
 
     def test_blocks_socket_import(self) -> None:
-        """Should block socket module import."""
-        result = execute_python_sandboxed("import socket")
+        """Should block socket module import in blocklist mode."""
+        result = _execute_blocklist_sandbox("import socket")
         assert "error" in result
         assert "blocked" in result["error"].lower()
 
     def test_blocks_pathlib_import(self) -> None:
-        """Should block pathlib module import."""
-        result = execute_python_sandboxed("import pathlib")
+        """Should block pathlib module import in blocklist mode."""
+        result = _execute_blocklist_sandbox("import pathlib")
         assert "error" in result
         assert "blocked" in result["error"].lower()
 
     def test_blocks_shutil_import(self) -> None:
-        """Should block shutil module import."""
-        result = execute_python_sandboxed("import shutil")
+        """Should block shutil module import in blocklist mode."""
+        result = _execute_blocklist_sandbox("import shutil")
         assert "error" in result
         assert "blocked" in result["error"].lower()
 
     def test_blocks_pickle_import(self) -> None:
-        """Should block pickle module import."""
-        result = execute_python_sandboxed("import pickle")
+        """Should block pickle module import in blocklist mode."""
+        result = _execute_blocklist_sandbox("import pickle")
         assert "error" in result
         assert "blocked" in result["error"].lower()
 
     def test_blocks_ctypes_import(self) -> None:
-        """Should block ctypes module import."""
-        result = execute_python_sandboxed("import ctypes")
+        """Should block ctypes module import in blocklist mode."""
+        result = _execute_blocklist_sandbox("import ctypes")
         assert "error" in result
         assert "blocked" in result["error"].lower()
 
     def test_blocks_multiprocessing_import(self) -> None:
-        """Should block multiprocessing module import."""
-        result = execute_python_sandboxed("import multiprocessing")
+        """Should block multiprocessing module import in blocklist mode."""
+        result = _execute_blocklist_sandbox("import multiprocessing")
         assert "error" in result
         assert "blocked" in result["error"].lower()
 
