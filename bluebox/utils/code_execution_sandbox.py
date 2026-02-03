@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import base64
 from typing import Any
 
@@ -142,7 +143,10 @@ def _execute_in_docker(
         Dict with 'output' and optionally 'error'.
     """
     # Build the wrapper script that deserializes globals and runs user code
-    globals_json = json.dumps(extra_globals) if extra_globals else "{}"
+    try:
+        globals_json = json.dumps(extra_globals) if extra_globals else "{}"
+    except (TypeError, ValueError) as e:
+        return {"error": f"extra_globals must contain only JSON-serializable values: {e}"}
 
     # Escape for shell - we use base64 to avoid quote issues
     code_b64 = base64.b64encode(code.encode()).decode()
@@ -156,8 +160,12 @@ exec_globals = {{"json": json, **extra_globals}}
 exec(code, exec_globals)
 """
 
+    # Generate unique container name for cleanup on timeout
+    container_name = f"bluebox-sandbox-{os.getpid()}-{int(time.time() * 1000)}"
+
     docker_cmd = [
         "docker", "run",
+        "--name", container_name,        # Named for cleanup on timeout
         "--rm",                          # Auto-cleanup
         "--network", "none",             # No network access
         "--read-only",                   # Read-only filesystem
@@ -190,6 +198,12 @@ exec(code, exec_globals)
             }
 
     except subprocess.TimeoutExpired:
+        # Kill the container to prevent resource leaks
+        subprocess.run(
+            ["docker", "kill", container_name],
+            capture_output=True,
+            timeout=5,
+        )
         return {"error": f"Execution timed out after {DOCKER_TIMEOUT}s"}
     except Exception as e:
         return {"error": f"Docker execution failed: {e}"}
