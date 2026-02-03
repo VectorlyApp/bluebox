@@ -421,6 +421,12 @@ class AbstractSpecialist(ABC):
 
         tool_meta, handler = entry
 
+        # check availability at execution time (tool set may have changed since LLM saw it)
+        available = tool_meta.availability(self) if callable(tool_meta.availability) else tool_meta.availability
+        if not available:
+            logger.warning("Invoked tool '%s' is not currently available", tool_name)
+            return {"error": f"Tool '{tool_name}' is not currently available"}
+
         # validate required parameters
         required = tool_meta.parameters.get("required", [])
         missing = [p for p in required if p not in tool_arguments or tool_arguments[p] is None]

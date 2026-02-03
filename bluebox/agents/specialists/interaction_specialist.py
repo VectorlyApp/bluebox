@@ -384,78 +384,24 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(
-        availability=lambda self: self.can_finalize,
-        # NOTE :explicit schema needed for complex nested structure
-        parameters={
-            "type": "object",
-            "properties": {
-                "parameters": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string", "description": "snake_case parameter name."},
-                            "type": {"type": "string", "description": "Parameter type (string, date, integer, etc.)."},
-                            "description": {"type": "string", "description": "What the parameter represents."},
-                            "examples": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Example values observed.",
-                            },
-                            "source_element_css_path": {"type": "string", "description": "CSS path of the source element."},
-                            "source_element_tag": {"type": "string", "description": "HTML tag of the source element."},
-                            "source_element_name": {"type": "string", "description": "Name attribute of the source element."},
-                        },
-                        "required": ["name", "type", "description"],
-                    },
-                    "description": "List of discovered parameters.",
-                }
-            },
-            "required": ["parameters"],
-        },
-    )
+    @specialist_tool(availability=lambda self: self.can_finalize)
     @token_optimized
-    def _finalize_result(self, parameters: list[dict[str, Any]]) -> dict[str, Any]:
+    def _finalize_result(self, parameters: list[DiscoveredParameter]) -> dict[str, Any]:
         """
         Submit discovered parameters. Call when you have identified all parameterizable inputs.
 
         Args:
-            parameters: List of discovered parameters, each with name, type, description.
+            parameters: List of discovered parameters.
         """
-        discovered: list[DiscoveredParameter] = []
-        for i, p in enumerate(parameters):
-            name = p.get("name", "")
-            param_type = p.get("type", "")
-            description = p.get("description", "")
+        self._discovery_result = ParameterDiscoveryResult(parameters=parameters)
 
-            # Validate nested required fields
-            if not name:
-                return {"error": f"parameters[{i}].name is required"}
-            if not param_type:
-                return {"error": f"parameters[{i}].type is required"}
-            if not description:
-                return {"error": f"parameters[{i}].description is required"}
-
-            discovered.append(DiscoveredParameter(
-                name=name,
-                type=param_type,
-                description=description,
-                examples=p.get("examples", []),
-                source_element_css_path=p.get("source_element_css_path"),
-                source_element_tag=p.get("source_element_tag"),
-                source_element_name=p.get("source_element_name"),
-            ))
-
-        self._discovery_result = ParameterDiscoveryResult(parameters=discovered)
-
-        logger.info("Parameter discovery completed: %d parameter(s)", len(discovered))
-        for param in discovered:
+        logger.info("Parameter discovery completed: %d parameter(s)", len(parameters))
+        for param in parameters:
             logger.info("  - %s (%s): %s", param.name, param.type, param.description)
 
         return {
             "status": "success",
-            "message": f"Discovered {len(discovered)} parameter(s)",
+            "message": f"Discovered {len(parameters)} parameter(s)",
             "result": self._discovery_result.model_dump(),
         }
 
