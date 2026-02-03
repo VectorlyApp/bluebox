@@ -113,6 +113,12 @@ class Parameter(BaseModel):
         description="Format specification (e.g., 'YYYY-MM-DD')"
     )
 
+    # Discovery metadata
+    source_variable: str | None = Field(
+        default=None,
+        description="Name of the extracted variable this parameter maps to (used for test value lookup during discovery)"
+    )
+
     @field_validator('name')
     @classmethod
     def validate_name(cls, v):

@@ -313,17 +313,21 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     "items": {
                         "type": "object",
                         "properties": {
-                            "name": {"type": "string"},
+                            "name": {"type": "string", "description": "User-friendly parameter name (e.g., 'origin' instead of 'originStations')"},
                             "description": {"type": "string"},
                             "type": {
                                 "type": "string",
                                 "enum": ["string", "integer", "number", "boolean"],
                             },
                             "required": {"type": "boolean"},
+                            "source_variable": {
+                                "type": "string",
+                                "description": "Name of the extracted variable this parameter maps to (must match a name from record_extracted_variables)",
+                            },
                         },
-                        "required": ["name", "description", "type", "required"],
+                        "required": ["name", "description", "type", "required", "source_variable"],
                     },
-                    "description": "User-facing parameters for the routine",
+                    "description": "User-facing parameters for the routine. Each parameter must specify source_variable to link to extracted variables.",
                 },
                 "operations": {
                     "type": "array",

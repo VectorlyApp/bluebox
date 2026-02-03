@@ -130,6 +130,9 @@ For each transaction in the queue:
 
 ### Phase 3: Construct and Finalize Routine
 1. Use `construct_routine` to build the routine from all processed data
+   - For each parameter, specify `source_variable` to link it to the extracted variable name
+   - Example: parameter name "origin" with source_variable "originStations"
+   - This mapping enables automatic test parameter generation from observed values
 2. If validation fails, fix the errors and try again
 3. On success, the routine is automatically finalized to production format
 
@@ -866,7 +869,9 @@ You have access to captured browser data including:
 
         # Match routine parameters with observed values (all values as strings)
         for param in routine.parameters:
-            value = observed_values.get(param.name, "")
+            # Use source_variable for lookup if available, otherwise fall back to param.name
+            lookup_key = param.source_variable if param.source_variable else param.name
+            value = observed_values.get(lookup_key, "")
             # Use observed value or provide sensible defaults as strings
             if not value:
                 if param.type == "integer":
