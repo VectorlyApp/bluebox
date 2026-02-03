@@ -198,7 +198,7 @@ class InteractionSpecialist(AbstractSpecialist):
 
         # urgency notices
         if self.mode == SpecialistMode.FINALIZING:
-            remaining = 10 - self._autonomous_iteration
+            remaining = self._max_iterations - self._autonomous_iteration
             if remaining <= 2:
                 urgency = (
                     f"\n\n## CRITICAL: Only {remaining} iterations remaining!\n"

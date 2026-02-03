@@ -240,6 +240,7 @@ class AbstractSpecialist(ABC):
         # Lifecycle state
         self.mode: SpecialistMode = SpecialistMode.CONVERSATIONAL
         self._autonomous_iteration: int = 0
+        self._max_iterations: int = 10  # default, updated by run_autonomous()
 
     ## Tools
 
@@ -487,6 +488,7 @@ class AbstractSpecialist(ABC):
         """
         self.mode = SpecialistMode.AUTONOMOUS
         self._autonomous_iteration = 0
+        self._max_iterations = max_iterations
 
         # Subclass should reset its own result fields in _reset_autonomous_state()
         self._reset_autonomous_state()

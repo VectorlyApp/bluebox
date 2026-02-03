@@ -230,7 +230,7 @@ class JSSpecialist(AbstractSpecialist):
 
         # Urgency notices
         if self.mode == SpecialistMode.FINALIZING:
-            remaining = 10 - self._autonomous_iteration
+            remaining = self._max_iterations - self._autonomous_iteration
             if remaining <= 2:
                 context_parts.append(
                     f"\n\n## CRITICAL: Only {remaining} iterations remaining!\n"
