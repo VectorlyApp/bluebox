@@ -25,7 +25,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -51,8 +51,13 @@ logger = get_logger(name=__name__)
 class SpecialistMode(StrEnum):
     """Lifecycle mode of a specialist agent."""
     CONVERSATIONAL = "conversational"  # interactive chat with a user
-    AUTONOMOUS = "autonomous"          # autonomous loop, exploring/analyzing
-    FINALIZING = "finalizing"          # autonomous loop, finalize tools available
+    AUTONOMOUS = "autonomous"          # autonomous loop (exploration + finalization)
+
+
+class AutonomousConfig(NamedTuple):
+    """Configuration for autonomous specialist runs."""
+    min_iterations: int = 3   # Minimum iterations before finalize tools become available
+    max_iterations: int = 10  # Maximum iterations before loop exits (returns None if not finalized)
 
 
 @dataclass(frozen=True)
@@ -84,7 +89,7 @@ def specialist_tool(
             - Callable[[self], bool]: evaluated before each LLM call;
               tool is available only when it returns True. Use this for tools
               gated behind lifecycle state or dynamic conditions (e.g.
-              ``availability=lambda self: self.mode == SpecialistMode.FINALIZING``).
+              ``availability=lambda self: self.can_finalize``).
     """
     def decorator(method: Callable) -> Callable:
         tool_name = method.__name__.lstrip("_")
@@ -228,7 +233,7 @@ class AbstractSpecialist(ABC):
         # Lifecycle state
         self.mode: SpecialistMode = SpecialistMode.CONVERSATIONAL
         self._autonomous_iteration: int = 0
-        self._max_iterations: int = 10  # default, updated by run_autonomous()
+        self._autonomous_config: AutonomousConfig = AutonomousConfig()
 
     ## Properties
 
@@ -241,6 +246,19 @@ class AbstractSpecialist(ABC):
     def autonomous_iteration(self) -> int:
         """Return the current/final autonomous iteration count."""
         return self._autonomous_iteration
+
+    @property
+    def can_finalize(self) -> bool:
+        """
+        Whether "finalize tools" should be available (autonomous mode, past min_iterations).
+
+        Returns:
+            True if the specialist is in autonomous mode and has exceeded the min_iterations threshold, False otherwise.
+        """
+        return (
+            self.mode == SpecialistMode.AUTONOMOUS
+            and self._autonomous_iteration >= self._autonomous_config.min_iterations
+        )
 
     ## Public API
 
@@ -258,28 +276,26 @@ class AbstractSpecialist(ABC):
     def run_autonomous(
         self,
         task: str,
-        min_iterations: int = 3,
-        max_iterations: int = 10,
+        config: AutonomousConfig | None = None,
     ) -> BaseModel | None:
         """
         Run the specialist autonomously to completion.
 
         The specialist will:
         1. Use its tools to explore and analyze data
-        2. After min_iterations, finalize tools become available
+        2. After min_iterations, finalize tools become available (via can_finalize)
         3. Return a typed result when finalize is called, or None on timeout
 
         Args:
             task: User task description.
-            min_iterations: Minimum iterations before finalize tools are available.
-            max_iterations: Maximum iterations before stopping.
+            config: Autonomous run configuration (iterations limits). Uses defaults if None.
 
         Returns:
             Specialist-specific result model, or None if max iterations reached.
         """
         self.mode = SpecialistMode.AUTONOMOUS
         self._autonomous_iteration = 0
-        self._max_iterations = max_iterations
+        self._autonomous_config = config or AutonomousConfig()
 
         # Subclass should reset its own result fields in _reset_autonomous_state()
         self._reset_autonomous_state()
@@ -290,7 +306,7 @@ class AbstractSpecialist(ABC):
 
         logger.info("Starting autonomous run for task: %s", task)
 
-        self._run_autonomous_loop(min_iterations, max_iterations)
+        self._run_autonomous_loop()
 
         self.mode = SpecialistMode.CONVERSATIONAL
 
@@ -447,16 +463,12 @@ class AbstractSpecialist(ABC):
 
         logger.warning("Agent loop hit max iterations (%d)", max_iterations)
 
-    def _run_autonomous_loop(self, min_iterations: int, max_iterations: int) -> None:
+    def _run_autonomous_loop(self) -> None:
         """Run the autonomous agent loop with iteration tracking and finalize gating."""
+        max_iterations = self._autonomous_config.max_iterations
         for iteration in range(max_iterations):
             self._autonomous_iteration = iteration + 1
             logger.debug("Autonomous loop iteration %d/%d", self._autonomous_iteration, max_iterations)
-
-            # Gate finalize tools behind min_iterations
-            if self._autonomous_iteration >= min_iterations and self.mode != SpecialistMode.FINALIZING:
-                self.mode = SpecialistMode.FINALIZING
-                logger.debug("Finalize mode active (iteration %d)", self._autonomous_iteration)
 
             messages = self._build_messages_for_llm()
             try:

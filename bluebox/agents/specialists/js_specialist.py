@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, SpecialistMode, specialist_tool
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, specialist_tool
 from bluebox.cdp.connection import (
     cdp_new_tab,
     create_cdp_helpers,
@@ -229,8 +229,8 @@ class JSSpecialist(AbstractSpecialist):
             context_parts.append(self._NETWORK_TRAFFIC_PROMPT_SECTION)
 
         # Urgency notices
-        if self.mode == SpecialistMode.FINALIZING:
-            remaining = self._max_iterations - self._autonomous_iteration
+        if self.can_finalize:
+            remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
             if remaining <= 2:
                 context_parts.append(
                     f"\n\n## CRITICAL: Only {remaining} iterations remaining!\n"
@@ -367,7 +367,7 @@ class JSSpecialist(AbstractSpecialist):
             "Submit validated JavaScript code as the final result. "
             "The code must be IIFE-wrapped and pass all validation checks."
         ),
-        availability=lambda self: self.mode == SpecialistMode.FINALIZING,
+        availability=lambda self: self.can_finalize,
         parameters={
             "type": "object",
             "properties": {
@@ -429,7 +429,7 @@ class JSSpecialist(AbstractSpecialist):
 
     @specialist_tool(
         description="Report that the JavaScript task cannot be accomplished.",
-        availability=lambda self: self.mode == SpecialistMode.FINALIZING,
+        availability=lambda self: self.can_finalize,
         parameters={
             "type": "object",
             "properties": {

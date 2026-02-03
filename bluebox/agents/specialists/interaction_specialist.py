@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, SpecialistMode, specialist_tool
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, specialist_tool
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -197,8 +197,8 @@ class InteractionSpecialist(AbstractSpecialist):
         )
 
         # urgency notices
-        if self.mode == SpecialistMode.FINALIZING:
-            remaining = self._max_iterations - self._autonomous_iteration
+        if self.can_finalize:
+            remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
             if remaining <= 2:
                 urgency = (
                     f"\n\n## CRITICAL: Only {remaining} iterations remaining!\n"
@@ -404,7 +404,7 @@ class InteractionSpecialist(AbstractSpecialist):
 
     @specialist_tool(
         description="Submit discovered parameters. Call when you have identified all parameterizable inputs.",
-        availability=lambda self: self.mode == SpecialistMode.FINALIZING,
+        availability=lambda self: self.can_finalize,
         parameters={
             "type": "object",
             "properties": {
@@ -478,7 +478,7 @@ class InteractionSpecialist(AbstractSpecialist):
 
     @specialist_tool(
         description="Report that no parameters could be discovered from the interactions.",
-        availability=lambda self: self.mode == SpecialistMode.FINALIZING,
+        availability=lambda self: self.can_finalize,
         parameters={
             "type": "object",
             "properties": {
