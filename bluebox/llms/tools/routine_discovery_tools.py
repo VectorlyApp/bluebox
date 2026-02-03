@@ -320,14 +320,14 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                                 "enum": ["string", "integer", "number", "boolean"],
                             },
                             "required": {"type": "boolean"},
-                            "source_variable": {
+                            "observed_value": {
                                 "type": "string",
-                                "description": "Name of the extracted variable this parameter maps to (must match a name from record_extracted_variables)",
+                                "description": "Value observed during discovery (from the observed_value of the corresponding extracted variable)",
                             },
                         },
-                        "required": ["name", "description", "type", "required", "source_variable"],
+                        "required": ["name", "description", "type", "required", "observed_value"],
                     },
-                    "description": "User-facing parameters for the routine. Each parameter must specify source_variable to link to extracted variables.",
+                    "description": "User-facing parameters for the routine. Each parameter must specify observed_value from the corresponding extracted variable.",
                 },
                 "operations": {
                     "type": "array",

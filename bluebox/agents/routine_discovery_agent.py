@@ -130,9 +130,9 @@ For each transaction in the queue:
 
 ### Phase 3: Construct and Finalize Routine
 1. Use `construct_routine` to build the routine from all processed data
-   - For each parameter, specify `source_variable` to link it to the extracted variable name
-   - Example: parameter name "origin" with source_variable "originStations"
-   - This mapping enables automatic test parameter generation from observed values
+   - For each parameter, specify `observed_value` from the extracted variable's observed_value
+   - Example: parameter name "origin" with observed_value "LAX" (from extracted variable's observed_value)
+   - Observed values are embedded in the routine for immediate testing
 2. If validation fails, fix the errors and try again
 3. On success, the routine is automatically finalized to production format
 
@@ -269,29 +269,19 @@ You have access to captured browser data including:
 
     def _get_test_parameters_for_validation(self) -> dict[str, str]:
         """
-        Generate test parameters from observed values for routine validation.
+        Generate test parameters from observed_value field in parameters.
 
-        Returns a dict mapping parameter names to their observed values from discovery.
+        Returns a dict mapping parameter names to their observed values.
         """
         if not self._state or not self._state.production_routine:
             return {}
 
-        # Collect observed values from extracted variables
-        observed_values: dict[str, str] = {}
-        for tx_data in self._state.transaction_data.values():
-            extracted = tx_data.get("extracted_variables")
-            if extracted:
-                for var in extracted.variables:
-                    observed_values[var.name] = var.observed_value
-
-        # Map routine parameters to observed values
+        # Extract observed values directly from parameters
         test_params: dict[str, str] = {}
         for param in self._state.production_routine.parameters:
-            # Use source_variable for lookup if available, otherwise fall back to param.name
-            lookup_key = param.source_variable if param.source_variable else param.name
-            value = observed_values.get(lookup_key, "")
-            if value:
-                test_params[param.name] = value
+            # Use observed_value if available, otherwise provide sensible defaults
+            if param.observed_value:
+                test_params[param.name] = param.observed_value
             elif param.type == "integer":
                 test_params[param.name] = "1"
             elif param.type == "number":
@@ -895,38 +885,30 @@ You have access to captured browser data including:
 
     def get_test_parameters(self, routine: Routine) -> TestParametersResponse:
         """
-        Generate test parameters for the routine based on observed values from discovery.
+        Generate test parameters for the routine from observed_value field in parameters.
 
         Args:
-            routine: The production routine to generate test parameters for.
+            routine: The production routine to extract test parameters from.
 
         Returns:
             TestParametersResponse with parameter name/value pairs.
         """
         test_params = []
 
-        # Get observed values from extracted variables in state
-        observed_values = {}
-        if self._state:
-            for tx_data in self._state.transaction_data.values():
-                extracted = tx_data.get("extracted_variables")
-                if extracted:
-                    for var in extracted.variables:
-                        observed_values[var.name] = var.observed_value
-
-        # Match routine parameters with observed values (all values as strings)
+        # Extract observed values directly from parameters
         for param in routine.parameters:
-            # Use source_variable for lookup if available, otherwise fall back to param.name
-            lookup_key = param.source_variable if param.source_variable else param.name
-            value = observed_values.get(lookup_key, "")
-            # Use observed value or provide sensible defaults as strings
-            if not value:
-                if param.type == "integer":
-                    value = "1"
-                elif param.type == "number":
-                    value = "1.0"
-                elif param.type == "boolean":
-                    value = "false"
+            # Use observed_value if available, otherwise provide sensible defaults
+            if param.observed_value:
+                value = param.observed_value
+            elif param.type == "integer":
+                value = "1"
+            elif param.type == "number":
+                value = "1.0"
+            elif param.type == "boolean":
+                value = "false"
+            else:
+                value = ""
+            
             test_params.append(TestParameter(name=param.name, value=str(value)))
 
         return TestParametersResponse(parameters=test_params)

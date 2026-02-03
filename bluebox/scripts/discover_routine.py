@@ -120,10 +120,9 @@ def main() -> None:
             json.dump(routine.model_dump(), f, ensure_ascii=False, indent=2)
         logger.info(f"Production routine saved to: {routine_path}")
 
-        # get test parameters
-        logger.info("Generating test parameters...")
-        test_parameters = routine_discovery_agent.get_test_parameters(routine)
-        test_parameters_dict = {param.name: param.value for param in test_parameters.parameters}
+        # Extract test parameters directly from routine parameters
+        logger.info("Extracting test parameters...")
+        test_parameters_dict = {param.name: param.observed_value or "" for param in routine.parameters}
 
         # save test parameters
         test_params_path = os.path.join(args.output_dir, "test_parameters.json")

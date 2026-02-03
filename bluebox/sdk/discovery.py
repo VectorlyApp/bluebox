@@ -151,15 +151,15 @@ class RoutineDiscovery:
             routine = self.agent.run()
             logger.info("Routine discovery completed successfully.")
 
-            # Get test parameters from the agent
-            test_parameters = self.agent.get_test_parameters(routine)
-            logger.info("Test parameters generated successfully.")
-
-            # Save test parameters to output directory
-            test_params_dict = {p.name: p.value for p in test_parameters.parameters}
+            # Extract test parameters directly from routine parameters
+            test_params_dict = {p.name: p.observed_value or "" for p in routine.parameters}
             test_params_path = Path(self.output_dir) / "test_parameters.json"
             test_params_path.write_text(json.dumps(test_params_dict, indent=2))
             logger.info(f"Test parameters saved to: {test_params_path}")
+
+            # Get test parameters in response format for backward compatibility
+            test_parameters = self.agent.get_test_parameters(routine)
+            logger.info("Test parameters extracted successfully.")
 
             return RoutineDiscoveryResult(
                 routine=routine,
