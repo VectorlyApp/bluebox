@@ -4,7 +4,8 @@ tests/unit/test_js_utils.py
 Tests for JavaScript utility functions.
 """
 
-import pytest
+import re
+from textwrap import dedent
 
 from bluebox.utils.js_utils import (
     DANGEROUS_JS_PATTERNS,
@@ -46,11 +47,13 @@ class TestValidateJs:
 
     def test_valid_multiline_iife(self) -> None:
         """Multi-line IIFE with proper formatting passes cleanly."""
-        code = """(function() {
-  const x = 1;
-  const y = 2;
-  return x + y;
-})()"""
+        code = dedent("""
+            (function() {
+                const x = 1;
+                const y = 2;
+                return x + y;
+            })()
+        """)
         errors = validate_js(code)
         assert errors == []
 
@@ -188,7 +191,6 @@ class TestValidateJs:
         assert len(DANGEROUS_JS_PATTERNS) > 0
 
     def test_iife_pattern_matches_basic(self) -> None:
-        import re
         assert re.match(IIFE_PATTERN, "(function() { return 1; })()", re.DOTALL)
         assert re.match(IIFE_PATTERN, "(() => { return 1; })()", re.DOTALL)
         assert not re.match(IIFE_PATTERN, "function() { return 1; }", re.DOTALL)
