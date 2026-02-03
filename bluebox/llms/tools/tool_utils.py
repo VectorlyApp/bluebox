@@ -76,7 +76,7 @@ def generate_parameters_schema(func: Callable[..., Any]) -> dict[str, Any]:
     """
     sig = inspect.signature(obj=func)
     hints = get_type_hints(obj=func)
-    param_descs = _parse_args_from_docstring(func.__doc__)
+    param_descs = _parse_args_from_docstring(docstring=func.__doc__)
 
     properties: dict[str, Any] = {}
     required: list[str] = []

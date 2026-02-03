@@ -25,7 +25,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Callable, NamedTuple
+from typing import Any, Callable, NamedTuple, get_type_hints
 
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -42,8 +42,9 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.llm_client import LLMClient
+from bluebox.llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
 from bluebox.utils.logger import get_logger
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 logger = get_logger(name=__name__)
 
@@ -72,8 +73,8 @@ class _ToolMeta:
 
 
 def specialist_tool(
-    description: str,
-    parameters: dict[str, Any],
+    description: str | None = None,
+    parameters: dict[str, Any] | None = None,
     *,
     availability: bool | Callable[..., bool] = True,
 ) -> Callable:
@@ -81,11 +82,13 @@ def specialist_tool(
     Decorator that marks a method as a specialist tool handler.
 
     The tool name is derived from the method name by stripping leading
-    underscores. For example, ``get_dom_snapshot`` becomes ``get_dom_snapshot_tool``.
+    underscores. For example, ``_get_dom_snapshot`` becomes ``get_dom_snapshot``.
 
     Args:
-        description: Tool description for the LLM.
-        parameters: JSON Schema for tool parameters.
+        description: Tool description for the LLM. If None, extracted from
+            the method's docstring (text before Args/Returns sections).
+        parameters: JSON Schema for tool parameters. If None, auto-generated
+            from the method's type hints and docstring.
         availability: Controls when the tool is available to the LLM.
             - True (default): always available.
             - Callable[[self], bool]: evaluated before each LLM call;
@@ -95,10 +98,25 @@ def specialist_tool(
     """
     def decorator(method: Callable) -> Callable:
         tool_name = method.__name__.lstrip("_")
+
+        # auto-extract description from docstring if not provided
+        if description is None:
+            final_description = extract_description_from_docstring(method.__doc__)
+            if not final_description:
+                raise ValueError(f"Tool {tool_name} has no description and no docstring")
+        else:
+            final_description = description
+
+        # auto-generate parameters schema from method signature if not provided
+        if parameters is None:
+            final_parameters = generate_parameters_schema(func=method)
+        else:
+            final_parameters = parameters
+
         method._tool_meta = _ToolMeta(
             name=tool_name,
-            description=description,
-            parameters=parameters,
+            description=final_description,
+            parameters=final_parameters,
             availability=availability,
         )
         return method
@@ -390,21 +408,45 @@ class AbstractSpecialist(ABC):
         """
         Dispatch a tool call to the appropriate decorated handler.
 
-        Default implementation builds a dispatch dict from @specialist_tool
-        methods. Subclasses may override for custom dispatch logic.
+        Validates required parameters and types based on the handler's signature,
+        then dispatches with **kwargs.
         """
-        dispatch: dict[str, Callable] = {
-            tool_meta.name: method for tool_meta, method in self._collect_tools()
+        dispatch: dict[str, tuple[_ToolMeta, Callable]] = {
+            tool_meta.name: (tool_meta, method) for tool_meta, method in self._collect_tools()
         }
-        handler = dispatch.get(tool_name)
-        if handler is None:
+        entry = dispatch.get(tool_name)
+        if entry is None:
             logger.warning("Unknown tool: %s", tool_name)
-            return {
-                "error": f"Unknown tool: {tool_name}",
-            }
+            return {"error": f"Unknown tool: {tool_name}"}
+
+        tool_meta, handler = entry
+
+        # validate required parameters
+        required = tool_meta.parameters.get("required", [])
+        missing = [p for p in required if p not in tool_arguments or tool_arguments[p] is None]
+        if missing:
+            return {"error": f"Missing required parameter(s): {', '.join(missing)}"}
+
+        # validate types using the handler's type hints
+        try:
+            hints = get_type_hints(obj=handler)
+            for param_name, value in tool_arguments.items():
+                if param_name in hints and value is not None:
+                    expected_type = hints[param_name]
+                    TypeAdapter(expected_type).validate_python(value)
+        except ValidationError as e:
+            # extract readable error message
+            errors = e.errors()
+            if errors:
+                err = errors[0]
+                msg = f"{param_name}: expected {err.get('type', 'valid type')}, got {type(value).__name__}"
+            else:
+                msg = str(e)
+            return {"error": f"Invalid argument type: {msg}"}
+
         logger.debug("Executing tool %s with arguments: %s", tool_name, tool_arguments)
-        # handler is unbound (from cls, not self) so we pass self explicitly
-        return handler(self, tool_arguments)
+        # handler is unbound (from cls, not self) so pass self explicitly
+        return handler(self, **tool_arguments)
 
     @classmethod
     @functools.lru_cache

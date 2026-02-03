@@ -313,22 +313,15 @@ class JSSpecialist(AbstractSpecialist):
 
     ## Tools
 
-    @specialist_tool(
-        description="Dry-run validation of JavaScript code. Checks IIFE format and blocked patterns without submitting.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "js_code": {
-                    "type": "string",
-                    "description": "JavaScript code to validate.",
-                }
-            },
-            "required": ["js_code"],
-        },
-    )
+    @specialist_tool()
     @token_optimized
-    def _validate_js_code(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        js_code = tool_arguments.get("js_code", "")
+    def _validate_js_code(self, js_code: str) -> dict[str, Any]:
+        """
+        Dry-run validation of JavaScript code. Checks IIFE format and blocked patterns without submitting.
+
+        Args:
+            js_code: JavaScript code to validate.
+        """
         result = validate_js(js_code)
 
         if result.errors:
@@ -349,36 +342,27 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(
-        description=(
-            "Get a DOM snapshot. Returns the document structure and truncated strings table. "
-            "Defaults to latest snapshot."
-        ),
-        availability=lambda self: bool(self._dom_snapshots),
-        parameters={
-            "type": "object",
-            "properties": {
-                "index": {
-                    "type": "integer",
-                    "description": "Snapshot index (0-based). Defaults to latest (-1).",
-                }
-            },
-        },
-    )
+    @specialist_tool(availability=lambda self: bool(self._dom_snapshots))
     @token_optimized
-    def _get_dom_snapshot(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+    def _get_dom_snapshot(self, index: int = -1) -> dict[str, Any]:
+        """
+        Get a DOM snapshot. Returns the document structure and truncated strings table. Defaults to latest snapshot.
+
+        Args:
+            index: Snapshot index (0-based). Defaults to latest (-1).
+        """
         if not self._dom_snapshots:
             return {"error": "No DOM snapshots available"}
 
-        index = tool_arguments.get("index", -1)
-        if index < 0:
-            index = len(self._dom_snapshots) + index
-        if index < 0 or index >= len(self._dom_snapshots):
+        resolved_index = index
+        if resolved_index < 0:
+            resolved_index = len(self._dom_snapshots) + resolved_index
+        if resolved_index < 0 or resolved_index >= len(self._dom_snapshots):
             return {
-                "error": f"Snapshot index {index} out of range (0-{len(self._dom_snapshots) - 1})",
+                "error": f"Snapshot index {resolved_index} out of range (0-{len(self._dom_snapshots) - 1})",
             }
 
-        snapshot = self._dom_snapshots[index]
+        snapshot = self._dom_snapshots[resolved_index]
 
         # Truncate strings table to keep token usage reasonable
         strings = snapshot.strings
@@ -395,45 +379,24 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(
-        description=(
-            "Submit validated JavaScript code as the final result. "
-            "The code must be IIFE-wrapped and pass all validation checks."
-        ),
-        availability=lambda self: self.can_finalize,
-        parameters={
-            "type": "object",
-            "properties": {
-                "js_code": {
-                    "type": "string",
-                    "description": "IIFE-wrapped JavaScript code.",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "Brief description of what the code does.",
-                },
-                "session_storage_key": {
-                    "type": "string",
-                    "description": "Optional sessionStorage key to store the result.",
-                },
-                "timeout_seconds": {
-                    "type": "number",
-                    "description": "Max execution time in seconds (default 5.0).",
-                },
-            },
-            "required": ["js_code", "description"],
-        },
-    )
+    @specialist_tool(availability=lambda self: self.can_finalize)
     @token_optimized
-    def _submit_js_code(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        js_code = tool_arguments.get("js_code", "")
-        description = tool_arguments.get("description", "")
-        session_storage_key = tool_arguments.get("session_storage_key")
-        timeout_seconds = tool_arguments.get("timeout_seconds", 5.0)
+    def _submit_js_code(
+        self,
+        js_code: str,
+        description: str,
+        session_storage_key: str | None = None,
+        timeout_seconds: float = 5.0,
+    ) -> dict[str, Any]:
+        """
+        Submit validated JavaScript code as the final result. The code must be IIFE-wrapped and pass all validation checks.
 
-        if not description:
-            return {"error": "description is required"}
-
+        Args:
+            js_code: IIFE-wrapped JavaScript code.
+            description: Brief description of what the code does.
+            session_storage_key: Optional sessionStorage key to store the result.
+            timeout_seconds: Max execution time in seconds (default 5.0).
+        """
         # Validate the code
         result = validate_js(js_code)
         if result.errors:
@@ -451,8 +414,7 @@ class JSSpecialist(AbstractSpecialist):
             description=description,
         )
 
-        logger.info("JS code submitted: %s", description)
-
+        logger.debug("JS code submitted: %s", description)
         return {
             "status": "success",
             "message": "JavaScript code submitted successfully",
@@ -460,36 +422,23 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(
-        description="Report that the JavaScript task cannot be accomplished.",
-        availability=lambda self: self.can_finalize,
-        parameters={
-            "type": "object",
-            "properties": {
-                "reason": {
-                    "type": "string",
-                    "description": "Why the task cannot be accomplished with JavaScript.",
-                },
-                "attempted_approaches": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of approaches that were tried.",
-                },
-            },
-            "required": ["reason"],
-        },
-    )
+    @specialist_tool(availability=lambda self: self.can_finalize)
     @token_optimized
-    def _finalize_failure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        reason = tool_arguments.get("reason", "")
-        attempted_approaches = tool_arguments.get("attempted_approaches", [])
+    def _finalize_failure(
+        self,
+        reason: str,
+        attempted_approaches: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Report that the JavaScript task cannot be accomplished.
 
-        if not reason:
-            return {"error": "reason is required"}
-
+        Args:
+            reason: Why the task cannot be accomplished with JavaScript.
+            attempted_approaches: List of approaches that were tried.
+        """
         self._js_failure = JSCodeFailureResult(
             reason=reason,
-            attempted_approaches=attempted_approaches,
+            attempted_approaches=attempted_approaches or [],
         )
 
         logger.info("JS specialist failed: %s", reason)
@@ -501,57 +450,38 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(
-        description=(
-            "Search/filter captured HTTP requests. Returns abbreviated results (no bodies). "
-            "All parameters are optional filters."
-        ),
-        availability=lambda self: self._network_data_store is not None,
-        parameters={
-            "type": "object",
-            "properties": {
-                "method": {
-                    "type": "string",
-                    "description": "HTTP method filter (e.g. GET, POST).",
-                },
-                "host_contains": {
-                    "type": "string",
-                    "description": "Substring match on the request host.",
-                },
-                "path_contains": {
-                    "type": "string",
-                    "description": "Substring match on the request path.",
-                },
-                "status_code": {
-                    "type": "integer",
-                    "description": "Exact HTTP status code filter.",
-                },
-                "content_type_contains": {
-                    "type": "string",
-                    "description": "Substring match on response content type.",
-                },
-                "response_body_contains": {
-                    "type": "string",
-                    "description": "Search for text within response bodies.",
-                },
-            },
-        },
-    )
+    @specialist_tool(availability=lambda self: self._network_data_store is not None)
     @token_optimized
-    def _search_network_traffic(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Search captured network traffic with optional filters."""
+    def _search_network_traffic(
+        self,
+        method: str | None = None,
+        host_contains: str | None = None,
+        path_contains: str | None = None,
+        status_code: int | None = None,
+        content_type_contains: str | None = None,
+        response_body_contains: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Search/filter captured HTTP requests. Returns abbreviated results (no bodies). All parameters are optional filters.
+
+        Args:
+            method: HTTP method filter (e.g. GET, POST).
+            host_contains: Substring match on the request host.
+            path_contains: Substring match on the request path.
+            status_code: Exact HTTP status code filter.
+            content_type_contains: Substring match on response content type.
+            response_body_contains: Search for text within response bodies.
+        """
         if self._network_data_store is None:
             return {"error": "No network data store available"}
 
-        response_body_contains = tool_arguments.pop("response_body_contains", None)
-
         # Use search_entries for structured filters
         entries = self._network_data_store.search_entries(
-            method=tool_arguments.get("method"),
-            host_contains=tool_arguments.get("host_contains"),
-            path_contains=tool_arguments.get("path_contains"),
-            status_code=tool_arguments.get("status_code"),
-            content_type_contains=tool_arguments.get("content_type_contains"),
+            method=method,
+            host_contains=host_contains,
+            path_contains=path_contains,
+            status_code=status_code,
+            content_type_contains=content_type_contains,
         )
 
         # If body text search requested, intersect with body search results
@@ -571,41 +501,30 @@ class JSSpecialist(AbstractSpecialist):
             }
             for e in entries
         ]
+        return {
+            "count": len(results),
+            "entries": results,
+        }
 
-        return {"count": len(results), "entries": results}
 
-
-    @specialist_tool(
-        description="Get full details of a single captured HTTP request by request_id, including headers and response body.",
-        availability=lambda self: self._network_data_store is not None,
-        parameters={
-            "type": "object",
-            "properties": {
-                "request_id": {
-                    "type": "string",
-                    "description": "The request_id from search_network_traffic results.",
-                },
-                "include_response_body": {
-                    "type": "boolean",
-                    "description": "Whether to include the response body (default true).",
-                },
-                "max_body_length": {
-                    "type": "integer",
-                    "description": "Max characters for the response body (default 5000).",
-                },
-            },
-            "required": ["request_id"],
-        },
-    )
+    @specialist_tool(availability=lambda self: self._network_data_store is not None)
     @token_optimized
-    def _get_network_entry(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Get full details of a single network entry by request_id."""
+    def _get_network_entry(
+        self,
+        request_id: str,
+        include_response_body: bool = True,
+        max_body_length: int = 5000,
+    ) -> dict[str, Any]:
+        """
+        Get full details of a single captured HTTP request by request_id, including headers and response body.
+
+        Args:
+            request_id: The request_id from search_network_traffic results.
+            include_response_body: Whether to include the response body (default true).
+            max_body_length: Max characters for the response body (default 5000).
+        """
         if self._network_data_store is None:
             return {"error": "No network data store available"}
-
-        request_id = tool_arguments.get("request_id", "")
-        include_response_body = tool_arguments.get("include_response_body", True)
-        max_body_length = tool_arguments.get("max_body_length", 5000)
 
         entry = self._network_data_store.get_entry(request_id)
         if entry is None:
@@ -635,36 +554,18 @@ class JSSpecialist(AbstractSpecialist):
         return result
 
 
-    @specialist_tool(
-        description=(
-            "Search captured JS files by keywords. Returns ranked results by relevance. "
-            "Use this to find JS files that reference specific tokens, variables, or API endpoints."
-        ),
-        availability=lambda self: self._js_data_store is not None,
-        parameters={
-            "type": "object",
-            "properties": {
-                "terms": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Search terms (case-insensitive). Files are ranked by how many terms match and total hits.",
-                },
-                "top_n": {
-                    "type": "integer",
-                    "description": "Max results to return (default 10).",
-                },
-            },
-            "required": ["terms"],
-        },
-    )
+    @specialist_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
-    def _search_js_files(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Search JS file contents by keywords."""
+    def _search_js_files(self, terms: list[str], top_n: int = 10) -> dict[str, Any]:
+        """
+        Search captured JS files by keywords. Returns ranked results by relevance. Use this to find JS files that reference specific tokens, variables, or API endpoints.
+
+        Args:
+            terms: Search terms (case-insensitive). Files are ranked by how many terms match and total hits.
+            top_n: Max results to return (default 10).
+        """
         if self._js_data_store is None:
             return {"error": "No JS data store available"}
-
-        terms = tool_arguments.get("terms", [])
-        top_n = tool_arguments.get("top_n", 10)
 
         if not terms:
             return {"error": "At least one search term is required"}
@@ -678,46 +579,26 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(
-        description=(
-            "Search captured JS files by regex pattern. Returns matches with surrounding context snippets. "
-            "WARNING: Regex searches can be expensive on large minified JS files. "
-            "There is a 15-second timeout. Prefer search_js_files (keyword search) for simple lookups."
-        ),
-        availability=lambda self: self._js_data_store is not None,
-        parameters={
-            "type": "object",
-            "properties": {
-                "pattern": {
-                    "type": "string",
-                    "description": "Regex pattern to search for (case-insensitive).",
-                },
-                "top_n": {
-                    "type": "integer",
-                    "description": "Max files to return (default 20).",
-                },
-                "max_matches_per_file": {
-                    "type": "integer",
-                    "description": "Max matches per file (default 10).",
-                },
-                "context_chars": {
-                    "type": "integer",
-                    "description": "Characters of context around each match (default 80).",
-                },
-            },
-            "required": ["pattern"],
-        },
-    )
+    @specialist_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
-    def _search_js_files_regex(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Search JS file contents by regex pattern."""
+    def _search_js_files_regex(
+        self,
+        pattern: str,
+        top_n: int = 20,
+        max_matches_per_file: int = 10,
+        context_chars: int = 80,
+    ) -> dict[str, Any]:
+        """
+        Search captured JS files by regex pattern. Returns matches with surrounding context snippets. WARNING: Regex searches can be expensive on large minified JS files. There is a 15-second timeout. Prefer search_js_files (keyword search) for simple lookups.
+
+        Args:
+            pattern: Regex pattern to search for (case-insensitive).
+            top_n: Max files to return (default 20).
+            max_matches_per_file: Max matches per file (default 10).
+            context_chars: Characters of context around each match (default 80).
+        """
         if self._js_data_store is None:
             return {"error": "No JS data store available"}
-
-        pattern = tool_arguments.get("pattern", "")
-        top_n = tool_arguments.get("top_n", 20)
-        max_matches_per_file = tool_arguments.get("max_matches_per_file", 10)
-        context_chars = tool_arguments.get("context_chars", 80)
 
         if not pattern:
             return {"error": "pattern is required"}
@@ -740,35 +621,18 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(
-        description=(
-            "Get the content of a specific JS file by request_id. "
-            "Content is truncated for large files. Use search_js_files first to find relevant files."
-        ),
-        availability=lambda self: self._js_data_store is not None,
-        parameters={
-            "type": "object",
-            "properties": {
-                "request_id": {
-                    "type": "string",
-                    "description": "The request_id from search_js_files or list_js_files results.",
-                },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Max characters to return (default 10000). Large JS files are truncated.",
-                },
-            },
-            "required": ["request_id"],
-        },
-    )
+    @specialist_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
-    def _get_js_file_content(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Get the content of a JS file."""
+    def _get_js_file_content(self, request_id: str, max_chars: int = 10_000) -> dict[str, Any]:
+        """
+        Get the content of a specific JS file by request_id. Content is truncated for large files. Use search_js_files first to find relevant files.
+
+        Args:
+            request_id: The request_id from search_js_files or list_js_files results.
+            max_chars: Max characters to return (default 10000). Large JS files are truncated.
+        """
         if self._js_data_store is None:
             return {"error": "No JS data store available"}
-
-        request_id = tool_arguments.get("request_id", "")
-        max_chars = tool_arguments.get("max_chars", 10_000)
 
         entry = self._js_data_store.get_file(request_id)
         if entry is None:
@@ -784,20 +648,10 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(
-        description=(
-            "List all captured JS files with URLs and sizes. "
-            "Use this to see what JS files are available before searching."
-        ),
-        availability=lambda self: self._js_data_store is not None,
-        parameters={
-            "type": "object",
-            "properties": {},
-        },
-    )
+    @specialist_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
-    def _list_js_files(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """List all captured JS files."""
+    def _list_js_files(self) -> dict[str, Any]:
+        """List all captured JS files with URLs and sizes. Use this to see what JS files are available before searching."""
         if self._js_data_store is None:
             return {"error": "No JS data store available"}
 
@@ -811,47 +665,26 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(
-        description=(
-            "Test JavaScript code against the live website. "
-            "Navigates to the URL and executes your IIFE, returning the result and any console output. "
-            "Use this to verify your code works before submitting. "
-            "Set keep_open=true to keep the browser tab open after execution (useful for visual changes)."
-        ),
-        availability=lambda self: bool(self._remote_debugging_address),
-        parameters={
-            "type": "object",
-            "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "URL to navigate to first (or empty string to skip navigation).",
-                },
-                "js_code": {
-                    "type": "string",
-                    "description": "IIFE JavaScript code to execute.",
-                },
-                "timeout_seconds": {
-                    "type": "number",
-                    "description": "Max execution time in seconds (default 5.0).",
-                },
-                "keep_open": {
-                    "type": "boolean",
-                    "description": "If true, keep the browser tab open after execution instead of closing it. Useful for visual changes. Default false.",
-                },
-            },
-            "required": ["url", "js_code"],
-        },
-    )
+    @specialist_tool(availability=lambda self: bool(self._remote_debugging_address))
     @token_optimized
-    def _execute_js_in_browser(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Navigate to a URL and execute JS code via CDP, returning the result."""
+    def _execute_js_in_browser(
+        self,
+        url: str,
+        js_code: str,
+        timeout_seconds: float = 5.0,
+        keep_open: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Test JavaScript code against the live website. Navigates to the URL and executes your IIFE, returning the result and any console output. Use this to verify your code works before submitting. Set keep_open=true to keep the browser tab open after execution (useful for visual changes).
+
+        Args:
+            url: URL to navigate to first (or empty string to skip navigation).
+            js_code: IIFE JavaScript code to execute.
+            timeout_seconds: Max execution time in seconds (default 5.0).
+            keep_open: If true, keep the browser tab open after execution instead of closing it. Useful for visual changes. Default false.
+        """
         if not self._remote_debugging_address:
             return {"error": "No browser connection configured"}
-
-        url = tool_arguments.get("url", "")
-        js_code = tool_arguments.get("js_code", "")
-        timeout_seconds = tool_arguments.get("timeout_seconds", 5.0)
-        keep_open = tool_arguments.get("keep_open", False)
 
         # Validate JS first
         result = validate_js(js_code)
