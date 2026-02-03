@@ -394,11 +394,10 @@ class AnthropicClient(AbstractLLMVendorClient):
         extended_reasoning: bool = False,
         stateful: bool = False,  # noqa: ARG002 - not supported by Anthropic
         previous_response_id: str | None = None,  # noqa: ARG002 - not supported by Anthropic
-        api_type: Any = None,  # noqa: ARG002 - not applicable for Anthropic
         tool_choice: str | dict | None = None,  # noqa: ARG002 - TODO: implement
     ) -> LLMChatResponse:
         """
-        Unified sync call to Anthropic.
+        Sync call to Anthropic.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
@@ -410,7 +409,6 @@ class AnthropicClient(AbstractLLMVendorClient):
             extended_reasoning: Enable extended thinking.
             stateful: Not supported by Anthropic (ignored).
             previous_response_id: Not supported by Anthropic (ignored).
-            api_type: Not applicable for Anthropic (ignored).
             tool_choice: Tool choice configuration (TODO: implement).
 
         Returns:
@@ -461,11 +459,10 @@ class AnthropicClient(AbstractLLMVendorClient):
         extended_reasoning: bool = False,
         stateful: bool = False,  # noqa: ARG002 - not supported by Anthropic
         previous_response_id: str | None = None,  # noqa: ARG002 - not supported by Anthropic
-        api_type: Any = None,  # noqa: ARG002 - not applicable for Anthropic
         tool_choice: str | dict | None = None,  # noqa: ARG002 - TODO: implement
     ) -> LLMChatResponse:
         """
-        Unified async call to Anthropic.
+        Async call to Anthropic.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
@@ -477,7 +474,6 @@ class AnthropicClient(AbstractLLMVendorClient):
             extended_reasoning: Enable extended thinking.
             stateful: Not supported by Anthropic (ignored).
             previous_response_id: Not supported by Anthropic (ignored).
-            api_type: Not applicable for Anthropic (ignored).
             tool_choice: Tool choice configuration (TODO: implement).
 
         Returns:
@@ -527,11 +523,10 @@ class AnthropicClient(AbstractLLMVendorClient):
         extended_reasoning: bool = False,
         stateful: bool = False,  # noqa: ARG002 - not supported by Anthropic
         previous_response_id: str | None = None,  # noqa: ARG002 - not supported by Anthropic
-        api_type: Any = None,  # noqa: ARG002 - not applicable for Anthropic
         tool_choice: str | dict | None = None,  # noqa: ARG002 - TODO: implement
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
-        Unified streaming call to Anthropic.
+        Streaming call to Anthropic.
 
         Yields text chunks as they arrive, then yields the final LLMChatResponse.
 
@@ -544,7 +539,6 @@ class AnthropicClient(AbstractLLMVendorClient):
             extended_reasoning: Enable extended thinking.
             stateful: Not supported by Anthropic (ignored).
             previous_response_id: Not supported by Anthropic (ignored).
-            api_type: Not applicable for Anthropic (ignored).
             tool_choice: Tool choice configuration (TODO: implement).
 
         Yields:

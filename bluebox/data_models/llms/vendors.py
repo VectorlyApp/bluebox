@@ -15,14 +15,6 @@ class LLMVendor(StrEnum):
     ANTHROPIC = "anthropic"
 
 
-class OpenAIAPIType(StrEnum):
-    """
-    OpenAI API type.
-    """
-    CHAT_COMPLETIONS = "chat_completions"
-    RESPONSES = "responses"
-
-
 class OpenAIModel(StrEnum):
     """
     OpenAI models.

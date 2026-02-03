@@ -4,7 +4,7 @@ bluebox/llms/llm_client.py
 Unified LLM client for OpenAI and Anthropic models.
 
 Contains:
-- LLMClient: High-level interface for chat completions
+- LLMClient: High-level interface for LLM interactions
 - Tool registration and execution
 - Streaming and non-streaming response handling
 - Structured output parsing with Pydantic
@@ -20,7 +20,6 @@ from bluebox.data_models.llms.vendors import (
     AnthropicModel,
     LLMModel,
     LLMVendor,
-    OpenAIAPIType,
     OpenAIModel,
     get_model_vendor,
 )
@@ -48,7 +47,7 @@ class LLMClient:
     - Streaming responses
     - Structured responses using Pydantic models
     - Tool/function registration
-    - OpenAI Chat Completions and Responses APIs
+    - OpenAI Responses API
     - Anthropic Messages API
     """
 
@@ -151,23 +150,21 @@ class LLMClient:
         extended_reasoning: bool = False,
         stateful: bool = False,
         previous_response_id: str | None = None,
-        api_type: OpenAIAPIType | None = None,
         tool_choice: str | dict | None = None,
     ) -> LLMChatResponse:
         """
-        Unified sync call to OpenAI.
+        Sync call to the LLM.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
-            input: Input string (Responses API shorthand).
+            input: Input string (shorthand for simple prompts).
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
-            extended_reasoning: Enable extended reasoning (Responses API only).
-            stateful: Enable stateful conversation (Responses API only).
-            previous_response_id: Previous response ID for chaining (Responses API only).
-            api_type: Explicit API type, or None for auto-resolution.
+            extended_reasoning: Enable extended reasoning.
+            stateful: Enable stateful conversation.
+            previous_response_id: Previous response ID for chaining.
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Returns:
@@ -183,7 +180,6 @@ class LLMClient:
             extended_reasoning=extended_reasoning,
             stateful=stateful,
             previous_response_id=previous_response_id,
-            api_type=api_type,
             tool_choice=tool_choice,
         )
 
@@ -198,23 +194,21 @@ class LLMClient:
         extended_reasoning: bool = False,
         stateful: bool = False,
         previous_response_id: str | None = None,
-        api_type: OpenAIAPIType | None = None,
         tool_choice: str | dict | None = None,
     ) -> LLMChatResponse:
         """
-        Unified async call to OpenAI.
+        Async call to the LLM.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
-            input: Input string (Responses API shorthand).
+            input: Input string (shorthand for simple prompts).
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
-            extended_reasoning: Enable extended reasoning (Responses API only).
-            stateful: Enable stateful conversation (Responses API only).
-            previous_response_id: Previous response ID for chaining (Responses API only).
-            api_type: Explicit API type, or None for auto-resolution.
+            extended_reasoning: Enable extended reasoning.
+            stateful: Enable stateful conversation.
+            previous_response_id: Previous response ID for chaining.
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Returns:
@@ -230,7 +224,6 @@ class LLMClient:
             extended_reasoning=extended_reasoning,
             stateful=stateful,
             previous_response_id=previous_response_id,
-            api_type=api_type,
             tool_choice=tool_choice,
         )
 
@@ -244,24 +237,22 @@ class LLMClient:
         extended_reasoning: bool = False,
         stateful: bool = False,
         previous_response_id: str | None = None,
-        api_type: OpenAIAPIType | None = None,
         tool_choice: str | dict | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
-        Unified streaming call to OpenAI.
+        Streaming call to the LLM.
 
         Yields text chunks as they arrive, then yields the final LLMChatResponse.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
-            input: Input string (Responses API shorthand).
+            input: Input string (shorthand for simple prompts).
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
-            extended_reasoning: Enable extended reasoning (Responses API only).
-            stateful: Enable stateful conversation (Responses API only).
-            previous_response_id: Previous response ID for chaining (Responses API only).
-            api_type: Explicit API type, or None for auto-resolution.
+            extended_reasoning: Enable extended reasoning.
+            stateful: Enable stateful conversation.
+            previous_response_id: Previous response ID for chaining.
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Yields:
@@ -277,6 +268,5 @@ class LLMClient:
             extended_reasoning=extended_reasoning,
             stateful=stateful,
             previous_response_id=previous_response_id,
-            api_type=api_type,
             tool_choice=tool_choice,
         )

@@ -1,8 +1,7 @@
 """
 bluebox/llms/openai_client.py
 
-OpenAI-specific LLM client implementation with unified API supporting
-both Chat Completions and Responses APIs.
+OpenAI-specific LLM client implementation using the Responses API.
 """
 
 import json
@@ -14,7 +13,7 @@ from pydantic import BaseModel
 
 from bluebox.config import Config
 from bluebox.data_models.llms.interaction import LLMChatResponse, LLMToolCall
-from bluebox.data_models.llms.vendors import OpenAIAPIType, OpenAIModel
+from bluebox.data_models.llms.vendors import OpenAIModel
 from bluebox.llms.abstract_llm_vendor_client import AbstractLLMVendorClient
 from bluebox.utils.logger import get_logger
 
@@ -70,10 +69,7 @@ def _clean_schema_for_openai(schema: dict[str, Any]) -> dict[str, Any]:
 
 class OpenAIClient(AbstractLLMVendorClient):
     """
-    OpenAI-specific LLM client with unified API.
-
-    Supports both Chat Completions API and Responses API with automatic
-    API type resolution based on parameters.
+    OpenAI-specific LLM client using the Responses API.
     """
 
     # Magic methods ________________________________________________________________________________________________________
@@ -102,125 +98,9 @@ class OpenAIClient(AbstractLLMVendorClient):
             return temperature
         return self.DEFAULT_STRUCTURED_TEMPERATURE if structured else self.DEFAULT_TEMPERATURE
 
-    def _prepend_system_prompt(
-        self,
-        messages: list[dict[str, str]],
-        system_prompt: str | None,
-    ) -> list[dict[str, str]]:
-        """Prepend system prompt to messages if provided."""
-        if system_prompt:
-            return [{"role": "system", "content": system_prompt}] + messages
-        return messages
-
-    def _convert_messages_for_chat_completions(
-        self,
-        messages: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        """
-        Convert messages from generic format to Chat Completions API format.
-
-        Handles tool_calls conversion from generic format:
-        - Generic: {"call_id": ..., "name": ..., "arguments": {...}}
-        - Chat Completions: {"id": ..., "type": "function", "function": {"name": ..., "arguments": "..."}}
-
-        Args:
-            messages: Messages in generic format
-
-        Returns:
-            Messages converted to Chat Completions API format
-        """
-        converted: list[dict[str, Any]] = []
-        for msg in messages:
-            if msg.get("tool_calls"):
-                # Convert tool_calls from generic to Chat Completions format
-                converted_msg = {k: v for k, v in msg.items() if k != "tool_calls"}
-                converted_msg["tool_calls"] = [
-                    {
-                        "id": tc.get("call_id") or f"call_{idx}",
-                        "type": "function",
-                        "function": {
-                            "name": tc.get("name"),
-                            "arguments": json.dumps(tc.get("arguments", {})) if isinstance(tc.get("arguments"), dict) else tc.get("arguments", "{}"),
-                        },
-                    }
-                    for idx, tc in enumerate(msg["tool_calls"])
-                ]
-                converted.append(converted_msg)
-            else:
-                converted.append(msg)
-        return converted
-
     def _has_file_search_tools(self) -> bool:
-        """Check if file_search vectorstores are configured (Responses API only)."""
+        """Check if file_search vectorstores are configured."""
         return bool(self._file_search_vectorstores)
-
-    def _validate_and_resolve_api_type(
-        self,
-        api_type: OpenAIAPIType | None,
-        extended_reasoning: bool,
-        previous_response_id: str | None,
-    ) -> OpenAIAPIType:
-        """
-        Validate params and resolve API type. Raises ValueError for invalid combos.
-
-        Args:
-            api_type: Explicit API type, or None for auto-resolution.
-            extended_reasoning: Whether extended reasoning is requested.
-            previous_response_id: Previous response ID for chaining.
-
-        Returns:
-            The resolved API type.
-
-        Raises:
-            ValueError: If incompatible parameters are combined.
-        """
-        has_file_search = self._has_file_search_tools()
-
-        if extended_reasoning and api_type == OpenAIAPIType.CHAT_COMPLETIONS:
-            raise ValueError("extended_reasoning=True requires Responses API")
-        if previous_response_id and api_type == OpenAIAPIType.CHAT_COMPLETIONS:
-            raise ValueError("previous_response_id requires Responses API")
-        if has_file_search and api_type == OpenAIAPIType.CHAT_COMPLETIONS:
-            raise ValueError("file_search tools require Responses API")
-
-        # Auto-resolve
-        if api_type is None:
-            if extended_reasoning or previous_response_id or has_file_search:
-                resolved = OpenAIAPIType.RESPONSES
-            else:
-                resolved = OpenAIAPIType.CHAT_COMPLETIONS
-            logger.debug("Auto-resolved API type to: %s", resolved.value)
-            return resolved
-
-        logger.debug("Using explicit API type: %s", api_type.value)
-        return api_type
-
-    def _build_chat_completions_kwargs(
-        self,
-        messages: list[dict[str, str]],
-        system_prompt: str | None,
-        max_tokens: int | None,
-        response_model: type[T] | None,
-        stream: bool = False,
-    ) -> dict[str, Any]:
-        """Build kwargs for Chat Completions API call."""
-        # Convert messages from generic format to Chat Completions format
-        converted_messages = self._convert_messages_for_chat_completions(messages)
-        all_messages = self._prepend_system_prompt(converted_messages, system_prompt)
-
-        kwargs: dict[str, Any] = {
-            "model": self.model.value,
-            "messages": all_messages,
-            "max_completion_tokens": self._resolve_max_tokens(max_tokens),
-        }
-
-        if stream:
-            kwargs["stream"] = True
-
-        if self._tools and response_model is None:
-            kwargs["tools"] = self._tools.copy()
-
-        return kwargs
 
     def _convert_tool_to_responses_api_format(self, tool: dict[str, Any]) -> dict[str, Any]:
         """
@@ -363,36 +243,6 @@ class OpenAIClient(AbstractLLMVendorClient):
 
         return kwargs
 
-    def _parse_chat_completions_response(
-        self,
-        response: Any,
-        response_model: type[T] | None,
-    ) -> LLMChatResponse | T:
-        """Parse response from Chat Completions API."""
-        message = response.choices[0].message
-
-        # Handle structured response
-        if response_model is not None:
-            parsed = getattr(message, "parsed", None)
-            if parsed is None:
-                raise ValueError("Failed to parse structured response from OpenAI")
-            return parsed
-
-        # Extract all tool calls
-        tool_calls: list[LLMToolCall] = []
-        if message.tool_calls:
-            for tc in message.tool_calls:
-                tool_calls.append(LLMToolCall(
-                    tool_name=tc.function.name,
-                    tool_arguments=json.loads(tc.function.arguments),
-                    call_id=tc.id,
-                ))
-
-        return LLMChatResponse(
-            content=message.content,
-            tool_calls=tool_calls,
-        )
-
     def _parse_responses_api_response(
         self,
         response: Any,
@@ -512,11 +362,10 @@ class OpenAIClient(AbstractLLMVendorClient):
         extended_reasoning: bool = False,
         stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
-        api_type: OpenAIAPIType | None = None,
         tool_choice: str | dict | None = None,
     ) -> LLMChatResponse:
         """
-        Unified sync call to OpenAI.
+        Sync call to OpenAI using the Responses API.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
@@ -525,60 +374,30 @@ class OpenAIClient(AbstractLLMVendorClient):
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
-            extended_reasoning: Enable extended reasoning (Responses API only).
-            stateful: Enable stateful conversation (Responses API only).
-            previous_response_id: Previous response ID for chaining (Responses API only).
-            api_type: Explicit API type, or None for auto-resolution.
+            extended_reasoning: Enable extended reasoning.
+            stateful: Enable stateful conversation.
+            previous_response_id: Previous response ID for chaining.
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Returns:
             LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
-
-        Raises:
-            ValueError: If incompatible parameters are combined.
         """
-        resolved_api_type = self._validate_and_resolve_api_type(
-            api_type, extended_reasoning, previous_response_id
+        kwargs = self._build_responses_api_kwargs(
+            messages, input, system_prompt, max_tokens,
+            extended_reasoning, previous_response_id, response_model,
+            tool_choice=tool_choice,
         )
 
-        if resolved_api_type == OpenAIAPIType.CHAT_COMPLETIONS:
-            if messages is None:
-                raise ValueError("messages is required for Chat Completions API")
-
-            if response_model is not None:
-                # Use beta.chat.completions.parse for structured output
-                kwargs = self._build_chat_completions_kwargs(
-                    messages, system_prompt, max_tokens, response_model,
-                )
-                response = self._client.beta.chat.completions.parse(
-                    **kwargs,
-                    response_format=response_model,
-                )
-            else:
-                kwargs = self._build_chat_completions_kwargs(
-                    messages, system_prompt, max_tokens, response_model,
-                )
-                response = self._client.chat.completions.create(**kwargs)
-
-            return self._parse_chat_completions_response(response, response_model)
-
-        else:  # Responses API
-            kwargs = self._build_responses_api_kwargs(
-                messages, input, system_prompt, max_tokens,
-                extended_reasoning, previous_response_id, response_model,
-                tool_choice=tool_choice,
+        if response_model is not None:
+            # Use responses.parse() with text_format for automatic schema handling
+            response = self._client.responses.parse(
+                **kwargs,
+                text_format=response_model,
             )
+        else:
+            response = self._client.responses.create(**kwargs)
 
-            if response_model is not None:
-                # Use responses.parse() with text_format for automatic schema handling
-                response = self._client.responses.parse(
-                    **kwargs,
-                    text_format=response_model,
-                )
-            else:
-                response = self._client.responses.create(**kwargs)
-
-            return self._parse_responses_api_response(response, response_model)
+        return self._parse_responses_api_response(response, response_model)
 
     async def call_async(
         self,
@@ -591,11 +410,10 @@ class OpenAIClient(AbstractLLMVendorClient):
         extended_reasoning: bool = False,
         stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
-        api_type: OpenAIAPIType | None = None,
         tool_choice: str | dict | None = None,
     ) -> LLMChatResponse:
         """
-        Unified async call to OpenAI.
+        Async call to OpenAI using the Responses API.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
@@ -604,59 +422,30 @@ class OpenAIClient(AbstractLLMVendorClient):
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
-            extended_reasoning: Enable extended reasoning (Responses API only).
-            stateful: Enable stateful conversation (Responses API only).
-            previous_response_id: Previous response ID for chaining (Responses API only).
-            api_type: Explicit API type, or None for auto-resolution.
+            extended_reasoning: Enable extended reasoning.
+            stateful: Enable stateful conversation.
+            previous_response_id: Previous response ID for chaining.
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Returns:
             LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
-
-        Raises:
-            ValueError: If incompatible parameters are combined.
         """
-        resolved_api_type = self._validate_and_resolve_api_type(
-            api_type, extended_reasoning, previous_response_id
+        kwargs = self._build_responses_api_kwargs(
+            messages, input, system_prompt, max_tokens,
+            extended_reasoning, previous_response_id, response_model,
+            tool_choice=tool_choice,
         )
 
-        if resolved_api_type == OpenAIAPIType.CHAT_COMPLETIONS:
-            if messages is None:
-                raise ValueError("messages is required for Chat Completions API")
-
-            if response_model is not None:
-                kwargs = self._build_chat_completions_kwargs(
-                    messages, system_prompt, max_tokens, response_model,
-                )
-                response = await self._async_client.beta.chat.completions.parse(
-                    **kwargs,
-                    response_format=response_model,
-                )
-            else:
-                kwargs = self._build_chat_completions_kwargs(
-                    messages, system_prompt, max_tokens, response_model,
-                )
-                response = await self._async_client.chat.completions.create(**kwargs)
-
-            return self._parse_chat_completions_response(response, response_model)
-
-        else:  # Responses API
-            kwargs = self._build_responses_api_kwargs(
-                messages, input, system_prompt, max_tokens,
-                extended_reasoning, previous_response_id, response_model,
-                tool_choice=tool_choice,
+        if response_model is not None:
+            # Use responses.parse() with text_format for automatic schema handling
+            response = await self._async_client.responses.parse(
+                **kwargs,
+                text_format=response_model,
             )
+        else:
+            response = await self._async_client.responses.create(**kwargs)
 
-            if response_model is not None:
-                # Use responses.parse() with text_format for automatic schema handling
-                response = await self._async_client.responses.parse(
-                    **kwargs,
-                    text_format=response_model,
-                )
-            else:
-                response = await self._async_client.responses.create(**kwargs)
-
-            return self._parse_responses_api_response(response, response_model)
+        return self._parse_responses_api_response(response, response_model)
 
     def call_stream_sync(
         self,
@@ -668,11 +457,10 @@ class OpenAIClient(AbstractLLMVendorClient):
         extended_reasoning: bool = False,
         stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
-        api_type: OpenAIAPIType | None = None,
         tool_choice: str | dict | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
-        Unified streaming call to OpenAI.
+        Streaming call to OpenAI using the Responses API.
 
         Yields text chunks as they arrive, then yields the final LLMChatResponse.
 
@@ -682,154 +470,93 @@ class OpenAIClient(AbstractLLMVendorClient):
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
-            extended_reasoning: Enable extended reasoning (Responses API only).
-            stateful: Enable stateful conversation (Responses API only).
-            previous_response_id: Previous response ID for chaining (Responses API only).
-            api_type: Explicit API type, or None for auto-resolution.
+            extended_reasoning: Enable extended reasoning.
+            stateful: Enable stateful conversation.
+            previous_response_id: Previous response ID for chaining.
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Yields:
             str: Text chunks as they arrive.
             LLMChatResponse: Final response with complete content and optional tool call.
         """
-        resolved_api_type = self._validate_and_resolve_api_type(
-            api_type, extended_reasoning, previous_response_id
+        kwargs = self._build_responses_api_kwargs(
+            messages, input, system_prompt, max_tokens,
+            extended_reasoning, previous_response_id, response_model=None, stream=True,
+            tool_choice=tool_choice,
         )
 
-        if resolved_api_type == OpenAIAPIType.CHAT_COMPLETIONS:
-            if messages is None:
-                raise ValueError("messages is required for Chat Completions API")
+        stream = self._client.responses.create(**kwargs)
 
-            kwargs = self._build_chat_completions_kwargs(
-                messages, system_prompt, max_tokens, response_model=None, stream=True,
-            )
-            stream = self._client.chat.completions.create(**kwargs)
+        full_content: list[str] = []
+        # Track tool calls by output_index: {index: {"name": str | None, "args": list[str]}}
+        tool_calls_by_index: dict[int, dict[str, Any]] = {}
+        reasoning_content: str | None = None
+        response_id: str | None = None
 
-            # Accumulate content and tool call data
-            full_content: list[str] = []
-            # Track tool calls by index: {index: {"name": str | None, "args": list[str]}}
-            tool_calls_by_index: dict[int, dict[str, Any]] = {}
+        for event in stream:
+            # Handle different event types from Responses API streaming
+            if hasattr(event, "type"):
+                if event.type == "response.created":
+                    response_id = event.response.id
 
-            for chunk in stream:
-                delta = chunk.choices[0].delta if chunk.choices else None
-                if delta is None:
-                    continue
+                elif event.type == "response.output_text.delta":
+                    if hasattr(event, "delta"):
+                        full_content.append(event.delta)
+                        yield event.delta
 
-                # Handle text content
-                if delta.content:
-                    full_content.append(delta.content)
-                    yield delta.content
-
-                # Handle tool calls (streamed in chunks) - track by index
-                if delta.tool_calls:
-                    for tc in delta.tool_calls:
-                        idx = tc.index
+                elif event.type == "response.function_call_arguments.delta":
+                    # Track arguments by output_index
+                    if hasattr(event, "delta") and hasattr(event, "output_index"):
+                        idx = event.output_index
                         if idx not in tool_calls_by_index:
                             tool_calls_by_index[idx] = {"name": None, "args": [], "call_id": None}
-                        if tc.id:  # Tool call ID comes in first chunk
-                            tool_calls_by_index[idx]["call_id"] = tc.id
-                        if tc.function:
-                            if tc.function.name:
-                                tool_calls_by_index[idx]["name"] = tc.function.name
-                            if tc.function.arguments:
-                                tool_calls_by_index[idx]["args"].append(tc.function.arguments)
+                        tool_calls_by_index[idx]["args"].append(event.delta)
 
-            # Build final response with all tool calls
-            tool_calls: list[LLMToolCall] = []
-            for idx in sorted(tool_calls_by_index.keys()):
-                tc_data = tool_calls_by_index[idx]
-                if tc_data["name"]:
-                    raw_args = "".join(tc_data["args"]) if tc_data["args"] else "{}"
-                    tool_calls.append(LLMToolCall(
-                        tool_name=tc_data["name"],
-                        tool_arguments=json.loads(raw_args),
-                        call_id=tc_data.get("call_id"),
-                    ))
+                elif event.type == "response.output_item.added":
+                    # Track function call name and call_id by output_index
+                    if hasattr(event, "item") and event.item.type == "function_call":
+                        idx = event.output_index if hasattr(event, "output_index") else 0
+                        if idx not in tool_calls_by_index:
+                            tool_calls_by_index[idx] = {"name": None, "args": [], "call_id": None}
+                        tool_calls_by_index[idx]["name"] = event.item.name
+                        tool_calls_by_index[idx]["call_id"] = getattr(event.item, "call_id", None)
+                        # Also capture arguments if already present (not streamed via delta)
+                        if hasattr(event.item, "arguments") and event.item.arguments:
+                            tool_calls_by_index[idx]["args"].append(event.item.arguments)
 
-            yield LLMChatResponse(
-                content="".join(full_content) if full_content else None,
-                tool_calls=tool_calls,
-            )
-
-        else:  # Responses API streaming
-            kwargs = self._build_responses_api_kwargs(
-                messages, input, system_prompt, max_tokens,
-                extended_reasoning, previous_response_id, response_model=None, stream=True,
-                tool_choice=tool_choice,
-            )
-
-            stream = self._client.responses.create(**kwargs)
-
-            full_content: list[str] = []
-            # Track tool calls by output_index: {index: {"name": str | None, "args": list[str]}}
-            tool_calls_by_index: dict[int, dict[str, Any]] = {}
-            reasoning_content: str | None = None
-            response_id: str | None = None
-
-            for event in stream:
-                # Handle different event types from Responses API streaming
-                if hasattr(event, "type"):
-                    if event.type == "response.created":
-                        response_id = event.response.id
-
-                    elif event.type == "response.output_text.delta":
-                        if hasattr(event, "delta"):
-                            full_content.append(event.delta)
-                            yield event.delta
-
-                    elif event.type == "response.function_call_arguments.delta":
-                        # Track arguments by output_index
-                        if hasattr(event, "delta") and hasattr(event, "output_index"):
-                            idx = event.output_index
-                            if idx not in tool_calls_by_index:
-                                tool_calls_by_index[idx] = {"name": None, "args": [], "call_id": None}
-                            tool_calls_by_index[idx]["args"].append(event.delta)
-
-                    elif event.type == "response.output_item.added":
-                        # Track function call name and call_id by output_index
-                        if hasattr(event, "item") and event.item.type == "function_call":
-                            idx = event.output_index if hasattr(event, "output_index") else 0
-                            if idx not in tool_calls_by_index:
-                                tool_calls_by_index[idx] = {"name": None, "args": [], "call_id": None}
-                            tool_calls_by_index[idx]["name"] = event.item.name
-                            tool_calls_by_index[idx]["call_id"] = getattr(event.item, "call_id", None)
-                            # Also capture arguments if already present (not streamed via delta)
-                            if hasattr(event.item, "arguments") and event.item.arguments:
-                                tool_calls_by_index[idx]["args"].append(event.item.arguments)
-
-            # Build final response with all tool calls
-            tool_calls: list[LLMToolCall] = []
-            for idx in sorted(tool_calls_by_index.keys()):
-                tc_data = tool_calls_by_index[idx]
-                if tc_data["name"]:
-                    raw_args = "".join(tc_data["args"]) if tc_data["args"] else "{}"
-                    try:
-                        parsed_args = json.loads(raw_args)
-                    except json.JSONDecodeError as e:
-                        logger.error(
-                            "Failed to parse tool call arguments for %s (index %d): %s. Raw args: %s",
-                            tc_data["name"],
-                            idx,
-                            e,
-                            raw_args[:500],
-                        )
-                        raise
-                    logger.debug(
-                        "Parsed tool call %s (index %d): raw_args=%s, parsed=%s",
+        # Build final response with all tool calls
+        tool_calls: list[LLMToolCall] = []
+        for idx in sorted(tool_calls_by_index.keys()):
+            tc_data = tool_calls_by_index[idx]
+            if tc_data["name"]:
+                raw_args = "".join(tc_data["args"]) if tc_data["args"] else "{}"
+                try:
+                    parsed_args = json.loads(raw_args)
+                except json.JSONDecodeError as e:
+                    logger.error(
+                        "Failed to parse tool call arguments for %s (index %d): %s. Raw args: %s",
                         tc_data["name"],
                         idx,
-                        raw_args[:200],
-                        parsed_args,
+                        e,
+                        raw_args[:500],
                     )
-                    tool_calls.append(LLMToolCall(
-                        tool_name=tc_data["name"],
-                        tool_arguments=parsed_args,
-                        call_id=tc_data.get("call_id"),
-                    ))
+                    raise
+                logger.debug(
+                    "Parsed tool call %s (index %d): raw_args=%s, parsed=%s",
+                    tc_data["name"],
+                    idx,
+                    raw_args[:200],
+                    parsed_args,
+                )
+                tool_calls.append(LLMToolCall(
+                    tool_name=tc_data["name"],
+                    tool_arguments=parsed_args,
+                    call_id=tc_data.get("call_id"),
+                ))
 
-            yield LLMChatResponse(
-                content="".join(full_content) if full_content else None,
-                tool_calls=tool_calls,
-                response_id=response_id,
-                reasoning_content=reasoning_content,
-            )
+        yield LLMChatResponse(
+            content="".join(full_content) if full_content else None,
+            tool_calls=tool_calls,
+            response_id=response_id,
+            reasoning_content=reasoning_content,
+        )
