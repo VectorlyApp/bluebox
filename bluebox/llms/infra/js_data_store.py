@@ -9,8 +9,9 @@ by FileEventWriter) and provides JS-specific query methods.
 
 import fnmatch
 import json
-import re
 import threading
+
+import regex
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -49,9 +50,9 @@ class JSFileStats:
     def _format_bytes(num_bytes: int) -> str:
         """Format bytes as human-readable string."""
         for unit in ["B", "KB", "MB", "GB"]:
-            if abs(num_bytes) < 1024:
+            if abs(num_bytes) < 1_024:
                 return f"{num_bytes:.1f} {unit}"
-            num_bytes /= 1024  # type: ignore
+            num_bytes = num_bytes / 1_024
         return f"{num_bytes:.1f} TB"
 
 
@@ -205,14 +206,17 @@ class JSDataStore:
             Dict with keys: files (list of matches), timed_out (bool), error (str | None).
         """
         try:
-            regex = re.compile(pattern, flags=re.IGNORECASE)
-        except re.error as e:
+            compiled = regex.compile(pattern, flags=regex.IGNORECASE)
+        except regex.error as e:
             logger.error("Invalid regex: %s", e)
             return {
                 "files": [],
                 "timed_out": False,
                 "error": f"Invalid regex: {e}",
             }
+
+        # Per-file timeout to catch catastrophic backtracking
+        per_file_timeout = min(5.0, timeout_seconds / 2)
 
         results: list[dict[str, Any]] = []
         timed_out = False
@@ -231,30 +235,33 @@ class JSDataStore:
                 content = entry.response_body
                 matches: list[dict[str, Any]] = []
 
-                for match in regex.finditer(content):
-                    if stop_event.is_set():
-                        timed_out = True
-                        break
-                    if len(matches) >= max_matches_per_file:
-                        break
+                try:
+                    for match in compiled.finditer(content, timeout=per_file_timeout):
+                        if stop_event.is_set():
+                            timed_out = True
+                            break
+                        if len(matches) >= max_matches_per_file:
+                            break
 
-                    start = match.start()
-                    end = match.end()
+                        start = match.start()
+                        end = match.end()
 
-                    # extract context snippet
-                    snippet_start = max(0, start - context_chars)
-                    snippet_end = min(len(content), end + context_chars)
-                    snippet = content[snippet_start:snippet_end]
+                        # extract context snippet
+                        snippet_start = max(0, start - context_chars)
+                        snippet_end = min(len(content), end + context_chars)
+                        snippet = content[snippet_start:snippet_end]
 
-                    # add ellipsis markers if truncated
-                    prefix = "..." if snippet_start > 0 else ""
-                    suffix = "..." if snippet_end < len(content) else ""
+                        # add ellipsis markers if truncated
+                        prefix = "..." if snippet_start > 0 else ""
+                        suffix = "..." if snippet_end < len(content) else ""
 
-                    matches.append({
-                        "match": match.group(),
-                        "position": start,
-                        "snippet": f"{prefix}{snippet}{suffix}",
-                    })
+                        matches.append({
+                            "match": match.group(),
+                            "position": start,
+                            "snippet": f"{prefix}{snippet}{suffix}",
+                        })
+                except TimeoutError:
+                    logger.warning("Regex timed out on file %s, skipping", entry.url)
 
                 if matches:
                     results.append({

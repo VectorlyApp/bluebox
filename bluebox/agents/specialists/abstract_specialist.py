@@ -433,6 +433,12 @@ class AbstractSpecialist(ABC):
         if missing:
             return {"error": f"Missing required parameter(s): {', '.join(missing)}"}
 
+        # validate no extra parameters
+        valid_params = set(tool_meta.parameters.get("properties", {}).keys())
+        extra = set(tool_arguments.keys()) - valid_params
+        if extra:
+            return {"error": f"Unknown parameter(s) for '{tool_name}': {', '.join(sorted(extra))}"}
+
         # validate types using the handler's type hints
         try:
             hints = get_type_hints(obj=handler)

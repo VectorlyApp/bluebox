@@ -741,15 +741,15 @@ class TestEdgeCases:
         result = specialist._execute_tool("no_params", {})
         assert result == {"status": "ok"}
 
-    def test_extra_arguments_cause_type_error(self, specialist: ConcreteSpecialist) -> None:
-        """Extra arguments not in handler signature cause TypeError."""
-        # The dispatcher passes all kwargs, so unknown args raise TypeError
-        # This bubbles up as an unhandled exception (not a graceful error dict)
-        with pytest.raises(TypeError, match="unexpected keyword argument"):
-            specialist._execute_tool(
-                "no_params",
-                {"extra_arg": "ignored"},
-            )
+    def test_extra_arguments_return_error(self, specialist: ConcreteSpecialist) -> None:
+        """Extra arguments not in tool schema return graceful error."""
+        result = specialist._execute_tool(
+            "no_params",
+            {"extra_arg": "ignored"},
+        )
+        assert "error" in result
+        assert "Unknown parameter(s)" in result["error"]
+        assert "extra_arg" in result["error"]
 
     def test_unicode_in_arguments(self, specialist: ConcreteSpecialist) -> None:
         """Unicode strings in arguments work correctly."""
