@@ -119,18 +119,17 @@ class RoutineDiscoveryState(BaseModel):
         self.current_transaction = self.transaction_queue.pop(0)
         return self.current_transaction
 
-    def mark_transaction_complete(self, transaction_id: str) -> str | None:
+    def mark_transaction_complete(self, transaction_id: str) -> None:
         """
-        Mark a transaction as complete and get the next one.
+        Mark a transaction as complete.
 
-        Returns:
-            The next transaction ID, or None if queue is empty.
+        Adds the transaction to processed_transactions and clears current_transaction
+        if it matches. Call pop_next_transaction() separately to get the next one.
         """
         if transaction_id not in self.processed_transactions:
             self.processed_transactions.append(transaction_id)
         if self.current_transaction == transaction_id:
             self.current_transaction = None
-        return self.pop_next_transaction()
 
     def store_transaction_data(
         self,

@@ -359,7 +359,8 @@ You have access to captured browser data including:
 
     def _tool_mark_complete(self, transaction_id: str) -> dict:
         """Mark a transaction as complete and get the next one."""
-        next_tx = self._state.mark_transaction_complete(transaction_id)
+        self._state.mark_transaction_complete(transaction_id)
+        next_tx = self._state.pop_next_transaction()
 
         # Check if we should advance phase
         if not next_tx and not self._state.transaction_queue:

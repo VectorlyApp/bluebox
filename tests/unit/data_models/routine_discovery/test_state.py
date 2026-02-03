@@ -159,27 +159,17 @@ class TestMarkTransactionComplete:
         assert "tx_001" in state.processed_transactions
         assert state.current_transaction is None
 
-    def test_mark_complete_returns_next_transaction(self) -> None:
-        """Should return the next transaction from queue."""
+    def test_mark_complete_does_not_pop_next(self) -> None:
+        """Should not automatically pop the next transaction."""
         state = RoutineDiscoveryState()
         state.current_transaction = "tx_001"
         state.transaction_queue = ["tx_002", "tx_003"]
 
-        next_tx = state.mark_transaction_complete("tx_001")
+        state.mark_transaction_complete("tx_001")
 
-        assert next_tx == "tx_002"
-        assert state.current_transaction == "tx_002"
-        assert state.processed_transactions == ["tx_001"]
-
-    def test_mark_complete_with_empty_queue(self) -> None:
-        """Should return None when queue is empty after completion."""
-        state = RoutineDiscoveryState()
-        state.current_transaction = "tx_001"
-
-        next_tx = state.mark_transaction_complete("tx_001")
-
-        assert next_tx is None
         assert state.current_transaction is None
+        assert state.processed_transactions == ["tx_001"]
+        assert state.transaction_queue == ["tx_002", "tx_003"]  # Queue unchanged
 
     def test_mark_complete_idempotent(self) -> None:
         """Marking the same transaction complete twice should not duplicate."""
@@ -192,16 +182,17 @@ class TestMarkTransactionComplete:
         assert state.processed_transactions.count("tx_001") == 1
 
     def test_mark_complete_different_transaction(self) -> None:
-        """Marking a different transaction should still process it and call get_next."""
+        """Marking a different transaction should process it without affecting current."""
         state = RoutineDiscoveryState()
         state.current_transaction = "tx_001"
-        state.transaction_queue = ["tx_003"]  # Add something to queue
+        state.transaction_queue = ["tx_003"]
 
         state.mark_transaction_complete("tx_002")
 
         assert "tx_002" in state.processed_transactions
-        # Current transaction changes to next in queue (pop_next_transaction is always called)
-        assert state.current_transaction == "tx_003"
+        # Current transaction unchanged since tx_002 != tx_001
+        assert state.current_transaction == "tx_001"
+        assert state.transaction_queue == ["tx_003"]  # Queue unchanged
 
 
 class TestStoreTransactionData:
@@ -407,11 +398,13 @@ class TestBFSWorkflow:
         # Phase 2: Process root, discover dependency
         state.add_to_queue("dep_tx")
         state.mark_transaction_complete("root_tx")
+        state.pop_next_transaction()
         assert state.current_transaction == "dep_tx"
         assert "root_tx" in state.processed_transactions
 
         # Phase 3: Process dependency
         state.mark_transaction_complete("dep_tx")
+        state.pop_next_transaction()
         assert state.current_transaction is None
         assert state.transaction_queue == []
         assert state.processed_transactions == ["root_tx", "dep_tx"]
@@ -428,19 +421,23 @@ class TestBFSWorkflow:
         state.add_to_queue("dep1")
         state.add_to_queue("dep2")
         state.mark_transaction_complete("root")
+        state.pop_next_transaction()
 
         # dep1 depends on dep3
         assert state.current_transaction == "dep1"
         state.add_to_queue("dep3")
         state.mark_transaction_complete("dep1")
+        state.pop_next_transaction()
 
         # Process dep2
         assert state.current_transaction == "dep2"
         state.mark_transaction_complete("dep2")
+        state.pop_next_transaction()
 
         # Process dep3
         assert state.current_transaction == "dep3"
         state.mark_transaction_complete("dep3")
+        state.pop_next_transaction()
 
         # All done
         assert state.current_transaction is None
