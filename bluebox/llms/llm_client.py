@@ -1,7 +1,7 @@
 """
 bluebox/llms/llm_client.py
 
-Unified LLM client for OpenAI models.
+Unified LLM client for OpenAI and Anthropic models.
 
 Contains:
 - LLMClient: High-level interface for chat completions
@@ -16,7 +16,16 @@ from typing import Any, Callable, TypeVar
 from pydantic import BaseModel
 
 from bluebox.data_models.llms.interaction import LLMChatResponse
-from bluebox.data_models.llms.vendors import OpenAIAPIType, OpenAIModel
+from bluebox.data_models.llms.vendors import (
+    AnthropicModel,
+    LLMModel,
+    LLMVendor,
+    OpenAIAPIType,
+    OpenAIModel,
+    get_model_vendor,
+)
+from bluebox.llms.abstract_llm_vendor_client import AbstractLLMVendorClient
+from bluebox.llms.anthropic_client import AnthropicClient
 from bluebox.llms.openai_client import OpenAIClient
 from bluebox.llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
 from bluebox.utils.logger import get_logger
@@ -29,25 +38,36 @@ T = TypeVar("T", bound=BaseModel)
 
 class LLMClient:
     """
-    Unified LLM client class for interacting with OpenAI APIs.
+    Unified LLM client class for interacting with OpenAI and Anthropic APIs.
 
-    This is a facade that delegates to OpenAIClient and provides
-    a convenient interface for tool registration.
+    This is a facade that delegates to the appropriate vendor client
+    and provides a convenient interface for tool registration.
 
     Supports:
     - Sync and async API calls
     - Streaming responses
     - Structured responses using Pydantic models
     - Tool/function registration
-    - Both Chat Completions and Responses APIs
+    - OpenAI Chat Completions and Responses APIs
+    - Anthropic Messages API
     """
 
     # Magic methods ________________________________________________________________________________________________________
 
-    def __init__(self, llm_model: OpenAIModel) -> None:
+    def __init__(self, llm_model: LLMModel) -> None:
         self.llm_model = llm_model
-        self._client = OpenAIClient(model=llm_model)
+        self._client: AbstractLLMVendorClient = self._create_vendor_client(llm_model)
         logger.info("Instantiated LLMClient with model: %s", llm_model)
+
+    def _create_vendor_client(self, model: LLMModel) -> AbstractLLMVendorClient:
+        """Create the appropriate vendor client based on the model."""
+        vendor = get_model_vendor(model)
+        if vendor == LLMVendor.OPENAI:
+            return OpenAIClient(model=model)  # type: ignore[arg-type]
+        elif vendor == LLMVendor.ANTHROPIC:
+            return AnthropicClient(model=model)  # type: ignore[arg-type]
+        else:
+            raise ValueError(f"Unsupported vendor: {vendor}")
 
     # Public methods _______________________________________________________________________________________________________
 
@@ -104,11 +124,19 @@ class LLMClient:
         When set, the file_search tool will be automatically included in LLM calls.
         This enables the LLM to search through the specified vectorstores.
 
+        Note: This feature is only supported by OpenAI. Other vendors will log a warning.
+
         Args:
             vector_store_ids: List of vectorstore IDs to search, or None to disable.
             filters: Optional filters for file_search (e.g., {"type": "eq", "key": "uuid", "value": ["..."]}).
         """
-        self._client.set_file_search_vectorstores(vector_store_ids, filters)
+        if hasattr(self._client, "set_file_search_vectorstores"):
+            self._client.set_file_search_vectorstores(vector_store_ids, filters)
+        else:
+            logger.warning(
+                "set_file_search_vectorstores is not supported by %s",
+                type(self._client).__name__,
+            )
 
     ## Unified API methods
 

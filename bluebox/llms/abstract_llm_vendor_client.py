@@ -11,7 +11,7 @@ from typing import Any, ClassVar, TypeVar
 from pydantic import BaseModel
 
 from bluebox.data_models.llms.interaction import LLMChatResponse
-from bluebox.data_models.llms.vendors import OpenAIModel
+from bluebox.data_models.llms.vendors import LLMModel
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -33,7 +33,7 @@ class AbstractLLMVendorClient(ABC):
 
     # Magic methods ________________________________________________________________________________________________________
 
-    def __init__(self, model: OpenAIModel) -> None:
+    def __init__(self, model: LLMModel) -> None:
         """
         Initialize the vendor client.
 
