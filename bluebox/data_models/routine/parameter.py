@@ -113,6 +113,12 @@ class Parameter(BaseModel):
         description="Format specification (e.g., 'YYYY-MM-DD')"
     )
 
+    # Test metadata
+    observed_value: str | None = Field(
+        default=None,
+        description="Value observed during discovery (used for testing the routine)"
+    )
+
     @field_validator('name')
     @classmethod
     def validate_name(cls, v):

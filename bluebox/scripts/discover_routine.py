@@ -36,6 +36,7 @@ def main() -> None:
     parser.add_argument("--cdp-captures-dir", type=str, default="./cdp_captures", help="The directory containing the CDP captures.")
     parser.add_argument("--output-dir", type=str, default="./routine_discovery_output", help="The directory to save the output to.")
     parser.add_argument("--llm-model", type=str, default="gpt-5.1", help="The LLM model to use.")
+    parser.add_argument("--remote-debugging-address", type=str, default=None, help="Chrome remote debugging address for routine validation (e.g., http://127.0.0.1:9222). If provided, the agent will execute the routine to validate it works.")
     args = parser.parse_args()
 
     # ensure OpenAI API key is set
@@ -98,8 +99,11 @@ def main() -> None:
         task=args.task,
         emit_message_callable=handle_discovery_message,
         output_dir=args.output_dir,
+        remote_debugging_address=args.remote_debugging_address,
     )
     logger.info("Routine discovery agent initialized.")
+    if args.remote_debugging_address:
+        logger.info(f"Routine validation enabled via: {args.remote_debugging_address}")
 
     logger.info(f"\n{'-' * 100}")
     logger.info("Running routine discovery agent.")
@@ -116,10 +120,9 @@ def main() -> None:
             json.dump(routine.model_dump(), f, ensure_ascii=False, indent=2)
         logger.info(f"Production routine saved to: {routine_path}")
 
-        # get test parameters
-        logger.info("Generating test parameters...")
-        test_parameters = routine_discovery_agent.get_test_parameters(routine)
-        test_parameters_dict = {param.name: param.value for param in test_parameters.parameters}
+        # Extract test parameters directly from routine parameters
+        logger.info("Extracting test parameters...")
+        test_parameters_dict = {param.name: param.observed_value or "" for param in routine.parameters}
 
         # save test parameters
         test_params_path = os.path.join(args.output_dir, "test_parameters.json")

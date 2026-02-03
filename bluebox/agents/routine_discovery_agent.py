@@ -1,31 +1,46 @@
 """
-bluebox/routine_discovery/agent.py
+bluebox/agents/routine_discovery_agent.py
 
 LLM-powered agent for generating routines from CDP captures.
 
-Contains:
-- RoutineDiscoveryAgent: Uses LLMClient with tools to analyze captures and build routines
-- Tools: scan_transaction_responses, get_transaction, scan_storage, etc.
-- Outputs: validated Routine JSON with parameters and operations
+This agent uses an LLM-driven agentic loop with tools to:
+1. Identify network transactions matching the user's task
+2. Extract variables (parameters, tokens, static values)
+3. Resolve dynamic token sources (storage, window properties, prior transactions)
+4. Construct and validate routines
+
+The workflow is guided by a system prompt, with the LLM deciding which
+tools to call at each step.
 """
 
 import json
-from uuid import uuid4
 import os
 from typing import Any, Callable
+from uuid import uuid4
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr
 from toon import encode
 
 from bluebox.llms.infra.data_store import DiscoveryDataStore
 from bluebox.llms.llm_client import LLMClient
+from bluebox.llms.tools.routine_discovery_tools import TOOL_DEFINITIONS
+from bluebox.llms.tools.execute_routine_tool import execute_routine
 from bluebox.data_models.routine_discovery.llm_responses import (
     TransactionIdentificationResponse,
     ExtractedVariableResponse,
-    TransactionConfirmationResponse,
+    Variable,
     VariableType,
     ResolvedVariableResponse,
-    TestParametersResponse
+    SessionStorageSource,
+    SessionStorageType,
+    TransactionSource,
+    WindowPropertySource,
+    TestParameter,
+    TestParametersResponse,
+)
+from bluebox.data_models.routine_discovery.state import (
+    DiscoveryPhase,
+    RoutineDiscoveryState,
 )
 from bluebox.data_models.routine_discovery.message import (
     RoutineDiscoveryMessage,
@@ -33,6 +48,7 @@ from bluebox.data_models.routine_discovery.message import (
 )
 from bluebox.data_models.routine.routine import Routine
 from bluebox.data_models.routine.dev_routine import DevRoutine
+from bluebox.data_models.routine.endpoint import HTTPMethod
 from bluebox.utils.exceptions import TransactionIdentificationFailedError
 from bluebox.utils.llm_utils import manual_llm_parse_text_to_model
 from bluebox.utils.logger import get_logger
@@ -42,8 +58,12 @@ logger = get_logger(__name__)
 
 class RoutineDiscoveryAgent(BaseModel):
     """
-    Agent for discovering routines from the network transactions.
+    Agent for discovering routines from network transactions using an LLM-driven loop.
+
+    The agent uses tools to explore CDP captures and build routines step by step,
+    with the LLM deciding the workflow based on what it discovers.
     """
+
     llm_client: LLMClient
     data_store: DiscoveryDataStore
     task: str
@@ -52,27 +72,23 @@ class RoutineDiscoveryAgent(BaseModel):
     output_dir: str | None = Field(default=None)
     last_response_id: str | None = Field(default=None)
     n_transaction_identification_attempts: int = Field(default=3)
-    current_transaction_identification_attempt: int = Field(default=1)
+    max_iterations: int = Field(default=50)
     timeout: int = Field(default=600)
+    remote_debugging_address: str | None = Field(default=None, description="Chrome remote debugging address for routine validation (e.g., http://127.0.0.1:9222)")
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    DATA_STORE_PROMPT: str = """
-You have access to the following data and you must refer to it when searching for transactions and resolving variables!
-It is essential that you use this data, documentation, and code:
-{data_store_prompt}
-"""
+    # Internal state (not part of constructor interface)
+    _state: RoutineDiscoveryState | None = PrivateAttr(default=None)
 
-    SYSTEM_PROMPT: str = """You are a helpful assistant that is an expert in parsing network traffic.
-You need to identify one or more network transactions that directly correspond to the user's requested task.
-You have access to vectorstore that contains network transactions and storage data
-(cookies, localStorage, sessionStorage, etc.)."""
+    # === Prompts ===
 
     PLACEHOLDER_INSTRUCTIONS: str = (
         "PLACEHOLDER SYNTAX:\n"
         "- PARAMS: {{param_name}} (NO prefix, name matches parameter definition)\n"
-        "- SOURCES (use dot paths): {{cookie:name}}, {{sessionStorage:path.to.value}}, {{localStorage:key}}, {{windowProperty:obj.key}}\n\n"
+        "- SOURCES (use dot paths): {{cookie:name}}, {{sessionStorage:path.to.value}}, "
+        "{{localStorage:key}}, {{windowProperty:obj.key}}\n\n"
         "JSON VALUE RULES (TWO sets of quotes needed for strings!):\n"
-        '- String: "key": \\"{{x}}\\"  (OUTER quotes = JSON string, INNER \\" = escaped quotes around placeholder)\n'
+        '- String: "key": \\"{{x}}\\"  (OUTER quotes = JSON string, INNER \\" = escaped quotes)\n'
         '- Number/bool/null: "key": "{{x}}"  (only outer quotes, they get stripped)\n'
         '- Inside larger string: "prefix\\"{{x}}\\"suffix"  (escaped quotes wrap placeholder)\n\n'
         "EXAMPLES:\n"
@@ -83,82 +99,755 @@ You have access to vectorstore that contains network transactions and storage da
         '5. Number in string: "page\\"{{num}}\\""                 -> "page5"\n'
         '6. URL with param:   "/api/\\"{{user_id}}\\"/data"       -> "/api/123/data"\n'
         '7. Session storage:  "token": \\"{{sessionStorage:auth.access_token}}\\"\n'
-        '8. Cookie:           "sid": \\"{{cookie:session_id}}\\"'
-        'IMPORTANT: YOU MUST ENSURE THAT EACH PLACEHOLDER IS SURROUNDED BY QUOTES OR ESCAPED QUOTES!'
+        '8. Cookie:           "sid": \\"{{cookie:session_id}}\\"\n'
+        "IMPORTANT: YOU MUST ENSURE THAT EACH PLACEHOLDER IS SURROUNDED BY QUOTES OR ESCAPED QUOTES!"
     )
 
+    SYSTEM_PROMPT: str = """You are an expert at analyzing network traffic and building web automation routines.
+
+## Your Task
+Analyze captured browser network data to create a reusable routine that accomplishes the user's task.
+
+## Workflow
+Follow these phases in order:
+
+### Phase 1: Identify Transaction
+1. Use `list_transactions` to see available transactions
+2. Use `get_transaction` to examine promising candidates
+3. Use `record_identified_transaction` when you find the transaction that accomplishes the user's task
+
+### Phase 2: Process Transactions (BFS Queue)
+For each transaction in the queue:
+1. Use `get_transaction` to see full details
+2. Use `record_extracted_variables` to log variables found in the request:
+   - PARAMETER: User input (search_query, item_id) - things the user explicitly provides
+   - DYNAMIC_TOKEN: Auth/session values (CSRF, JWT, session_id) - require resolution
+   - STATIC_VALUE: Constants (app version, User-Agent) - can be hardcoded
+3. For each DYNAMIC_TOKEN, use `scan_for_value` to find its source
+4. Use `record_resolved_variable` to record where each token comes from
+   - If source is another transaction, it will be auto-added to the queue
+   - IMPORTANT: If value is found in BOTH storage AND a prior transaction,
+     use source_type='transaction' as the primary source. Session storage may
+     be empty in a fresh session - prefer network sources for reliability.
+5. Use `mark_transaction_complete` when done with current transaction
+6. Continue until queue is empty
+
+### Phase 3: Construct and Finalize Routine
+1. Use `construct_routine` to build the routine from all processed data
+   - For each parameter, specify `observed_value` from the extracted variable's observed_value
+   - Example: parameter name "origin" with observed_value "LAX" (from extracted variable's observed_value)
+   - Observed values are embedded in the routine for immediate testing
+2. If validation fails, fix the errors and try again
+3. On success, the routine is automatically finalized to production format
+
+### Phase 4: Validate Routine (Optional, if browser available)
+1. Use `execute_routine` to test the routine with real parameters
+2. If execution fails, check the diagnostics:
+   - `failed_placeholders`: Variables that couldn't be resolved at runtime
+   - `operation_errors`: Operations that threw errors
+3. For failed placeholders, use `scan_for_value` to re-verify the source
+4. Update the routine with `construct_routine` and test again
+
+## Variable Classification Rules
+
+**PARAMETER** (requires_dynamic_resolution=false):
+- Values the user explicitly provides as input
+- Examples: search_query, item_id, page_number, username
+- Rule: If the user wouldn't directly provide this value, it's NOT a parameter
+
+**DYNAMIC_TOKEN** (requires_dynamic_resolution=true):
+- Auth/session values that change per session
+- Examples: CSRF tokens, JWTs, session_id, visitorData, auth headers
+- Also: trace IDs, request IDs, correlation IDs
+- Rule: If it looks like a generated ID or security token, it's a DYNAMIC_TOKEN
+
+**STATIC_VALUE** (requires_dynamic_resolution=false):
+- Constants that don't change between sessions
+- Examples: App version, User-Agent, clientName, timeZone, language codes
+- Rule: If you can hardcode it and it will work across sessions, it's STATIC
+
+## Important Notes
+- Focus on the user's INTENT, not literal wording
+- Keep parameters MINIMAL - only what the user MUST provide
+- If only one value was observed and it could be hardcoded, hardcode it
+- Credentials for fetch operations: same-origin > include > omit
+- PREFER NETWORK SOURCES: When a value appears in both session storage AND a prior
+  transaction response, use source_type='transaction' as the PRIMARY source, not storage.
+  Session storage may be empty in a fresh session, so the routine must fetch via network.
+
+{placeholder_instructions}
+"""
+
+    DATA_STORE_PROMPT: str = """
+## Available Data
+You have access to captured browser data including:
+{data_store_prompt}
+"""
+
     def _get_system_prompt(self) -> str:
-        """Get system prompt with data store context if available."""
-        system_prompt = self.SYSTEM_PROMPT
+        """Build the complete system prompt with current state."""
+        prompt = self.SYSTEM_PROMPT.format(
+            placeholder_instructions=self.PLACEHOLDER_INSTRUCTIONS
+        )
+
+        # Add data store context
         if self.data_store:
-            data_store_prompt = self.DATA_STORE_PROMPT.format(
-                data_store_prompt=self.data_store.generate_data_store_prompt()
-            )
+            data_store_prompt = self.data_store.generate_data_store_prompt()
             if data_store_prompt:
-                system_prompt = f"{system_prompt}\n\n{data_store_prompt}"
-        return system_prompt
+                prompt += self.DATA_STORE_PROMPT.format(data_store_prompt=data_store_prompt)
+
+        # Add current state context
+        if self._state:
+            status = self._state.get_queue_status()
+            prompt += f"""
+## Current State
+- Phase: {self._state.phase.value}
+- Queue: {status['pending_count']} pending, {status['processed_count']} processed
+- Current transaction: {status['current'] or 'None'}
+"""
+
+        return prompt
+
+    def _register_tools(self) -> None:
+        """Register all discovery tools with the LLM client."""
+        self.llm_client.clear_tools()
+        for tool_def in TOOL_DEFINITIONS:
+            self.llm_client.register_tool(
+                name=tool_def["name"],
+                description=tool_def["description"],
+                parameters=tool_def["parameters"],
+            )
 
     def _set_vectorstores(self, uuid_filter: str | None = None) -> None:
-        """
-        Configure the LLMClient's file_search vectorstores.
-
-        Args:
-            uuid_filter: Optional UUID to filter CDP captures by. If None, uses all vectorstores unfiltered.
-        """
+        """Configure the LLMClient's file_search vectorstores."""
         vector_store_ids = self.data_store.get_vectorstore_ids()
-
         if uuid_filter and self.data_store.cdp_captures_vectorstore_id:
-            # Use filtered search for CDP captures
-            filters = {
-                "type": "eq",
-                "key": "uuid",
-                "value": [uuid_filter]
-            }
+            filters = {"type": "eq", "key": "uuid", "value": [uuid_filter]}
             self.llm_client.set_file_search_vectorstores(vector_store_ids, filters=filters)
         else:
-            # Use all vectorstores without filters
             self.llm_client.set_file_search_vectorstores(vector_store_ids)
 
+    def _add_to_message_history(self, role: str, content: str, tool_calls: list | None = None) -> None:
+        """Add a message to the history."""
+        msg = {"role": role, "content": content}
+        if tool_calls:
+            msg["tool_calls"] = [
+                {
+                    "id": tc.call_id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.tool_name,
+                        "arguments": json.dumps(tc.tool_arguments) if isinstance(tc.tool_arguments, dict) else tc.tool_arguments,
+                    },
+                }
+                for tc in tool_calls
+            ]
+        self.message_history.append(msg)
+        self._save_to_output_dir("message_history.json", self.message_history)
+
+    def _add_tool_result(self, call_id: str, result: dict) -> None:
+        """Add a tool result to the message history."""
+        self.message_history.append({
+            "role": "tool",
+            "content": json.dumps(result),
+            "tool_call_id": call_id,
+        })
+        self._save_to_output_dir("message_history.json", self.message_history)
+
     def _save_to_output_dir(self, relative_path: str, data: dict | list | str) -> None:
-        """Save data to output_dir if it is specified."""
+        """Save data to output_dir if specified."""
         if self.output_dir is None:
             return
         save_path = os.path.join(self.output_dir, relative_path)
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        if isinstance(data, dict) or isinstance(data, list):
+        if isinstance(data, (dict, list)):
             with open(save_path, mode="w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         elif isinstance(data, str):
             with open(save_path, mode="w", encoding="utf-8") as f:
                 f.write(data)
 
-    def _handle_transaction_identification_failure(self) -> None:
-        """Handle failure to identify a valid transaction."""
-        logger.error(
-            "_handle_transaction_identification_failure: current_transaction_identification_attempt: %d, n_transaction_identification_attempts: %d",
-            self.current_transaction_identification_attempt,
-            self.n_transaction_identification_attempts
-        )
-        error_message = (
-            "Failed to identify the network transactions that directly correspond to your task.\n\n"
-            "Possible fixes:\n"
-            "1. Make the task description more specific and detailed.\n"
-            "2. Streamline the browser session to reduce noise (close unrelated tabs, avoid extraneous clicks).\n"
-        )
-        logger.error(error_message)
+    def _emit_progress(self, message: str, msg_type: RoutineDiscoveryMessageType = RoutineDiscoveryMessageType.PROGRESS_THINKING) -> None:
+        """Emit a progress message."""
+        self.emit_message_callable(RoutineDiscoveryMessage(type=msg_type, content=message))
 
-        if self.current_transaction_identification_attempt >= self.n_transaction_identification_attempts:
-            self.emit_message_callable(RoutineDiscoveryMessage(
-                type=RoutineDiscoveryMessageType.ERROR,
-                content=error_message
-            ))
-            raise TransactionIdentificationFailedError(error_message)
+    def _get_test_parameters_for_validation(self) -> dict[str, str]:
+        """
+        Generate test parameters from observed_value field in parameters.
 
-        self.current_transaction_identification_attempt += 1
-        self.emit_message_callable(RoutineDiscoveryMessage(
-            type=RoutineDiscoveryMessageType.PROGRESS_THINKING,
-            content=f"Retrying transaction identification (attempt {self.current_transaction_identification_attempt})..."
-        ))
+        Returns a dict mapping parameter names to their observed values.
+        """
+        if not self._state or not self._state.production_routine:
+            return {}
+
+        # Extract observed values directly from parameters
+        test_params: dict[str, str] = {}
+        for param in self._state.production_routine.parameters:
+            # Use observed_value if available, otherwise provide sensible defaults
+            if param.observed_value:
+                test_params[param.name] = param.observed_value
+            elif param.type == "integer":
+                test_params[param.name] = "1"
+            elif param.type == "number":
+                test_params[param.name] = "1.0"
+            elif param.type == "boolean":
+                test_params[param.name] = "false"
+            else:
+                test_params[param.name] = ""
+
+        return test_params
+
+    # === Tool Implementations ===
+
+    def _tool_list_transactions(self) -> dict:
+        """List all available transaction IDs."""
+        tx_ids = self.data_store.get_all_transaction_ids()
+        return {
+            "transaction_ids": tx_ids,
+            "count": len(tx_ids),
+        }
+
+    def _tool_get_transaction(self, transaction_id: str) -> dict:
+        """Get full details of a transaction."""
+        all_ids = self.data_store.get_all_transaction_ids()
+        if transaction_id not in all_ids:
+            return {"error": f"Transaction {transaction_id} not found. Available: {all_ids[:10]}..."}
+
+        tx = self.data_store.get_transaction_by_id(transaction_id)
+        return {
+            "transaction_id": transaction_id,
+            "request": tx.get("request", {}),
+            "response": tx.get("response", {}),
+        }
+
+    def _tool_scan_for_value(self, value: str, before_transaction_id: str | None = None) -> dict:
+        """Scan storage, window properties, and transactions for a value."""
+        max_timestamp = None
+        if before_transaction_id:
+            max_timestamp = self.data_store.get_transaction_timestamp(before_transaction_id)
+
+        # Scan storage
+        storage_sources = self.data_store.scan_storage_for_value(value)
+
+        # Scan window properties
+        window_sources = self.data_store.scan_window_properties_for_value(value)
+
+        # Scan transaction responses
+        tx_sources = self.data_store.scan_transaction_responses(value, max_timestamp=max_timestamp)
+
+        return {
+            "storage_sources": storage_sources[:5],  # Limit results
+            "window_property_sources": window_sources[:5],
+            "transaction_sources": tx_sources[:5],
+            "found_count": len(storage_sources) + len(window_sources) + len(tx_sources),
+        }
+
+    def _tool_add_to_queue(self, transaction_id: str, reason: str) -> dict:
+        """Add a transaction to the processing queue."""
+        all_ids = self.data_store.get_all_transaction_ids()
+        if transaction_id not in all_ids:
+            return {"success": False, "error": f"Transaction {transaction_id} not found"}
+
+        added, position = self._state.add_to_queue(transaction_id)
+        return {
+            "success": True,
+            "added": added,
+            "queue_position": position,
+            "already_processed": transaction_id in self._state.processed_transactions,
+            "reason": reason,
+        }
+
+    def _tool_get_queue_status(self) -> dict:
+        """Get current queue status."""
+        return self._state.get_queue_status()
+
+    def _tool_mark_complete(self, transaction_id: str) -> dict:
+        """Mark a transaction as complete and get the next one."""
+        self._state.mark_transaction_complete(transaction_id)
+        next_tx = self._state.pop_next_transaction()
+
+        self._emit_progress("Processing dependencies")
+
+        # Check if we should advance phase
+        if not next_tx and not self._state.transaction_queue:
+            self._state.phase = DiscoveryPhase.CONSTRUCT_ROUTINE
+            self._emit_progress("All transactions processed, ready to construct routine", RoutineDiscoveryMessageType.PROGRESS_RESULT)
+
+        return {
+            "success": True,
+            "next_transaction": next_tx,
+            "remaining_count": len(self._state.transaction_queue),
+            "phase": self._state.phase.value,
+        }
+
+    def _tool_record_identified_transaction(self, args: dict) -> dict:
+        """Record the identified root transaction."""
+        tx_id = args["transaction_id"]
+
+        # Validate transaction exists
+        all_ids = self.data_store.get_all_transaction_ids()
+        if tx_id not in all_ids:
+            self._state.identification_attempts += 1
+            if self._state.identification_attempts >= self.n_transaction_identification_attempts:
+                raise TransactionIdentificationFailedError(
+                    f"Failed to identify transaction after {self.n_transaction_identification_attempts} attempts"
+                )
+            return {
+                "success": False,
+                "error": f"Transaction {tx_id} not found. Choose from: {all_ids}",
+                "attempts_remaining": self.n_transaction_identification_attempts - self._state.identification_attempts,
+            }
+
+        # Record the root transaction
+        self._state.root_transaction = TransactionIdentificationResponse(
+            transaction_id=tx_id,
+            description=args["description"],
+            url=args["url"],
+            method=HTTPMethod(args["method"]),
+            short_explanation=args.get("short_explanation", ""),
+        )
+
+        # Add to queue and set as current
+        self._state.add_to_queue(tx_id)
+        self._state.pop_next_transaction()  # Set as current
+        self._state.phase = DiscoveryPhase.PROCESS_QUEUE
+
+        self._emit_progress("Identified target transaction", RoutineDiscoveryMessageType.PROGRESS_RESULT)
+        self._save_to_output_dir("root_transaction.json", self._state.root_transaction.model_dump())
+
+        return {
+            "success": True,
+            "transaction_id": tx_id,
+            "added_to_queue": True,
+            "message": "Transaction identified and added to processing queue",
+        }
+
+    def _tool_record_extracted_variables(self, args: dict) -> dict:
+        """Record extracted variables for a transaction."""
+        tx_id = args["transaction_id"]
+        variables_data = args["variables"]
+
+        # Convert to Variable objects
+        variables = []
+        variables_needing_resolution = []
+        for v in variables_data:
+            var = Variable(
+                type=VariableType(v["type"]),
+                requires_dynamic_resolution=v["requires_dynamic_resolution"],
+                name=v["name"],
+                observed_value=v["observed_value"],
+                values_to_scan_for=v.get("values_to_scan_for", [v["observed_value"]]),
+            )
+            variables.append(var)
+            if var.requires_dynamic_resolution and var.type == VariableType.DYNAMIC_TOKEN:
+                variables_needing_resolution.append(var.name)
+
+        # Store in state
+        extracted = ExtractedVariableResponse(transaction_id=tx_id, variables=variables)
+        self._state.store_transaction_data(tx_id, extracted_variables=extracted)
+
+        self._emit_progress("Analyzing request parameters")
+
+        # Also store the request
+        tx = self.data_store.get_transaction_by_id(tx_id)
+        self._state.store_transaction_data(tx_id, request=tx.get("request", {}))
+
+        self._save_to_output_dir(f"transaction_{len(self._state.processed_transactions)}/extracted_variables.json", extracted.model_dump())
+
+        return {
+            "success": True,
+            "transaction_id": tx_id,
+            "total_variables": len(variables),
+            "variables_needing_resolution": variables_needing_resolution,
+        }
+
+    def _tool_record_resolved_variable(self, args: dict) -> dict:
+        """Record a resolved variable source."""
+        var_name = args["variable_name"]
+        tx_id = args["transaction_id"]
+        source_type = args["source_type"]
+
+        # Find the variable in extracted variables
+        tx_data = self._state.transaction_data.get(tx_id, {})
+        extracted = tx_data.get("extracted_variables")
+        if not extracted:
+            return {"success": False, "error": f"No extracted variables found for transaction {tx_id}"}
+
+        variable = None
+        for v in extracted.variables:
+            if v.name == var_name:
+                variable = v
+                break
+        if not variable:
+            return {"success": False, "error": f"Variable {var_name} not found in transaction {tx_id}"}
+
+        # Build resolved variable response
+        session_storage_source = None
+        transaction_source = None
+        window_property_source = None
+        needs_dependency = False
+        dependency_tx_id = None
+
+        if source_type == "storage" and args.get("storage_source"):
+            ss = args["storage_source"]
+            session_storage_source = SessionStorageSource(
+                type=SessionStorageType(ss["type"]),
+                dot_path=ss["dot_path"],
+            )
+        elif source_type == "window_property" and args.get("window_property_source"):
+            wp = args["window_property_source"]
+            window_property_source = WindowPropertySource(dot_path=wp["dot_path"])
+        elif source_type == "transaction" and args.get("transaction_source"):
+            ts = args["transaction_source"]
+            transaction_source = TransactionSource(
+                transaction_id=ts["transaction_id"],
+                dot_path=ts["dot_path"],
+            )
+            # Auto-add dependency to queue
+            dep_tx_id = ts["transaction_id"]
+            if dep_tx_id not in self._state.processed_transactions:
+                added, _ = self._state.add_to_queue(dep_tx_id)
+                if added:
+                    needs_dependency = True
+                    dependency_tx_id = dep_tx_id
+
+        resolved = ResolvedVariableResponse(
+            variable=variable,
+            session_storage_source=session_storage_source,
+            transaction_source=transaction_source,
+            window_property_source=window_property_source,
+            short_explanation=f"Resolved from {source_type}",
+        )
+
+        # Store in state
+        self._state.store_transaction_data(tx_id, resolved_variable=resolved)
+
+        self._emit_progress("Resolving dynamic values")
+
+        result = {
+            "success": True,
+            "variable_name": var_name,
+            "source_type": source_type,
+            "needs_dependency_processing": needs_dependency,
+        }
+        if dependency_tx_id:
+            result["dependency_transaction_id"] = dependency_tx_id
+            result["message"] = f"Added {dependency_tx_id} to queue for processing"
+
+        return result
+
+    def _tool_construct_routine(self, args: dict) -> dict:
+        """Construct the DevRoutine from processed data and finalize it."""
+        self._state.construction_attempts += 1
+
+        try:
+            dev_routine = DevRoutine(
+                name=args["name"],
+                description=args["description"],
+                parameters=args.get("parameters", []),
+                operations=args["operations"],
+            )
+
+            # Validate
+            valid, errors, exc = dev_routine.validate()
+            if not valid:
+                return {
+                    "success": False,
+                    "validation_errors": errors,
+                    "message": "Fix the errors and try again",
+                    "attempt": self._state.construction_attempts,
+                }
+
+            # Store dev routine
+            self._state.dev_routine = dev_routine
+            self._emit_progress("Building routine", RoutineDiscoveryMessageType.PROGRESS_RESULT)
+            self._save_to_output_dir("dev_routine.json", dev_routine.model_dump())
+
+            # Finalize: convert DevRoutine to production Routine
+            self._emit_progress("Productionizing routine")
+
+            productionize_message = {
+                "role": "user",
+                "content": (
+                    f"Productionize routine:\n{encode(dev_routine.model_dump())}\n\n"
+                    f"Output schema:\n{encode(Routine.model_json_schema())}\n\n"
+                    f"Output valid JSON only. {self.PLACEHOLDER_INSTRUCTIONS}"
+                ),
+            }
+
+            # Use a separate message list for this LLM call - don't inject into main
+            # message_history during tool execution, as that would corrupt the
+            # conversation sequence (must be: assistant(tool_call) -> tool_result)
+            response = self.llm_client.call_sync(
+                messages=[productionize_message],
+            )
+
+            response_text = response.content or ""
+
+            # Parse the response
+            production_routine = manual_llm_parse_text_to_model(
+                text=response_text,
+                pydantic_model=Routine,
+                client=self.llm_client._client._client,
+                context=encode([productionize_message, {"role": "assistant", "content": response_text}]) + f"\n\n{self.PLACEHOLDER_INSTRUCTIONS}",
+                llm_model=self.llm_client.llm_model.value,
+                n_tries=5,
+            )
+
+            self._state.production_routine = production_routine
+            self._save_to_output_dir("routine.json", production_routine.model_dump())
+
+            # Transition to validation phase if browser available, otherwise complete
+            if self.remote_debugging_address:
+                self._state.phase = DiscoveryPhase.VALIDATE_ROUTINE
+                test_params = self._get_test_parameters_for_validation()
+                return {
+                    "success": True,
+                    "routine_name": production_routine.name,
+                    "operations_count": len(dev_routine.operations),
+                    "parameters_count": len(dev_routine.parameters),
+                    "next_step": "Use execute_routine to validate the routine works correctly",
+                    "test_parameters": test_params,
+                }
+            else:
+                self._state.phase = DiscoveryPhase.COMPLETE
+                return {
+                    "success": True,
+                    "routine_name": production_routine.name,
+                    "operations_count": len(dev_routine.operations),
+                    "parameters_count": len(dev_routine.parameters),
+                }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "attempt": self._state.construction_attempts,
+            }
+
+    def _tool_execute_routine(self, args: dict) -> dict:
+        """Execute the constructed routine to validate it works."""
+        if not self._state.production_routine:
+            return {
+                "success": False,
+                "error": "No routine has been constructed yet. Call construct_routine first.",
+            }
+
+        if not self.remote_debugging_address:
+            return {
+                "success": False,
+                "error": "No remote_debugging_address configured. Cannot execute routine without a browser connection.",
+            }
+
+        self._state.validation_attempts += 1
+        parameters = args.get("parameters", {})
+
+        # If no parameters provided, automatically use test parameters from observed values
+        if not parameters:
+            parameters = self._get_test_parameters_for_validation()
+
+        self._emit_progress("Validating routine")
+
+        result = execute_routine(
+            routine=self._state.production_routine.model_dump(),
+            parameters=parameters,
+            remote_debugging_address=self.remote_debugging_address,
+            timeout=self.timeout,
+            close_tab_when_done=True,
+        )
+
+        if not result.get("success"):
+            return {
+                "success": False,
+                "error": result.get("error", "Unknown execution error"),
+            }
+
+        exec_result = result.get("result")
+        if exec_result is None:
+            return {
+                "success": False,
+                "error": "Execution returned no result",
+            }
+
+        # Extract diagnostic information for the agent
+        if not exec_result.ok:
+            # Identify failed placeholders
+            failed_placeholders = [
+                key for key, value in exec_result.placeholder_resolution.items()
+                if value is None
+            ]
+
+            # Identify operation errors
+            operation_errors = [
+                (op.type, op.error)
+                for op in exec_result.operations_metadata
+                if op.error is not None
+            ]
+
+            self._emit_progress(
+                "Routine validation failed, retrying",
+                RoutineDiscoveryMessageType.PROGRESS_RESULT
+            )
+
+            # Build guidance for fixing the issues
+            next_steps = []
+            if failed_placeholders:
+                next_steps.append(
+                    f"Use scan_for_value to verify the sources for: {failed_placeholders}. "
+                    "The placeholders couldn't be resolved at runtime."
+                )
+            if operation_errors:
+                next_steps.append(
+                    "Check the operation_errors for details on which operations failed and why."
+                )
+            next_steps.append("After fixing, call construct_routine again with the corrected values.")
+
+            return {
+                "success": False,
+                "error": exec_result.error or "Routine execution failed",
+                "failed_placeholders": failed_placeholders,
+                "operation_errors": operation_errors,
+                "warnings": exec_result.warnings,
+                "placeholder_resolution": exec_result.placeholder_resolution,
+                "attempt": self._state.validation_attempts,
+                "next_steps": next_steps,
+            }
+
+        # Success - mark as complete
+        self._state.phase = DiscoveryPhase.COMPLETE
+        self._emit_progress("Routine validated successfully", RoutineDiscoveryMessageType.PROGRESS_RESULT)
+        return {
+            "success": True,
+            "message": "Routine executed and validated successfully",
+            "placeholder_resolution": exec_result.placeholder_resolution,
+            "data_preview": str(exec_result.data)[:500] if exec_result.data else None,
+        }
+
+    def _execute_tool(self, tool_name: str, tool_arguments: dict) -> dict:
+        """Execute a tool and return the result."""
+        logger.info(f"Executing tool: {tool_name} with args: {tool_arguments}")
+
+        try:
+            if tool_name == "list_transactions":
+                return self._tool_list_transactions()
+            elif tool_name == "get_transaction":
+                return self._tool_get_transaction(tool_arguments["transaction_id"])
+            elif tool_name == "scan_for_value":
+                return self._tool_scan_for_value(
+                    tool_arguments["value"],
+                    tool_arguments.get("before_transaction_id"),
+                )
+            elif tool_name == "add_transaction_to_queue":
+                return self._tool_add_to_queue(
+                    tool_arguments["transaction_id"],
+                    tool_arguments["reason"],
+                )
+            elif tool_name == "get_queue_status":
+                return self._tool_get_queue_status()
+            elif tool_name == "mark_transaction_complete":
+                return self._tool_mark_complete(tool_arguments["transaction_id"])
+            elif tool_name == "record_identified_transaction":
+                return self._tool_record_identified_transaction(tool_arguments)
+            elif tool_name == "record_extracted_variables":
+                return self._tool_record_extracted_variables(tool_arguments)
+            elif tool_name == "record_resolved_variable":
+                return self._tool_record_resolved_variable(tool_arguments)
+            elif tool_name == "construct_routine":
+                return self._tool_construct_routine(tool_arguments)
+            elif tool_name == "execute_routine":
+                return self._tool_execute_routine(tool_arguments)
+            else:
+                return {"error": f"Unknown tool: {tool_name}"}
+
+        except Exception as e:
+            logger.error(f"Tool execution error for {tool_name}: {e}")
+            return {"error": str(e)}
+
+    def _run_agent_loop(self) -> Routine:
+        """Run the agentic loop until routine is complete or max iterations reached."""
+        for iteration in range(self.max_iterations):
+            logger.debug(f"Agent loop iteration {iteration + 1}, phase: {self._state.phase.value}")
+
+            # Check if complete
+            if self._state.phase == DiscoveryPhase.COMPLETE:
+                if self._state.production_routine:
+                    return self._state.production_routine
+                raise RuntimeError("Discovery marked complete but no routine produced")
+
+            # Build messages for LLM (only send recent messages with previous_response_id)
+            if self.last_response_id:
+                # Find last assistant message index and send only messages after it
+                last_assistant_idx = -1
+                for i, msg in enumerate(self.message_history):
+                    if msg["role"] == "assistant":
+                        last_assistant_idx = i
+                messages = self.message_history[last_assistant_idx + 1:] if last_assistant_idx >= 0 else self.message_history
+            else:
+                messages = self.message_history
+
+            # Call LLM
+            response = self.llm_client.call_sync(
+                messages=messages,
+                system_prompt=self._get_system_prompt(),
+                previous_response_id=self.last_response_id,
+                tool_choice="auto",
+            )
+            self.last_response_id = response.response_id
+
+            # Process response content
+            if response.content:
+                self._add_to_message_history("assistant", response.content, tool_calls=response.tool_calls)
+                logger.debug(f"Assistant response: {response.content[:200]}...")
+
+            # Execute tool calls
+            if response.tool_calls:
+                if not response.content:
+                    self._add_to_message_history("assistant", "", tool_calls=response.tool_calls)
+
+                for tool_call in response.tool_calls:
+                    result = self._execute_tool(tool_call.tool_name, tool_call.tool_arguments)
+                    self._add_tool_result(tool_call.call_id, result)
+
+                    # Check for errors that should stop the loop
+                    if "error" in result and "not found" not in result.get("error", "").lower():
+                        logger.warning(f"Tool error: {result['error']}")
+
+            # If no tool calls and not complete, prompt the agent to continue
+            elif self._state.phase != DiscoveryPhase.COMPLETE:
+                status = self._state.get_queue_status()
+                prompt = (
+                    f"[ACTION REQUIRED] Current phase: {self._state.phase.value}. "
+                    f"Queue: {status['pending_count']} pending, {status['processed_count']} processed. "
+                )
+                if self._state.phase == DiscoveryPhase.IDENTIFY_TRANSACTION:
+                    prompt += "Use list_transactions and get_transaction to find the relevant transaction, then record_identified_transaction."
+                elif self._state.phase == DiscoveryPhase.PROCESS_QUEUE:
+                    if status['current']:
+                        prompt += f"Currently processing: {status['current']}. Extract and resolve variables, then mark_transaction_complete."
+                    elif status['pending_count'] > 0:
+                        prompt += "Get the next transaction from the queue."
+                    else:
+                        prompt += "Queue is empty. Call construct_routine to build the routine."
+                elif self._state.phase == DiscoveryPhase.CONSTRUCT_ROUTINE:
+                    prompt += "Build the routine using construct_routine."
+                elif self._state.phase == DiscoveryPhase.VALIDATE_ROUTINE:
+                    if self._state.validation_attempts > 0:
+                        prompt += (
+                            f"Previous validation attempt {self._state.validation_attempts} failed. "
+                            "Review the execution errors above. If there are failed placeholders or operation errors, "
+                            "use scan_for_value to re-verify sources, then call construct_routine with fixes. "
+                            "If the issue is with test parameters, try execute_routine again with corrected values."
+                        )
+                    else:
+                        test_params = self._get_test_parameters_for_validation()
+                        prompt += (
+                            f"Validate the routine using execute_routine with these test parameters "
+                            f"(from observed values during discovery): {json.dumps(test_params)}"
+                        )
+
+                self._add_to_message_history("system", prompt)
+
+        raise TimeoutError(f"Discovery did not complete in {self.max_iterations} iterations")
 
     def run(self) -> Routine:
         """
@@ -167,580 +856,71 @@ You have access to vectorstore that contains network transactions and storage da
         Returns:
             Routine: The discovered and productionized routine.
         """
-        # validate the data store
+        # Validate data store
         assert self.data_store.cdp_captures_vectorstore_id is not None, "Vectorstore ID is not set"
 
-        # Push initial message
-        self.emit_message_callable(RoutineDiscoveryMessage(
-            type=RoutineDiscoveryMessageType.INITIATED,
-            content=f"Discovery initiated"
-        ))
+        # Initialize state
+        self._state = RoutineDiscoveryState()
 
-        # Configure vectorstores on the LLM client (unfiltered initially)
+        # Emit start message
+        self._emit_progress("Discovery initiated", RoutineDiscoveryMessageType.INITIATED)
+        self._emit_progress("Scanning network traffic")
+
+        # Register tools and configure vectorstores
+        self._register_tools()
         self._set_vectorstores()
 
-        # add the system prompt to the message history (including data store context)
+        # Initialize message history
         self._add_to_message_history("system", self._get_system_prompt())
+        self._add_to_message_history("user", f"Task: {self.task}")
 
-        # add the user prompt to the message history
-        self._add_to_message_history("user", f"Task description: {self.task}")
-        self._add_to_message_history("user", f"These are the possible network transaction ids you can choose from:\n{encode(self.data_store.get_all_transaction_ids())}")
-
-        self.emit_message_callable(RoutineDiscoveryMessage(
-            type=RoutineDiscoveryMessageType.PROGRESS_THINKING,
-            content="Identifying relevant network transactions"
-        ))
-        logger.debug(f"\n\nMessage history:\n{self.message_history}\n\n")
-
-        identified_transaction = None
-        while identified_transaction is None:
-
-            # identify the transaction
-            identified_transaction = self.identify_transaction()
-            logger.debug(f"\nIdentified transaction:\n{identified_transaction.model_dump_json()}")
-
-            # ensure the identified transaction not None
-            if identified_transaction.transaction_id in [None, "None", ""]:
-                self._handle_transaction_identification_failure()
-                identified_transaction = None
-                continue
-
-            # ensure the identified transaction is in the data store (not hallucinated)
-            if identified_transaction.transaction_id not in self.data_store.get_all_transaction_ids():
-                logger.error(f"Identified transaction: {identified_transaction.transaction_id} is not in the data store.")
-                self._handle_transaction_identification_failure()
-                identified_transaction = None
-                continue
-
-            # confirm the identified transaction is correct and directly corresponds to the user's requested task
-            self.emit_message_callable(RoutineDiscoveryMessage(
-                type=RoutineDiscoveryMessageType.PROGRESS_THINKING,
-                content=f"Confirming identified network transaction"
-            ))
-            confirmation_response = self.confirm_identified_transaction(identified_transaction)
-            logger.debug(f"\nConfirmation response:\n{confirmation_response.model_dump_json()}")
-
-            # if the identified transaction is not correct, try again
-            if not confirmation_response.is_correct:
-                identified_transaction = None
-                self._handle_transaction_identification_failure()
-                logger.debug(
-                    "Trying again to identify the network transaction that directly corresponds to the user's requested task... "
-                    f"(attempt {self.current_transaction_identification_attempt})"
-                )
-
-        if identified_transaction is None:
-            error_msg = "Failed to identify the network transactions that directly correspond to the user's requested task."
-            logger.error(error_msg)
-            self.emit_message_callable(RoutineDiscoveryMessage(
-                type=RoutineDiscoveryMessageType.ERROR,
-                content=error_msg
-            ))
-            raise TransactionIdentificationFailedError(error_msg)
-
-        self.emit_message_callable(RoutineDiscoveryMessage(
-            type=RoutineDiscoveryMessageType.PROGRESS_RESULT,
-            content=f"Successfully identified network transaction relevant to the task"
-        ))
-        logger.info(f"Identified transaction: {identified_transaction.transaction_id}")
-
-        # save the indentified transaction (optional)
-        self._save_to_output_dir("root_transaction.json", identified_transaction.model_dump())
-
-        # populating the transaction queue with the identified transaction
-        transaction_queue = [identified_transaction.transaction_id]
-
-        # storing data for all transactions necessary for the routine construction
-        routine_transactions = {}
-
-        # storing all resolved variables
-        all_resolved_variables = []
-
-        # processing the transaction queue (breadth-first search)
-        while (len(transaction_queue) > 0):
-
-            # dequeue the transaction
-            transaction_id = transaction_queue.pop(0)
-            self.emit_message_callable(RoutineDiscoveryMessage(
-                type=RoutineDiscoveryMessageType.PROGRESS_THINKING,
-                content=f"Processing network transaction {len(routine_transactions) + 1}"
-            ))
-            logger.info("Processing transaction: %s", transaction_id)
-
-            # extract variables from the transaction
-            self.emit_message_callable(RoutineDiscoveryMessage(
-                type=RoutineDiscoveryMessageType.PROGRESS_THINKING,
-                content="Extracting variables (args, cookies, tokens, browser variables)"
-            ))
-            logger.info("Extracting variables (args, cookies, tokens, browser variables) from the identified transaction...")
-            extracted_variables = self.extract_variables(transaction_id)
-
-            # resolve cookies and tokens
-            self.emit_message_callable(RoutineDiscoveryMessage(
-                type=RoutineDiscoveryMessageType.PROGRESS_THINKING,
-                content="Resolving cookies, tokens, and api keys"
-            ))
-            logger.info("Resolving cookies and tokens...")
-            resolved_variables = self.resolve_variables(extracted_variables)
-            all_resolved_variables.extend(resolved_variables)
-            resolved_variables_json = [resolved_variable.model_dump() for resolved_variable in resolved_variables]
-
-            self.emit_message_callable(RoutineDiscoveryMessage(
-                type=RoutineDiscoveryMessageType.PROGRESS_RESULT,
-                content=f"Successfully processed network {len(routine_transactions) + 1} transaction(s)"
-            ))
-
-            # save the extracted and resolved variables (optional)
-            self._save_to_output_dir(
-                f"transaction_{len(routine_transactions)}/extracted_variables.json",
-                extracted_variables.model_dump()
-            )
-            self._save_to_output_dir(
-                f"transaction_{len(routine_transactions)}/resolved_variables.json",
-                resolved_variables_json
-            )
-
-            # adding transaction data to the routine transactions
-            routine_transactions[transaction_id] = {
-                "request": self.data_store.get_transaction_by_id(transaction_id)['request'],
-                "extracted_variables": extracted_variables.model_dump(),
-                "resolved_variables": [resolved_variable.model_dump() for resolved_variable in resolved_variables]
-            }
-
-            # adding transactions that need to be processed to the queue
-            for resolved_variable in resolved_variables:
-                if resolved_variable.transaction_source is not None:
-                    new_transaction_id = resolved_variable.transaction_source.transaction_id
-                    if new_transaction_id not in routine_transactions:
-                        transaction_queue.append(new_transaction_id)
-
-        # construct the routine from the routine transactions and resolved variables
-        # REVERSE the order of transactions because the queue processing discovers dependencies LAST (Target -> Dep1 -> Dep2),
-        # but we need to execute dependencies FIRST (Dep2 -> Dep1 -> Target).
-        # Reverse the items and create a new dict to preserve order (Python 3.7+ preserves dict insertion order)
-        ordered_transactions = {k: v for k, v in reversed(list(routine_transactions.items()))}
-
-        self.emit_message_callable(RoutineDiscoveryMessage(
-            type=RoutineDiscoveryMessageType.PROGRESS_THINKING,
-            content="Constructing the template of the routine"
-        ))
-        dev_routine = self.construct_routine(
-            routine_transactions=ordered_transactions,
-            resolved_variables=all_resolved_variables
+        all_tx_ids = self.data_store.get_all_transaction_ids()
+        self._add_to_message_history(
+            "user",
+            f"Available transaction IDs ({len(all_tx_ids)} total):\n{encode(all_tx_ids)}"
         )
 
-        self.emit_message_callable(RoutineDiscoveryMessage(
-            type=RoutineDiscoveryMessageType.PROGRESS_RESULT,
-            content="Successfully constructed the template of the routine"
-        ))
+        # Run the agentic loop
+        try:
+            routine = self._run_agent_loop()
 
-        # productionize the routine
-        self.emit_message_callable(RoutineDiscoveryMessage(
-            type=RoutineDiscoveryMessageType.PROGRESS_THINKING,
-            content="Productionizing the routine"
-        ))
-        logger.info(f"Productionizing the routine")
-        production_routine = self.productionize_routine(dev_routine)
+            self._emit_progress("Routine generated successfully", RoutineDiscoveryMessageType.FINISHED)
+            return routine
 
-        self.emit_message_callable(RoutineDiscoveryMessage(
-            type=RoutineDiscoveryMessageType.PROGRESS_RESULT,
-            content=f"Productionized the routine"
-        ))
-        logger.info("Productionized the routine")
-
-        # Save routines
-        self._save_to_output_dir("routine.json", production_routine.model_dump())
-
-        # Mark as finished
-        self.emit_message_callable(RoutineDiscoveryMessage(
-            type=RoutineDiscoveryMessageType.FINISHED,
-            content="Routine generated successfully"
-        ))
-
-        return production_routine
-
-    def identify_transaction(self) -> TransactionIdentificationResponse:
-        """
-        Identify the network transactions that directly correspond to the user's requested task.
-        Returns:
-            TransactionIdentificationResponse: The response from the LLM API.
-        """
-        is_first_attempt = self.current_transaction_identification_attempt == 1
-
-        # On retry attempts, add a "try again" message
-        if not is_first_attempt:
-            message = (
-                "Try again. The transaction id you provided does not exist or was not relevant. "
-                f"Choose from: {encode(self.data_store.get_all_transaction_ids())}"
-            )
-            self._add_to_message_history("user", message)
-
-        logger.debug(f"\n\nMessage history:\n{self.message_history}\n")
-
-        # First attempt: send full history. Retries: send only the last message (uses previous_response_id for context)
-        response = self.llm_client.call_sync(
-            messages=self.message_history if is_first_attempt else [self.message_history[-1]],
-            previous_response_id=self.last_response_id,
-            tool_choice="required",
-            response_model=TransactionIdentificationResponse
-        )
-        transaction_identification_response = response.parsed
-        logger.info(f"\nTransaction identification response:\n{transaction_identification_response.model_dump()}")
-
-        # save the response id and add to the message history
-        self.last_response_id = response.response_id
-        self._add_to_message_history("assistant", encode(transaction_identification_response.model_dump()))
-
-        logger.debug(f"\nParsed response:\n{transaction_identification_response.model_dump_json()}")
-        logger.debug(f"New chat history:\n{self.message_history}\n")
-
-        # return the parsed response
-        return transaction_identification_response
-
-    def confirm_identified_transaction(
-        self,
-        identified_transaction: TransactionIdentificationResponse,
-    ) -> TransactionConfirmationResponse:
-        """
-        Confirm the identified network transaction that directly corresponds to the user's requested task.
-        """
-
-        # add the transaction to the vectorstore
-        metadata = {"uuid": str(uuid4())}
-        self.data_store.add_transaction_to_vectorstore(
-            transaction_id=identified_transaction.transaction_id, metadata=metadata
-        )
-
-        # Configure filtered vectorstores to search through these specific transactions
-        self._set_vectorstores(uuid_filter=metadata["uuid"])
-
-        # update the message history with request to confirm the identified transaction
-        message = (
-            f"{identified_transaction.transaction_id} have been added to the vectorstore in full (including response bodies).\n"
-            "Confirm the identified transaction is correct and directly corresponds to the user's requested task:\n"
-            f"{self.task}\n\n"
-            "IMPORTANT: Focus on whether this transaction accomplishes the user's INTENT, not the literal wording. "
-        )
-        self._add_to_message_history("user", message)
-
-        # call to the LLM API for confirmation that the identified transaction is correct
-        response = self.llm_client.call_sync(
-            messages=[self.message_history[-1]],
-            previous_response_id=self.last_response_id,
-            tool_choice="required",  # forces the LLM to look at the newly added files to the vectorstore
-            response_model=TransactionConfirmationResponse
-        )
-        transaction_confirmation_response = response.parsed
-
-        # save the response id and add to the message history
-        self.last_response_id = response.response_id
-        self._add_to_message_history("assistant", encode(transaction_confirmation_response.model_dump()))
-
-        # Reset to unfiltered vectorstores for subsequent calls
-        self._set_vectorstores()
-
-        return transaction_confirmation_response
-
-    def extract_variables(self, transaction_id: str) -> ExtractedVariableResponse:
-        """
-        Extract the variables from the transaction.
-        """
-        # save the original transaction_id before it gets shadowed in the loop
-        original_transaction_id = transaction_id
-
-        # get the transaction
-        transaction = self.data_store.get_transaction_by_id(transaction_id)
-        
-        # add message to the message history
-        message = (
-            f"Extract variables from these network REQUESTS only: {encode(transaction['request'])}\n\n"
-            "CRITICAL RULES:\n"
-            "1. **requires_dynamic_resolution=False (STATIC_VALUE)**: Default to this. HARDCODE values whenever possible.\n"
-            "   - Includes: App versions, constants, User-Agents, device info.\n"
-            "   - **API CONTEXT**: Fields like 'hl' (language), 'gl' (region), 'clientName', 'timeZone' are STATIC_VALUE, NOT parameters.\n"
-            "   - **TELEMETRY**: Fields like 'adSignals', 'screenHeight', 'clickTrackingParams' are STATIC_VALUE.\n"
-            "2. **requires_dynamic_resolution=True (DYNAMIC_TOKEN)**: ONLY for dynamic security tokens that change per session.\n"
-            "   - Includes: CSRF tokens, JWTs, Auth headers, 'visitorData', 'session_id'.\n"
-            "   - **TRACE/REQUEST IDs**: 'x-trace-id', 'request-id', 'correlation-id' MUST be marked as DYNAMIC_TOKEN.\n"
-            "   - **ALSO INCLUDE**: IDs, hashes, or blobs that are NOT user inputs but are required for the request (e.g. 'browseId', 'params' strings, 'clientVersion' if dynamic).\n"
-            "   - 'values_to_scan_for' must contain the EXACT raw string value seen in the request.\n"
-            "   - **RULE**: If it looks like a generated ID or state blob, IT IS A TOKEN, NOT A PARAMETER.\n"
-            "   - **If the value can be hardcoded, set requires_dynamic_resolution=False (we dont need to waste time figureing out the source)\n"
-            "3. **Parameters (PARAMETER)**: ONLY for values that represent the USER'S INTENT or INPUT.\n"
-            "   - Examples: 'search_query', 'videoId', 'channelId', 'cursor', 'page_number'.\n"
-            "   - If the user wouldn't explicitly provide it, it's NOT a parameter.\n"
-        )
-
-        self._add_to_message_history("user", message)
-
-        # call to the LLM API for extraction of the variables
-        response = self.llm_client.call_sync(
-            messages=[self.message_history[-1]],
-            previous_response_id=self.last_response_id,
-            tool_choice="auto",
-            response_model=ExtractedVariableResponse
-        )
-        extracted_variable_response = response.parsed
-
-        # save the response id and add to the message history
-        self.last_response_id = response.response_id
-        self._add_to_message_history("assistant", encode(extracted_variable_response.model_dump()))
-
-        # override the transaction_id with the one passed in, since the LLM may return an incorrect format
-        extracted_variable_response.transaction_id = original_transaction_id
-
-        return extracted_variable_response
-    
-    def resolve_variables(self, extracted_variables: ExtractedVariableResponse) -> list[ResolvedVariableResponse]:
-        """
-        Resolve the variables from the extracted variables.
-        """
-        # get the latest timestamp
-        max_timestamp = self.data_store.get_transaction_timestamp(extracted_variables.transaction_id)
-
-        # get a list of cookies and tokens that require resolution
-        variables_to_resolve = [
-            var for var in extracted_variables.variables
-            if (
-                var.requires_dynamic_resolution
-                and var.type == VariableType.DYNAMIC_TOKEN
-            )
-        ]
-
-        resolved_variable_responses = []
-
-        # for each variable to resolve, try to find the source of the variable in the storage and transactions
-        for variable in variables_to_resolve:
-            logger.info(f"Resolving variable: {variable.name} with values to scan for: {variable.values_to_scan_for}")
-
-            # get the storage objects that contain the value and are before the latest timestamp
-            storage_objects: list[dict] = []
-            for value in variable.values_to_scan_for:
-                storage_sources_found = self.data_store.scan_storage_for_value(
-                    value=value,
-                )
-                # scan_storage_for_value returns list[str], so we can use it directly
-                storage_objects.extend(storage_sources_found)
-                
-            if len(storage_objects) > 0:
-                logger.info(f"Found {len(storage_objects)} storage sources that contain the value")
-
-            # get the window properties that contain the value and are before the latest timestamp
-            window_properties: list[dict] = []
-            for value in variable.values_to_scan_for:
-                window_properties_found = self.data_store.scan_window_properties_for_value(value)
-                # scan_window_properties_for_value returns list[dict], so we can use it directly
-                window_properties.extend(window_properties_found)
-                
-            if len(window_properties) > 0:
-                logger.info(f"Found {len(window_properties)} window properties that contain the value")
-
-            # get the transaction ids that contain the value and are before the latest timestamp
-            transaction_ids: list[str] = []
-            for value in variable.values_to_scan_for:
-                transaction_ids_found = self.data_store.scan_transaction_responses(
-                    value=value,
-                    max_timestamp=max_timestamp
-                )
-                transaction_ids.extend(transaction_ids_found)
-
-            # deduplicate transaction ids (limit to 2 for now)
-            transaction_ids = list(set(transaction_ids))[:2]
-
-            if len(transaction_ids) > 0:
-                logger.info(f"Found {len(transaction_ids)} transaction ids that contain the value: {transaction_ids}")
-
-            # add the transactions to the vectorstore
-            uuid = str(uuid4())
-            for transaction_id in transaction_ids:
-                self.data_store.add_transaction_to_vectorstore(
-                    transaction_id=transaction_id,
-                    metadata={"uuid": uuid}
-                )
-
-            # construct the message to the LLM
-            message = (
-                f"Resolve variable: {encode(variable.model_dump())}\n\n"
-                f"Found in:\n"
-                f"- Storage: {encode(storage_objects[:3])}\n"
-                f"- Window properties: {encode(window_properties[:3])}\n"
-                f"- Transactions (in vectorstore): {encode(transaction_ids)}\n\n"
-                "Use dot paths like 'key.data.items[0].id'. For transaction responses, start with first key. "
-                "For storage, start with entry name. Resolve ALL occurrences if found in multiple places."
-            )
-            self._add_to_message_history("user", message)
-
-            # Configure filtered vectorstores to search through specific transactions
-            self._set_vectorstores(uuid_filter=uuid)
-
-            # call to the LLM API for resolution of the variable
-            response = self.llm_client.call_sync(
-                messages=[self.message_history[-1]],
-                previous_response_id=self.last_response_id,
-                tool_choice="required",
-                response_model=ResolvedVariableResponse
-            )
-            resolved_variable_response = response.parsed
-
-            # save the response id
-            self.last_response_id = response.response_id
-            self._add_to_message_history("assistant", encode(resolved_variable_response.model_dump()))
-            
-            # parse the response to the pydantic model
-            resolved_variable_responses.append(resolved_variable_response)
-            
-            # Count resolved sources
-            resolved_sources = [
-                s for s in [
-                    resolved_variable_response.transaction_source,
-                    resolved_variable_response.session_storage_source,
-                    resolved_variable_response.window_property_source,
-                ] if s is not None
-            ]
-            
-            if len(resolved_sources) == 0:
-                logger.warning(f"Unable to resolve variable '{variable.name}'. Hardcoding to: {variable.observed_value}")
-            elif len(resolved_sources) == 1:
-                logger.info(f"Variable '{variable.name}' resolved from: {type(resolved_sources[0]).__name__}")
-            else:
-                logger.info(f"Variable '{variable.name}' resolved from {len(resolved_sources)} sources (prioritizing: transaction > session storage > window property)")
-
-        # Reset to unfiltered vectorstores
-        self._set_vectorstores()
-
-        return resolved_variable_responses
-
-    def construct_routine(self, routine_transactions: dict, resolved_variables: list[ResolvedVariableResponse] = [], max_attempts: int = 3) -> DevRoutine:
-        """
-        Construct the routine from the routine transactions.
-        """
-        # Convert resolved_variables to dicts for encoding
-        resolved_variables_dicts = [rv.model_dump() for rv in resolved_variables]
-        
-        message = (
-            f"Construct routine from transactions:\n{encode(routine_transactions)}\n\n"
-            f"Resolved variables:\n{encode(resolved_variables_dicts)}\n\n"
-            f"Rules:\n"
-            f"1. Transactions are in EXECUTION ORDER (dependencies first -> target last)\n"
-            f"2. First step: navigate to target page + sleep 2-3s\n"
-            f"3. KEEP PARAMS MINIMAL: only what user MUST provide. If only 1 value observed, hardcode it. Focus on user's original request.\n"
-            f"4. {self.PLACEHOLDER_INSTRUCTIONS}\n"
-            f"5. Hardcode unresolved variables to observed values\n"
-            f"6. Fetch results go to sessionStorage; chain fetches via {{{{sessionStorage:path}}}}\n"
-            f"7. Return final sessionStorage value at end\n"
-            f"8. Credentials: same-origin > include > omit"
-        )
-        self._add_to_message_history("user", message)
-
-        current_attempt = 0
-        while current_attempt < max_attempts:
-            current_attempt += 1
-
-            # call to the LLM API for construction of the routine
-            response = self.llm_client.call_sync(
-                messages=[self.message_history[-1]],
-                previous_response_id=self.last_response_id,
-                tool_choice="required",
-                response_model=DevRoutine
-            )
-            routine = response.parsed
-            logger.info(f"\nRoutine:\n{routine.model_dump()}")
-
-            # save the response id
-            self.last_response_id = response.response_id
-            self._add_to_message_history("assistant", encode(routine.model_dump()))
-
-            # validate the routine
-            successful, errors, exception = routine.validate()
-            if successful:
-                return routine
-
-            message = (
-                f"Execution failed with error: {exception}\n\n"
-                f"Routine validation failed:\n{encode(errors)}\n\n"
-                f"Try again to construct the routine."
-            )
-            self._add_to_message_history("user", message)
-
-        raise Exception(f"Failed to construct the routine after {max_attempts} attempts")
-
-    def productionize_routine(self, routine: DevRoutine) -> Routine:
-        """
-        Productionize the routine into a production routine.
-
-        Uses prompt-based parsing instead of structured outputs to avoid
-        OpenAI schema validation issues with complex nested types.
-
-        Args:
-            routine (DevRoutine): The routine to productionize.
-        Returns:
-            Routine: The productionized routine.
-        """
-        message = (
-            f"Productionize routine:\n{encode(routine.model_dump())}\n\n"
-            f"Output schema:\n{encode(Routine.model_json_schema())}\n\n"
-            f"Output valid JSON only. {self.PLACEHOLDER_INSTRUCTIONS}"
-        )
-        self._add_to_message_history("user", message)
-
-        # call to the LLM API for productionization of the routine (without structured output)
-        response = self.llm_client.call_sync(
-            messages=[self.message_history[-1]],
-            previous_response_id=self.last_response_id,
-        )
-
-        # save the response id
-        self.last_response_id = response.response_id
-
-        # collect the text from the response
-        response_text = response.content or ""
-        self._add_to_message_history("assistant", response_text)
-
-        # parse the response to the pydantic model using manual LLM parsing
-        # context includes the last 2 messages (user prompt + assistant response) to help with parsing
-        production_routine = manual_llm_parse_text_to_model(
-            text=response_text,
-            pydantic_model=Routine,
-            client=self.llm_client._client._client,  # Access the underlying OpenAI client
-            context=encode(self.message_history[-2:]) + f"\n\n{self.PLACEHOLDER_INSTRUCTIONS}",
-            llm_model=self.llm_client.llm_model.value,
-            n_tries=5
-        )
-
-        return production_routine
+        except TransactionIdentificationFailedError as e:
+            self._emit_progress(str(e), RoutineDiscoveryMessageType.ERROR)
+            raise
+        except Exception as e:
+            logger.exception(f"Discovery failed: {e}")
+            self._emit_progress(f"Discovery failed: {e}", RoutineDiscoveryMessageType.ERROR)
+            raise
 
     def get_test_parameters(self, routine: Routine) -> TestParametersResponse:
         """
-        Get the test parameters for the routine.
+        Generate test parameters for the routine from observed_value field in parameters.
+
+        Args:
+            routine: The production routine to extract test parameters from.
+
+        Returns:
+            TestParametersResponse with parameter name/value pairs.
         """
-        message = (
-            f"Write a dictionary of parameters to test this routine (from previous step):\n{encode(routine.model_dump())}\n\n"
-            f"Ensure all parameters are present and have valid values."
-        )
-        self._add_to_message_history("user", message)
+        test_params = []
 
-        # call to the LLM API for getting the test parameters
-        response = self.llm_client.call_sync(
-            messages=[self.message_history[-1]],
-            previous_response_id=self.last_response_id,
-            response_model=TestParametersResponse
-        )
-        test_parameters_response = response.parsed
+        # Extract observed values directly from parameters
+        for param in routine.parameters:
+            # Use observed_value if available, otherwise provide sensible defaults
+            if param.observed_value:
+                value = param.observed_value
+            elif param.type == "integer":
+                value = "1"
+            elif param.type == "number":
+                value = "1.0"
+            elif param.type == "boolean":
+                value = "false"
+            else:
+                value = ""
+            
+            test_params.append(TestParameter(name=param.name, value=str(value)))
 
-        # save the response id
-        self.last_response_id = response.response_id
-        self._add_to_message_history("assistant", encode(test_parameters_response.model_dump()))
-
-        # save test parameters as a simple dict {name: value}
-        test_params_dict = {param.name: param.value for param in test_parameters_response.parameters}
-        self._save_to_output_dir("test_parameters.json", test_params_dict)
-
-        # return the test parameters response
-        return test_parameters_response
-
-    def _add_to_message_history(self, role: str, content: str) -> None:
-        """
-        Add a message to the message history.
-        """
-        self.message_history.append({"role": role, "content": content})
-        self._save_to_output_dir("message_history.json", self.message_history)
+        return TestParametersResponse(parameters=test_params)
