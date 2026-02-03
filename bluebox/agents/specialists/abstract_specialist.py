@@ -19,6 +19,7 @@ The base class provides all shared LLM conversation plumbing:
 
 from __future__ import annotations
 
+import functools
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -78,11 +79,11 @@ def specialist_tool(
     Args:
         description: Tool description for the LLM.
         parameters: JSON Schema for tool parameters.
-        availability: Controls when the tool is registered with the LLM.
-            - True (default): always registered at init.
-            - Callable[[self], bool]: evaluated each time _register_tools() is
-              called; registered only when it returns True. Use this for tools
-              gated behind optional dependencies or lifecycle state (e.g.
+        availability: Controls when the tool is available to the LLM.
+            - True (default): always available.
+            - Callable[[self], bool]: evaluated before each LLM call;
+              tool is available only when it returns True. Use this for tools
+              gated behind lifecycle state or dynamic conditions (e.g.
               ``availability=lambda self: self.mode == SpecialistMode.FINALIZING``).
     """
     def decorator(method: Callable) -> Callable:
@@ -109,8 +110,8 @@ class AbstractSpecialist(ABC):
 
     Tools are defined declaratively via the @specialist_tool decorator on handler
     methods. Each tool's ``availability`` controls when it is registered: True
-    (always), or a callable evaluated each time _register_tools() is called.
-    The base class provides default _register_tools() and _execute_tool() that
+    (always), or a callable evaluated before each LLM call.
+    The base class provides default _sync_tools() and _execute_tool() that
     use decorated methods. Subclasses may still override these for custom logic.
 
     The base class handles all LLM conversation mechanics:
@@ -207,11 +208,11 @@ class AbstractSpecialist(ABC):
         self.llm_model = llm_model
         self.llm_client = LLMClient(llm_model)
 
-        # Track which tools have been registered to avoid double-registration
+        # Track which tools are currently registered
         self._registered_tool_names: set[str] = set()
 
-        # Register tools whose availability is satisfied at init time
-        self._register_tools()
+        # Initial tool sync (tools will re-sync before each LLM call)
+        self._sync_tools()
 
         # Conversation state
         self._thread = chat_thread or ChatThread()
@@ -326,13 +327,10 @@ class AbstractSpecialist(ABC):
         self.mode = SpecialistMode.CONVERSATIONAL
         self._autonomous_iteration = 0
 
-        # Clear tools from llm_client before clearing tracking set to avoid duplication
-        self.llm_client.clear_tools()
-        self._registered_tool_names = set()
         self._reset_autonomous_state()
 
-        # Re-register base tools (finalize tools won't register since mode is CONVERSATIONAL)
-        self._register_tools()
+        # Sync tools for conversational mode (finalize tools won't register since mode is CONVERSATIONAL)
+        self._sync_tools()
 
         if self._persist_chat_thread_callable:
             self._thread = self._persist_chat_thread_callable(self._thread)
@@ -341,18 +339,22 @@ class AbstractSpecialist(ABC):
 
     ## Tool registration and dispatch
 
-    def _register_tools(self) -> None:
+    def _sync_tools(self) -> None:
         """
-        Register specialist-specific tools on self.llm_client.
+        Synchronize tools registered with the LLM client based on current availability.
 
-        Iterates all @specialist_tool methods, evaluates each tool's
-        ``availability``, and registers any newly-available tools that
-        haven't been registered yet. Safe to call multiple times (e.g.
-        at init and again when finalize gate opens).
+        Clears all existing tools and re-registers only those whose ``availability``
+        evaluates to True. Called automatically before each LLM call to ensure the
+        tool set reflects current state (mode, iteration, etc.).
         """
-        for tool_meta, _ in self._collect_tools():
-            if tool_meta.name in self._registered_tool_names:
-                continue
+        self.llm_client.clear_tools()
+        self._registered_tool_names = set()
+        collected_tools = self._collect_tools()
+        if not collected_tools:
+            logger.info("No tools to sync")
+            return
+
+        for tool_meta, _ in collected_tools:
             available = tool_meta.availability(self) if callable(tool_meta.availability) else tool_meta.availability
             if not available:
                 continue
@@ -362,7 +364,7 @@ class AbstractSpecialist(ABC):
                 parameters=tool_meta.parameters,
             )
             self._registered_tool_names.add(tool_meta.name)
-        logger.debug("Registered tools: %s", self._registered_tool_names)
+        logger.debug("Synced %s total tools: %s", len(collected_tools), self._registered_tool_names)
 
     def _execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """
@@ -381,18 +383,25 @@ class AbstractSpecialist(ABC):
                 "error": f"Unknown tool: {tool_name}",
             }
         logger.debug("Executing tool %s with arguments: %s", tool_name, tool_arguments)
+        # handler is unbound (from cls, not self) so we pass self explicitly
         return handler(self, tool_arguments)
 
     @classmethod
-    def _collect_tools(cls) -> list[tuple[_ToolMeta, Callable]]:
-        """Collect all methods decorated with @specialist_tool."""
+    @functools.lru_cache(maxsize=None)
+    def _collect_tools(cls) -> tuple[tuple[_ToolMeta, Callable], ...]:
+        """
+        Collect all methods decorated with @specialist_tool.
+
+        NOTE: lru_cache memoizes the result per subclass, avoiding repeated dir(cls) traversal
+        on every _sync_tools/_execute_tool call. Safe because decorated tools are fixed at class definition.
+        """
         results: list[tuple[_ToolMeta, Callable]] = []
         for attr_name in dir(cls):
             method = getattr(cls, attr_name, None)
             tool_meta = getattr(method, "_tool_meta", None)
             if isinstance(tool_meta, _ToolMeta):
                 results.append((tool_meta, method))
-        return results
+        return tuple(results)
 
     ## Agent loops
 
@@ -447,8 +456,7 @@ class AbstractSpecialist(ABC):
             # Gate finalize tools behind min_iterations
             if self._autonomous_iteration >= min_iterations and self.mode != SpecialistMode.FINALIZING:
                 self.mode = SpecialistMode.FINALIZING
-                self._register_tools()  # re-evaluate availability lambdas
-                logger.debug("Finalize tools now available (iteration %d)", self._autonomous_iteration)
+                logger.debug("Finalize mode active (iteration %d)", self._autonomous_iteration)
 
             messages = self._build_messages_for_llm()
             try:
@@ -459,8 +467,8 @@ class AbstractSpecialist(ABC):
 
                 if response.content or response.tool_calls:
                     chat = self._add_chat(
-                        ChatRole.ASSISTANT,
-                        response.content or "",
+                        role=ChatRole.ASSISTANT,
+                        content=response.content or "",
                         tool_calls=response.tool_calls if response.tool_calls else None,
                         llm_provider_response_id=response.response_id,
                     )
@@ -482,8 +490,8 @@ class AbstractSpecialist(ABC):
                     result_str = self._auto_execute_tool(tool_call.tool_name, tool_call.tool_arguments)
 
                     self._add_chat(
-                        ChatRole.TOOL,
-                        f"Tool '{tool_call.tool_name}' result: {result_str}",
+                        role=ChatRole.TOOL,
+                        content=f"Tool '{tool_call.tool_name}' result: {result_str}",
                         tool_call_id=tool_call.call_id,
                     )
 
@@ -502,6 +510,8 @@ class AbstractSpecialist(ABC):
 
     def _call_llm(self, messages: list[dict[str, Any]], system_prompt: str) -> LLMChatResponse:
         """Call the LLM, using streaming if a chunk callback is configured."""
+        self._sync_tools()  # ensure tool availability reflects current state
+
         if self._stream_chunk_callable:
             return self._process_streaming_response(messages, system_prompt)
 
@@ -653,7 +663,6 @@ class AbstractSpecialist(ABC):
         for tool_call in tool_calls:
             logger.debug("Auto-executing tool %s", tool_call.tool_name)
             result_str = self._auto_execute_tool(tool_call.tool_name, tool_call.tool_arguments)
-
             self._add_chat(
                 ChatRole.TOOL,
                 f"Tool '{tool_call.tool_name}' result: {result_str}",
