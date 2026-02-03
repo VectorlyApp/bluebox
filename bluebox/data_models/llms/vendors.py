@@ -34,7 +34,7 @@ class AnthropicModel(StrEnum):
 
 
 # LLMModel type: union of all vendor models
-type LLMModel = OpenAIModel | AnthropicModel
+LLMModel = OpenAIModel | AnthropicModel
 
 
 # Build model to vendor lookup from all vendor models
