@@ -8,6 +8,7 @@ Usage:
 
     python scripts/run_js_specialist.py \
         --dom-snapshots-dir ./cdp_captures/dom/ \
+        --javascript-events-jsonl-path ./cdp_captures/network/javascript_events.jsonl \
         --remote-debugging-address 127.0.0.1:9222
 
 """
@@ -48,6 +49,7 @@ from bluebox.data_models.llms.interaction import (
     ToolInvocationStatus,
 )
 from bluebox.data_models.llms.vendors import OpenAIModel
+from bluebox.llms.infra.js_data_store import JSDataStore
 from bluebox.utils.logger import get_logger
 
 
@@ -77,16 +79,19 @@ BANNER = """\
 """
 
 
-def print_welcome(model: str, dom_count: int = 0) -> None:
+def print_welcome(model: str, dom_count: int = 0, js_files_count: int = 0) -> None:
     """Print welcome message."""
     console.print(BANNER)
     console.print()
 
-    if dom_count > 0:
+    if dom_count > 0 or js_files_count > 0:
         stats_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
         stats_table.add_column("Label", style="dim")
         stats_table.add_column("Value", style="white")
-        stats_table.add_row("DOM Snapshots", str(dom_count))
+        if dom_count > 0:
+            stats_table.add_row("DOM Snapshots", str(dom_count))
+        if js_files_count > 0:
+            stats_table.add_row("JS Files", str(js_files_count))
 
         console.print(Panel(
             stats_table,
@@ -180,12 +185,14 @@ class TerminalJSSpecialistChat:
     def __init__(
         self,
         dom_snapshots: list[DOMSnapshotEvent] | None = None,
+        js_data_store: JSDataStore | None = None,
         llm_model: OpenAIModel = OpenAIModel.GPT_5_1,
         remote_debugging_address: str | None = None,
     ) -> None:
         """Initialize the terminal chat interface."""
         self._streaming_started: bool = False
         self._dom_snapshots = dom_snapshots
+        self._js_data_store = js_data_store
         self._llm_model = llm_model
         self._remote_debugging_address = remote_debugging_address
         self._agent = self._create_agent()
@@ -195,6 +202,7 @@ class TerminalJSSpecialistChat:
         return JSSpecialist(
             emit_message_callable=self._handle_message,
             dom_snapshots=self._dom_snapshots,
+            js_data_store=self._js_data_store,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
             run_mode=RunMode.CONVERSATIONAL,
@@ -393,6 +401,12 @@ def main() -> None:
         default=None,
         help="Directory containing DOM snapshot JSON files",
     )
+    parser.add_argument(
+        "--javascript-events-jsonl-path",
+        type=str,
+        default=None,
+        help="Path to javascript_events.jsonl file for JS file analysis tools",
+    )
     args = parser.parse_args()
 
     # Load DOM snapshots if provided
@@ -413,16 +427,36 @@ def main() -> None:
 
         console.print(f"[dim]Loaded {len(dom_snapshots)} DOM snapshots from {dom_dir}[/dim]")
 
+    # Load JS data store if provided
+    js_data_store: JSDataStore | None = None
+    if args.javascript_events_jsonl_path:
+        js_path = Path(args.javascript_events_jsonl_path)
+        if not js_path.exists():
+            console.print(f"[bold red]Error: JS data store file not found: {js_path}[/bold red]")
+            sys.exit(1)
+
+        try:
+            js_data_store = JSDataStore(str(js_path))
+            console.print(f"[dim]Loaded {js_data_store.stats.total_files} JS files from {js_path}[/dim]")
+        except Exception as e:
+            console.print(f"[bold red]Error loading JS data store: {e}[/bold red]")
+            sys.exit(1)
+
     # Map model string to enum
     model_map = {
         "gpt-5.1": OpenAIModel.GPT_5_1,
     }
     llm_model = model_map.get(args.model, OpenAIModel.GPT_5_1)
 
-    print_welcome(args.model, dom_count=len(dom_snapshots) if dom_snapshots else 0)
+    print_welcome(
+        args.model,
+        dom_count=len(dom_snapshots) if dom_snapshots else 0,
+        js_files_count=js_data_store.stats.total_files if js_data_store else 0,
+    )
 
     chat = TerminalJSSpecialistChat(
         dom_snapshots=dom_snapshots,
+        js_data_store=js_data_store,
         llm_model=llm_model,
         remote_debugging_address=args.remote_debugging_address,
     )

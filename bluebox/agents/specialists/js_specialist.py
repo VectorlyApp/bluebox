@@ -27,6 +27,7 @@ from bluebox.data_models.llms.interaction import (
     EmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
+from bluebox.llms.infra.js_data_store import JSDataStore
 from bluebox.llms.infra.network_data_store import NetworkDataStore
 from bluebox.utils.js_utils import generate_js_evaluate_wrapper_js, validate_js
 from bluebox.utils.llm_utils import token_optimized
@@ -135,6 +136,26 @@ class JSSpecialist(AbstractSpecialist):
         Use these to understand API endpoints, response formats, and data available on the page.
     """)
 
+    _JS_FILES_PROMPT_SECTION: str = dedent("""
+        ## JavaScript Files (Use Sparingly)
+
+        You have access to captured JavaScript files from the browser session. These are the actual
+        JS bundles served by the web app — often large and minified.
+
+        **IMPORTANT**: Use these tools when the task specifically requires understanding the
+        web app's JavaScript implementation. For example:
+        - "Does this site's JS reference a specific token or variable name?"
+        - "How does the client-side code handle authentication?"
+        - "What API endpoints are hardcoded in the JavaScript?"
+
+        For most DOM manipulation tasks, you likly do NOT need to inspect the site's JS files.
+
+        Tools:
+        - **search_js_files**: Search JS file contents by keywords. Returns ranked results by relevance.
+        - **get_js_file_content**: Get the content of a specific JS file (truncated for large files).
+        - **list_js_files**: List all captured JS files with URLs and sizes.
+    """)
+
     AUTONOMOUS_SYSTEM_PROMPT: str = dedent("""\
         You are a JavaScript expert that autonomously writes browser DOM manipulation code.
 
@@ -163,6 +184,7 @@ class JSSpecialist(AbstractSpecialist):
         emit_message_callable: Callable[[EmittedMessage], None],
         dom_snapshots: list[DOMSnapshotEvent] | None = None,
         network_data_store: NetworkDataStore | None = None,
+        js_data_store: JSDataStore | None = None,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -175,6 +197,7 @@ class JSSpecialist(AbstractSpecialist):
         self._dom_snapshots = dom_snapshots or []
         self._remote_debugging_address = remote_debugging_address
         self._network_data_store = network_data_store
+        self._js_data_store = js_data_store
 
         # autonomous result state
         self._js_result: JSCodeResult | None = None
@@ -191,9 +214,10 @@ class JSSpecialist(AbstractSpecialist):
             existing_chats=existing_chats,
         )
         logger.debug(
-            "JSSpecialist initialized: dom_snapshots=%d, network_data_store=%s, browser=%s",
+            "JSSpecialist initialized: dom_snapshots=%d, network_data_store=%s, js_data_store=%s, browser=%s",
             len(self._dom_snapshots),
             "yes" if self._network_data_store is not None else "no",
+            "yes" if self._js_data_store is not None else "no",
             "yes" if remote_debugging_address else "no",
         )
 
@@ -214,6 +238,9 @@ class JSSpecialist(AbstractSpecialist):
         if self._network_data_store is not None:
             context_parts.append(self._NETWORK_TRAFFIC_PROMPT_SECTION)
 
+        if self._js_data_store is not None:
+            context_parts.append(self._JS_FILES_PROMPT_SECTION)
+
         return "".join(context_parts)
 
     def _get_autonomous_system_prompt(self) -> str:
@@ -229,6 +256,9 @@ class JSSpecialist(AbstractSpecialist):
 
         if self._network_data_store is not None:
             context_parts.append(self._NETWORK_TRAFFIC_PROMPT_SECTION)
+
+        if self._js_data_store is not None:
+            context_parts.append(self._JS_FILES_PROMPT_SECTION)
 
         # Urgency notices
         if self.can_finalize:
@@ -602,6 +632,120 @@ class JSSpecialist(AbstractSpecialist):
                 result["response_body_truncated"] = False
 
         return result
+
+
+    @specialist_tool(
+        description=(
+            "Search captured JS files by keywords. Returns ranked results by relevance. "
+            "Use this to find JS files that reference specific tokens, variables, or API endpoints."
+        ),
+        availability=lambda self: self._js_data_store is not None,
+        parameters={
+            "type": "object",
+            "properties": {
+                "terms": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Search terms (case-insensitive). Files are ranked by how many terms match and total hits.",
+                },
+                "top_n": {
+                    "type": "integer",
+                    "description": "Max results to return (default 10).",
+                },
+            },
+            "required": ["terms"],
+        },
+    )
+    @token_optimized
+    def _search_js_files(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Search JS file contents by keywords."""
+        if self._js_data_store is None:
+            return {"error": "No JS data store available"}
+
+        terms = tool_arguments.get("terms", [])
+        top_n = tool_arguments.get("top_n", 10)
+
+        if not terms:
+            return {"error": "At least one search term is required"}
+
+        results = self._js_data_store.search_by_terms(terms, top_n=top_n)
+
+        return {
+            "count": len(results),
+            "terms_searched": terms,
+            "results": results,
+        }
+
+
+    @specialist_tool(
+        description=(
+            "Get the content of a specific JS file by request_id. "
+            "Content is truncated for large files. Use search_js_files first to find relevant files."
+        ),
+        availability=lambda self: self._js_data_store is not None,
+        parameters={
+            "type": "object",
+            "properties": {
+                "request_id": {
+                    "type": "string",
+                    "description": "The request_id from search_js_files or list_js_files results.",
+                },
+                "max_chars": {
+                    "type": "integer",
+                    "description": "Max characters to return (default 10000). Large JS files are truncated.",
+                },
+            },
+            "required": ["request_id"],
+        },
+    )
+    @token_optimized
+    def _get_js_file_content(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Get the content of a JS file."""
+        if self._js_data_store is None:
+            return {"error": "No JS data store available"}
+
+        request_id = tool_arguments.get("request_id", "")
+        max_chars = tool_arguments.get("max_chars", 10000)
+
+        entry = self._js_data_store.get_file(request_id)
+        if entry is None:
+            return {"error": f"No JS file found for request_id: {request_id}"}
+
+        content = self._js_data_store.get_file_content(request_id, max_chars=max_chars)
+
+        return {
+            "request_id": request_id,
+            "url": entry.url,
+            "content": content,
+            "full_size": len(entry.response_body) if entry.response_body else 0,
+        }
+
+
+    @specialist_tool(
+        description=(
+            "List all captured JS files with URLs and sizes. "
+            "Use this to see what JS files are available before searching."
+        ),
+        availability=lambda self: self._js_data_store is not None,
+        parameters={
+            "type": "object",
+            "properties": {},
+        },
+    )
+    @token_optimized
+    def _list_js_files(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """List all captured JS files."""
+        if self._js_data_store is None:
+            return {"error": "No JS data store available"}
+
+        files = self._js_data_store.list_files()
+        stats = self._js_data_store.stats
+
+        return {
+            "total_files": stats.total_files,
+            "total_bytes": stats.total_bytes,
+            "files": files,
+        }
 
 
     @specialist_tool(
