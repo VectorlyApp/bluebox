@@ -17,6 +17,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from textwrap import dedent
 from typing import Any
 
 from prompt_toolkit import prompt as pt_prompt
@@ -30,6 +31,7 @@ from rich.table import Table
 from rich.text import Text
 
 from bluebox.utils.terminal_utils import SlashCommandCompleter
+from bluebox.agents.specialists.abstract_specialist import RunMode
 from bluebox.agents.specialists.js_specialist import (
     JSSpecialist,
     JSCodeResult,
@@ -95,13 +97,14 @@ def print_welcome(model: str, dom_count: int = 0) -> None:
         console.print()
 
     console.print(Panel(
-        """[bold]Commands:[/bold]
-  [cyan]/autonomous <task>[/cyan]  Run autonomous JS code generation
-  [cyan]/reset[/cyan]              Start a new conversation
-  [cyan]/help[/cyan]               Show help
-  [cyan]/quit[/cyan]               Exit
+        dedent("""\
+            [bold]Commands:[/bold]
+              [cyan]/autonomous <task>[/cyan]  Run autonomous JS code generation
+              [cyan]/reset[/cyan]              Start a new conversation
+              [cyan]/help[/cyan]               Show help
+              [cyan]/quit[/cyan]               Exit
 
-Just ask questions about the JavaScript files!""",
+            Just ask questions about the JavaScript files!"""),
         title="[bold green]JS Specialist[/bold green]",
         subtitle=f"[dim]Model: {model}[/dim]",
         border_style="green",
@@ -194,6 +197,7 @@ class TerminalJSSpecialistChat:
             dom_snapshots=self._dom_snapshots,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
+            run_mode=RunMode.CONVERSATIONAL,
             remote_debugging_address=self._remote_debugging_address,
         )
 
@@ -320,17 +324,18 @@ class TerminalJSSpecialistChat:
                 if cmd in ("/help", "/h", "/?"):
                     console.print()
                     console.print(Panel(
-                        """[bold]Commands:[/bold]
-  [cyan]/autonomous <task>[/cyan]  Run autonomous JS code generation
-                        Example: /autonomous extract the search results from the page
-  [cyan]/reset[/cyan]              Start a new conversation
-  [cyan]/help[/cyan]               Show this help message
-  [cyan]/quit[/cyan]               Exit
+                        dedent("""\
+                            [bold]Commands:[/bold]
+                              [cyan]/autonomous <task>[/cyan]  Run autonomous JS code generation
+                                                    Example: /autonomous extract the search results from the page
+                              [cyan]/reset[/cyan]              Start a new conversation
+                              [cyan]/help[/cyan]               Show this help message
+                              [cyan]/quit[/cyan]               Exit
 
-[bold]Tips:[/bold]
-  - Ask about specific JS files or patterns
-  - Request code to extract data from pages
-  - Ask about DOM structure and element selectors""",
+                            [bold]Tips:[/bold]
+                              - Ask about specific JS files or patterns
+                              - Request code to extract data from pages
+                              - Ask about DOM structure and element selectors"""),
                         title="[bold green]Help[/bold green]",
                         border_style="green",
                         box=box.ROUNDED,

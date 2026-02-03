@@ -12,6 +12,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from textwrap import dedent
 from typing import Any
 
 from prompt_toolkit import prompt as pt_prompt
@@ -25,6 +26,7 @@ from rich.table import Table
 from rich.text import Text
 
 from bluebox.utils.terminal_utils import SlashCommandCompleter
+from bluebox.agents.specialists.abstract_specialist import RunMode
 from bluebox.agents.specialists.interaction_specialist import (
     InteractionSpecialist,
     ParameterDiscoveryResult,
@@ -106,13 +108,14 @@ def print_welcome(model: str, data_path: str, interaction_store: InteractionsDat
     console.print()
 
     console.print(Panel(
-        """[bold]Commands:[/bold]
-  [cyan]/autonomous <task>[/cyan]  Run autonomous parameter discovery
-  [cyan]/reset[/cyan]              Start a new conversation
-  [cyan]/help[/cyan]               Show help
-  [cyan]/quit[/cyan]               Exit
+        dedent("""\
+            [bold]Commands:[/bold]
+              [cyan]/autonomous <task>[/cyan]  Run autonomous parameter discovery
+              [cyan]/reset[/cyan]              Start a new conversation
+              [cyan]/help[/cyan]               Show help
+              [cyan]/quit[/cyan]               Exit
 
-Just ask questions about the user interactions!""",
+            Just ask questions about the user interactions!"""),
         title="[bold magenta]Interaction Specialist[/bold magenta]",
         subtitle=f"[dim]Model: {model}[/dim]",
         border_style="magenta",
@@ -203,6 +206,7 @@ class TerminalInteractionSpecialistChat:
             interaction_data_store=self._interaction_store,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
+            run_mode=RunMode.CONVERSATIONAL,
         )
 
     def _handle_stream_chunk(self, chunk: str) -> None:
@@ -336,17 +340,18 @@ class TerminalInteractionSpecialistChat:
                 if cmd in ("/help", "/h", "/?"):
                     console.print()
                     console.print(Panel(
-                        """[bold]Commands:[/bold]
-  [cyan]/autonomous <task>[/cyan]  Run autonomous parameter discovery
-                        Example: /autonomous discover parameters for train search
-  [cyan]/reset[/cyan]              Start a new conversation
-  [cyan]/help[/cyan]               Show this help message
-  [cyan]/quit[/cyan]               Exit
+                        dedent("""\
+                            [bold]Commands:[/bold]
+                              [cyan]/autonomous <task>[/cyan]  Run autonomous parameter discovery
+                                                    Example: /autonomous discover parameters for train search
+                              [cyan]/reset[/cyan]              Start a new conversation
+                              [cyan]/help[/cyan]               Show this help message
+                              [cyan]/quit[/cyan]               Exit
 
-[bold]Tips:[/bold]
-  - Ask about specific user interactions or form elements
-  - Request analysis of click patterns or input fields
-  - Ask about form submission workflows""",
+                            [bold]Tips:[/bold]
+                              - Ask about specific user interactions or form elements
+                              - Request analysis of click patterns or input fields
+                              - Ask about form submission workflows"""),
                         title="[bold magenta]Help[/bold magenta]",
                         border_style="magenta",
                         box=box.ROUNDED,

@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, specialist_tool
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode, specialist_tool
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -151,6 +151,7 @@ class InteractionSpecialist(AbstractSpecialist):
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
+        run_mode: RunMode = RunMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
     ) -> None:
@@ -166,6 +167,7 @@ class InteractionSpecialist(AbstractSpecialist):
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
+            run_mode=run_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
         )

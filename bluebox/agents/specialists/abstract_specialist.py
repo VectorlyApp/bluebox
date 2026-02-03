@@ -48,14 +48,16 @@ from pydantic import BaseModel
 logger = get_logger(name=__name__)
 
 
-class SpecialistMode(StrEnum):
-    """Lifecycle mode of a specialist agent."""
+class RunMode(StrEnum):
+    """How the specialist is being run."""
     CONVERSATIONAL = "conversational"  # interactive chat with a user
     AUTONOMOUS = "autonomous"          # autonomous loop (exploration + finalization)
 
 
 class AutonomousConfig(NamedTuple):
-    """Configuration for autonomous specialist runs."""
+    """
+    Configuration for autonomous specialist runs. Helps manage their "lifecycles."
+    """
     min_iterations: int = 3   # Minimum iterations before finalize tools become available
     max_iterations: int = 10  # Maximum iterations before loop exits (returns None if not finalized)
 
@@ -188,6 +190,7 @@ class AbstractSpecialist(ABC):
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
+        run_mode: RunMode = RunMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
     ) -> None:
@@ -200,6 +203,7 @@ class AbstractSpecialist(ABC):
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
             llm_model: The LLM model to use.
+            run_mode: How the specialist will be run (conversational or autonomous).
             chat_thread: Existing ChatThread to continue, or None for new.
             existing_chats: Existing Chat messages if loading from persistence.
         """
@@ -216,6 +220,11 @@ class AbstractSpecialist(ABC):
         # Track which tools are currently registered
         self._registered_tool_names: set[str] = set()
 
+        # Lifecycle state (must be set before _sync_tools, which checks can_finalize)
+        self.run_mode: RunMode = run_mode
+        self._autonomous_iteration: int = 0
+        self._autonomous_config: AutonomousConfig = AutonomousConfig()
+
         # Initial tool sync (tools will re-sync before each LLM call)
         self._sync_tools()
 
@@ -229,11 +238,6 @@ class AbstractSpecialist(ABC):
         # Persist initial thread if callback provided
         if self._persist_chat_thread_callable and chat_thread is None:
             self._thread = self._persist_chat_thread_callable(self._thread)
-
-        # Lifecycle state
-        self.mode: SpecialistMode = SpecialistMode.CONVERSATIONAL
-        self._autonomous_iteration: int = 0
-        self._autonomous_config: AutonomousConfig = AutonomousConfig()
 
     ## Properties
 
@@ -256,7 +260,7 @@ class AbstractSpecialist(ABC):
             True if the specialist is in autonomous mode and has exceeded the min_iterations threshold, False otherwise.
         """
         return (
-            self.mode == SpecialistMode.AUTONOMOUS
+            self.run_mode == RunMode.AUTONOMOUS
             and self._autonomous_iteration >= self._autonomous_config.min_iterations
         )
 
@@ -293,7 +297,7 @@ class AbstractSpecialist(ABC):
         Returns:
             Specialist-specific result model, or None if max iterations reached.
         """
-        self.mode = SpecialistMode.AUTONOMOUS
+        self.run_mode = RunMode.AUTONOMOUS
         self._autonomous_iteration = 0
         self._autonomous_config = config or AutonomousConfig()
 
@@ -308,7 +312,7 @@ class AbstractSpecialist(ABC):
 
         self._run_autonomous_loop()
 
-        self.mode = SpecialistMode.CONVERSATIONAL
+        self.run_mode = RunMode.CONVERSATIONAL
 
         return self._get_autonomous_result()
 
@@ -340,7 +344,7 @@ class AbstractSpecialist(ABC):
         self._previous_response_id = None
         self._response_id_to_chat_index = {}
 
-        self.mode = SpecialistMode.CONVERSATIONAL
+        self.run_mode = RunMode.CONVERSATIONAL
         self._autonomous_iteration = 0
 
         self._reset_autonomous_state()
