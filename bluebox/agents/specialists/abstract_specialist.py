@@ -387,7 +387,7 @@ class AbstractSpecialist(ABC):
         return handler(self, tool_arguments)
 
     @classmethod
-    @functools.lru_cache(maxsize=None)
+    @functools.lru_cache
     def _collect_tools(cls) -> tuple[tuple[_ToolMeta, Callable], ...]:
         """
         Collect all methods decorated with @specialist_tool.
