@@ -1,15 +1,17 @@
 """
 bluebox/utils/code_execution_sandbox.py
 
-Sandboxed Python code execution with Docker-based isolation.
+Sandboxed Python code execution with multiple isolation backends.
 
-Uses Docker containers for secure execution when available, with
-blocklist-based fallback for development environments.
+Supported backends (via BLUEBOX_SANDBOX_MODE env var):
+- "lambda": AWS Lambda isolation (recommended for ECS/cloud deployments)
+- "docker": Docker container isolation (network disabled, read-only, resource-limited)
+- "blocklist": Python-level blocklist sandboxing (fallback, not secure against adversarial input)
+- "auto": Automatically selects docker if available, otherwise blocklist
 
 Security layers:
 1. Static pattern analysis (blocks dangerous code patterns)
-2. Docker container isolation (network disabled, read-only, resource-limited)
-3. Blocklist-based builtins/imports (fallback when Docker unavailable)
+2. Backend-specific isolation (Lambda microVM, Docker container, or blocklist)
 """
 
 import builtins as real_builtins
@@ -27,7 +29,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # Configuration
-SANDBOX_MODE: str = os.getenv("BLUEBOX_SANDBOX_MODE", "auto")  # "docker", "blocklist", "auto"
+SANDBOX_MODE: str = os.getenv("BLUEBOX_SANDBOX_MODE", "auto")  # "lambda", "docker", "blocklist", "auto"
 DOCKER_IMAGE: str = os.getenv("BLUEBOX_SANDBOX_IMAGE", "python:3.12-slim")
 DOCKER_TIMEOUT: int = int(os.getenv("BLUEBOX_SANDBOX_TIMEOUT", "30"))
 DOCKER_MEMORY_LIMIT: str = os.getenv("BLUEBOX_SANDBOX_MEMORY", "128m")
@@ -309,11 +311,14 @@ def execute_python_sandboxed(
     """
     Execute Python code in a sandboxed environment.
 
-    Uses Docker container isolation when available for secure execution.
-    Falls back to blocklist-based sandboxing when Docker is unavailable.
+    Uses the backend specified by BLUEBOX_SANDBOX_MODE environment variable.
 
     Configure via environment variables:
-    - BLUEBOX_SANDBOX_MODE: "docker", "blocklist", or "auto" (default: "auto")
+    - BLUEBOX_SANDBOX_MODE: "lambda", "docker", "blocklist", or "auto" (default: "auto")
+      - "lambda": Use AWS Lambda for isolation (requires servers' lambda_code_executor)
+      - "docker": Use Docker container isolation
+      - "blocklist": Use Python-level blocklist (not secure against adversarial input)
+      - "auto": Use Docker if available, otherwise blocklist
     - BLUEBOX_SANDBOX_IMAGE: Docker image to use (default: "python:3.12-slim")
     - BLUEBOX_SANDBOX_TIMEOUT: Execution timeout in seconds (default: 30)
     - BLUEBOX_SANDBOX_MEMORY: Container memory limit (default: "128m")
@@ -333,7 +338,16 @@ def execute_python_sandboxed(
     if safety_error:
         return {"error": f"Blocked: {safety_error}"}
 
-    # Determine execution mode
+    # Lambda mode: delegate to AWS Lambda executor
+    if SANDBOX_MODE == "lambda":
+        try:
+            from utils.aws.lambda_code_executor import execute_python_via_lambda
+            logger.debug("Executing code via AWS Lambda sandbox")
+            return execute_python_via_lambda(code, extra_globals)
+        except ImportError as e:
+            return {"error": f"Lambda sandbox requested but lambda_code_executor not available: {e}"}
+
+    # Determine execution mode for docker/blocklist/auto
     use_docker = False
     if SANDBOX_MODE == "docker":
         use_docker = True
