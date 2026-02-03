@@ -109,14 +109,14 @@ class TestAddToQueue:
 
 
 class TestGetNextTransaction:
-    """Tests for get_next_transaction method."""
+    """Tests for pop_next_transaction method."""
 
     def test_get_next_from_populated_queue(self) -> None:
         """Should return and set the next transaction as current."""
         state = RoutineDiscoveryState()
         state.transaction_queue = ["tx_001", "tx_002", "tx_003"]
 
-        result = state.get_next_transaction()
+        result = state.pop_next_transaction()
 
         assert result == "tx_001"
         assert state.current_transaction == "tx_001"
@@ -126,7 +126,7 @@ class TestGetNextTransaction:
         """Should return None when queue is empty."""
         state = RoutineDiscoveryState()
 
-        result = state.get_next_transaction()
+        result = state.pop_next_transaction()
 
         assert result is None
         assert state.current_transaction is None
@@ -136,9 +136,9 @@ class TestGetNextTransaction:
         state = RoutineDiscoveryState()
         state.transaction_queue = ["tx_001", "tx_002"]
 
-        first = state.get_next_transaction()
-        second = state.get_next_transaction()
-        third = state.get_next_transaction()
+        first = state.pop_next_transaction()
+        second = state.pop_next_transaction()
+        third = state.pop_next_transaction()
 
         assert first == "tx_001"
         assert second == "tx_002"
@@ -200,7 +200,7 @@ class TestMarkTransactionComplete:
         state.mark_transaction_complete("tx_002")
 
         assert "tx_002" in state.processed_transactions
-        # Current transaction changes to next in queue (get_next_transaction is always called)
+        # Current transaction changes to next in queue (pop_next_transaction is always called)
         assert state.current_transaction == "tx_003"
 
 
@@ -401,7 +401,7 @@ class TestBFSWorkflow:
 
         # Phase 1: Identify root transaction
         state.add_to_queue("root_tx")
-        state.get_next_transaction()
+        state.pop_next_transaction()
         assert state.current_transaction == "root_tx"
 
         # Phase 2: Process root, discover dependency
@@ -422,7 +422,7 @@ class TestBFSWorkflow:
 
         # Add root
         state.add_to_queue("root")
-        state.get_next_transaction()
+        state.pop_next_transaction()
 
         # Root depends on dep1 and dep2
         state.add_to_queue("dep1")

@@ -106,7 +106,7 @@ class RoutineDiscoveryState(BaseModel):
         self.transaction_queue.append(transaction_id)
         return True, len(self.transaction_queue) - 1
 
-    def get_next_transaction(self) -> str | None:
+    def pop_next_transaction(self) -> str | None:
         """
         Pop the next transaction from the queue and set it as current.
 
@@ -130,7 +130,7 @@ class RoutineDiscoveryState(BaseModel):
             self.processed_transactions.append(transaction_id)
         if self.current_transaction == transaction_id:
             self.current_transaction = None
-        return self.get_next_transaction()
+        return self.pop_next_transaction()
 
     def store_transaction_data(
         self,

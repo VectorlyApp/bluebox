@@ -402,7 +402,7 @@ You have access to captured browser data including:
 
         # Add to queue and set as current
         self._state.add_to_queue(tx_id)
-        self._state.get_next_transaction()  # Set as current
+        self._state.pop_next_transaction()  # Set as current
         self._state.phase = DiscoveryPhase.PROCESS_QUEUE
 
         self._emit_progress(f"Identified transaction: {tx_id}", RoutineDiscoveryMessageType.PROGRESS_RESULT)
