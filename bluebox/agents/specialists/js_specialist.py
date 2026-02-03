@@ -148,10 +148,11 @@ class JSSpecialist(AbstractSpecialist):
         - "How does the client-side code handle authentication?"
         - "What API endpoints are hardcoded in the JavaScript?"
 
-        For most DOM manipulation tasks, you likly do NOT need to inspect the site's JS files.
+        For most DOM manipulation tasks, you likely do NOT need to inspect the site's JS files.
 
         Tools:
-        - **search_js_files**: Search JS file contents by keywords. Returns ranked results by relevance.
+        - **search_js_files**: Search JS file contents by keywords. Returns ranked results by relevance. Use this for simple lookups.
+        - **search_js_files_regex**: Search by regex pattern with context snippets. Expensive — has a 15s timeout. Use for complex patterns.
         - **get_js_file_content**: Get the content of a specific JS file (truncated for large files).
         - **list_js_files**: List all captured JS files with URLs and sizes.
     """)
@@ -679,6 +680,68 @@ class JSSpecialist(AbstractSpecialist):
 
     @specialist_tool(
         description=(
+            "Search captured JS files by regex pattern. Returns matches with surrounding context snippets. "
+            "WARNING: Regex searches can be expensive on large minified JS files. "
+            "There is a 15-second timeout. Prefer search_js_files (keyword search) for simple lookups."
+        ),
+        availability=lambda self: self._js_data_store is not None,
+        parameters={
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Regex pattern to search for (case-insensitive).",
+                },
+                "top_n": {
+                    "type": "integer",
+                    "description": "Max files to return (default 20).",
+                },
+                "max_matches_per_file": {
+                    "type": "integer",
+                    "description": "Max matches per file (default 10).",
+                },
+                "context_chars": {
+                    "type": "integer",
+                    "description": "Characters of context around each match (default 80).",
+                },
+            },
+            "required": ["pattern"],
+        },
+    )
+    @token_optimized
+    def _search_js_files_regex(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Search JS file contents by regex pattern."""
+        if self._js_data_store is None:
+            return {"error": "No JS data store available"}
+
+        pattern = tool_arguments.get("pattern", "")
+        top_n = tool_arguments.get("top_n", 20)
+        max_matches_per_file = tool_arguments.get("max_matches_per_file", 10)
+        context_chars = tool_arguments.get("context_chars", 80)
+
+        if not pattern:
+            return {"error": "pattern is required"}
+
+        result = self._js_data_store.search_by_regex(
+            pattern=pattern,
+            top_n=top_n,
+            max_matches_per_file=max_matches_per_file,
+            context_chars=context_chars,
+        )
+
+        if result["error"]:
+            return {"error": result["error"]}
+
+        return {
+            "pattern": pattern,
+            "files_found": len(result["files"]),
+            "timed_out": result["timed_out"],
+            "files": result["files"],
+        }
+
+
+    @specialist_tool(
+        description=(
             "Get the content of a specific JS file by request_id. "
             "Content is truncated for large files. Use search_js_files first to find relevant files."
         ),
@@ -705,7 +768,7 @@ class JSSpecialist(AbstractSpecialist):
             return {"error": "No JS data store available"}
 
         request_id = tool_arguments.get("request_id", "")
-        max_chars = tool_arguments.get("max_chars", 10000)
+        max_chars = tool_arguments.get("max_chars", 10_000)
 
         entry = self._js_data_store.get_file(request_id)
         if entry is None:

@@ -9,6 +9,9 @@ by FileEventWriter) and provides JS-specific query methods.
 
 import fnmatch
 import json
+import re
+import signal
+import threading
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -94,7 +97,7 @@ class JSDataStore:
 
         self._compute_stats()
 
-        logger.info(
+        logger.debug(
             "JSDataStore initialized with %d JS files",
             len(self._entries),
         )
@@ -180,6 +183,109 @@ class JSDataStore:
 
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_n]
+
+    def search_by_regex(
+        self,
+        pattern: str,
+        top_n: int = 20,
+        max_matches_per_file: int = 10,
+        context_chars: int = 80,
+        timeout_seconds: float = 15.0,
+    ) -> dict[str, Any]:
+        """
+        Search JS file response bodies by regex pattern.
+
+        Args:
+            pattern: Regex pattern to search for.
+            top_n: Max number of files to return.
+            max_matches_per_file: Max matches to return per file.
+            context_chars: Characters of context around each match.
+            timeout_seconds: Max time to spend searching.
+
+        Returns:
+            Dict with keys: files (list of matches), timed_out (bool), error (str | None).
+        """
+        try:
+            regex = re.compile(pattern, flags=re.IGNORECASE)
+        except re.error as e:
+            logger.error("Invalid regex: %s", e)
+            return {
+                "files": [],
+                "timed_out": False,
+                "error": f"Invalid regex: {e}",
+            }
+
+        results: list[dict[str, Any]] = []
+        timed_out = False
+        stop_event = threading.Event()
+
+        def _search_worker() -> None:
+            nonlocal timed_out
+            for entry in self._entries:
+                if stop_event.is_set():
+                    timed_out = True
+                    break
+
+                if not entry.response_body:
+                    continue
+
+                content = entry.response_body
+                matches: list[dict[str, Any]] = []
+
+                for match in regex.finditer(content):
+                    if stop_event.is_set():
+                        timed_out = True
+                        break
+                    if len(matches) >= max_matches_per_file:
+                        break
+
+                    start = match.start()
+                    end = match.end()
+
+                    # extract context snippet
+                    snippet_start = max(0, start - context_chars)
+                    snippet_end = min(len(content), end + context_chars)
+                    snippet = content[snippet_start:snippet_end]
+
+                    # add ellipsis markers if truncated
+                    prefix = "..." if snippet_start > 0 else ""
+                    suffix = "..." if snippet_end < len(content) else ""
+
+                    matches.append({
+                        "match": match.group(),
+                        "position": start,
+                        "snippet": f"{prefix}{snippet}{suffix}",
+                    })
+
+                if matches:
+                    results.append({
+                        "request_id": entry.request_id,
+                        "url": entry.url,
+                        "match_count": len(matches),
+                        "matches": matches,
+                    })
+
+                    if len(results) >= top_n:
+                        break
+
+        # run search in thread with timeout
+        thread = threading.Thread(
+            target=_search_worker,
+            daemon=True,
+        )
+        thread.start()
+        thread.join(timeout=timeout_seconds)
+
+        if thread.is_alive():
+            stop_event.set()
+            thread.join(timeout=1.0)  # give it a moment to stop
+            timed_out = True
+
+        return {
+            "files": results,
+            "timed_out": timed_out,
+            "error": None,
+        }
 
     def get_file(self, request_id: str) -> NetworkTransactionEvent | None:
         """Get a JS file entry by request_id."""

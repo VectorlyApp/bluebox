@@ -72,7 +72,7 @@ class InteractionsDataStore:
         self._stats: InteractionStats = InteractionStats()
         self._compute_stats()
 
-        logger.info(
+        logger.debug(
             "InteractionsDataStore initialized with %d events",
             len(self._events),
         )
