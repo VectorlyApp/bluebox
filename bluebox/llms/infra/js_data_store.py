@@ -10,7 +10,6 @@ by FileEventWriter) and provides JS-specific query methods.
 import fnmatch
 import json
 import re
-import signal
 import threading
 from collections import Counter
 from dataclasses import dataclass, field
@@ -277,6 +276,7 @@ class JSDataStore:
         thread.join(timeout=timeout_seconds)
 
         if thread.is_alive():
+            logger.warning("Regex search timed out after %s seconds. Returning partial results.", timeout_seconds)
             stop_event.set()
             thread.join(timeout=1.0)  # give it a moment to stop
             timed_out = True
