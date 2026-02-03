@@ -366,6 +366,8 @@ You have access to captured browser data including:
         self._state.mark_transaction_complete(transaction_id)
         next_tx = self._state.pop_next_transaction()
 
+        self._emit_progress("Processing dependencies")
+
         # Check if we should advance phase
         if not next_tx and not self._state.transaction_queue:
             self._state.phase = DiscoveryPhase.CONSTRUCT_ROUTINE
@@ -410,7 +412,7 @@ You have access to captured browser data including:
         self._state.pop_next_transaction()  # Set as current
         self._state.phase = DiscoveryPhase.PROCESS_QUEUE
 
-        self._emit_progress(f"Identified transaction: {tx_id}", RoutineDiscoveryMessageType.PROGRESS_RESULT)
+        self._emit_progress("Identified target transaction", RoutineDiscoveryMessageType.PROGRESS_RESULT)
         self._save_to_output_dir("root_transaction.json", self._state.root_transaction.model_dump())
 
         return {
@@ -443,6 +445,8 @@ You have access to captured browser data including:
         # Store in state
         extracted = ExtractedVariableResponse(transaction_id=tx_id, variables=variables)
         self._state.store_transaction_data(tx_id, extracted_variables=extracted)
+
+        self._emit_progress("Analyzing request parameters")
 
         # Also store the request
         tx = self.data_store.get_transaction_by_id(tx_id)
@@ -518,6 +522,8 @@ You have access to captured browser data including:
         # Store in state
         self._state.store_transaction_data(tx_id, resolved_variable=resolved)
 
+        self._emit_progress("Resolving dynamic values")
+
         result = {
             "success": True,
             "variable_name": var_name,
@@ -554,7 +560,7 @@ You have access to captured browser data including:
 
             # Store dev routine
             self._state.dev_routine = dev_routine
-            self._emit_progress("Routine constructed successfully", RoutineDiscoveryMessageType.PROGRESS_RESULT)
+            self._emit_progress("Building routine", RoutineDiscoveryMessageType.PROGRESS_RESULT)
             self._save_to_output_dir("dev_routine.json", dev_routine.model_dump())
 
             # Finalize: convert DevRoutine to production Routine
@@ -640,7 +646,7 @@ You have access to captured browser data including:
         if not parameters:
             parameters = self._get_test_parameters_for_validation()
 
-        self._emit_progress(f"Executing routine with parameters: {list(parameters.keys())}")
+        self._emit_progress("Validating routine")
 
         result = execute_routine(
             routine=self._state.production_routine.model_dump(),
@@ -679,7 +685,7 @@ You have access to captured browser data including:
             ]
 
             self._emit_progress(
-                f"Routine execution failed: {len(failed_placeholders)} placeholder failures, {len(operation_errors)} operation errors",
+                "Routine validation failed, retrying",
                 RoutineDiscoveryMessageType.PROGRESS_RESULT
             )
 
@@ -858,6 +864,7 @@ You have access to captured browser data including:
 
         # Emit start message
         self._emit_progress("Discovery initiated", RoutineDiscoveryMessageType.INITIATED)
+        self._emit_progress("Scanning network traffic")
 
         # Register tools and configure vectorstores
         self._register_tools()
