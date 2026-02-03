@@ -104,7 +104,7 @@ def print_welcome(model: str, dom_count: int = 0) -> None:
               [cyan]/help[/cyan]               Show help
               [cyan]/quit[/cyan]               Exit
 
-            Just ask questions about the JavaScript files!"""),
+            Just ask questions about JavaScript!"""),
         title="[bold green]JS Specialist[/bold green]",
         subtitle=f"[dim]Model: {model}[/dim]",
         border_style="green",

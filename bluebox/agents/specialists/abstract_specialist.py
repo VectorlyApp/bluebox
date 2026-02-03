@@ -625,14 +625,11 @@ class AbstractSpecialist(ABC):
             if chat.tool_calls:
                 msg["tool_calls"] = [
                     {
-                        "id": tc.call_id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.tool_name,
-                            "arguments": json.dumps(tc.tool_arguments) if isinstance(tc.tool_arguments, dict) else tc.tool_arguments,
-                        },
+                        "call_id": tc.call_id if tc.call_id else f"call_{idx}_{chat_id[:8]}",
+                        "name": tc.tool_name,
+                        "arguments": tc.tool_arguments,
                     }
-                    for tc in chat.tool_calls
+                    for idx, tc in enumerate(chat.tool_calls)
                 ]
             messages.append(msg)
         return messages
