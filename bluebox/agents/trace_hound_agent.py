@@ -32,7 +32,7 @@ from bluebox.data_models.llms.interaction import (
     PendingToolInvocation,
     ToolInvocationStatus,
 )
-from bluebox.data_models.llms.vendors import OpenAIModel
+from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.llm_client import LLMClient
 from bluebox.llms.infra.network_data_store import NetworkDataStore
 from bluebox.llms.infra.storage_data_store import StorageDataStore
@@ -184,7 +184,7 @@ class TraceHoundAgent:
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
-        llm_model: OpenAIModel = OpenAIModel.GPT_5_1,
+        llm_model: LLMModel = OpenAIModel.GPT_5_1,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
     ) -> None:
