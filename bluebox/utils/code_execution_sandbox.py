@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
+import base64
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -144,7 +145,6 @@ def _execute_in_docker(
     globals_json = json.dumps(extra_globals) if extra_globals else "{}"
 
     # Escape for shell - we use base64 to avoid quote issues
-    import base64
     code_b64 = base64.b64encode(code.encode()).decode()
     globals_b64 = base64.b64encode(globals_json.encode()).decode()
 
