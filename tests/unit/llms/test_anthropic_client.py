@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
+from anthropic import APIStatusError, RateLimitError
 
 from bluebox.data_models.llms.vendors import AnthropicModel
 from bluebox.llms.anthropic_client import (
@@ -30,8 +31,6 @@ class TestIsRetryableError:
 
     def test_rate_limit_error_is_retryable(self) -> None:
         """RateLimitError should be retryable."""
-        from anthropic import RateLimitError
-
         error = MagicMock(spec=RateLimitError)
         error.__class__ = RateLimitError
         # Need to actually create a RateLimitError-like object
@@ -46,8 +45,6 @@ class TestIsRetryableError:
 
     def test_overloaded_error_is_retryable(self) -> None:
         """APIStatusError with overloaded_error type should be retryable."""
-        from anthropic import APIStatusError
-
         error = MagicMock(spec=APIStatusError)
         error.body = {"error": {"type": "overloaded_error", "message": "Overloaded"}}
         error.status_code = 529
@@ -57,8 +54,6 @@ class TestIsRetryableError:
 
     def test_api_error_is_retryable(self) -> None:
         """APIStatusError with api_error type should be retryable."""
-        from anthropic import APIStatusError
-
         error = MagicMock(spec=APIStatusError)
         error.body = {"error": {"type": "api_error", "message": "Internal error"}}
         error.status_code = 500
@@ -67,8 +62,6 @@ class TestIsRetryableError:
 
     def test_status_429_is_retryable(self) -> None:
         """APIStatusError with status 429 should be retryable."""
-        from anthropic import APIStatusError
-
         error = MagicMock(spec=APIStatusError)
         error.body = {}
         error.status_code = 429
@@ -77,8 +70,6 @@ class TestIsRetryableError:
 
     def test_status_500_is_retryable(self) -> None:
         """APIStatusError with status 500 should be retryable."""
-        from anthropic import APIStatusError
-
         error = MagicMock(spec=APIStatusError)
         error.body = {}
         error.status_code = 500
@@ -87,8 +78,6 @@ class TestIsRetryableError:
 
     def test_status_502_is_retryable(self) -> None:
         """APIStatusError with status 502 should be retryable."""
-        from anthropic import APIStatusError
-
         error = MagicMock(spec=APIStatusError)
         error.body = {}
         error.status_code = 502
@@ -97,8 +86,6 @@ class TestIsRetryableError:
 
     def test_status_503_is_retryable(self) -> None:
         """APIStatusError with status 503 should be retryable."""
-        from anthropic import APIStatusError
-
         error = MagicMock(spec=APIStatusError)
         error.body = {}
         error.status_code = 503
@@ -107,8 +94,6 @@ class TestIsRetryableError:
 
     def test_status_529_is_retryable(self) -> None:
         """APIStatusError with status 529 (overloaded) should be retryable."""
-        from anthropic import APIStatusError
-
         error = MagicMock(spec=APIStatusError)
         error.body = {}
         error.status_code = 529
@@ -117,8 +102,6 @@ class TestIsRetryableError:
 
     def test_status_400_is_not_retryable(self) -> None:
         """APIStatusError with status 400 should NOT be retryable."""
-        from anthropic import APIStatusError
-
         error = MagicMock(spec=APIStatusError)
         error.body = {"error": {"type": "invalid_request_error"}}
         error.status_code = 400
@@ -127,8 +110,6 @@ class TestIsRetryableError:
 
     def test_status_401_is_not_retryable(self) -> None:
         """APIStatusError with status 401 should NOT be retryable."""
-        from anthropic import APIStatusError
-
         error = MagicMock(spec=APIStatusError)
         error.body = {"error": {"type": "authentication_error"}}
         error.status_code = 401
@@ -137,8 +118,6 @@ class TestIsRetryableError:
 
     def test_status_404_is_not_retryable(self) -> None:
         """APIStatusError with status 404 should NOT be retryable."""
-        from anthropic import APIStatusError
-
         error = MagicMock(spec=APIStatusError)
         error.body = {"error": {"type": "not_found_error"}}
         error.status_code = 404
@@ -220,8 +199,6 @@ class TestAnthropicClientRetry:
 
     def _create_overloaded_error(self) -> Exception:
         """Create a mock overloaded error."""
-        from anthropic import APIStatusError
-
         error = MagicMock(spec=APIStatusError)
         error.body = {"error": {"type": "overloaded_error", "message": "Overloaded"}}
         error.status_code = 529
@@ -249,8 +226,6 @@ class TestAnthropicClientRetry:
         mock_anthropic: MagicMock,
     ) -> None:
         """Should retry on overloaded error."""
-        from anthropic import APIStatusError
-
         # Create a real-ish error for isinstance checks
         overloaded_error = APIStatusError(
             message="Overloaded",
@@ -277,8 +252,6 @@ class TestAnthropicClientRetry:
         mock_anthropic: MagicMock,
     ) -> None:
         """Should use exponential backoff between retries."""
-        from anthropic import APIStatusError
-
         overloaded_error = APIStatusError(
             message="Overloaded",
             response=MagicMock(status_code=529),
@@ -306,8 +279,6 @@ class TestAnthropicClientRetry:
         mock_anthropic: MagicMock,
     ) -> None:
         """Should raise after max retries exceeded."""
-        from anthropic import APIStatusError
-
         overloaded_error = APIStatusError(
             message="Overloaded",
             response=MagicMock(status_code=529),
@@ -329,8 +300,6 @@ class TestAnthropicClientRetry:
         mock_anthropic: MagicMock,
     ) -> None:
         """Should not retry on non-retryable errors like 400."""
-        from anthropic import APIStatusError
-
         bad_request_error = APIStatusError(
             message="Bad request",
             response=MagicMock(status_code=400),
@@ -414,8 +383,6 @@ class TestAnthropicClientStreamRetry:
         mock_anthropic: MagicMock,
     ) -> None:
         """Streaming should retry on transient errors."""
-        from anthropic import APIStatusError
-
         overloaded_error = APIStatusError(
             message="Overloaded",
             response=MagicMock(status_code=529),
@@ -449,8 +416,6 @@ class TestAnthropicClientStreamRetry:
         mock_anthropic: MagicMock,
     ) -> None:
         """Streaming should raise after max retries."""
-        from anthropic import APIStatusError
-
         overloaded_error = APIStatusError(
             message="Overloaded",
             response=MagicMock(status_code=529),
