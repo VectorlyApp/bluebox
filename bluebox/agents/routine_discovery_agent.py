@@ -640,6 +640,11 @@ You have access to captured browser data including:
 
         self._state.validation_attempts += 1
         parameters = args.get("parameters", {})
+
+        # If no parameters provided, automatically use test parameters from observed values
+        if not parameters:
+            parameters = self._get_test_parameters_for_validation()
+
         self._emit_progress(f"Executing routine with parameters: {list(parameters.keys())}")
 
         result = execute_routine(
