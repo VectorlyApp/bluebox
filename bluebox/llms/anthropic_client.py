@@ -4,11 +4,14 @@ bluebox/llms/anthropic_client.py
 Anthropic-specific LLM client implementation using the Messages API.
 """
 
+import asyncio
 import json
+import random
+import time
 from collections.abc import Generator
 from typing import Any, TypeVar
 
-from anthropic import Anthropic, AsyncAnthropic
+from anthropic import Anthropic, AsyncAnthropic, APIStatusError, RateLimitError
 from pydantic import BaseModel
 
 from bluebox.config import Config
@@ -21,6 +24,39 @@ logger = get_logger(name=__name__)
 
 
 T = TypeVar("T", bound=BaseModel)
+
+# Retry configuration
+MAX_RETRIES = 5
+BASE_DELAY = 1.0  # seconds
+MAX_DELAY = 60.0  # seconds
+JITTER_FACTOR = 0.5  # Add randomness to avoid thundering herd
+
+
+def _is_retryable_error(error: Exception) -> bool:
+    """Check if an error is retryable (transient)."""
+    if isinstance(error, RateLimitError):
+        return True
+    if isinstance(error, APIStatusError):
+        # Check for overloaded, timeout, or server errors
+        error_type = getattr(error, "body", {})
+        if isinstance(error_type, dict):
+            error_info = error_type.get("error", {})
+            if isinstance(error_info, dict):
+                err_type = error_info.get("type", "")
+                if err_type in ("overloaded_error", "api_error"):
+                    return True
+        # Also check status codes: 429 (rate limit), 500+, 529 (overloaded)
+        status = getattr(error, "status_code", 0)
+        if status in (429, 500, 502, 503, 504, 529):
+            return True
+    return False
+
+
+def _calculate_backoff(attempt: int) -> float:
+    """Calculate backoff delay with exponential growth and jitter."""
+    delay = min(BASE_DELAY * (2 ** attempt), MAX_DELAY)
+    jitter = delay * JITTER_FACTOR * random.random()
+    return delay + jitter
 
 
 def _clean_schema_for_anthropic(schema: dict[str, Any]) -> dict[str, Any]:
@@ -394,8 +430,25 @@ class AnthropicClient(AbstractLLMVendorClient):
             extended_reasoning,
         )
 
-        response = self._client.messages.create(**kwargs)
-        return self._parse_response(response, response_model)
+        # Retry loop with exponential backoff
+        last_error: Exception | None = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = self._client.messages.create(**kwargs)
+                return self._parse_response(response, response_model)
+            except (APIStatusError, RateLimitError) as e:
+                last_error = e
+                if not _is_retryable_error(e) or attempt == MAX_RETRIES - 1:
+                    raise
+                delay = _calculate_backoff(attempt)
+                logger.warning(
+                    "Anthropic API error (attempt %d/%d), retrying in %.1fs: %s",
+                    attempt + 1, MAX_RETRIES, delay, e,
+                )
+                time.sleep(delay)
+
+        # Should not reach here, but raise last error if we do
+        raise last_error  # type: ignore[misc]
 
     async def call_async(
         self,
@@ -444,8 +497,25 @@ class AnthropicClient(AbstractLLMVendorClient):
             extended_reasoning,
         )
 
-        response = await self._async_client.messages.create(**kwargs)
-        return self._parse_response(response, response_model)
+        # Retry loop with exponential backoff
+        last_error: Exception | None = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = await self._async_client.messages.create(**kwargs)
+                return self._parse_response(response, response_model)
+            except (APIStatusError, RateLimitError) as e:
+                last_error = e
+                if not _is_retryable_error(e) or attempt == MAX_RETRIES - 1:
+                    raise
+                delay = _calculate_backoff(attempt)
+                logger.warning(
+                    "Anthropic API error (attempt %d/%d), retrying in %.1fs: %s",
+                    attempt + 1, MAX_RETRIES, delay, e,
+                )
+                await asyncio.sleep(delay)
+
+        # Should not reach here, but raise last error if we do
+        raise last_error  # type: ignore[misc]
 
     def call_stream_sync(
         self,
@@ -493,69 +563,88 @@ class AnthropicClient(AbstractLLMVendorClient):
             extended_thinking=extended_reasoning,
         )
 
-        full_content: list[str] = []
-        tool_calls: list[LLMToolCall] = []
-        reasoning_content: str | None = None
+        # Retry loop with exponential backoff
+        last_error: Exception | None = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                full_content: list[str] = []
+                tool_calls: list[LLMToolCall] = []
+                reasoning_content: str | None = None
 
-        # Track current tool being streamed
-        current_tool: dict[str, Any] | None = None
-        current_tool_input: list[str] = []
+                # Track current tool being streamed
+                current_tool: dict[str, Any] | None = None
+                current_tool_input: list[str] = []
 
-        with self._client.messages.stream(**kwargs) as stream:
-            for event in stream:
-                # Handle content block start
-                if event.type == "content_block_start":
-                    if event.content_block.type == "tool_use":
-                        current_tool = {
-                            "id": event.content_block.id,
-                            "name": event.content_block.name,
-                        }
-                        current_tool_input = []
+                with self._client.messages.stream(**kwargs) as stream:
+                    for event in stream:
+                        # Handle content block start
+                        if event.type == "content_block_start":
+                            if event.content_block.type == "tool_use":
+                                current_tool = {
+                                    "id": event.content_block.id,
+                                    "name": event.content_block.name,
+                                }
+                                current_tool_input = []
 
-                # Handle content block delta
-                elif event.type == "content_block_delta":
-                    delta = event.delta
-                    if delta.type == "text_delta":
-                        full_content.append(delta.text)
-                        yield delta.text
-                    elif delta.type == "thinking_delta":
-                        if reasoning_content is None:
-                            reasoning_content = ""
-                        reasoning_content += delta.thinking
-                    elif delta.type == "input_json_delta":
-                        if current_tool is not None:
-                            current_tool_input.append(delta.partial_json)
+                        # Handle content block delta
+                        elif event.type == "content_block_delta":
+                            delta = event.delta
+                            if delta.type == "text_delta":
+                                full_content.append(delta.text)
+                                yield delta.text
+                            elif delta.type == "thinking_delta":
+                                if reasoning_content is None:
+                                    reasoning_content = ""
+                                reasoning_content += delta.thinking
+                            elif delta.type == "input_json_delta":
+                                if current_tool is not None:
+                                    current_tool_input.append(delta.partial_json)
 
-                # Handle content block stop
-                elif event.type == "content_block_stop":
-                    if current_tool is not None:
-                        # Parse accumulated JSON input
-                        raw_input = "".join(current_tool_input) if current_tool_input else "{}"
-                        try:
-                            parsed_input = json.loads(raw_input)
-                        except json.JSONDecodeError as e:
-                            logger.error(
-                                "Failed to parse tool input for %s: %s. Raw: %s",
-                                current_tool["name"],
-                                e,
-                                raw_input[:500],
-                            )
-                            raise
+                        # Handle content block stop
+                        elif event.type == "content_block_stop":
+                            if current_tool is not None:
+                                # Parse accumulated JSON input
+                                raw_input = "".join(current_tool_input) if current_tool_input else "{}"
+                                try:
+                                    parsed_input = json.loads(raw_input)
+                                except json.JSONDecodeError as e:
+                                    logger.error(
+                                        "Failed to parse tool input for %s: %s. Raw: %s",
+                                        current_tool["name"],
+                                        e,
+                                        raw_input[:500],
+                                    )
+                                    raise
 
-                        tool_calls.append(LLMToolCall(
-                            tool_name=current_tool["name"],
-                            tool_arguments=parsed_input,
-                            call_id=current_tool["id"],
-                        ))
-                        current_tool = None
-                        current_tool_input = []
+                                tool_calls.append(LLMToolCall(
+                                    tool_name=current_tool["name"],
+                                    tool_arguments=parsed_input,
+                                    call_id=current_tool["id"],
+                                ))
+                                current_tool = None
+                                current_tool_input = []
 
-        # Yield final response
-        # NOTE: We intentionally do NOT return response_id for Anthropic.
-        # See _parse_response for explanation.
-        yield LLMChatResponse(
-            content="".join(full_content) if full_content else None,
-            tool_calls=tool_calls,
-            response_id=None,
-            reasoning_content=reasoning_content,
-        )
+                # Yield final response
+                # NOTE: We intentionally do NOT return response_id for Anthropic.
+                # See _parse_response for explanation.
+                yield LLMChatResponse(
+                    content="".join(full_content) if full_content else None,
+                    tool_calls=tool_calls,
+                    response_id=None,
+                    reasoning_content=reasoning_content,
+                )
+                return  # Success, exit retry loop
+
+            except (APIStatusError, RateLimitError) as e:
+                last_error = e
+                if not _is_retryable_error(e) or attempt == MAX_RETRIES - 1:
+                    raise
+                delay = _calculate_backoff(attempt)
+                logger.warning(
+                    "Anthropic API error during streaming (attempt %d/%d), retrying in %.1fs: %s",
+                    attempt + 1, MAX_RETRIES, delay, e,
+                )
+                time.sleep(delay)
+
+        # Should not reach here, but raise last error if we do
+        raise last_error  # type: ignore[misc]

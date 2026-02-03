@@ -36,10 +36,9 @@ class OpenAIModel(StrEnum):
 
 class AnthropicModel(StrEnum):
     """Anthropic models."""
-    CLAUDE_OPUS_4 = "claude-opus-4-20250514"
-    CLAUDE_SONNET_4_5 = "claude-sonnet-4-5-20250929"
-    CLAUDE_SONNET_4 = "claude-sonnet-4-20250514"
-    CLAUDE_HAIKU_3_5 = "claude-3-5-haiku-20241022"
+    CLAUDE_OPUS_4_5 = "claude-opus-4-5"
+    CLAUDE_SONNET_4_5 = "claude-sonnet-4-5"
+    CLAUDE_HAIKU_4_5 = "claude-haiku-4-5"
 
 
 # LLMModel type: union of all vendor models
@@ -64,3 +63,28 @@ def get_model_vendor(model: LLMModel) -> LLMVendor:
     Returns the vendor of the LLM model.
     """
     return _model_to_vendor[model.value]
+
+
+def get_model_by_value(model_value: str) -> tuple[LLMModel, LLMVendor] | None:
+    """
+    Get model enum and vendor by model value string.
+
+    Args:
+        model_value: The model value string (e.g., "gpt-5.1", "claude-opus-4-5").
+
+    Returns:
+        Tuple of (LLMModel, LLMVendor) if found, None otherwise.
+    """
+    if model_value in _model_to_vendor:
+        vendor = _model_to_vendor[model_value]
+        # Find the actual enum member
+        model_enum = OpenAIModel if vendor == LLMVendor.OPENAI else AnthropicModel
+        for model in model_enum:
+            if model.value == model_value:
+                return model, vendor
+    return None
+
+
+def get_all_model_values() -> list[str]:
+    """Get all available model value strings."""
+    return list(_model_to_vendor.keys())

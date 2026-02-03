@@ -43,7 +43,12 @@ from bluebox.data_models.llms.interaction import (
     PendingToolInvocation,
     ToolInvocationStatus,
 )
-from bluebox.data_models.llms.vendors import AnthropicModel, LLMModel, OpenAIModel
+from bluebox.data_models.llms.vendors import (
+    LLMModel,
+    OpenAIModel,
+    get_all_model_values,
+    get_model_by_value,
+)
 from bluebox.utils.logger import get_logger
 
 
@@ -474,11 +479,7 @@ def main() -> None:
         "--model",
         type=str,
         default="gpt-5.1",
-        help=(
-            "LLM model to use (default: gpt-5.1). "
-            "Options: gpt-5, gpt-5.1, gpt-5.2, gpt-5-mini, gpt-5-nano, "
-            "claude-opus-4.5, claude-sonnet-4.5, claude-haiku-3.5"
-        ),
+        help=f"LLM model to use (default: gpt-5.1). Options: {', '.join(get_all_model_values())}",
     )
     args = parser.parse_args()
 
@@ -497,21 +498,13 @@ def main() -> None:
         console.print(f"[bold red]Error parsing JSONL file: {e}[/bold red]")
         sys.exit(1)
 
-    # Map model string to enum
-    model_map: dict[str, LLMModel] = {
-        # OpenAI models
-        "gpt-5": OpenAIModel.GPT_5,
-        "gpt-5.1": OpenAIModel.GPT_5_1,
-        "gpt-5.2": OpenAIModel.GPT_5_2,
-        "gpt-5-mini": OpenAIModel.GPT_5_MINI,
-        "gpt-5-nano": OpenAIModel.GPT_5_NANO,
-        # Anthropic models
-        "claude-opus-4": AnthropicModel.CLAUDE_OPUS_4,
-        "claude-sonnet-4.5": AnthropicModel.CLAUDE_SONNET_4_5,
-        "claude-sonnet-4": AnthropicModel.CLAUDE_SONNET_4,
-        "claude-haiku-3.5": AnthropicModel.CLAUDE_HAIKU_3_5,
-    }
-    llm_model = model_map.get(args.model, OpenAIModel.GPT_5_1)
+    # Resolve model string to enum
+    model_result = get_model_by_value(args.model)
+    if model_result is None:
+        console.print(f"[bold red]Error: Unknown model '{args.model}'[/bold red]")
+        console.print(f"[dim]Available models: {', '.join(get_all_model_values())}[/dim]")
+        sys.exit(1)
+    llm_model, _ = model_result
 
     print_welcome(args.model, str(jsonl_path), network_store)
 
