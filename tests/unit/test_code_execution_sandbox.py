@@ -802,11 +802,24 @@ class TestDockerExecution:
             assert "NameError" in result["error"]
 
     def test_docker_execution_timeout(self) -> None:
-        """Should handle Docker execution timeout."""
-        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("docker", 30)):
+        """Should handle Docker execution timeout and kill the container."""
+        mock_kill_result = MagicMock()
+        mock_kill_result.returncode = 0
+
+        # First call (docker run) times out, second call (docker kill) succeeds
+        with patch(
+            "subprocess.run",
+            side_effect=[subprocess.TimeoutExpired("docker", 30), mock_kill_result],
+        ) as mock_run:
             result = _execute_in_docker("while True: pass")
             assert "error" in result
             assert "timed out" in result["error"]
+
+            # Verify docker kill was called
+            assert mock_run.call_count == 2
+            kill_call = mock_run.call_args_list[1]
+            assert "docker" in kill_call[0][0]
+            assert "kill" in kill_call[0][0]
 
     def test_docker_security_flags(self) -> None:
         """Should include security flags in Docker command."""
