@@ -95,8 +95,12 @@ class RoutineDiscoveryAgent(BaseModel):
         '1. String param:     "name": \\"{{username}}\\"           -> "name": "john"\n'
         '2. Number param:     "count": "{{limit}}"                -> "count": 50\n'
         '3. Bool param:       "active": "{{is_active}}"           -> "active": true\n'
-        '4. Session storage:  "token": \\"{{sessionStorage:auth.access_token}}\\"\n'
-        '5. Cookie:           "sid": \\"{{cookie:session_id}}\\"'
+        '4. String in string: "msg_\\"{{id}}\\""                  -> "msg_abc"\n'
+        '5. Number in string: "page\\"{{num}}\\""                 -> "page5"\n'
+        '6. URL with param:   "/api/\\"{{user_id}}\\"/data"       -> "/api/123/data"\n'
+        '7. Session storage:  "token": \\"{{sessionStorage:auth.access_token}}\\"\n'
+        '8. Cookie:           "sid": \\"{{cookie:session_id}}\\"\n'
+        "IMPORTANT: YOU MUST ENSURE THAT EACH PLACEHOLDER IS SURROUNDED BY QUOTES OR ESCAPED QUOTES!"
     )
 
     SYSTEM_PROMPT: str = """You are an expert at analyzing network traffic and building web automation routines.
