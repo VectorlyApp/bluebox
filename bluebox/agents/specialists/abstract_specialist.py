@@ -522,7 +522,7 @@ class AbstractSpecialist(ABC):
             logger.debug("Autonomous loop iteration %d/%d", self._autonomous_iteration, max_iterations)
 
             # Gate finalize tools behind min_iterations
-            if self._autonomous_iteration >= min_iterations - 1 and self.mode != SpecialistMode.FINALIZING:
+            if self._autonomous_iteration >= min_iterations and self.mode != SpecialistMode.FINALIZING:
                 self.mode = SpecialistMode.FINALIZING
                 self._register_tools()  # re-evaluate availability lambdas
                 logger.info("Finalize tools now available (iteration %d)", self._autonomous_iteration)
