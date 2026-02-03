@@ -17,6 +17,18 @@ Contains:
 import json
 import re
 from textwrap import dedent
+from typing import NamedTuple
+
+
+class JSValidationResult(NamedTuple):
+    """Result of JavaScript code validation."""
+    errors: list[str]
+    warnings: list[str]
+
+    @property
+    def is_valid(self) -> bool:
+        """True if there are no errors (warnings are ok)."""
+        return len(self.errors) == 0
 
 
 # Constants ________________________________________________________________________________________
@@ -340,31 +352,31 @@ def _get_element_profile_js() -> str:
 
 ## Validation functions
 
-def validate_js(js_code: str) -> list[str]:
+def validate_js(js_code: str) -> JSValidationResult:
     """
     Validate JavaScript code for IIFE format, blocked patterns, and readability.
-
-    Returns a list of issues. Hard errors are plain strings; soft warnings are
-    prefixed with ``"WARNING:"``.  An empty list means the code is valid.
 
     Args:
         js_code: The JavaScript code to validate.
 
     Returns:
-        A list of errors/warnings (empty = valid).
+        JSValidationResult with separate errors and warnings lists.
+        Use result.is_valid to check if the code passes validation.
     """
     errors: list[str] = []
+    warnings: list[str] = []
+
     if not js_code or not js_code.strip():
         errors.append("JavaScript code cannot be empty")
-        return errors
+        return JSValidationResult(errors=errors, warnings=warnings)
 
-    if not re.match(IIFE_PATTERN, js_code, flags=re.DOTALL):
+    if not re.match(pattern=IIFE_PATTERN, string=js_code, flags=re.DOTALL):
         errors.append(
             "JavaScript code must be wrapped in an IIFE: (function() { ... })() or (() => { ... })()"
         )
 
     for pattern in DANGEROUS_JS_PATTERNS:
-        if re.search(pattern, js_code, flags=re.MULTILINE):
+        if re.search(pattern=pattern, string=js_code, flags=re.MULTILINE):
             errors.append(f"Blocked pattern detected: {pattern}")
 
     # readability check; soft warning, not a blocking error
@@ -374,13 +386,13 @@ def validate_js(js_code: str) -> list[str]:
         body = js_code[first_brace + 1:last_brace]
         for line in body.split("\n"):
             if len(line) > _MAX_JS_LINE_LENGTH:
-                errors.append(
-                    f"WARNING: Line exceeds {_MAX_JS_LINE_LENGTH} chars. "
+                warnings.append(
+                    f"Line exceeds {_MAX_JS_LINE_LENGTH} chars. "
                     "Please reformat with proper line breaks and indentation for readability."
                 )
                 break  # one warning is enough
 
-    return errors
+    return JSValidationResult(errors=errors, warnings=warnings)
 
 
 ## Generation functions

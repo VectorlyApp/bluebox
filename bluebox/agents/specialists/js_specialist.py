@@ -296,22 +296,18 @@ class JSSpecialist(AbstractSpecialist):
     @token_optimized
     def _validate_js_code(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         js_code = tool_arguments.get("js_code", "")
-        errors = validate_js(js_code)
+        result = validate_js(js_code)
 
-        # Separate hard errors from warnings
-        hard_errors = [e for e in errors if not e.startswith("WARNING:")]
-        warnings = [e for e in errors if e.startswith("WARNING:")]
-
-        if hard_errors:
+        if result.errors:
             return {
                 "valid": False,
-                "errors": hard_errors,
-                "warnings": warnings,
+                "errors": result.errors,
+                "warnings": result.warnings,
             }
-        if warnings:
+        if result.warnings:
             return {
                 "valid": True,
-                "warnings": warnings,
+                "warnings": result.warnings,
                 "message": "Code passes validation but has formatting warnings. Consider reformatting.",
             }
         return {
@@ -406,11 +402,13 @@ class JSSpecialist(AbstractSpecialist):
             return {"error": "description is required"}
 
         # Validate the code
-        errors = validate_js(js_code)
-        # Only block on hard errors, not warnings
-        hard_errors = [e for e in errors if not e.startswith("WARNING:")]
-        if hard_errors:
-            return {"error": "Validation failed", "errors": hard_errors}
+        result = validate_js(js_code)
+        if result.errors:
+            return {
+                "error": "Validation failed",
+                "errors": result.errors,
+                "warnings": result.warnings,
+            }
 
         # Store result
         self._js_result = JSCodeResult(
@@ -647,10 +645,13 @@ class JSSpecialist(AbstractSpecialist):
         keep_open = tool_arguments.get("keep_open", False)
 
         # Validate JS first
-        errors = validate_js(js_code)
-        hard_errors = [e for e in errors if not e.startswith("WARNING:")]
-        if hard_errors:
-            return {"error": "Validation failed", "errors": hard_errors}
+        result = validate_js(js_code)
+        if result.errors:
+            return {
+                "error": "Validation failed",
+                "errors": result.errors,
+                "warnings": result.warnings,
+            }
 
         overall_timeout = timeout_seconds + 5.0
         deadline = time.time() + overall_timeout

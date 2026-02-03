@@ -10,6 +10,7 @@ from textwrap import dedent
 from bluebox.utils.js_utils import (
     DANGEROUS_JS_PATTERNS,
     IIFE_PATTERN,
+    JSValidationResult,
     generate_js_evaluate_wrapper_js,
     validate_js,
 )
@@ -22,28 +23,30 @@ class TestValidateJs:
 
     def test_valid_function_iife(self) -> None:
         """Valid (function() { ... })() passes with no errors."""
-        errors = validate_js("(function() { return 42; })()")
-        assert errors == []
+        result = validate_js("(function() { return 42; })()")
+        assert result.is_valid
+        assert result.errors == []
+        assert result.warnings == []
 
     def test_valid_arrow_iife(self) -> None:
         """Valid (() => { ... })() passes with no errors."""
-        errors = validate_js("(() => { return 42; })()")
-        assert errors == []
+        result = validate_js("(() => { return 42; })()")
+        assert result.is_valid
 
     def test_valid_async_function_iife(self) -> None:
         """Valid (async function() { ... })() passes."""
-        errors = validate_js("(async function() { return 42; })()")
-        assert errors == []
+        result = validate_js("(async function() { return 42; })()")
+        assert result.is_valid
 
     def test_valid_async_arrow_iife(self) -> None:
         """Valid (async () => { ... })() passes."""
-        errors = validate_js("(async () => { return 42; })()")
-        assert errors == []
+        result = validate_js("(async () => { return 42; })()")
+        assert result.is_valid
 
     def test_valid_iife_with_trailing_semicolon(self) -> None:
         """Trailing semicolon is allowed."""
-        errors = validate_js("(function() { return 1; })();")
-        assert errors == []
+        result = validate_js("(function() { return 1; })();")
+        assert result.is_valid
 
     def test_valid_multiline_iife(self) -> None:
         """Multi-line IIFE with proper formatting passes cleanly."""
@@ -54,124 +57,146 @@ class TestValidateJs:
                 return x + y;
             })()
         """)
-        errors = validate_js(code)
-        assert errors == []
+        result = validate_js(code)
+        assert result.is_valid
+        assert result.warnings == []
 
     # --- Empty / missing code ---
 
     def test_empty_string(self) -> None:
-        errors = validate_js("")
-        assert any("cannot be empty" in e for e in errors)
+        result = validate_js("")
+        assert not result.is_valid
+        assert any("cannot be empty" in e for e in result.errors)
 
     def test_whitespace_only(self) -> None:
-        errors = validate_js("   \n\t  ")
-        assert any("cannot be empty" in e for e in errors)
+        result = validate_js("   \n\t  ")
+        assert not result.is_valid
+        assert any("cannot be empty" in e for e in result.errors)
 
     def test_none_code(self) -> None:
-        errors = validate_js(None)  # type: ignore[arg-type]
-        assert any("cannot be empty" in e for e in errors)
+        result = validate_js(None)  # type: ignore[arg-type]
+        assert not result.is_valid
+        assert any("cannot be empty" in e for e in result.errors)
 
     # --- IIFE format errors ---
 
     def test_bare_expression_rejected(self) -> None:
         """Code not wrapped in IIFE is rejected."""
-        errors = validate_js("document.title")
-        assert any("IIFE" in e for e in errors)
+        result = validate_js("document.title")
+        assert not result.is_valid
+        assert any("IIFE" in e for e in result.errors)
 
     def test_bare_function_declaration_rejected(self) -> None:
-        errors = validate_js("function foo() { return 1; }")
-        assert any("IIFE" in e for e in errors)
+        result = validate_js("function foo() { return 1; }")
+        assert not result.is_valid
+        assert any("IIFE" in e for e in result.errors)
 
     def test_non_invoked_function_rejected(self) -> None:
         """Function expression without invocation is rejected."""
-        errors = validate_js("(function() { return 1; })")
-        assert any("IIFE" in e for e in errors)
+        result = validate_js("(function() { return 1; })")
+        assert not result.is_valid
+        assert any("IIFE" in e for e in result.errors)
 
     # --- Dangerous pattern detection ---
 
     def test_eval_blocked(self) -> None:
-        errors = validate_js("(function() { eval('1+1'); })()")
-        assert any("Blocked pattern" in e for e in errors)
+        result = validate_js("(function() { eval('1+1'); })()")
+        assert not result.is_valid
+        assert any("Blocked pattern" in e for e in result.errors)
 
     def test_function_constructor_blocked(self) -> None:
-        errors = validate_js("(function() { new Function('return 1')(); })()")
-        assert any("Blocked pattern" in e for e in errors)
+        result = validate_js("(function() { new Function('return 1')(); })()")
+        assert not result.is_valid
+        assert any("Blocked pattern" in e for e in result.errors)
 
     def test_fetch_blocked(self) -> None:
-        errors = validate_js("(function() { fetch('/api'); })()")
-        assert any("Blocked pattern" in e for e in errors)
+        result = validate_js("(function() { fetch('/api'); })()")
+        assert not result.is_valid
+        assert any("Blocked pattern" in e for e in result.errors)
 
     def test_xmlhttprequest_blocked(self) -> None:
-        errors = validate_js("(function() { new XMLHttpRequest(); })()")
-        assert any("Blocked pattern" in e for e in errors)
+        result = validate_js("(function() { new XMLHttpRequest(); })()")
+        assert not result.is_valid
+        assert any("Blocked pattern" in e for e in result.errors)
 
     def test_websocket_blocked(self) -> None:
-        errors = validate_js("(function() { new WebSocket('ws://x'); })()")
-        assert any("Blocked pattern" in e for e in errors)
+        result = validate_js("(function() { new WebSocket('ws://x'); })()")
+        assert not result.is_valid
+        assert any("Blocked pattern" in e for e in result.errors)
 
     def test_sendbeacon_blocked(self) -> None:
-        errors = validate_js("(function() { navigator.sendBeacon('/log', ''); })()")
-        assert any("Blocked pattern" in e for e in errors)
+        result = validate_js("(function() { navigator.sendBeacon('/log', ''); })()")
+        assert not result.is_valid
+        assert any("Blocked pattern" in e for e in result.errors)
 
     def test_addeventlistener_blocked(self) -> None:
-        errors = validate_js("(function() { window.addEventListener('click', () => {}); })()")
-        assert any("Blocked pattern" in e for e in errors)
+        result = validate_js("(function() { window.addEventListener('click', () => {}); })()")
+        assert not result.is_valid
+        assert any("Blocked pattern" in e for e in result.errors)
 
     def test_mutationobserver_blocked(self) -> None:
-        errors = validate_js("(function() { new MutationObserver(() => {}); })()")
-        assert any("Blocked pattern" in e for e in errors)
+        result = validate_js("(function() { new MutationObserver(() => {}); })()")
+        assert not result.is_valid
+        assert any("Blocked pattern" in e for e in result.errors)
 
     def test_intersectionobserver_blocked(self) -> None:
-        errors = validate_js("(function() { new IntersectionObserver(() => {}); })()")
-        assert any("Blocked pattern" in e for e in errors)
+        result = validate_js("(function() { new IntersectionObserver(() => {}); })()")
+        assert not result.is_valid
+        assert any("Blocked pattern" in e for e in result.errors)
 
     def test_window_close_blocked(self) -> None:
-        errors = validate_js("(function() { window.close(); })()")
-        assert any("Blocked pattern" in e for e in errors)
+        result = validate_js("(function() { window.close(); })()")
+        assert not result.is_valid
+        assert any("Blocked pattern" in e for e in result.errors)
 
     def test_multiple_blocked_patterns(self) -> None:
         """Multiple violations produce multiple errors."""
         code = "(function() { eval('x'); fetch('/y'); })()"
-        errors = validate_js(code)
-        blocked = [e for e in errors if "Blocked pattern" in e]
+        result = validate_js(code)
+        assert not result.is_valid
+        blocked = [e for e in result.errors if "Blocked pattern" in e]
         assert len(blocked) >= 2
 
     # --- Safe patterns that look similar but should pass ---
 
     def test_fetch_as_variable_name_allowed(self) -> None:
         """A variable named 'prefetch' should not trigger the fetch block."""
-        errors = validate_js("(function() { var prefetch = 1; return prefetch; })()")
-        assert not any("Blocked pattern" in e for e in errors)
+        result = validate_js("(function() { var prefetch = 1; return prefetch; })()")
+        assert result.is_valid
+        assert not any("Blocked pattern" in e for e in result.errors)
 
     def test_function_keyword_in_iife_allowed(self) -> None:
         """The 'function' keyword in the IIFE wrapper itself is fine."""
-        errors = validate_js("(function() { return 1; })()")
-        assert not any("Function" in e for e in errors)
+        result = validate_js("(function() { return 1; })()")
+        assert result.is_valid
+        assert not any("Function" in e for e in result.errors)
 
     # --- Readability warnings ---
 
     def test_long_line_produces_warning(self) -> None:
-        """A line > 200 chars in the IIFE body triggers a WARNING."""
+        """A line > 200 chars in the IIFE body triggers a warning."""
         long_var = "x" * 250
         code = f"(function() {{ var {long_var} = 1; return 1; }})()"
-        errors = validate_js(code)
-        warnings = [e for e in errors if e.startswith("WARNING:")]
-        assert len(warnings) == 1
-        assert "200" in warnings[0]
+        result = validate_js(code)
+        assert result.is_valid  # warnings don't fail validation
+        assert len(result.warnings) == 1
+        assert "200" in result.warnings[0]
 
     def test_long_line_warning_is_soft(self) -> None:
-        """WARNING doesn't appear alongside hard errors for otherwise valid code."""
+        """Warnings don't appear in errors for otherwise valid code."""
         long_var = "x" * 250
         code = f"(function() {{ var {long_var} = 1; return 1; }})()"
-        errors = validate_js(code)
-        hard_errors = [e for e in errors if not e.startswith("WARNING:")]
-        assert hard_errors == []
+        result = validate_js(code)
+        assert result.is_valid
+        assert result.errors == []
+        assert len(result.warnings) == 1
 
     def test_short_lines_no_warning(self) -> None:
         """Well-formatted code produces no warnings."""
         code = "(function() {\n  var x = 1;\n  return x;\n})()"
-        errors = validate_js(code)
-        assert not any(e.startswith("WARNING:") for e in errors)
+        result = validate_js(code)
+        assert result.is_valid
+        assert result.warnings == []
 
     def test_exactly_200_chars_no_warning(self) -> None:
         """A line of exactly 200 chars should not trigger the warning."""
@@ -182,8 +207,24 @@ class TestValidateJs:
         body = code[code.find("{") + 1:code.rfind("}")]
         max_len = max(len(line) for line in body.split("\n"))
         if max_len <= 200:
-            errors = validate_js(code)
-            assert not any(e.startswith("WARNING:") for e in errors)
+            result = validate_js(code)
+            assert result.warnings == []
+
+    # --- JSValidationResult structure ---
+
+    def test_result_is_named_tuple(self) -> None:
+        """Verify JSValidationResult can be unpacked as a tuple."""
+        errors, warnings = validate_js("(function() { return 1; })()")
+        assert errors == []
+        assert warnings == []
+
+    def test_result_has_named_access(self) -> None:
+        """Verify JSValidationResult supports named attribute access."""
+        result = validate_js("(function() { return 1; })()")
+        assert isinstance(result, JSValidationResult)
+        assert hasattr(result, "errors")
+        assert hasattr(result, "warnings")
+        assert hasattr(result, "is_valid")
 
     # --- Constants sanity checks ---
 
