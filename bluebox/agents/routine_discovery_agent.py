@@ -267,6 +267,42 @@ You have access to captured browser data including:
         """Emit a progress message."""
         self.emit_message_callable(RoutineDiscoveryMessage(type=msg_type, content=message))
 
+    def _get_test_parameters_for_validation(self) -> dict[str, str]:
+        """
+        Generate test parameters from observed values for routine validation.
+
+        Returns a dict mapping parameter names to their observed values from discovery.
+        """
+        if not self._state or not self._state.production_routine:
+            return {}
+
+        # Collect observed values from extracted variables
+        observed_values: dict[str, str] = {}
+        for tx_data in self._state.transaction_data.values():
+            extracted = tx_data.get("extracted_variables")
+            if extracted:
+                for var in extracted.variables:
+                    observed_values[var.name] = var.observed_value
+
+        # Map routine parameters to observed values
+        test_params: dict[str, str] = {}
+        for param in self._state.production_routine.parameters:
+            # Use source_variable for lookup if available, otherwise fall back to param.name
+            lookup_key = param.source_variable if param.source_variable else param.name
+            value = observed_values.get(lookup_key, "")
+            if value:
+                test_params[param.name] = value
+            elif param.type == "integer":
+                test_params[param.name] = "1"
+            elif param.type == "number":
+                test_params[param.name] = "1.0"
+            elif param.type == "boolean":
+                test_params[param.name] = "false"
+            else:
+                test_params[param.name] = ""
+
+        return test_params
+
     # === Tool Implementations ===
 
     def _tool_list_transactions(self) -> dict:
@@ -563,12 +599,14 @@ You have access to captured browser data including:
             # Transition to validation phase if browser available, otherwise complete
             if self.remote_debugging_address:
                 self._state.phase = DiscoveryPhase.VALIDATE_ROUTINE
+                test_params = self._get_test_parameters_for_validation()
                 return {
                     "success": True,
                     "routine_name": production_routine.name,
                     "operations_count": len(dev_routine.operations),
                     "parameters_count": len(dev_routine.parameters),
                     "next_step": "Use execute_routine to validate the routine works correctly",
+                    "test_parameters": test_params,
                 }
             else:
                 self._state.phase = DiscoveryPhase.COMPLETE
@@ -795,7 +833,11 @@ You have access to captured browser data including:
                             "If the issue is with test parameters, try execute_routine again with corrected values."
                         )
                     else:
-                        prompt += "Validate the routine using execute_routine with test parameters."
+                        test_params = self._get_test_parameters_for_validation()
+                        prompt += (
+                            f"Validate the routine using execute_routine with these test parameters "
+                            f"(from observed values during discovery): {json.dumps(test_params)}"
+                        )
 
                 self._add_to_message_history("system", prompt)
 

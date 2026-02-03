@@ -510,6 +510,7 @@ class TestGetTestParameters:
         mock_routine = MagicMock()
         mock_routine.parameters = [MagicMock(name="query", type="string")]
         mock_routine.parameters[0].name = "query"
+        mock_routine.parameters[0].source_variable = None  # Fall back to param.name
 
         result = agent.get_test_parameters(mock_routine)
 
@@ -529,16 +530,76 @@ class TestGetTestParameters:
         ]
         mock_routine.parameters[0].name = "count"
         mock_routine.parameters[0].type = "integer"
+        mock_routine.parameters[0].source_variable = None
         mock_routine.parameters[1].name = "price"
         mock_routine.parameters[1].type = "number"
+        mock_routine.parameters[1].source_variable = None
         mock_routine.parameters[2].name = "active"
         mock_routine.parameters[2].type = "boolean"
+        mock_routine.parameters[2].source_variable = None
 
         result = agent.get_test_parameters(mock_routine)
 
         assert result.parameters[0].value == "1"
         assert result.parameters[1].value == "1.0"
         assert result.parameters[2].value == "false"
+
+
+class TestGetTestParametersForValidation:
+    """Tests for _get_test_parameters_for_validation method."""
+
+    def test_returns_dict_from_observed_values(self, agent: RoutineDiscoveryAgent) -> None:
+        """Should return dict of parameter names to observed values."""
+        # Set up state with extracted variables
+        agent._state.transaction_data["tx_001"] = {
+            "extracted_variables": ExtractedVariableResponse(
+                transaction_id="tx_001",
+                variables=[
+                    Variable(
+                        type=VariableType.PARAMETER,
+                        requires_dynamic_resolution=False,
+                        name="originStations",
+                        observed_value="BOS",
+                        values_to_scan_for=["BOS"],
+                    ),
+                    Variable(
+                        type=VariableType.PARAMETER,
+                        requires_dynamic_resolution=False,
+                        name="destinationStations",
+                        observed_value="ATL",
+                        values_to_scan_for=["ATL"],
+                    ),
+                ],
+            ),
+        }
+
+        # Create a mock production routine with source_variable mappings
+        mock_routine = MagicMock()
+        mock_routine.parameters = [
+            MagicMock(name="origin", type="string", source_variable="originStations"),
+            MagicMock(name="destination", type="string", source_variable="destinationStations"),
+        ]
+        mock_routine.parameters[0].name = "origin"
+        mock_routine.parameters[0].type = "string"
+        mock_routine.parameters[0].source_variable = "originStations"
+        mock_routine.parameters[1].name = "destination"
+        mock_routine.parameters[1].type = "string"
+        mock_routine.parameters[1].source_variable = "destinationStations"
+        agent._state.production_routine = mock_routine
+
+        result = agent._get_test_parameters_for_validation()
+
+        assert result == {"origin": "BOS", "destination": "ATL"}
+
+    def test_returns_empty_dict_without_state(self, agent: RoutineDiscoveryAgent) -> None:
+        """Should return empty dict if no state or production routine."""
+        agent._state = None
+        assert agent._get_test_parameters_for_validation() == {}
+
+    def test_returns_empty_dict_without_production_routine(self, agent: RoutineDiscoveryAgent) -> None:
+        """Should return empty dict if no production routine."""
+        agent._state.production_routine = None
+        assert agent._get_test_parameters_for_validation() == {}
 
 
 class TestConstructRoutineTool:
