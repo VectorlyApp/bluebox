@@ -5,7 +5,7 @@ scripts/run_interaction_specialist.py
 Interactive CLI for the Interaction Specialist agent.
 
 Usage:
-    python scripts/run_interaction_specialist.py --jsonl-path ./cdp_captures/interactions/interaction_events.jsonl
+    python scripts/run_interaction_specialist.py --jsonl-path ./cdp_captures/interactions/events.jsonl
 """
 
 import argparse
