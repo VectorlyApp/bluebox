@@ -244,7 +244,7 @@ def print_assistant_message(content: str) -> None:
 def print_error(error: str) -> None:
     """Print an error message."""
     console.print()
-    console.print(f"[bold red]⚠ Error:[/bold red] [red]{escape(error)}[/red]")
+    console.print(f"[bold red]Error:[/bold red] [red]{escape(error)}[/red]")
     console.print()
 
 
@@ -262,7 +262,7 @@ def print_tool_call(invocation: PendingToolInvocation) -> None:
     console.print()
     console.print(Panel(
         content,
-        title="[bold yellow]⚙ TOOL CALL[/bold yellow]",
+        title="[bold yellow]TOOL CALL[/bold yellow]",
         style="yellow",
         box=box.ROUNDED,
     ))
@@ -274,7 +274,7 @@ def print_tool_result(
 ) -> None:
     """Print a tool invocation result."""
     if invocation.status == ToolInvocationStatus.EXECUTED:
-        console.print("[bold green]✓ Tool executed[/bold green]")
+        console.print("[bold green]Tool executed[/bold green]")
         if result:
             result_json = json.dumps(result, indent=2)
             # Limit display to 150 lines
@@ -286,7 +286,7 @@ def print_tool_result(
             console.print(Panel(display, title="Result", style="green", box=box.ROUNDED))
 
     elif invocation.status == ToolInvocationStatus.FAILED:
-        console.print("[bold red]✗ Tool execution failed[/bold red]")
+        console.print("[bold red]Tool execution failed[/bold red]")
         error = result.get("error") if result else None
         if error:
             console.print(Panel(str(error), title="Error", style="red", box=box.ROUNDED))

@@ -230,8 +230,8 @@ def print_tool_result(
         if result:
             result_json = json.dumps(result, indent=2)
             lines = result_json.split("\n")
-            if len(lines) > 100:
-                display = "\n".join(lines[:100]) + f"\n... ({len(lines) - 100} more lines)"
+            if len(lines) > 150:
+                display = "\n".join(lines[:150]) + f"\n... ({len(lines) - 150} more lines)"
             else:
                 display = result_json
             console.print(Panel(display, title="Result", style="green", box=box.ROUNDED))
