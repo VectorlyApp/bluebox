@@ -147,14 +147,14 @@ class AnthropicClient(AbstractLLMVendorClient):
         Returns:
             Normalized tool_choice for Anthropic API
         """
-        # use vendor's default tool choice if not provided
         if tool_choice is None:
             return None
-        
-        # normalize tool choice
-        if tool_choice in ["auto", "required", "none"]:
-            return {"type": tool_choice}
-        
+        if tool_choice == "auto":
+            return {"type": "auto"}
+        if tool_choice == "required":
+            return {"type": "any"}
+        if tool_choice == "none":
+            return {"type": "none"}
         # Otherwise, treat as tool name
         return {"type": "tool", "name": tool_choice}
 
