@@ -85,6 +85,7 @@ class AbstractLLMVendorClient(ABC):
         extended_reasoning: bool = False,
         stateful: bool = False,
         previous_response_id: str | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified sync call to the LLM.
@@ -99,6 +100,7 @@ class AbstractLLMVendorClient(ABC):
             extended_reasoning: Enable extended reasoning (if supported).
             stateful: Enable stateful conversation (if supported).
             previous_response_id: Previous response ID for chaining (if supported).
+            tool_choice: Tool selection mode ("auto", "none", "required", or specific tool).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -117,6 +119,7 @@ class AbstractLLMVendorClient(ABC):
         extended_reasoning: bool = False,
         stateful: bool = False,
         previous_response_id: str | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified async call to the LLM.
@@ -131,6 +134,7 @@ class AbstractLLMVendorClient(ABC):
             extended_reasoning: Enable extended reasoning (if supported).
             stateful: Enable stateful conversation (if supported).
             previous_response_id: Previous response ID for chaining (if supported).
+            tool_choice: Tool selection mode ("auto", "none", "required", or specific tool).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -148,6 +152,7 @@ class AbstractLLMVendorClient(ABC):
         extended_reasoning: bool = False,
         stateful: bool = False,
         previous_response_id: str | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
         Unified streaming call to the LLM.
@@ -163,6 +168,7 @@ class AbstractLLMVendorClient(ABC):
             extended_reasoning: Enable extended reasoning (if supported).
             stateful: Enable stateful conversation (if supported).
             previous_response_id: Previous response ID for chaining (if supported).
+            tool_choice: Tool selection mode ("auto", "none", "required", or specific tool).
 
         Yields:
             str: Text chunks as they arrive.

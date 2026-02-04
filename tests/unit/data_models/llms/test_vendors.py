@@ -4,8 +4,6 @@ tests/unit/data_models/llms/test_vendors.py
 Unit tests for LLM vendor models and helper functions.
 """
 
-import pytest
-
 from bluebox.data_models.llms.vendors import (
     AnthropicModel,
     LLMVendor,
