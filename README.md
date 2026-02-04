@@ -345,11 +345,13 @@ python scripts/run_guide_agent.py
 
 In addition to the Guide Agent, we provide specialized agents for analyzing captured browser data:
 
-| Agent                 | Purpose                                                                                                                                                       |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Network Spy** | Search and analyze network traffic. Find API endpoints, inspect request/response patterns, discover authentication flows.                                     |
-| **Trace Hound** | Trace where tokens and values originate. Search across network, cookies, localStorage, sessionStorage, and window properties to find the source of any value. |
-| **Docs Digger** | Search through documentation and code files. Find relevant docs, examples, and implementation details in a codebase.                                          |
+| Agent                        | Purpose                                                                                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Network Spy**              | Search and analyze network traffic. Find API endpoints, inspect request/response patterns, discover authentication flows.                                     |
+| **Trace Hound**              | Trace where tokens and values originate. Search across network, cookies, localStorage, sessionStorage, and window properties to find the source of any value. |
+| **Docs Digger**              | Search through documentation and code files. Find relevant docs, examples, and implementation details in a codebase.                                          |
+| **JS Specialist**            | Interactive JavaScript code generation and analysis. Analyzes DOM snapshots, JS files, and network traffic to generate custom code for data extraction.      |
+| **Interaction Specialist**   | User interaction analysis and parameter discovery. Analyzes interaction events (clicks, inputs, form submissions) to discover parameters and workflows.       |
 
 ```bash
 # Network Spy - analyze captured network traffic
@@ -363,6 +365,16 @@ python scripts/run_trace_hound_agent.py \
 
 # Docs Digger - search documentation and code (runs with defaults if no args)
 python scripts/run_docs_digger_agent.py
+
+# JS Specialist - interactive JavaScript code generation
+python scripts/run_js_specialist.py \
+    --dom-snapshots-dir ./cdp_captures/dom/ \
+    --javascript-events-jsonl-path ./cdp_captures/network/javascript_events.jsonl \
+    --network-events-jsonl-path ./cdp_captures/network/events.jsonl \
+    --remote-debugging-address 127.0.0.1:9222
+
+# Interaction Specialist - analyze user interactions and discover parameters
+python scripts/run_interaction_specialist.py --jsonl-path ./cdp_captures/interaction/events.jsonl
 ```
 
 ## Reverse Engineer Web Apps
