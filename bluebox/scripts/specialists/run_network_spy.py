@@ -29,7 +29,7 @@ from bluebox.agents.specialists.network_spy_agent import (
 from bluebox.llms.infra.network_data_store import NetworkDataStore
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
-from bluebox.utils.terminal_agent_base import AbstractTerminalAgentChat
+from bluebox.agents.terminal_agent_base import AbstractTerminalAgentChat
 from bluebox.utils.logger import get_logger
 
 

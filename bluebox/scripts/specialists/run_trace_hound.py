@@ -35,7 +35,7 @@ from bluebox.llms.infra.storage_data_store import StorageDataStore
 from bluebox.llms.infra.window_property_data_store import WindowPropertyDataStore
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
-from bluebox.utils.terminal_agent_base import AbstractTerminalAgentChat
+from bluebox.agents.terminal_agent_base import AbstractTerminalAgentChat
 from bluebox.utils.logger import get_logger
 
 

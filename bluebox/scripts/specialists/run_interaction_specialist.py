@@ -29,7 +29,7 @@ from bluebox.agents.specialists.interaction_specialist import (
 from bluebox.llms.infra.interactions_data_store import InteractionsDataStore
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
-from bluebox.utils.terminal_agent_base import AbstractTerminalAgentChat
+from bluebox.agents.terminal_agent_base import AbstractTerminalAgentChat
 from bluebox.utils.logger import get_logger
 
 

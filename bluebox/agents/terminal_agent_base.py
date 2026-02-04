@@ -1,5 +1,5 @@
 """
-bluebox/utils/terminal_agent_base.py
+bluebox/agents/terminal_agent_base.py
 
 Abstract base class for terminal-based agent chat interfaces.
 """
@@ -9,6 +9,7 @@ from typing import Any
 
 from prompt_toolkit import prompt as pt_prompt
 from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.history import InMemoryHistory
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
@@ -28,6 +29,15 @@ from bluebox.utils.terminal_utils import (
     print_tool_call,
     print_tool_result,
 )
+
+
+class CommandHistory(InMemoryHistory):
+    """History that only stores commands (strings starting with '/')."""
+
+    def store_string(self, string: str) -> None:
+        """Store only if it's a command (starts with '/')."""
+        if string.strip().startswith('/'):
+            super().store_string(string)
 
 
 class AbstractTerminalAgentChat(ABC):
@@ -60,6 +70,7 @@ class AbstractTerminalAgentChat(ABC):
         self.console = console
         self.agent_color = agent_color
         self._streaming_started: bool = False
+        self._command_history = CommandHistory()
         self._agent = self._create_agent()
 
     @abstractmethod
@@ -161,6 +172,26 @@ class AbstractTerminalAgentChat(ABC):
         elif isinstance(message, ErrorEmittedMessage):
             print_error(message.error, self.console)
 
+    def _get_valid_commands(self) -> set[str]:
+        """
+        Get all valid slash commands for this agent.
+
+        Returns:
+            Set of valid command strings (e.g., {'/quit', '/exit', '/reset', ...})
+        """
+        valid_cmds = {
+            '/quit', '/exit', '/q',
+            '/reset',
+            '/help', '/h', '/?',
+            f'/{self.autonomous_command_name}'
+        }
+
+        # Add any additional commands from get_slash_commands()
+        for cmd, _ in self.get_slash_commands():
+            valid_cmds.add(cmd.lower())
+
+        return valid_cmds
+
     def run(self) -> None:
         """
         Run the interactive chat loop.
@@ -174,12 +205,28 @@ class AbstractTerminalAgentChat(ABC):
                     completer=SlashCommandCompleter(self.get_slash_commands()),
                     lexer=SlashCommandLexer(),
                     complete_while_typing=True,
+                    history=self._command_history,
                 )
 
                 if not user_input.strip():
                     continue
 
-                cmd = user_input.strip().lower()
+                # Strip whitespace once for all processing
+                user_input = user_input.strip()
+
+                # Validate commands - if starts with '/', check it's valid
+                if user_input.startswith('/'):
+                    cmd_part = user_input.split()[0].lower()
+                    valid_commands = self._get_valid_commands()
+
+                    if cmd_part not in valid_commands:
+                        self.console.print()
+                        self.console.print(f"[bold red]Error:[/bold red] [red]Command does not exist: {cmd_part}[/red]")
+                        self.console.print(f"[dim]Type /help to see available commands[/dim]")
+                        self.console.print()
+                        continue
+
+                cmd = user_input.lower()
 
                 # Handle quit
                 if cmd in ("/quit", "/exit", "/q"):
@@ -202,8 +249,8 @@ class AbstractTerminalAgentChat(ABC):
                     continue
 
                 # Handle autonomous command
-                if user_input.strip().lower().startswith(f"/{self.autonomous_command_name}"):
-                    task = user_input.strip()[len(f"/{self.autonomous_command_name}"):].strip()
+                if user_input.lower().startswith(f"/{self.autonomous_command_name}"):
+                    task = user_input[len(f"/{self.autonomous_command_name}"):].strip()
                     if not task:
                         self.console.print()
                         self.console.print(f"[bold yellow]Usage:[/bold yellow] /{self.autonomous_command_name} <task>")

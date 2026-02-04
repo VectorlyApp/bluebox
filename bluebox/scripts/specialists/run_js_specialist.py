@@ -38,7 +38,7 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.infra.js_data_store import JSDataStore
 from bluebox.llms.infra.network_data_store import NetworkDataStore
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
-from bluebox.utils.terminal_agent_base import AbstractTerminalAgentChat
+from bluebox.agents.terminal_agent_base import AbstractTerminalAgentChat
 from bluebox.utils.logger import get_logger
 
 
