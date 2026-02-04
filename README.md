@@ -312,7 +312,7 @@ For iterative routine development, debugging, and more complex workflows, use th
 export OPENAI_API_KEY="sk-..."
 
 # Run the guide agent terminal
-python scripts/run_guide_agent.py
+bluebox-guide
 ```
 
 **Features:**
@@ -339,30 +339,42 @@ python scripts/run_guide_agent.py
 **When to use Guide Agent vs Quickstart:**
 
 - **Quickstart (`quickstart.py`)**: First-time users, demos, simple one-off automation tasks
-- **Guide Agent (`scripts/run_guide_agent.py`)**: Iterative routine development, debugging, complex workflows requiring back-and-forth with the agent
+- **Guide Agent (`bluebox-guide`)**: Iterative routine development, debugging, complex workflows requiring back-and-forth with the agent
 
 ## Specialized Agents (Beta)
 
 In addition to the Guide Agent, we provide specialized agents for analyzing captured browser data:
 
-| Agent                 | Purpose                                                                                                                                                       |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Network Spy** | Search and analyze network traffic. Find API endpoints, inspect request/response patterns, discover authentication flows.                                     |
-| **Trace Hound** | Trace where tokens and values originate. Search across network, cookies, localStorage, sessionStorage, and window properties to find the source of any value. |
-| **Docs Digger** | Search through documentation and code files. Find relevant docs, examples, and implementation details in a codebase.                                          |
+| Agent                        | Purpose                                                                                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Network Spy**              | Search and analyze network traffic. Find API endpoints, inspect request/response patterns, discover authentication flows.                                     |
+| **Trace Hound**              | Trace where tokens and values originate. Search across network, cookies, localStorage, sessionStorage, and window properties to find the source of any value. |
+| **Docs Digger**              | Search through documentation and code files. Find relevant docs, examples, and implementation details in a codebase.                                          |
+| **JS Specialist**            | Interactive JavaScript code generation and analysis. Analyzes DOM snapshots, JS files, and network traffic to generate custom code for data extraction.      |
+| **Interaction Specialist**   | User interaction analysis and parameter discovery. Analyzes interaction events (clicks, inputs, form submissions) to discover parameters and workflows.       |
 
 ```bash
 # Network Spy - analyze captured network traffic
-python scripts/run_network_spy_agent.py --jsonl-path ./cdp_captures/network/events.jsonl
+bluebox-network-spy --jsonl-path ./cdp_captures/network/events.jsonl
 
 # Trace Hound - trace token origins across network, storage, and window properties
-python scripts/run_trace_hound_agent.py \
+bluebox-trace-hound \
     --network-jsonl ./cdp_captures/network/events.jsonl \
     --storage-jsonl ./cdp_captures/storage/events.jsonl \
     --window-props-jsonl ./cdp_captures/window_properties/events.jsonl
 
 # Docs Digger - search documentation and code (runs with defaults if no args)
-python scripts/run_docs_digger_agent.py
+bluebox-docs-digger
+
+# JS Specialist - interactive JavaScript code generation
+bluebox-js-specialist \
+    --dom-snapshots-dir ./cdp_captures/dom/ \
+    --javascript-events-jsonl-path ./cdp_captures/network/javascript_events.jsonl \
+    --network-events-jsonl-path ./cdp_captures/network/events.jsonl \
+    --remote-debugging-address 127.0.0.1:9222
+
+# Interaction Specialist - analyze user interactions and discover parameters
+bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl
 ```
 
 ## Reverse Engineer Web Apps
@@ -637,16 +649,16 @@ Benchmarks validate the routine discovery pipeline against known ground-truth ro
 
 ```bash
 # Run all benchmarks
-python bluebox/scripts/run_benchmarks.py
+bluebox-benchmarks
 
 # With verbose output (shows each test result as it runs)
-python bluebox/scripts/run_benchmarks.py -v
+bluebox-benchmarks -v
 
 # Use a specific model
-python bluebox/scripts/run_benchmarks.py --model gpt-4.1
+bluebox-benchmarks --model gpt-4.1
 
 # Custom output directory
-python bluebox/scripts/run_benchmarks.py --output-dir ./my_benchmarks
+bluebox-benchmarks --output-dir ./my_benchmarks
 ```
 
 Results are saved to the output directory:

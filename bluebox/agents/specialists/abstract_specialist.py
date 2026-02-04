@@ -567,7 +567,7 @@ class AbstractSpecialist(ABC):
                     )
 
                     if self._check_autonomous_completion(tool_call.tool_name):
-                        logger.info("Autonomous run completed at iteration %d", self._autonomous_iteration)
+                        logger.debug("Autonomous run completed at iteration %d", self._autonomous_iteration)
                         return
 
             except Exception as e:

@@ -93,15 +93,16 @@ class OpenAIClient(AbstractLLMVendorClient):
         Maps:
         - "auto" → "auto"
         - "required" → "required"
+        - "none" → "none"
         - Tool name string → {"type": "function", "name": "tool_name"}
 
         Args:
-            tool_choice: String ("auto", "required", or tool name)
+            tool_choice: String ("auto", "required", "none", or tool name)
 
         Returns:
             Normalized tool_choice for OpenAI API
         """
-        if tool_choice is not None and tool_choice not in ["auto", "required"]:
+        if tool_choice is not None and tool_choice not in ["auto", "required", "none"]:
             return {"type": "function", "name": tool_choice}
         return tool_choice
 
