@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from bluebox.config import Config
 from bluebox.data_models.llms.interaction import LLMChatResponse, LLMToolCall
-from bluebox.data_models.llms.vendors import OpenAIModel
+from bluebox.data_models.llms.vendors import LLMVendor, OpenAIModel
 from bluebox.llms.abstract_llm_vendor_client import AbstractLLMVendorClient
 from bluebox.utils.logger import get_logger
 
@@ -71,6 +71,8 @@ class OpenAIClient(AbstractLLMVendorClient):
     """
     OpenAI-specific LLM client using the Responses API.
     """
+
+    _vendor = LLMVendor.OPENAI
 
     # Magic methods ________________________________________________________________________________________________________
 
@@ -319,16 +321,23 @@ class OpenAIClient(AbstractLLMVendorClient):
         description: str,
         parameters: dict[str, Any],
     ) -> None:
-        """Register a tool in OpenAI's function calling format."""
+        """Register a tool in OpenAI's function calling format. Updates existing tool if name already exists."""
         logger.debug("Registering OpenAI tool: %s", name)
-        self._tools.append({
+        tool_def = {
             "type": "function",
             "function": {
                 "name": name,
                 "description": description,
                 "parameters": parameters,
             }
-        })
+        }
+        # Check for existing tool with same name and update it (upsert behavior)
+        for i, existing in enumerate(self._tools):
+            if existing.get("function", {}).get("name") == name:
+                self._tools[i] = tool_def
+                logger.debug("Updated existing OpenAI tool: %s", name)
+                return
+        self._tools.append(tool_def)
 
     def set_file_search_vectorstores(
         self,

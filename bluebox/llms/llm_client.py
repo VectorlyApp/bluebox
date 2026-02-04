@@ -16,16 +16,12 @@ from typing import Any, Callable, TypeVar
 from pydantic import BaseModel
 
 from bluebox.data_models.llms.interaction import LLMChatResponse
-from bluebox.data_models.llms.vendors import (
-    AnthropicModel,
-    LLMModel,
-    LLMVendor,
-    OpenAIModel,
-    get_model_vendor,
-)
+from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.llms.abstract_llm_vendor_client import AbstractLLMVendorClient
-from bluebox.llms.anthropic_client import AnthropicClient
-from bluebox.llms.openai_client import OpenAIClient
+
+# Import vendor clients to register them as subclasses of AbstractLLMVendorClient
+from bluebox.llms.anthropic_client import AnthropicClient  # noqa: F401
+from bluebox.llms.openai_client import OpenAIClient  # noqa: F401
 from bluebox.llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
 from bluebox.utils.logger import get_logger
 
@@ -55,18 +51,8 @@ class LLMClient:
 
     def __init__(self, llm_model: LLMModel) -> None:
         self.llm_model = llm_model
-        self._client: AbstractLLMVendorClient = self._create_vendor_client(llm_model)
+        self._client = AbstractLLMVendorClient.get_llm_vendor_client(llm_model)
         logger.info("Instantiated LLMClient with model: %s", llm_model)
-
-    def _create_vendor_client(self, model: LLMModel) -> AbstractLLMVendorClient:
-        """Create the appropriate vendor client based on the model."""
-        vendor = get_model_vendor(model)
-        if vendor == LLMVendor.OPENAI:
-            return OpenAIClient(model=model)  # type: ignore[arg-type]
-        elif vendor == LLMVendor.ANTHROPIC:
-            return AnthropicClient(model=model)  # type: ignore[arg-type]
-        else:
-            raise ValueError(f"Unsupported vendor: {vendor}")
 
     # Public methods _______________________________________________________________________________________________________
 

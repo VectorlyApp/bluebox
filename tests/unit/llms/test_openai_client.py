@@ -43,6 +43,28 @@ class TestToolRegistration:
         client.clear_tools()
         assert len(client.tools) == 0
 
+    def test_register_tool_upsert_behavior(self, client: OpenAIClient) -> None:
+        """Test that registering a tool with the same name updates instead of duplicating."""
+        client.register_tool(
+            name="test_tool",
+            description="Original description",
+            parameters={"type": "object", "properties": {"arg1": {"type": "string"}}},
+        )
+        assert len(client.tools) == 1
+        assert client.tools[0]["function"]["description"] == "Original description"
+
+        # Register same tool name with updated description
+        client.register_tool(
+            name="test_tool",
+            description="Updated description",
+            parameters={"type": "object", "properties": {"arg2": {"type": "integer"}}},
+        )
+
+        # Should still have only 1 tool, but with updated content
+        assert len(client.tools) == 1
+        assert client.tools[0]["function"]["description"] == "Updated description"
+        assert "arg2" in client.tools[0]["function"]["parameters"]["properties"]
+
 
 class TestLLMChatResponseFields:
     """Tests for LLMChatResponse new fields."""

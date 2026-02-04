@@ -10,7 +10,6 @@ from bluebox.data_models.llms.vendors import (
     OpenAIModel,
     get_all_model_values,
     get_model_by_value,
-    get_model_vendor,
 )
 
 
@@ -23,41 +22,36 @@ class TestGetModelByValue:
         """Test resolving gpt-5 model."""
         result = get_model_by_value("gpt-5")
         assert result is not None
-        model, vendor = result
-        assert model == OpenAIModel.GPT_5
-        assert vendor == LLMVendor.OPENAI
+        assert result == OpenAIModel.GPT_5
+        assert result.vendor == LLMVendor.OPENAI
 
     def test_get_openai_gpt5_1(self) -> None:
         """Test resolving gpt-5.1 model."""
         result = get_model_by_value("gpt-5.1")
         assert result is not None
-        model, vendor = result
-        assert model == OpenAIModel.GPT_5_1
-        assert vendor == LLMVendor.OPENAI
+        assert result == OpenAIModel.GPT_5_1
+        assert result.vendor == LLMVendor.OPENAI
 
     def test_get_openai_gpt5_2(self) -> None:
         """Test resolving gpt-5.2 model."""
         result = get_model_by_value("gpt-5.2")
         assert result is not None
-        model, vendor = result
-        assert model == OpenAIModel.GPT_5_2
-        assert vendor == LLMVendor.OPENAI
+        assert result == OpenAIModel.GPT_5_2
+        assert result.vendor == LLMVendor.OPENAI
 
     def test_get_openai_gpt5_mini(self) -> None:
         """Test resolving gpt-5-mini model."""
         result = get_model_by_value("gpt-5-mini")
         assert result is not None
-        model, vendor = result
-        assert model == OpenAIModel.GPT_5_MINI
-        assert vendor == LLMVendor.OPENAI
+        assert result == OpenAIModel.GPT_5_MINI
+        assert result.vendor == LLMVendor.OPENAI
 
     def test_get_openai_gpt5_nano(self) -> None:
         """Test resolving gpt-5-nano model."""
         result = get_model_by_value("gpt-5-nano")
         assert result is not None
-        model, vendor = result
-        assert model == OpenAIModel.GPT_5_NANO
-        assert vendor == LLMVendor.OPENAI
+        assert result == OpenAIModel.GPT_5_NANO
+        assert result.vendor == LLMVendor.OPENAI
 
     # Anthropic models
 
@@ -65,25 +59,22 @@ class TestGetModelByValue:
         """Test resolving claude-opus-4-5 model."""
         result = get_model_by_value("claude-opus-4-5")
         assert result is not None
-        model, vendor = result
-        assert model == AnthropicModel.CLAUDE_OPUS_4_5
-        assert vendor == LLMVendor.ANTHROPIC
+        assert result == AnthropicModel.CLAUDE_OPUS_4_5
+        assert result.vendor == LLMVendor.ANTHROPIC
 
     def test_get_anthropic_sonnet(self) -> None:
         """Test resolving claude-sonnet-4-5 model."""
         result = get_model_by_value("claude-sonnet-4-5")
         assert result is not None
-        model, vendor = result
-        assert model == AnthropicModel.CLAUDE_SONNET_4_5
-        assert vendor == LLMVendor.ANTHROPIC
+        assert result == AnthropicModel.CLAUDE_SONNET_4_5
+        assert result.vendor == LLMVendor.ANTHROPIC
 
     def test_get_anthropic_haiku(self) -> None:
         """Test resolving claude-haiku-4-5 model."""
         result = get_model_by_value("claude-haiku-4-5")
         assert result is not None
-        model, vendor = result
-        assert model == AnthropicModel.CLAUDE_HAIKU_4_5
-        assert vendor == LLMVendor.ANTHROPIC
+        assert result == AnthropicModel.CLAUDE_HAIKU_4_5
+        assert result.vendor == LLMVendor.ANTHROPIC
 
     # Invalid models
 
@@ -130,17 +121,15 @@ class TestGetAllModelValues:
         assert len(result) == expected_count
 
 
-class TestGetModelVendor:
-    """Tests for get_model_vendor function."""
+class TestModelVendorProperty:
+    """Tests for model.vendor property."""
 
-    def test_openai_model_returns_openai_vendor(self) -> None:
-        """Test that OpenAI models return OpenAI vendor."""
+    def test_openai_model_has_openai_vendor(self) -> None:
+        """Test that OpenAI models have OpenAI vendor."""
         for model in OpenAIModel:
-            vendor = get_model_vendor(model)
-            assert vendor == LLMVendor.OPENAI
+            assert model.vendor == LLMVendor.OPENAI
 
-    def test_anthropic_model_returns_anthropic_vendor(self) -> None:
-        """Test that Anthropic models return Anthropic vendor."""
+    def test_anthropic_model_has_anthropic_vendor(self) -> None:
+        """Test that Anthropic models have Anthropic vendor."""
         for model in AnthropicModel:
-            vendor = get_model_vendor(model)
-            assert vendor == LLMVendor.ANTHROPIC
+            assert model.vendor == LLMVendor.ANTHROPIC

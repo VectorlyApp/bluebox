@@ -11,7 +11,7 @@ from typing import Any, ClassVar, TypeVar
 from pydantic import BaseModel
 
 from bluebox.data_models.llms.interaction import LLMChatResponse
-from bluebox.data_models.llms.vendors import LLMModel
+from bluebox.data_models.llms.vendors import LLMModel, LLMVendor
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -27,9 +27,23 @@ class AbstractLLMVendorClient(ABC):
 
     # Class attributes ____________________________________________________________________________________________________
 
+    _vendor: ClassVar[LLMVendor]
     DEFAULT_MAX_TOKENS: ClassVar[int] = 4_096
     DEFAULT_TEMPERATURE: ClassVar[float] = 0.7
     DEFAULT_STRUCTURED_TEMPERATURE: ClassVar[float] = 0.0
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        if not hasattr(cls, '_vendor'):
+            raise TypeError(f"{cls.__name__} must define _vendor class attribute")
+
+    @classmethod
+    def get_llm_vendor_client(cls, model: LLMModel) -> "AbstractLLMVendorClient":
+        """Create the appropriate vendor client for the given model."""
+        for subclass in cls.__subclasses__():
+            if subclass._vendor == model.vendor:
+                return subclass(model=model)
+        raise ValueError(f"No client found for vendor: {model.vendor}")
 
     # Magic methods ________________________________________________________________________________________________________
 

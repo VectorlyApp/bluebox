@@ -504,7 +504,7 @@ def main() -> None:
         console.print(f"[bold red]Error: Unknown model '{args.model}'[/bold red]")
         console.print(f"[dim]Available models: {', '.join(get_all_model_values())}[/dim]")
         sys.exit(1)
-    llm_model, _ = model_result
+    llm_model = model_result
 
     print_welcome(args.model, str(jsonl_path), network_store)
 

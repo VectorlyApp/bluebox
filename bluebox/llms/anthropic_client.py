@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from bluebox.config import Config
 from bluebox.data_models.llms.interaction import LLMChatResponse, LLMToolCall
-from bluebox.data_models.llms.vendors import AnthropicModel
+from bluebox.data_models.llms.vendors import AnthropicModel, LLMVendor
 from bluebox.llms.abstract_llm_vendor_client import AbstractLLMVendorClient
 from bluebox.utils.logger import get_logger
 
@@ -118,6 +118,8 @@ class AnthropicClient(AbstractLLMVendorClient):
     - Structured responses using Pydantic models
     - Extended thinking (reasoning)
     """
+
+    _vendor = LLMVendor.ANTHROPIC
 
     # Magic methods ________________________________________________________________________________________________________
 
@@ -372,14 +374,21 @@ class AnthropicClient(AbstractLLMVendorClient):
         description: str,
         parameters: dict[str, Any],
     ) -> None:
-        """Register a tool in Anthropic's tool format."""
+        """Register a tool in Anthropic's tool format. Updates existing tool if name already exists."""
         logger.debug("Registering Anthropic tool: %s", name)
         cleaned_schema = _clean_schema_for_anthropic(parameters)
-        self._tools.append({
+        tool_def = {
             "name": name,
             "description": description,
             "input_schema": cleaned_schema,
-        })
+        }
+        # Check for existing tool with same name and update it (upsert behavior)
+        for i, existing in enumerate(self._tools):
+            if existing.get("name") == name:
+                self._tools[i] = tool_def
+                logger.debug("Updated existing Anthropic tool: %s", name)
+                return
+        self._tools.append(tool_def)
 
     ## Unified API methods
 
