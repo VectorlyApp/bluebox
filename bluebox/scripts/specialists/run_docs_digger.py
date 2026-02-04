@@ -86,6 +86,8 @@ BANNER = """\
 class TerminalDocsDiggerChat(AbstractTerminalAgentChat):
     """Interactive terminal chat interface for the Docs Digger Agent."""
 
+    autonomous_command_name = "search"
+
     def __init__(
         self,
         docs_store: DocumentationDataStore,
@@ -108,11 +110,6 @@ class TerminalDocsDiggerChat(AbstractTerminalAgentChat):
     def get_slash_commands(self) -> list[tuple[str, str]]:
         """Return list of slash commands."""
         return SLASH_COMMANDS
-
-    @property
-    def autonomous_command_name(self) -> str:
-        """Return the autonomous command name."""
-        return "search"
 
     def print_welcome(self) -> None:
         """Print welcome message with documentation stats."""

@@ -69,6 +69,8 @@ BANNER = """\
 class TerminalTraceHoundChat(AbstractTerminalAgentChat):
     """Interactive terminal chat interface for the Trace Hound Agent."""
 
+    autonomous_command_name = "trace"
+
     def __init__(
         self,
         network_store: NetworkDataStore | None = None,
@@ -97,11 +99,6 @@ class TerminalTraceHoundChat(AbstractTerminalAgentChat):
     def get_slash_commands(self) -> list[tuple[str, str]]:
         """Return list of slash commands."""
         return SLASH_COMMANDS
-
-    @property
-    def autonomous_command_name(self) -> str:
-        """Return the autonomous command name."""
-        return "trace"
 
     def print_welcome(self) -> None:
         """Print welcome message with data store stats."""

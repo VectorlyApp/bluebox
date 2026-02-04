@@ -67,6 +67,8 @@ BANNER = """\
 class TerminalInteractionSpecialistChat(AbstractTerminalAgentChat):
     """Interactive terminal chat interface for the Interaction Specialist Agent."""
 
+    autonomous_command_name = "autonomous"
+
     def __init__(
         self,
         interaction_store: InteractionsDataStore,
@@ -92,11 +94,6 @@ class TerminalInteractionSpecialistChat(AbstractTerminalAgentChat):
     def get_slash_commands(self) -> list[tuple[str, str]]:
         """Return list of slash commands."""
         return SLASH_COMMANDS
-
-    @property
-    def autonomous_command_name(self) -> str:
-        """Return the autonomous command name."""
-        return "autonomous"
 
     def print_welcome(self) -> None:
         """Print welcome message with interaction stats."""

@@ -58,6 +58,14 @@ class AbstractTerminalAgentChat(ABC):
     - handle_autonomous_command(): Handle autonomous command execution
     - autonomous_command_name: Property returning the autonomous command name
     """
+    
+    autonomous_command_name: str = "autonomous"
+    """
+    The autonomous command name (without leading slash).
+
+    Subclasses should override this with their specific command name.
+    Examples: 'discover', 'trace', 'search', 'autonomous'
+    """
 
     def __init__(self, console: Console, agent_color: str) -> None:
         """
@@ -120,16 +128,6 @@ class AbstractTerminalAgentChat(ABC):
         Example:
             For /discover command: "train prices from NYC to Boston"
             For /trace command: "eyJhbGciOiJIUzI1NiJ9"
-        """
-
-    @property
-    @abstractmethod
-    def autonomous_command_name(self) -> str:
-        """
-        Return the autonomous command name (without leading slash).
-
-        Returns:
-            Command name, e.g.: "discover", "trace", "search", "autonomous"
         """
 
     def _handle_stream_chunk(self, chunk: str) -> None:
