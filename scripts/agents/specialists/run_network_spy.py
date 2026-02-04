@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-scripts/run_network_spy_agent.py
+scripts/agents/specialists/run_network_spy.py
 
 # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
 Interactive CLI for the Network Spy agent.
 
 Usage:
-    python scripts/run_network_spy_agent.py --jsonl-path ./cdp_captures/network/events.jsonl
+    python scripts/agents/specialists/run_network_spy.py --jsonl-path ./cdp_captures/network/events.jsonl
 """
 
 import argparse

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/run_docs_digger_agent.py
+scripts/specialists/docs_digger.py
 
 # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
@@ -8,10 +8,10 @@ Interactive CLI for the Docs Digger agent - searches documentation and code.
 
 Usage:
     # Run with defaults (bluebox agent_docs and core modules)
-    python scripts/run_docs_digger_agent.py
+    python scripts/specialists/docs_digger.py
 
     # Or specify custom paths
-    python scripts/run_docs_digger_agent.py \
+    python scripts/specialists/docs_digger.py \
         --docs-paths "docs/**/*.md" \
         --code-paths "src/**/*.py"
 """

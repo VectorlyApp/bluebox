@@ -1,12 +1,12 @@
 """
-scripts/run_js_specialist.py
+scripts/specialists/js_specialist.py
 
 Interactive CLI for the JS Specialist agent.
 
 Usage:
-    python scripts/run_js_specialist.py
+    python scripts/specialists/js_specialist.py
 
-    python scripts/run_js_specialist.py \
+    python scripts/specialists/js_specialist.py \
         --dom-snapshots-dir ./cdp_captures/dom/ \
         --javascript-events-jsonl-path ./cdp_captures/network/javascript_events.jsonl \
         --network-events-jsonl-path ./cdp_captures/network/events.jsonl \

@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-scripts/run_guide_agent.py
+scripts/agents/run_guide_agent.py
 
 Interactive terminal interface for the Guide Agent.
 Guides users through creating web automation routines.
 
 Usage:
     # Basic usage (starts interactive session)
-    python scripts/run_guide_agent.py
+    python scripts/agents/run_guide_agent.py
 
     # With existing CDP captures
-    python scripts/run_guide_agent.py --cdp-captures-dir ./cdp_captures
+    python scripts/agents/run_guide_agent.py --cdp-captures-dir ./cdp_captures
 
     # Suppress logs for cleaner output
-    python scripts/run_guide_agent.py -q
+    python scripts/agents/run_guide_agent.py -q
 
     # With all options
-    python scripts/run_guide_agent.py \
+    python scripts/agents/run_guide_agent.py \
         --cdp-captures-dir ./cdp_captures \
         --output-dir ./guide_output \
         --model gpt-5.1 \

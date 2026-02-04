@@ -62,9 +62,9 @@ dev = [
 ]
 
 [project.scripts]
-bluebox-monitor = "bluebox.scripts.browser_monitor:main"
-bluebox-discover = "bluebox.scripts.discover_routine:main"
-bluebox-execute = "bluebox.scripts.execute_routine:main"
+bluebox-monitor = "bluebox.cli.browser_monitor:main"
+bluebox-discover = "bluebox.cli.discover_routine:main"
+bluebox-execute = "bluebox.cli.execute_routine:main"
 
 [project.urls]
 Homepage = "https://vectorly.app"
