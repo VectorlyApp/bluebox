@@ -295,8 +295,9 @@ class AnthropicClient(AbstractLLMVendorClient):
                 temperature, structured=response_model is not None
             )
 
-        if stream:
-            kwargs["stream"] = True
+        # Note: 'stream' parameter is not added to kwargs because:
+        # - messages.create() doesn't use it (streaming is handled by messages.stream() method)
+        # - messages.stream() doesn't accept a 'stream' parameter
 
         # Add extended thinking (reasoning) if requested
         if extended_thinking:
@@ -570,7 +571,7 @@ class AnthropicClient(AbstractLLMVendorClient):
                 raise ValueError("Either messages or input must be provided")
             messages = [{"role": "user", "content": input}]
 
-        # Build kwargs without stream parameter - messages.stream() handles it implicitly
+        # Build kwargs for streaming - stream parameter is not added to kwargs
         kwargs = self._build_messages_api_kwargs(
             messages, system_prompt, max_tokens, temperature, response_model=None,
             extended_thinking=extended_reasoning, stream=True, tool_choice=tool_choice,
