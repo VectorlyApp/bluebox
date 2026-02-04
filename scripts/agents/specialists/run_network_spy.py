@@ -11,44 +11,24 @@ Usage:
 """
 
 import argparse
-import json
 import sys
 import time
 from pathlib import Path
-from typing import Any
 
-from prompt_toolkit import prompt as pt_prompt
-from prompt_toolkit.formatted_text import HTML
 from rich import box
 from rich.console import Console
-from rich.markdown import Markdown
-from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
-from bluebox.utils.terminal_utils import SlashCommandCompleter, SlashCommandLexer
 from bluebox.agents.network_spy_agent import (
     NetworkSpyAgent,
     EndpointDiscoveryResult,
     DiscoveryFailureResult,
 )
 from bluebox.llms.infra.network_data_store import NetworkDataStore
-from bluebox.data_models.llms.interaction import (
-    ChatRole,
-    EmittedMessage,
-    ChatResponseEmittedMessage,
-    ErrorEmittedMessage,
-    ToolInvocationResultEmittedMessage,
-    PendingToolInvocation,
-    ToolInvocationStatus,
-)
-from bluebox.data_models.llms.vendors import (
-    LLMModel,
-    OpenAIModel,
-    get_all_model_values,
-    get_model_by_value,
-)
+from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
+from bluebox.utils.cli_utils import add_model_argument, resolve_model
+from bluebox.utils.terminal_agent_base import AbstractTerminalAgentChat
 from bluebox.utils.logger import get_logger
 
 
@@ -79,238 +59,163 @@ BANNER = """\
 """
 
 
-def print_welcome(model: str, data_path: str, network_store: NetworkDataStore) -> None:
-    """Print welcome message with network stats."""
-    console.print(BANNER)
-    console.print()
-
-    stats = network_store.stats
-
-    # Build stats table
-    stats_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
-    stats_table.add_column("Label", style="dim")
-    stats_table.add_column("Value", style="white")
-
-    stats_table.add_row("Total Requests", str(stats.total_requests))
-    stats_table.add_row("Unique URLs", str(stats.unique_urls))
-    stats_table.add_row("Unique Hosts", str(stats.unique_hosts))
-
-    # Methods breakdown
-    methods_str = ", ".join(f"{m}: {c}" for m, c in sorted(stats.methods.items(), key=lambda x: -x[1]))
-    stats_table.add_row("Methods", methods_str)
-
-    # Status codes breakdown
-    status_str = ", ".join(f"{s}: {c}" for s, c in sorted(stats.status_codes.items()))
-    stats_table.add_row("Status Codes", status_str)
-
-    # Features
-    features = []
-    if stats.has_cookies:
-        features.append("🍪 Cookies")
-    if stats.has_auth_headers:
-        features.append("🔐 Auth Headers")
-    if stats.has_json_requests:
-        features.append("📦 JSON")
-    if stats.has_form_data:
-        features.append("📝 Form Data")
-    if features:
-        stats_table.add_row("Features", " ".join(features))
-
-    # Top hosts
-    top_hosts = sorted(stats.hosts.items(), key=lambda x: -x[1])[:5]
-    if top_hosts:
-        hosts_str = ", ".join(f"{h} ({c})" for h, c in top_hosts)
-        stats_table.add_row("Top Hosts", hosts_str)
-
-    console.print(Panel(
-        stats_table,
-        title=f"[bold cyan]Network Stats[/bold cyan] [dim]({data_path})[/dim]",
-        border_style="cyan",
-        box=box.ROUNDED,
-    ))
-    console.print()
-
-    # Show host stats
-    host_stats = network_store.get_host_stats()
-    if host_stats:
-        host_table = Table(box=box.SIMPLE, show_header=True, padding=(0, 1))
-        host_table.add_column("Host", style="white")
-        host_table.add_column("Reqs", style="cyan", justify="right")
-        host_table.add_column("Methods", style="dim")
-
-        for hs in host_stats[:10]:  # Top 10 hosts
-            methods_str = ", ".join(f"{m}:{c}" for m, c in sorted(hs["methods"].items()))
-            host_table.add_row(
-                hs["host"][:50] + "..." if len(hs["host"]) > 50 else hs["host"],
-                str(hs["request_count"]),
-                methods_str,
-            )
-
-        if len(host_stats) > 10:
-            host_table.add_row(f"[dim]... and {len(host_stats) - 10} more hosts[/dim]", "", "")
-
-        console.print(Panel(
-            host_table,
-            title=f"[bold magenta]📊 Host Statistics[/bold magenta] [dim]({len(host_stats)} hosts)[/dim]",
-            border_style="magenta",
-            box=box.ROUNDED,
-        ))
-        console.print()
-
-    # Show likely API endpoints
-    likely_urls = network_store.api_urls
-    if likely_urls:
-        urls_table = Table(box=None, show_header=False, padding=(0, 1))
-        urls_table.add_column("URL", style="white")
-
-        # Show up to 20 URLs
-        for url in likely_urls[:20]:
-            urls_table.add_row(f"• {url}")
-
-        if len(likely_urls) > 20:
-            urls_table.add_row(f"[dim]... and {len(likely_urls) - 20} more[/dim]")
-
-        console.print(Panel(
-            urls_table,
-            title=f"[bold yellow]⚡ Likely API Endpoints[/bold yellow] [dim]({len(likely_urls)} found)[/dim]",
-            border_style="yellow",
-            box=box.ROUNDED,
-        ))
-        console.print()
-
-    console.print(Panel(
-        """[bold]Commands:[/bold]
-  [cyan]/discover <task>[/cyan]  Discover API endpoints for a task
-  [cyan]/reset[/cyan]             Start a new conversation
-  [cyan]/help[/cyan]              Show help
-  [cyan]/quit[/cyan]              Exit
-
-Just ask questions about the network traffic!""",
-        title="[bold cyan]Network Spy[/bold cyan]",
-        subtitle=f"[dim]Model: {model}[/dim]",
-        border_style="cyan",
-        box=box.ROUNDED,
-    ))
-    console.print()
-
-
-def print_assistant_message(content: str) -> None:
-    """Print an assistant response using markdown rendering."""
-    console.print()
-    console.print("[bold cyan]Assistant[/bold cyan]")
-    console.print()
-    console.print(Markdown(content))
-    console.print()
-
-
-def print_error(error: str) -> None:
-    """Print an error message."""
-    console.print()
-    console.print(f"[bold red]Error:[/bold red] [red]{escape(error)}[/red]")
-    console.print()
-
-
-def print_tool_call(invocation: PendingToolInvocation) -> None:
-    """Print a tool call with formatted arguments."""
-    args_formatted = json.dumps(invocation.tool_arguments, indent=2)
-
-    content = Text()
-    content.append("Tool: ", style="dim")
-    content.append(invocation.tool_name, style="bold white")
-    content.append("\n\n")
-    content.append("Arguments:\n", style="dim")
-    content.append(args_formatted, style="white")
-
-    console.print()
-    console.print(Panel(
-        content,
-        title="[bold yellow]TOOL CALL[/bold yellow]",
-        style="yellow",
-        box=box.ROUNDED,
-    ))
-
-
-def print_tool_result(
-    invocation: PendingToolInvocation,
-    result: dict[str, Any] | None,
-) -> None:
-    """Print a tool invocation result."""
-    if invocation.status == ToolInvocationStatus.EXECUTED:
-        console.print("[bold green]Tool executed[/bold green]")
-        if result:
-            result_json = json.dumps(result, indent=2)
-            # Limit display to 150 lines
-            lines = result_json.split("\n")
-            if len(lines) > 150:
-                display = "\n".join(lines[:150]) + f"\n... ({len(lines) - 150} more lines)"
-            else:
-                display = result_json
-            console.print(Panel(display, title="Result", style="green", box=box.ROUNDED))
-
-    elif invocation.status == ToolInvocationStatus.FAILED:
-        console.print("[bold red]Tool execution failed[/bold red]")
-        error = result.get("error") if result else None
-        if error:
-            console.print(Panel(str(error), title="Error", style="red", box=box.ROUNDED))
-
-    console.print()
-
-
-class TerminalNetworkSpyChat:
+class TerminalNetworkSpyChat(AbstractTerminalAgentChat):
     """Interactive terminal chat interface for the Network Spy Agent."""
 
     def __init__(
         self,
         network_store: NetworkDataStore,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
+        data_path: str = "",
     ) -> None:
         """Initialize the terminal chat interface."""
-        self._streaming_started: bool = False
-        self._agent = NetworkSpyAgent(
+        self.network_store = network_store
+        self.llm_model = llm_model
+        self.data_path = data_path
+        super().__init__(console=console, agent_color="cyan")
+
+    def _create_agent(self) -> NetworkSpyAgent:
+        """Create the Network Spy agent instance."""
+        return NetworkSpyAgent(
             emit_message_callable=self._handle_message,
-            network_data_store=network_store,
+            network_data_store=self.network_store,
             stream_chunk_callable=self._handle_stream_chunk,
-            llm_model=llm_model,
+            llm_model=self.llm_model,
         )
 
-    def _handle_stream_chunk(self, chunk: str) -> None:
-        """Handle a streaming text chunk from the LLM."""
-        if not self._streaming_started:
-            console.print()
-            console.print("[bold cyan]Assistant[/bold cyan]")
-            console.print()
-            self._streaming_started = True
+    def get_slash_commands(self) -> list[tuple[str, str]]:
+        """Return list of slash commands."""
+        return SLASH_COMMANDS
 
-        print(chunk, end="", flush=True)
+    @property
+    def autonomous_command_name(self) -> str:
+        """Return the autonomous command name."""
+        return "discover"
 
-    def _handle_message(self, message: EmittedMessage) -> None:
-        """Handle messages emitted by the Network Spy Agent."""
-        if isinstance(message, ChatResponseEmittedMessage):
-            if self._streaming_started:
-                print()
-                print()
-                self._streaming_started = False
-            else:
-                print_assistant_message(message.content)
+    def print_welcome(self) -> None:
+        """Print welcome message with network stats."""
+        self.console.print(BANNER)
+        self.console.print()
 
-        elif isinstance(message, ToolInvocationResultEmittedMessage):
-            # Show tool call and result
-            print_tool_call(message.tool_invocation)
-            print_tool_result(message.tool_invocation, message.tool_result)
+        stats = self.network_store.stats
 
-        elif isinstance(message, ErrorEmittedMessage):
-            print_error(message.error)
+        # Build stats table
+        stats_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+        stats_table.add_column("Label", style="dim")
+        stats_table.add_column("Value", style="white")
 
-    def _run_autonomous(self, task: str) -> None:
+        stats_table.add_row("Total Requests", str(stats.total_requests))
+        stats_table.add_row("Unique URLs", str(stats.unique_urls))
+        stats_table.add_row("Unique Hosts", str(stats.unique_hosts))
+
+        # Methods breakdown
+        methods_str = ", ".join(f"{m}: {c}" for m, c in sorted(stats.methods.items(), key=lambda x: -x[1]))
+        stats_table.add_row("Methods", methods_str)
+
+        # Status codes breakdown
+        status_str = ", ".join(f"{s}: {c}" for s, c in sorted(stats.status_codes.items()))
+        stats_table.add_row("Status Codes", status_str)
+
+        # Features
+        features = []
+        if stats.has_cookies:
+            features.append("🍪 Cookies")
+        if stats.has_auth_headers:
+            features.append("🔐 Auth Headers")
+        if stats.has_json_requests:
+            features.append("📦 JSON")
+        if stats.has_form_data:
+            features.append("📝 Form Data")
+        if features:
+            stats_table.add_row("Features", " ".join(features))
+
+        # Top hosts
+        top_hosts = sorted(stats.hosts.items(), key=lambda x: -x[1])[:5]
+        if top_hosts:
+            hosts_str = ", ".join(f"{h} ({c})" for h, c in top_hosts)
+            stats_table.add_row("Top Hosts", hosts_str)
+
+        self.console.print(Panel(
+            stats_table,
+            title=f"[bold cyan]Network Stats[/bold cyan] [dim]({self.data_path})[/dim]",
+            border_style="cyan",
+            box=box.ROUNDED,
+        ))
+        self.console.print()
+
+        # Show host stats
+        host_stats = self.network_store.get_host_stats()
+        if host_stats:
+            host_table = Table(box=box.SIMPLE, show_header=True, padding=(0, 1))
+            host_table.add_column("Host", style="white")
+            host_table.add_column("Reqs", style="cyan", justify="right")
+            host_table.add_column("Methods", style="dim")
+
+            for hs in host_stats[:10]:  # Top 10 hosts
+                methods_str = ", ".join(f"{m}:{c}" for m, c in sorted(hs["methods"].items()))
+                host_table.add_row(
+                    hs["host"][:50] + "..." if len(hs["host"]) > 50 else hs["host"],
+                    str(hs["request_count"]),
+                    methods_str,
+                )
+
+            if len(host_stats) > 10:
+                host_table.add_row(f"[dim]... and {len(host_stats) - 10} more hosts[/dim]", "", "")
+
+            self.console.print(Panel(
+                host_table,
+                title=f"[bold magenta]📊 Host Statistics[/bold magenta] [dim]({len(host_stats)} hosts)[/dim]",
+                border_style="magenta",
+                box=box.ROUNDED,
+            ))
+            self.console.print()
+
+        # Show likely API endpoints
+        likely_urls = self.network_store.api_urls
+        if likely_urls:
+            urls_table = Table(box=None, show_header=False, padding=(0, 1))
+            urls_table.add_column("URL", style="white")
+
+            # Show up to 20 URLs
+            for url in likely_urls[:20]:
+                urls_table.add_row(f"• {url}")
+
+            if len(likely_urls) > 20:
+                urls_table.add_row(f"[dim]... and {len(likely_urls) - 20} more[/dim]")
+
+            self.console.print(Panel(
+                urls_table,
+                title=f"[bold yellow]⚡ Likely API Endpoints[/bold yellow] [dim]({len(likely_urls)} found)[/dim]",
+                border_style="yellow",
+                box=box.ROUNDED,
+            ))
+            self.console.print()
+
+        self.console.print(Panel(
+            """[bold]Commands:[/bold]
+  [cyan]/discover <task>[/cyan]  Discover API endpoints for a task
+  [cyan]/reset[/cyan]             Start a new conversation
+  [cyan]/help[/cyan]              Show help
+  [cyan]/quit[/cyan]              Exit
+
+Just ask questions about the network traffic!""",
+            title="[bold cyan]Network Spy[/bold cyan]",
+            subtitle=f"[dim]Model: {self.llm_model.value}[/dim]",
+            border_style="cyan",
+            box=box.ROUNDED,
+        ))
+        self.console.print()
+
+    def handle_autonomous_command(self, task: str) -> None:
         """Run autonomous endpoint discovery for a given task."""
-        console.print()
-        console.print(Panel(
+        self.console.print()
+        self.console.print(Panel(
             f"[bold]Task:[/bold] {task}",
             title="[bold magenta]🤖 Starting Autonomous Discovery[/bold magenta]",
             border_style="magenta",
             box=box.ROUNDED,
         ))
-        console.print()
+        self.console.print()
 
         # Reset agent state for fresh autonomous run
         self._agent.reset()
@@ -321,7 +226,7 @@ class TerminalNetworkSpyChat:
         elapsed_time = time.perf_counter() - start_time
         iterations = self._agent.autonomous_iteration
 
-        console.print()
+        self.console.print()
 
         if isinstance(result, EndpointDiscoveryResult):
             # Success - build result tables for each endpoint
@@ -338,14 +243,14 @@ class TerminalNetworkSpyChat:
                 ep_table.add_row("Outputs", ep.endpoint_outputs)
 
                 if endpoint_count > 1:
-                    console.print(Panel(
+                    self.console.print(Panel(
                         ep_table,
                         title=f"[bold green]Endpoint {i}/{endpoint_count}[/bold green]",
                         border_style="green",
                         box=box.ROUNDED,
                     ))
                 else:
-                    console.print(Panel(
+                    self.console.print(Panel(
                         ep_table,
                         title=f"[bold green]✓ Endpoint Discovery Complete[/bold green] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]",
                         border_style="green",
@@ -353,7 +258,7 @@ class TerminalNetworkSpyChat:
                     ))
 
             if endpoint_count > 1:
-                console.print(f"[bold green]✓ Found {endpoint_count} endpoints[/bold green] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]")
+                self.console.print(f"[bold green]✓ Found {endpoint_count} endpoints[/bold green] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]")
 
         elif isinstance(result, DiscoveryFailureResult):
             # Explicit failure - agent determined endpoint doesn't exist
@@ -367,7 +272,7 @@ class TerminalNetworkSpyChat:
             if result.closest_matches:
                 failure_table.add_row("Closest Matches", "\n".join(result.closest_matches[:5]))
 
-            console.print(Panel(
+            self.console.print(Panel(
                 failure_table,
                 title=f"[bold red]✗ Endpoint Not Found[/bold red] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]",
                 border_style="red",
@@ -376,7 +281,7 @@ class TerminalNetworkSpyChat:
 
         else:
             # None - max iterations without finalization
-            console.print(Panel(
+            self.console.print(Panel(
                 "[yellow]Could not finalize endpoint discovery. "
                 "The agent reached max iterations without calling finalize_result or finalize_failure.[/yellow]",
                 title=f"[bold yellow]⚠ Discovery Incomplete[/bold yellow] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]",
@@ -384,84 +289,7 @@ class TerminalNetworkSpyChat:
                 box=box.ROUNDED,
             ))
 
-        console.print()
-
-    def run(self) -> None:
-        """Run the interactive chat loop."""
-        while True:
-            try:
-                user_input = pt_prompt(
-                    HTML("<b><ansicyan>You&gt;</ansicyan></b> "),
-                    completer=SlashCommandCompleter(SLASH_COMMANDS),
-                    lexer=SlashCommandLexer(),
-                    complete_while_typing=True,
-                )
-
-                if not user_input.strip():
-                    continue
-
-                cmd = user_input.strip().lower()
-
-                if cmd in ("/quit", "/exit", "/q"):
-                    console.print()
-                    console.print("[bold cyan]Goodbye![/bold cyan]")
-                    console.print()
-                    break
-
-                if cmd == "/reset":
-                    self._agent.reset()
-                    console.print()
-                    console.print("[yellow]↺ Conversation reset[/yellow]")
-                    console.print()
-                    continue
-
-                if cmd in ("/help", "/h", "/?"):
-                    console.print()
-                    console.print(Panel(
-                        """[bold]Commands:[/bold]
-  [cyan]/discover <task>[/cyan]  Discover API endpoints for a task
-                      Example: /discover train prices from NYC to Boston
-  [cyan]/reset[/cyan]            Start a new conversation
-  [cyan]/help[/cyan]             Show this help message
-  [cyan]/quit[/cyan]             Exit
-
-[bold]Tips:[/bold]
-  - Ask about specific endpoints, headers, or cookies
-  - Request a summary of API calls
-  - Ask about authentication patterns""",
-                        title="[bold cyan]Help[/bold cyan]",
-                        border_style="cyan",
-                        box=box.ROUNDED,
-                    ))
-                    console.print()
-                    continue
-
-                # Handle /discover command
-                if user_input.strip().lower().startswith("/discover"):
-                    task = user_input.strip()[len("/discover"):].strip()
-                    if not task:
-                        console.print()
-                        console.print("[bold yellow]Usage:[/bold yellow] /discover <task description>")
-                        console.print("[dim]Example: /discover train prices from NYC to Boston[/dim]")
-                        console.print()
-                        continue
-
-                    self._run_autonomous(task)
-                    continue
-
-                self._agent.process_new_message(user_input, ChatRole.USER)
-
-            except KeyboardInterrupt:
-                console.print()
-                console.print("[cyan]Interrupted. Goodbye![/cyan]")
-                console.print()
-                break
-
-            except EOFError:
-                console.print()
-                console.print("[cyan]Goodbye![/cyan]")
-                console.print()
-                break
+        self.console.print()
 
 
 def main() -> None:
@@ -475,12 +303,7 @@ def main() -> None:
         required=True,
         help="Path to the JSONL file containing NetworkTransactionEvent entries",
     )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="gpt-5.1",
-        help=f"LLM model to use (default: gpt-5.1). Options: {', '.join(get_all_model_values())}",
-    )
+    add_model_argument(parser)
     args = parser.parse_args()
 
     # Load JSONL file
@@ -498,20 +321,16 @@ def main() -> None:
         console.print(f"[bold red]Error parsing JSONL file: {e}[/bold red]")
         sys.exit(1)
 
-    # Resolve model string to enum
-    model_result = get_model_by_value(args.model)
-    if model_result is None:
-        console.print(f"[bold red]Error: Unknown model '{args.model}'[/bold red]")
-        console.print(f"[dim]Available models: {', '.join(get_all_model_values())}[/dim]")
-        sys.exit(1)
-    llm_model = model_result
+    # Resolve model
+    llm_model = resolve_model(args.model, console)
 
-    print_welcome(args.model, str(jsonl_path), network_store)
-
+    # Create and run chat
     chat = TerminalNetworkSpyChat(
         network_store=network_store,
         llm_model=llm_model,
+        data_path=str(jsonl_path),
     )
+    chat.print_welcome()
     chat.run()
 
 

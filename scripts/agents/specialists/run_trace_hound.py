@@ -14,23 +14,15 @@ Usage:
 """
 
 import argparse
-import json
 import sys
 import time
 from pathlib import Path
-from typing import Any
 
-from prompt_toolkit import prompt as pt_prompt
-from prompt_toolkit.formatted_text import HTML
 from rich import box
 from rich.console import Console
-from rich.markdown import Markdown
-from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
-from bluebox.utils.terminal_utils import SlashCommandCompleter, SlashCommandLexer
 from bluebox.agents.trace_hound_agent import (
     TraceHoundAgent,
     TokenOriginResult,
@@ -39,21 +31,9 @@ from bluebox.agents.trace_hound_agent import (
 from bluebox.llms.infra.network_data_store import NetworkDataStore
 from bluebox.llms.infra.storage_data_store import StorageDataStore
 from bluebox.llms.infra.window_property_data_store import WindowPropertyDataStore
-from bluebox.data_models.llms.interaction import (
-    ChatRole,
-    EmittedMessage,
-    ChatResponseEmittedMessage,
-    ErrorEmittedMessage,
-    ToolInvocationResultEmittedMessage,
-    PendingToolInvocation,
-    ToolInvocationStatus,
-)
-from bluebox.data_models.llms.vendors import (
-    LLMModel,
-    OpenAIModel,
-    get_all_model_values,
-    get_model_by_value,
-)
+from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
+from bluebox.utils.cli_utils import add_model_argument, resolve_model
+from bluebox.utils.terminal_agent_base import AbstractTerminalAgentChat
 from bluebox.utils.logger import get_logger
 
 
@@ -80,91 +60,123 @@ BANNER = """\
 ║                                                                                                     ║
 ║                         Token Origin Tracer - Find where values come from                           ║
 ║                                                                                                     ║
-╚════════════════════════════════════════════(BETA)═══════════════════════════════════════════════════╝[/bold magenta]
+╚════════════════════════════════════════════════(BETA)═══════════════════════════════════════════════════╝[/bold magenta]
 """
 
 
-def print_welcome(
-    model: str,
-    network_store: NetworkDataStore | None,
-    storage_store: StorageDataStore | None,
-    window_store: WindowPropertyDataStore | None,
-) -> None:
-    """Print welcome message with data store stats."""
-    console.print(BANNER)
-    console.print()
+class TerminalTraceHoundChat(AbstractTerminalAgentChat):
+    """Interactive terminal chat interface for the Trace Hound Agent."""
 
-    # Build stats table
-    stats_table = Table(box=box.SIMPLE, show_header=True, padding=(0, 2))
-    stats_table.add_column("Data Store", style="bold cyan")
-    stats_table.add_column("Status", style="white")
-    stats_table.add_column("Details", style="dim")
+    def __init__(
+        self,
+        network_store: NetworkDataStore | None = None,
+        storage_store: StorageDataStore | None = None,
+        window_store: WindowPropertyDataStore | None = None,
+        llm_model: LLMModel = OpenAIModel.GPT_5_1,
+    ) -> None:
+        """Initialize the terminal chat interface."""
+        self.network_store = network_store
+        self.storage_store = storage_store
+        self.window_store = window_store
+        self.llm_model = llm_model
+        super().__init__(console=console, agent_color="magenta")
 
-    # Network stats
-    if network_store:
-        stats = network_store.stats
-        stats_table.add_row(
-            "Network Traffic",
-            f"[green]Loaded[/green]",
-            f"{stats.total_requests} requests, {stats.unique_urls} URLs, {stats.unique_hosts} hosts",
+    def _create_agent(self) -> TraceHoundAgent:
+        """Create the Trace Hound agent instance."""
+        return TraceHoundAgent(
+            emit_message_callable=self._handle_message,
+            network_data_store=self.network_store,
+            storage_data_store=self.storage_store,
+            window_property_data_store=self.window_store,
+            stream_chunk_callable=self._handle_stream_chunk,
+            llm_model=self.llm_model,
         )
-    else:
-        stats_table.add_row("Network Traffic", "[yellow]Not loaded[/yellow]", "")
 
-    # Storage stats
-    if storage_store:
-        stats = storage_store.stats
-        stats_table.add_row(
-            "Browser Storage",
-            f"[green]Loaded[/green]",
-            f"{stats.total_events} events (cookies: {stats.cookie_events}, "
-            f"localStorage: {stats.local_storage_events}, sessionStorage: {stats.session_storage_events})",
-        )
-    else:
-        stats_table.add_row("Browser Storage", "[yellow]Not loaded[/yellow]", "")
+    def get_slash_commands(self) -> list[tuple[str, str]]:
+        """Return list of slash commands."""
+        return SLASH_COMMANDS
 
-    # Window properties stats
-    if window_store:
-        stats = window_store.stats
-        stats_table.add_row(
-            "Window Properties",
-            f"[green]Loaded[/green]",
-            f"{stats.total_events} events, {stats.total_changes} changes, "
-            f"{stats.unique_property_paths} unique paths",
-        )
-    else:
-        stats_table.add_row("Window Properties", "[yellow]Not loaded[/yellow]", "")
+    @property
+    def autonomous_command_name(self) -> str:
+        """Return the autonomous command name."""
+        return "trace"
 
-    console.print(Panel(
-        stats_table,
-        title="[bold magenta]Data Sources[/bold magenta]",
-        border_style="magenta",
-        box=box.ROUNDED,
-    ))
-    console.print()
+    def print_welcome(self) -> None:
+        """Print welcome message with data store stats."""
+        self.console.print(BANNER)
+        self.console.print()
 
-    # Show summary stats if we have storage
-    if storage_store:
-        console.print(Panel(
-            storage_store.stats.to_summary(),
-            title="[bold cyan]Storage Summary[/bold cyan]",
-            border_style="cyan",
+        # Build stats table
+        stats_table = Table(box=box.SIMPLE, show_header=True, padding=(0, 2))
+        stats_table.add_column("Data Store", style="bold cyan")
+        stats_table.add_column("Status", style="white")
+        stats_table.add_column("Details", style="dim")
+
+        # Network stats
+        if self.network_store:
+            stats = self.network_store.stats
+            stats_table.add_row(
+                "Network Traffic",
+                f"[green]Loaded[/green]",
+                f"{stats.total_requests} requests, {stats.unique_urls} URLs, {stats.unique_hosts} hosts",
+            )
+        else:
+            stats_table.add_row("Network Traffic", "[yellow]Not loaded[/yellow]", "")
+
+        # Storage stats
+        if self.storage_store:
+            stats = self.storage_store.stats
+            stats_table.add_row(
+                "Browser Storage",
+                f"[green]Loaded[/green]",
+                f"{stats.total_events} events (cookies: {stats.cookie_events}, "
+                f"localStorage: {stats.local_storage_events}, sessionStorage: {stats.session_storage_events})",
+            )
+        else:
+            stats_table.add_row("Browser Storage", "[yellow]Not loaded[/yellow]", "")
+
+        # Window properties stats
+        if self.window_store:
+            stats = self.window_store.stats
+            stats_table.add_row(
+                "Window Properties",
+                f"[green]Loaded[/green]",
+                f"{stats.total_events} events, {stats.total_changes} changes, "
+                f"{stats.unique_property_paths} unique paths",
+            )
+        else:
+            stats_table.add_row("Window Properties", "[yellow]Not loaded[/yellow]", "")
+
+        self.console.print(Panel(
+            stats_table,
+            title="[bold magenta]Data Sources[/bold magenta]",
+            border_style="magenta",
             box=box.ROUNDED,
         ))
-        console.print()
+        self.console.print()
 
-    # Show window props summary if we have it
-    if window_store:
-        console.print(Panel(
-            window_store.stats.to_summary(),
-            title="[bold yellow]Window Properties Summary[/bold yellow]",
-            border_style="yellow",
-            box=box.ROUNDED,
-        ))
-        console.print()
+        # Show summary stats if we have storage
+        if self.storage_store:
+            self.console.print(Panel(
+                self.storage_store.stats.to_summary(),
+                title="[bold cyan]Storage Summary[/bold cyan]",
+                border_style="cyan",
+                box=box.ROUNDED,
+            ))
+            self.console.print()
 
-    console.print(Panel(
-        """[bold]Commands:[/bold]
+        # Show window props summary if we have it
+        if self.window_store:
+            self.console.print(Panel(
+                self.window_store.stats.to_summary(),
+                title="[bold yellow]Window Properties Summary[/bold yellow]",
+                border_style="yellow",
+                box=box.ROUNDED,
+            ))
+            self.console.print()
+
+        self.console.print(Panel(
+            """[bold]Commands:[/bold]
   [magenta]/trace <value>[/magenta]    Autonomously trace where a token/value came from
   [magenta]/reset[/magenta]            Start a new conversation
   [magenta]/help[/magenta]             Show help
@@ -176,133 +188,23 @@ Just ask questions about where values came from!
   "Where did the token abc123xyz come from?"
   "/trace eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
   "Find the origin of this session ID: sess_12345" """,
-        title="[bold magenta]Trace Hound[/bold magenta]",
-        subtitle=f"[dim]Model: {model}[/dim]",
-        border_style="magenta",
-        box=box.ROUNDED,
-    ))
-    console.print()
+            title="[bold magenta]Trace Hound[/bold magenta]",
+            subtitle=f"[dim]Model: {self.llm_model.value}[/dim]",
+            border_style="magenta",
+            box=box.ROUNDED,
+        ))
+        self.console.print()
 
-
-def print_assistant_message(content: str) -> None:
-    """Print an assistant response using markdown rendering."""
-    console.print()
-    console.print("[bold magenta]Assistant[/bold magenta]")
-    console.print()
-    console.print(Markdown(content))
-    console.print()
-
-
-def print_error(error: str) -> None:
-    """Print an error message."""
-    console.print()
-    console.print(f"[bold red]Error:[/bold red] [red]{escape(error)}[/red]")
-    console.print()
-
-
-def print_tool_call(invocation: PendingToolInvocation) -> None:
-    """Print a tool call with formatted arguments."""
-    args_formatted = json.dumps(invocation.tool_arguments, indent=2)
-
-    content = Text()
-    content.append("Tool: ", style="dim")
-    content.append(invocation.tool_name, style="bold white")
-    content.append("\n\n")
-    content.append("Arguments:\n", style="dim")
-    content.append(args_formatted, style="white")
-
-    console.print()
-    console.print(Panel(
-        content,
-        title="[bold yellow]TOOL CALL[/bold yellow]",
-        style="yellow",
-        box=box.ROUNDED,
-    ))
-
-
-def print_tool_result(
-    invocation: PendingToolInvocation,
-    result: dict[str, Any] | None,
-) -> None:
-    """Print a tool invocation result."""
-    if invocation.status == ToolInvocationStatus.EXECUTED:
-        console.print("[bold green]Tool executed[/bold green]")
-        if result:
-            result_json = json.dumps(result, indent=2)
-            lines = result_json.split("\n")
-            if len(lines) > 150:
-                display = "\n".join(lines[:150]) + f"\n... ({len(lines) - 150} more lines)"
-            else:
-                display = result_json
-            console.print(Panel(display, title="Result", style="green", box=box.ROUNDED))
-
-    elif invocation.status == ToolInvocationStatus.FAILED:
-        console.print("[bold red]Tool execution failed[/bold red]")
-        error = result.get("error") if result else None
-        if error:
-            console.print(Panel(str(error), title="Error", style="red", box=box.ROUNDED))
-
-    console.print()
-
-
-class TerminalTraceHoundChat:
-    """Interactive terminal chat interface for the Trace Hound Agent."""
-
-    def __init__(
-        self,
-        network_store: NetworkDataStore | None = None,
-        storage_store: StorageDataStore | None = None,
-        window_store: WindowPropertyDataStore | None = None,
-        llm_model: LLMModel = OpenAIModel.GPT_5_1,
-    ) -> None:
-        """Initialize the terminal chat interface."""
-        self._streaming_started: bool = False
-        self._agent = TraceHoundAgent(
-            emit_message_callable=self._handle_message,
-            network_data_store=network_store,
-            storage_data_store=storage_store,
-            window_property_data_store=window_store,
-            stream_chunk_callable=self._handle_stream_chunk,
-            llm_model=llm_model,
-        )
-
-    def _handle_stream_chunk(self, chunk: str) -> None:
-        """Handle a streaming text chunk from the LLM."""
-        if not self._streaming_started:
-            console.print()
-            console.print("[bold magenta]Assistant[/bold magenta]")
-            console.print()
-            self._streaming_started = True
-
-        print(chunk, end="", flush=True)
-
-    def _handle_message(self, message: EmittedMessage) -> None:
-        """Handle messages emitted by the Trace Hound Agent."""
-        if isinstance(message, ChatResponseEmittedMessage):
-            if self._streaming_started:
-                print()
-                print()
-                self._streaming_started = False
-            else:
-                print_assistant_message(message.content)
-
-        elif isinstance(message, ToolInvocationResultEmittedMessage):
-            print_tool_call(message.tool_invocation)
-            print_tool_result(message.tool_invocation, message.tool_result)
-
-        elif isinstance(message, ErrorEmittedMessage):
-            print_error(message.error)
-
-    def _run_trace(self, value: str) -> None:
+    def handle_autonomous_command(self, value: str) -> None:
         """Run autonomous token tracing for a given value."""
-        console.print()
-        console.print(Panel(
+        self.console.print()
+        self.console.print(Panel(
             f"[bold]Value:[/bold] {value[:100]}{'...' if len(value) > 100 else ''}",
             title="[bold magenta]Starting Token Trace[/bold magenta]",
             border_style="magenta",
             box=box.ROUNDED,
         ))
-        console.print()
+        self.console.print()
 
         # Reset agent state for fresh autonomous run
         self._agent.reset()
@@ -313,7 +215,7 @@ class TerminalTraceHoundChat:
         elapsed_time = time.perf_counter() - start_time
         iterations = self._agent.autonomous_iteration
 
-        console.print()
+        self.console.print()
 
         if isinstance(result, TokenOriginResult):
             # Success - show discovered origins
@@ -333,7 +235,7 @@ class TerminalTraceHoundChat:
                     origin.context[:40] + "..." if len(origin.context) > 40 else origin.context,
                 )
 
-            console.print(Panel(
+            self.console.print(Panel(
                 origins_table,
                 title=f"[bold green]Token Origins Found[/bold green] [dim]({len(result.origins)} locations)[/dim]",
                 border_style="green",
@@ -341,8 +243,8 @@ class TerminalTraceHoundChat:
             ))
 
             if result.likely_source:
-                console.print()
-                console.print(Panel(
+                self.console.print()
+                self.console.print(Panel(
                     f"[bold]Source Type:[/bold] {result.likely_source.source_type}\n"
                     f"[bold]Location:[/bold] {result.likely_source.location}\n"
                     f"[bold]Context:[/bold] {result.likely_source.context}",
@@ -351,16 +253,16 @@ class TerminalTraceHoundChat:
                     box=box.ROUNDED,
                 ))
 
-            console.print()
-            console.print(Panel(
+            self.console.print()
+            self.console.print(Panel(
                 result.explanation,
                 title="[bold cyan]Explanation[/bold cyan]",
                 border_style="cyan",
                 box=box.ROUNDED,
             ))
 
-            console.print()
-            console.print(f"[bold green]Trace completed[/bold green] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]")
+            self.console.print()
+            self.console.print(f"[bold green]Trace completed[/bold green] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]")
 
         elif isinstance(result, TokenOriginFailure):
             # Failure - value not found
@@ -368,7 +270,7 @@ class TerminalTraceHoundChat:
             if result.suggestions:
                 content += "\n\n[bold]Suggestions:[/bold]\n" + "\n".join(f"  - {s}" for s in result.suggestions)
 
-            console.print(Panel(
+            self.console.print(Panel(
                 content,
                 title=f"[bold red]Value Not Found[/bold red] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]",
                 border_style="red",
@@ -377,7 +279,7 @@ class TerminalTraceHoundChat:
 
         else:
             # None - max iterations without finalization
-            console.print(Panel(
+            self.console.print(Panel(
                 "[yellow]Could not complete token tracing. "
                 "The agent reached max iterations without finding a conclusion.[/yellow]",
                 title=f"[bold yellow]Trace Incomplete[/bold yellow] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]",
@@ -385,85 +287,7 @@ class TerminalTraceHoundChat:
                 box=box.ROUNDED,
             ))
 
-        console.print()
-
-    def run(self) -> None:
-        """Run the interactive chat loop."""
-        while True:
-            try:
-                user_input = pt_prompt(
-                    HTML("<b><ansimagenta>You&gt;</ansimagenta></b> "),
-                    completer=SlashCommandCompleter(SLASH_COMMANDS),
-                    lexer=SlashCommandLexer(),
-                    complete_while_typing=True,
-                )
-
-                if not user_input.strip():
-                    continue
-
-                cmd = user_input.strip().lower()
-
-                if cmd in ("/quit", "/exit", "/q"):
-                    console.print()
-                    console.print("[bold magenta]Goodbye![/bold magenta]")
-                    console.print()
-                    break
-
-                if cmd == "/reset":
-                    self._agent.reset()
-                    console.print()
-                    console.print("[yellow]Conversation reset[/yellow]")
-                    console.print()
-                    continue
-
-                if cmd in ("/help", "/h", "/?"):
-                    console.print()
-                    console.print(Panel(
-                        """[bold]Commands:[/bold]
-  [magenta]/trace <value>[/magenta]    Autonomously trace where a token/value came from
-                       Example: /trace abc123xyz
-                       Example: /trace eyJhbGciOiJIUzI1NiJ9
-  [magenta]/reset[/magenta]            Start a new conversation
-  [magenta]/help[/magenta]             Show this help message
-  [magenta]/quit[/magenta]             Exit
-
-[bold]Tips:[/bold]
-  - Use /trace for quick autonomous token origin discovery
-  - Ask conversational questions for deeper analysis
-  - The agent searches network traffic, browser storage, and window properties""",
-                        title="[bold magenta]Help[/bold magenta]",
-                        border_style="magenta",
-                        box=box.ROUNDED,
-                    ))
-                    console.print()
-                    continue
-
-                # Handle /trace command
-                if user_input.strip().lower().startswith("/trace"):
-                    value = user_input.strip()[len("/trace"):].strip()
-                    if not value:
-                        console.print()
-                        console.print("[bold yellow]Usage:[/bold yellow] /trace <value>")
-                        console.print("[dim]Example: /trace abc123xyz[/dim]")
-                        console.print()
-                        continue
-
-                    self._run_trace(value)
-                    continue
-
-                self._agent.process_new_message(user_input, ChatRole.USER)
-
-            except KeyboardInterrupt:
-                console.print()
-                console.print("[magenta]Interrupted. Goodbye![/magenta]")
-                console.print()
-                break
-
-            except EOFError:
-                console.print()
-                console.print("[magenta]Goodbye![/magenta]")
-                console.print()
-                break
+        self.console.print()
 
 
 def main() -> None:
@@ -486,12 +310,7 @@ def main() -> None:
         type=str,
         help="Path to JSONL file containing WindowPropertyEvent entries",
     )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="gpt-5.1",
-        help=f"LLM model to use (default: gpt-5.1). Options: {', '.join(get_all_model_values())}",
-    )
+    add_model_argument(parser)
     args = parser.parse_args()
 
     # Validate that at least one data source is provided
@@ -541,22 +360,17 @@ def main() -> None:
             console.print(f"[bold red]Error parsing window props JSONL: {e}[/bold red]")
             sys.exit(1)
 
-    # Resolve model string to enum
-    model_result = get_model_by_value(args.model)
-    if model_result is None:
-        console.print(f"[bold red]Error: Unknown model '{args.model}'[/bold red]")
-        console.print(f"[dim]Available models: {', '.join(get_all_model_values())}[/dim]")
-        sys.exit(1)
-    llm_model = model_result
+    # Resolve model
+    llm_model = resolve_model(args.model, console)
 
-    print_welcome(args.model, network_store, storage_store, window_store)
-
+    # Create and run chat
     chat = TerminalTraceHoundChat(
         network_store=network_store,
         storage_store=storage_store,
         window_store=window_store,
         llm_model=llm_model,
     )
+    chat.print_welcome()
     chat.run()
 
 
