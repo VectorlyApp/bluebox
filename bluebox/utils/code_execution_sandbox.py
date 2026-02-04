@@ -1,15 +1,17 @@
 """
 bluebox/utils/code_execution_sandbox.py
 
-Sandboxed Python code execution with Docker-based isolation.
+Sandboxed Python code execution with multiple isolation backends.
 
-Uses Docker containers for secure execution when available, with
-blocklist-based fallback for development environments.
+Supported backends (via BLUEBOX_SANDBOX_MODE env var):
+- "lambda": AWS Lambda isolation (recommended for ECS/cloud deployments)
+- "docker": Docker container isolation (network disabled, read-only, resource-limited)
+- "blocklist": Python-level blocklist sandboxing (fallback, not secure against adversarial input)
+- "auto": Automatically selects lambda (if registered) > docker (if available) > blocklist
 
 Security layers:
 1. Static pattern analysis (blocks dangerous code patterns)
-2. Docker container isolation (network disabled, read-only, resource-limited)
-3. Blocklist-based builtins/imports (fallback when Docker unavailable)
+2. Backend-specific isolation (Lambda microVM, Docker container, or blocklist)
 """
 
 import builtins as real_builtins
@@ -27,13 +29,31 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # Configuration
-SANDBOX_MODE: str = os.getenv("BLUEBOX_SANDBOX_MODE", "auto")  # "docker", "blocklist", "auto"
+SANDBOX_MODE: str = os.getenv("BLUEBOX_SANDBOX_MODE", "auto")  # "lambda", "docker", "blocklist", "auto"
 DOCKER_IMAGE: str = os.getenv("BLUEBOX_SANDBOX_IMAGE", "python:3.12-slim")
 DOCKER_TIMEOUT: int = int(os.getenv("BLUEBOX_SANDBOX_TIMEOUT", "30"))
 DOCKER_MEMORY_LIMIT: str = os.getenv("BLUEBOX_SANDBOX_MEMORY", "128m")
 
 # Cache for Docker availability check
 _docker_available: bool | None = None
+
+# Lambda executor function (registered by cloud deployments at startup)
+_lambda_executor_fn: Any | None = None
+
+
+def register_lambda_executor(fn: Any) -> None:
+    """
+    Register the Lambda executor function for BLUEBOX_SANDBOX_MODE=lambda.
+
+    This should be called at application startup in cloud deployments.
+    The function must have signature: (code: str, extra_globals: dict | None) -> dict
+
+    Args:
+        fn: The Lambda executor function to register.
+    """
+    global _lambda_executor_fn
+    _lambda_executor_fn = fn
+    logger.debug("Lambda executor registered")
 
 
 # Blocked modules - dangerous for file/network/system access
@@ -309,11 +329,14 @@ def execute_python_sandboxed(
     """
     Execute Python code in a sandboxed environment.
 
-    Uses Docker container isolation when available for secure execution.
-    Falls back to blocklist-based sandboxing when Docker is unavailable.
+    Uses the backend specified by BLUEBOX_SANDBOX_MODE environment variable.
 
     Configure via environment variables:
-    - BLUEBOX_SANDBOX_MODE: "docker", "blocklist", or "auto" (default: "auto")
+    - BLUEBOX_SANDBOX_MODE: "lambda", "docker", "blocklist", or "auto" (default: "auto")
+      - "lambda": Use AWS Lambda for isolation (requires servers' lambda_code_executor)
+      - "docker": Use Docker container isolation
+      - "blocklist": Use Python-level blocklist (not secure against adversarial input)
+      - "auto": Use Lambda if registered, else Docker if available, else blocklist
     - BLUEBOX_SANDBOX_IMAGE: Docker image to use (default: "python:3.12-slim")
     - BLUEBOX_SANDBOX_TIMEOUT: Execution timeout in seconds (default: 30)
     - BLUEBOX_SANDBOX_MEMORY: Container memory limit (default: "128m")
@@ -333,13 +356,29 @@ def execute_python_sandboxed(
     if safety_error:
         return {"error": f"Blocked: {safety_error}"}
 
-    # Determine execution mode
+    # Lambda mode: use registered Lambda executor (set via register_lambda_executor at startup)
+    if SANDBOX_MODE == "lambda":
+        if _lambda_executor_fn is None:
+            return {
+                "error": (
+                    "BLUEBOX_SANDBOX_MODE=lambda requires a registered executor. "
+                    "For local development, use BLUEBOX_SANDBOX_MODE=docker or BLUEBOX_SANDBOX_MODE=blocklist"
+                )
+            }
+        logger.debug("Executing code via AWS Lambda sandbox")
+        return _lambda_executor_fn(code, extra_globals)
+
+    # Determine execution mode for docker/blocklist/auto
     use_docker = False
     if SANDBOX_MODE == "docker":
         use_docker = True
         if not _is_docker_available():
             return {"error": "Docker sandbox requested but Docker is not available"}
     elif SANDBOX_MODE == "auto":
+        # Priority: lambda > docker > blocklist
+        if _lambda_executor_fn is not None:
+            logger.debug("Executing code via AWS Lambda sandbox (auto-selected)")
+            return _lambda_executor_fn(code, extra_globals)
         use_docker = _is_docker_available()
     # else: SANDBOX_MODE == "blocklist" -> use_docker stays False
 
