@@ -57,6 +57,22 @@ class AbstractLLMVendorClient(ABC):
         self.model = model
         self._tools: list[dict[str, Any]] = []
 
+    # Protected methods ____________________________________________________________________________________________________
+
+    def _resolve_max_tokens(self, max_tokens: int | None) -> int:
+        """Resolve max_tokens, using default if None."""
+        return max_tokens if max_tokens is not None else self.DEFAULT_MAX_TOKENS
+
+    def _resolve_temperature(
+        self,
+        temperature: float | None,
+        structured: bool = False,
+    ) -> float:
+        """Resolve temperature, using appropriate default if None."""
+        if temperature is not None:
+            return temperature
+        return self.DEFAULT_STRUCTURED_TEMPERATURE if structured else self.DEFAULT_TEMPERATURE
+
     # Tool management ______________________________________________________________________________________________________
 
     @abstractmethod
@@ -97,9 +113,8 @@ class AbstractLLMVendorClient(ABC):
         temperature: float | None = None,
         response_model: type[T] | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,
         previous_response_id: str | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
+        tool_choice: str | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified sync call to the LLM.
@@ -112,7 +127,6 @@ class AbstractLLMVendorClient(ABC):
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
             extended_reasoning: Enable extended reasoning (if supported).
-            stateful: Enable stateful conversation (if supported).
             previous_response_id: Previous response ID for chaining (if supported).
             tool_choice: Tool selection mode ("auto", "none", "required", or specific tool).
 
@@ -131,9 +145,8 @@ class AbstractLLMVendorClient(ABC):
         temperature: float | None = None,
         response_model: type[T] | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,
         previous_response_id: str | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
+        tool_choice: str | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified async call to the LLM.
@@ -146,7 +159,6 @@ class AbstractLLMVendorClient(ABC):
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
             extended_reasoning: Enable extended reasoning (if supported).
-            stateful: Enable stateful conversation (if supported).
             previous_response_id: Previous response ID for chaining (if supported).
             tool_choice: Tool selection mode ("auto", "none", "required", or specific tool).
 
@@ -164,9 +176,8 @@ class AbstractLLMVendorClient(ABC):
         max_tokens: int | None = None,
         temperature: float | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,
         previous_response_id: str | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
+        tool_choice: str | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
         Unified streaming call to the LLM.
@@ -180,7 +191,6 @@ class AbstractLLMVendorClient(ABC):
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
             extended_reasoning: Enable extended reasoning (if supported).
-            stateful: Enable stateful conversation (if supported).
             previous_response_id: Previous response ID for chaining (if supported).
             tool_choice: Tool selection mode ("auto", "none", "required", or specific tool).
 

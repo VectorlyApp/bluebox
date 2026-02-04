@@ -131,19 +131,29 @@ class AnthropicClient(AbstractLLMVendorClient):
 
     # Private methods ______________________________________________________________________________________________________
 
-    def _resolve_max_tokens(self, max_tokens: int | None) -> int:
-        """Resolve max_tokens, using default if None."""
-        return max_tokens if max_tokens is not None else self.DEFAULT_MAX_TOKENS
+    def _normalize_tool_choice(self, tool_choice: str | None) -> dict[str, Any] | None:
+        """
+        Normalize tool_choice for Anthropic Messages API.
 
-    def _resolve_temperature(
-        self,
-        temperature: float | None,
-        structured: bool = False,
-    ) -> float:
-        """Resolve temperature, using appropriate default if None."""
-        if temperature is not None:
-            return temperature
-        return self.DEFAULT_STRUCTURED_TEMPERATURE if structured else self.DEFAULT_TEMPERATURE
+        Maps:
+        - "auto" → {"type": "auto"}
+        - "required" → {"type": "any"}
+        - Tool name string → {"type": "tool", "name": "tool_name"}
+
+        Args:
+            tool_choice: String ("auto", "required", or tool name)
+
+        Returns:
+            Normalized tool_choice for Anthropic API
+        """
+        if tool_choice is None:
+            return None
+        if tool_choice == "auto":
+            return {"type": "auto"}
+        if tool_choice == "required":
+            return {"type": "any"}
+        # Otherwise, treat as tool name
+        return {"type": "tool", "name": tool_choice}
 
     def _convert_messages_for_anthropic(
         self,
@@ -264,6 +274,7 @@ class AnthropicClient(AbstractLLMVendorClient):
         response_model: type[T] | None,
         extended_thinking: bool = False,
         stream: bool = False,
+        tool_choice: str | None = None,
     ) -> dict[str, Any]:
         """Build kwargs for Anthropic Messages API call."""
         converted_messages = self._convert_messages_for_anthropic(messages)
@@ -297,6 +308,9 @@ class AnthropicClient(AbstractLLMVendorClient):
         # Add tools if registered and no response_model
         if self._tools and response_model is None:
             kwargs["tools"] = self._tools.copy()
+            # Apply normalized tool_choice if provided
+            if tool_choice is not None:
+                kwargs["tool_choice"] = self._normalize_tool_choice(tool_choice)
 
         # Add structured output tool if response_model is provided
         if response_model is not None:
@@ -309,6 +323,8 @@ class AnthropicClient(AbstractLLMVendorClient):
                     "input_schema": cleaned_schema,
                 }
             ]
+            # Force structured_output tool when response_model is provided
+            # User-provided tool_choice is ignored in this case
             kwargs["tool_choice"] = {"type": "tool", "name": "structured_output"}
 
         return kwargs
@@ -401,9 +417,8 @@ class AnthropicClient(AbstractLLMVendorClient):
         temperature: float | None = None,
         response_model: type[T] | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,  # noqa: ARG002 - not supported by Anthropic
         previous_response_id: str | None = None,  # noqa: ARG002 - not supported by Anthropic
-        tool_choice: str | dict | None = None,  # noqa: ARG002 - TODO: implement
+        tool_choice: str | None = None,
     ) -> LLMChatResponse:
         """
         Sync call to Anthropic.
@@ -416,9 +431,8 @@ class AnthropicClient(AbstractLLMVendorClient):
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
             extended_reasoning: Enable extended thinking.
-            stateful: Not supported by Anthropic (ignored).
             previous_response_id: Not supported by Anthropic (ignored).
-            tool_choice: Tool choice configuration (TODO: implement).
+            tool_choice: Tool choice configuration ("auto", "required", or tool name).
 
         Returns:
             LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
@@ -434,7 +448,7 @@ class AnthropicClient(AbstractLLMVendorClient):
 
         kwargs = self._build_messages_api_kwargs(
             messages, system_prompt, max_tokens, temperature, response_model,
-            extended_reasoning,
+            extended_reasoning, tool_choice=tool_choice,
         )
 
         # Retry loop with exponential backoff
@@ -466,9 +480,8 @@ class AnthropicClient(AbstractLLMVendorClient):
         temperature: float | None = None,
         response_model: type[T] | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,  # noqa: ARG002 - not supported by Anthropic
         previous_response_id: str | None = None,  # noqa: ARG002 - not supported by Anthropic
-        tool_choice: str | dict | None = None,  # noqa: ARG002 - TODO: implement
+        tool_choice: str | None = None,
     ) -> LLMChatResponse:
         """
         Async call to Anthropic.
@@ -481,9 +494,8 @@ class AnthropicClient(AbstractLLMVendorClient):
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
             extended_reasoning: Enable extended thinking.
-            stateful: Not supported by Anthropic (ignored).
             previous_response_id: Not supported by Anthropic (ignored).
-            tool_choice: Tool choice configuration (TODO: implement).
+            tool_choice: Tool choice configuration ("auto", "required", or tool name).
 
         Returns:
             LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
@@ -499,7 +511,7 @@ class AnthropicClient(AbstractLLMVendorClient):
 
         kwargs = self._build_messages_api_kwargs(
             messages, system_prompt, max_tokens, temperature, response_model,
-            extended_reasoning,
+            extended_reasoning, tool_choice=tool_choice,
         )
 
         # Retry loop with exponential backoff
@@ -530,9 +542,8 @@ class AnthropicClient(AbstractLLMVendorClient):
         max_tokens: int | None = None,
         temperature: float | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,  # noqa: ARG002 - not supported by Anthropic
         previous_response_id: str | None = None,  # noqa: ARG002 - not supported by Anthropic
-        tool_choice: str | dict | None = None,  # noqa: ARG002 - TODO: implement
+        tool_choice: str | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
         Streaming call to Anthropic.
@@ -546,9 +557,8 @@ class AnthropicClient(AbstractLLMVendorClient):
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
             extended_reasoning: Enable extended thinking.
-            stateful: Not supported by Anthropic (ignored).
             previous_response_id: Not supported by Anthropic (ignored).
-            tool_choice: Tool choice configuration (TODO: implement).
+            tool_choice: Tool choice configuration ("auto", "required", or tool name).
 
         Yields:
             str: Text chunks as they arrive.
@@ -563,7 +573,7 @@ class AnthropicClient(AbstractLLMVendorClient):
         # Build kwargs without stream parameter - messages.stream() handles it implicitly
         kwargs = self._build_messages_api_kwargs(
             messages, system_prompt, max_tokens, temperature, response_model=None,
-            extended_thinking=extended_reasoning,
+            extended_thinking=extended_reasoning, stream=True, tool_choice=tool_choice,
         )
 
         # Retry loop with exponential backoff

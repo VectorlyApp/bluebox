@@ -86,19 +86,24 @@ class OpenAIClient(AbstractLLMVendorClient):
 
     # Private methods ______________________________________________________________________________________________________
 
-    def _resolve_max_tokens(self, max_tokens: int | None) -> int:
-        """Resolve max_tokens, using default if None."""
-        return max_tokens if max_tokens is not None else self.DEFAULT_MAX_TOKENS
+    def _normalize_tool_choice(self, tool_choice: str | None) -> str | dict[str, Any] | None:
+        """
+        Normalize tool_choice for OpenAI Responses API.
 
-    def _resolve_temperature(
-        self,
-        temperature: float | None,
-        structured: bool = False,
-    ) -> float:
-        """Resolve temperature, using appropriate default if None."""
-        if temperature is not None:
-            return temperature
-        return self.DEFAULT_STRUCTURED_TEMPERATURE if structured else self.DEFAULT_TEMPERATURE
+        Maps:
+        - "auto" → "auto"
+        - "required" → "required"
+        - Tool name string → {"type": "function", "name": "tool_name"}
+
+        Args:
+            tool_choice: String ("auto", "required", or tool name)
+
+        Returns:
+            Normalized tool_choice for OpenAI API
+        """
+        if tool_choice is not None and tool_choice not in ["auto", "required"]:
+            return {"type": "function", "name": tool_choice}
+        return tool_choice
 
     def _has_file_search_tools(self) -> bool:
         """Check if file_search vectorstores are configured."""
@@ -190,16 +195,18 @@ class OpenAIClient(AbstractLLMVendorClient):
         input_text: str | None,
         system_prompt: str | None,
         max_tokens: int | None,
+        temperature: float | None,
         extended_reasoning: bool,
         previous_response_id: str | None,
         response_model: type[T] | None,
         stream: bool = False,
-        tool_choice: str | dict | None = None,
+        tool_choice: str | None = None,
     ) -> dict[str, Any]:
         """Build kwargs for Responses API call."""
         kwargs: dict[str, Any] = {
             "model": self.model.value,
             "max_output_tokens": self._resolve_max_tokens(max_tokens),
+            "temperature": self._resolve_temperature(temperature, structured=response_model is not None),
         }
 
         # Handle previous_response_id for conversation chaining
@@ -240,8 +247,8 @@ class OpenAIClient(AbstractLLMVendorClient):
 
         if all_tools and response_model is None:
             kwargs["tools"] = all_tools
-            if tool_choice:
-                kwargs["tool_choice"] = tool_choice
+            if tool_choice is not None:
+                kwargs["tool_choice"] = self._normalize_tool_choice(tool_choice)
 
         return kwargs
 
@@ -366,12 +373,11 @@ class OpenAIClient(AbstractLLMVendorClient):
         input: str | None = None,
         system_prompt: str | None = None,
         max_tokens: int | None = None,
-        temperature: float | None = None,  # noqa: ARG002 - reserved for future use
+        temperature: float | None = None,
         response_model: type[T] | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
-        tool_choice: str | dict | None = None,
+        tool_choice: str | None = None,
     ) -> LLMChatResponse:
         """
         Sync call to OpenAI using the Responses API.
@@ -384,7 +390,6 @@ class OpenAIClient(AbstractLLMVendorClient):
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
             extended_reasoning: Enable extended reasoning.
-            stateful: Enable stateful conversation.
             previous_response_id: Previous response ID for chaining.
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
@@ -392,7 +397,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
         """
         kwargs = self._build_responses_api_kwargs(
-            messages, input, system_prompt, max_tokens,
+            messages, input, system_prompt, max_tokens, temperature,
             extended_reasoning, previous_response_id, response_model,
             tool_choice=tool_choice,
         )
@@ -414,12 +419,11 @@ class OpenAIClient(AbstractLLMVendorClient):
         input: str | None = None,
         system_prompt: str | None = None,
         max_tokens: int | None = None,
-        temperature: float | None = None,  # noqa: ARG002 - reserved for future use
+        temperature: float | None = None,
         response_model: type[T] | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
-        tool_choice: str | dict | None = None,
+        tool_choice: str | None = None,
     ) -> LLMChatResponse:
         """
         Async call to OpenAI using the Responses API.
@@ -432,7 +436,6 @@ class OpenAIClient(AbstractLLMVendorClient):
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
             extended_reasoning: Enable extended reasoning.
-            stateful: Enable stateful conversation.
             previous_response_id: Previous response ID for chaining.
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
@@ -440,7 +443,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
         """
         kwargs = self._build_responses_api_kwargs(
-            messages, input, system_prompt, max_tokens,
+            messages, input, system_prompt, max_tokens, temperature,
             extended_reasoning, previous_response_id, response_model,
             tool_choice=tool_choice,
         )
@@ -462,11 +465,10 @@ class OpenAIClient(AbstractLLMVendorClient):
         input: str | None = None,
         system_prompt: str | None = None,
         max_tokens: int | None = None,
-        temperature: float | None = None,  # noqa: ARG002 - reserved for future use
+        temperature: float | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
-        tool_choice: str | dict | None = None,
+        tool_choice: str | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
         Streaming call to OpenAI using the Responses API.
@@ -480,7 +482,6 @@ class OpenAIClient(AbstractLLMVendorClient):
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
             extended_reasoning: Enable extended reasoning.
-            stateful: Enable stateful conversation.
             previous_response_id: Previous response ID for chaining.
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
@@ -489,7 +490,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             LLMChatResponse: Final response with complete content and optional tool call.
         """
         kwargs = self._build_responses_api_kwargs(
-            messages, input, system_prompt, max_tokens,
+            messages, input, system_prompt, max_tokens, temperature,
             extended_reasoning, previous_response_id, response_model=None, stream=True,
             tool_choice=tool_choice,
         )

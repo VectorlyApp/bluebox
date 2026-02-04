@@ -134,9 +134,8 @@ class LLMClient:
         temperature: float | None = None,
         response_model: type[T] | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,
         previous_response_id: str | None = None,
-        tool_choice: str | dict | None = None,
+        tool_choice: str | None = None,
     ) -> LLMChatResponse:
         """
         Sync call to the LLM.
@@ -149,9 +148,11 @@ class LLMClient:
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
             extended_reasoning: Enable extended reasoning.
-            stateful: Enable stateful conversation.
             previous_response_id: Previous response ID for chaining.
-            tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
+            tool_choice: Tool choice for the API call. Can be:
+                - "auto": Let the model decide (default)
+                - "required": Force the model to use at least one tool
+                - Tool name string: Force the model to use a specific tool (e.g., "get_weather")
 
         Returns:
             LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
@@ -164,7 +165,6 @@ class LLMClient:
             temperature=temperature,
             response_model=response_model,
             extended_reasoning=extended_reasoning,
-            stateful=stateful,
             previous_response_id=previous_response_id,
             tool_choice=tool_choice,
         )
@@ -178,9 +178,8 @@ class LLMClient:
         temperature: float | None = None,
         response_model: type[T] | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,
         previous_response_id: str | None = None,
-        tool_choice: str | dict | None = None,
+        tool_choice: str | None = None,
     ) -> LLMChatResponse:
         """
         Async call to the LLM.
@@ -193,9 +192,11 @@ class LLMClient:
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
             extended_reasoning: Enable extended reasoning.
-            stateful: Enable stateful conversation.
             previous_response_id: Previous response ID for chaining.
-            tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
+            tool_choice: Tool choice for the API call. Can be:
+                - "auto": Let the model decide (default)
+                - "required": Force the model to use at least one tool
+                - Tool name string: Force the model to use a specific tool (e.g., "get_weather")
 
         Returns:
             LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
@@ -208,7 +209,6 @@ class LLMClient:
             temperature=temperature,
             response_model=response_model,
             extended_reasoning=extended_reasoning,
-            stateful=stateful,
             previous_response_id=previous_response_id,
             tool_choice=tool_choice,
         )
@@ -221,9 +221,8 @@ class LLMClient:
         max_tokens: int | None = None,
         temperature: float | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,
         previous_response_id: str | None = None,
-        tool_choice: str | dict | None = None,
+        tool_choice: str | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
         Streaming call to the LLM.
@@ -237,9 +236,11 @@ class LLMClient:
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
             extended_reasoning: Enable extended reasoning.
-            stateful: Enable stateful conversation.
             previous_response_id: Previous response ID for chaining.
-            tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
+            tool_choice: Tool choice for the API call. Can be:
+                - "auto": Let the model decide (default)
+                - "required": Force the model to use at least one tool
+                - Tool name string: Force the model to use a specific tool (e.g., "get_weather")
 
         Yields:
             str: Text chunks as they arrive.
@@ -252,7 +253,6 @@ class LLMClient:
             max_tokens=max_tokens,
             temperature=temperature,
             extended_reasoning=extended_reasoning,
-            stateful=stateful,
             previous_response_id=previous_response_id,
             tool_choice=tool_choice,
         )

@@ -507,6 +507,51 @@ class TestAnthropicClientToolRegistration:
         assert "arg2" in client.tools[0]["input_schema"]["properties"]
 
 
+class TestToolChoiceNormalization:
+    """Tests for tool_choice normalization."""
+
+    @pytest.fixture
+    def mock_anthropic(self) -> Generator[MagicMock, None, None]:
+        """Mock the Anthropic client."""
+        with patch("bluebox.llms.anthropic_client.Anthropic") as mock_cls:
+            with patch("bluebox.llms.anthropic_client.AsyncAnthropic"):
+                mock_instance = MagicMock()
+                mock_cls.return_value = mock_instance
+                yield mock_instance
+
+    @pytest.fixture
+    def client(self, mock_anthropic: MagicMock) -> AnthropicClient:
+        """Create an AnthropicClient instance for testing."""
+        with patch("bluebox.llms.anthropic_client.Config") as mock_config:
+            mock_config.ANTHROPIC_API_KEY = "test-key"
+            return AnthropicClient(model=AnthropicModel.CLAUDE_SONNET_4_5)
+
+    def test_normalize_auto(self, client: AnthropicClient) -> None:
+        """Test that 'auto' normalizes to {'type': 'auto'}."""
+        result = client._normalize_tool_choice("auto")
+        assert result == {"type": "auto"}
+
+    def test_normalize_required(self, client: AnthropicClient) -> None:
+        """Test that 'required' normalizes to {'type': 'any'}."""
+        result = client._normalize_tool_choice("required")
+        assert result == {"type": "any"}
+
+    def test_normalize_tool_name(self, client: AnthropicClient) -> None:
+        """Test that tool name normalizes to tool dict."""
+        result = client._normalize_tool_choice("get_weather")
+        assert result == {"type": "tool", "name": "get_weather"}
+
+    def test_normalize_none(self, client: AnthropicClient) -> None:
+        """Test that None normalizes to None."""
+        result = client._normalize_tool_choice(None)
+        assert result is None
+
+    def test_normalize_other_tool_name(self, client: AnthropicClient) -> None:
+        """Test that other tool names normalize correctly."""
+        result = client._normalize_tool_choice("search_docs")
+        assert result == {"type": "tool", "name": "search_docs"}
+
+
 class TestAnthropicClientMessageConversion:
     """Tests for message format conversion."""
 
@@ -596,3 +641,81 @@ class TestAnthropicClientMessageConversion:
         assert converted[0]["content"][0]["type"] == "tool_result"
         assert converted[0]["content"][0]["tool_use_id"] == "call_123"
         assert converted[0]["content"][0]["content"] == "The weather is sunny."
+
+
+class TestToolChoiceIntegration:
+    """Integration tests for tool_choice in API calls."""
+
+    @pytest.fixture
+    def mock_anthropic(self) -> Generator[MagicMock, None, None]:
+        """Mock the Anthropic client."""
+        with patch("bluebox.llms.anthropic_client.Anthropic") as mock_cls:
+            with patch("bluebox.llms.anthropic_client.AsyncAnthropic"):
+                mock_instance = MagicMock()
+                mock_cls.return_value = mock_instance
+                yield mock_instance
+
+    @pytest.fixture
+    def client(self, mock_anthropic: MagicMock) -> AnthropicClient:
+        """Create an AnthropicClient instance for testing."""
+        with patch("bluebox.llms.anthropic_client.Config") as mock_config:
+            mock_config.ANTHROPIC_API_KEY = "test-key"
+            return AnthropicClient(model=AnthropicModel.CLAUDE_SONNET_4_5)
+
+    def _create_mock_response(self, content: str = "Hello!") -> MagicMock:
+        """Create a mock Anthropic response."""
+        mock_response = MagicMock()
+        mock_text_block = MagicMock()
+        mock_text_block.type = "text"
+        mock_text_block.text = content
+        mock_response.content = [mock_text_block]
+        mock_response.id = "msg_123"
+        return mock_response
+
+    def test_tool_choice_auto_passed_to_api(self, client: AnthropicClient, mock_anthropic: MagicMock) -> None:
+        """Test that 'auto' tool_choice is normalized and passed correctly to API."""
+        mock_anthropic.messages.create.return_value = self._create_mock_response()
+
+        client.register_tool(
+            name="test_tool",
+            description="A test tool",
+            parameters={"type": "object", "properties": {}},
+        )
+
+        client.call_sync(input="Hello", tool_choice="auto")
+
+        # Verify tool_choice was normalized to {"type": "auto"}
+        call_kwargs = mock_anthropic.messages.create.call_args[1]
+        assert call_kwargs.get("tool_choice") == {"type": "auto"}
+
+    def test_tool_choice_required_passed_to_api(self, client: AnthropicClient, mock_anthropic: MagicMock) -> None:
+        """Test that 'required' tool_choice is normalized and passed correctly to API."""
+        mock_anthropic.messages.create.return_value = self._create_mock_response()
+
+        client.register_tool(
+            name="test_tool",
+            description="A test tool",
+            parameters={"type": "object", "properties": {}},
+        )
+
+        client.call_sync(input="Hello", tool_choice="required")
+
+        # Verify tool_choice was normalized to {"type": "any"}
+        call_kwargs = mock_anthropic.messages.create.call_args[1]
+        assert call_kwargs.get("tool_choice") == {"type": "any"}
+
+    def test_tool_choice_tool_name_passed_to_api(self, client: AnthropicClient, mock_anthropic: MagicMock) -> None:
+        """Test that tool name tool_choice is normalized and passed correctly to API."""
+        mock_anthropic.messages.create.return_value = self._create_mock_response()
+
+        client.register_tool(
+            name="test_tool",
+            description="A test tool",
+            parameters={"type": "object", "properties": {}},
+        )
+
+        client.call_sync(input="Hello", tool_choice="test_tool")
+
+        # Verify tool_choice was normalized to tool dict
+        call_kwargs = mock_anthropic.messages.create.call_args[1]
+        assert call_kwargs.get("tool_choice") == {"type": "tool", "name": "test_tool"}
