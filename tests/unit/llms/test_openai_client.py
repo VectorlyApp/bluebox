@@ -1,119 +1,15 @@
 """
 tests/unit/test_openai_client.py
 
-Unit tests for OpenAI client validation logic.
+Unit tests for OpenAI client.
 """
+
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from bluebox.data_models.llms.vendors import OpenAIAPIType, OpenAIModel
+from bluebox.data_models.llms.vendors import OpenAIModel
 from bluebox.llms.openai_client import OpenAIClient
-
-
-class TestValidateAndResolveAPIType:
-    """Tests for _validate_and_resolve_api_type method."""
-
-    @pytest.fixture
-    def client(self) -> OpenAIClient:
-        """Create an OpenAIClient instance for testing."""
-        return OpenAIClient(model=OpenAIModel.GPT_5_MINI)
-
-    # Happy path tests - valid combinations
-
-    def test_default_resolves_to_chat_completions(self, client: OpenAIClient) -> None:
-        """Default (no special params) should resolve to Chat Completions API."""
-        result = client._validate_and_resolve_api_type(
-            api_type=None,
-            extended_reasoning=False,
-            previous_response_id=None,
-        )
-        assert result == OpenAIAPIType.CHAT_COMPLETIONS
-
-    def test_extended_reasoning_auto_resolves_to_responses(self, client: OpenAIClient) -> None:
-        """extended_reasoning=True should auto-resolve to Responses API."""
-        result = client._validate_and_resolve_api_type(
-            api_type=None,
-            extended_reasoning=True,
-            previous_response_id=None,
-        )
-        assert result == OpenAIAPIType.RESPONSES
-
-    def test_previous_response_id_auto_resolves_to_responses(self, client: OpenAIClient) -> None:
-        """previous_response_id should auto-resolve to Responses API."""
-        result = client._validate_and_resolve_api_type(
-            api_type=None,
-            extended_reasoning=False,
-            previous_response_id="resp_123",
-        )
-        assert result == OpenAIAPIType.RESPONSES
-
-    def test_explicit_chat_completions_api_type(self, client: OpenAIClient) -> None:
-        """Explicit Chat Completions API type should be honored."""
-        result = client._validate_and_resolve_api_type(
-            api_type=OpenAIAPIType.CHAT_COMPLETIONS,
-            extended_reasoning=False,
-            previous_response_id=None,
-        )
-        assert result == OpenAIAPIType.CHAT_COMPLETIONS
-
-    def test_explicit_responses_api_type(self, client: OpenAIClient) -> None:
-        """Explicit Responses API type should be honored."""
-        result = client._validate_and_resolve_api_type(
-            api_type=OpenAIAPIType.RESPONSES,
-            extended_reasoning=False,
-            previous_response_id=None,
-        )
-        assert result == OpenAIAPIType.RESPONSES
-
-    def test_extended_reasoning_with_responses_api_valid(self, client: OpenAIClient) -> None:
-        """extended_reasoning=True with explicit Responses API should work."""
-        result = client._validate_and_resolve_api_type(
-            api_type=OpenAIAPIType.RESPONSES,
-            extended_reasoning=True,
-            previous_response_id=None,
-        )
-        assert result == OpenAIAPIType.RESPONSES
-
-    def test_previous_response_id_with_responses_api_valid(self, client: OpenAIClient) -> None:
-        """previous_response_id with explicit Responses API should work."""
-        result = client._validate_and_resolve_api_type(
-            api_type=OpenAIAPIType.RESPONSES,
-            extended_reasoning=False,
-            previous_response_id="resp_123",
-        )
-        assert result == OpenAIAPIType.RESPONSES
-
-    # Error cases - invalid combinations
-
-    def test_extended_reasoning_with_chat_completions_raises_error(self, client: OpenAIClient) -> None:
-        """extended_reasoning=True with Chat Completions API should raise ValueError."""
-        with pytest.raises(ValueError, match="extended_reasoning=True requires Responses API"):
-            client._validate_and_resolve_api_type(
-                api_type=OpenAIAPIType.CHAT_COMPLETIONS,
-                extended_reasoning=True,
-                previous_response_id=None,
-            )
-
-    def test_previous_response_id_with_chat_completions_raises_error(self, client: OpenAIClient) -> None:
-        """previous_response_id with Chat Completions API should raise ValueError."""
-        with pytest.raises(ValueError, match="previous_response_id requires Responses API"):
-            client._validate_and_resolve_api_type(
-                api_type=OpenAIAPIType.CHAT_COMPLETIONS,
-                extended_reasoning=False,
-                previous_response_id="resp_123",
-            )
-
-    def test_both_extended_reasoning_and_previous_response_id_with_chat_completions_raises_error(
-        self,
-        client: OpenAIClient,
-    ) -> None:
-        """Both extended_reasoning and previous_response_id with Chat Completions should raise ValueError."""
-        with pytest.raises(ValueError):
-            client._validate_and_resolve_api_type(
-                api_type=OpenAIAPIType.CHAT_COMPLETIONS,
-                extended_reasoning=True,
-                previous_response_id="resp_123",
-            )
 
 
 class TestToolRegistration:
@@ -149,32 +45,138 @@ class TestToolRegistration:
         client.clear_tools()
         assert len(client.tools) == 0
 
+    def test_register_tool_upsert_behavior(self, client: OpenAIClient) -> None:
+        """Test that registering a tool with the same name updates instead of duplicating."""
+        client.register_tool(
+            name="test_tool",
+            description="Original description",
+            parameters={"type": "object", "properties": {"arg1": {"type": "string"}}},
+        )
+        assert len(client.tools) == 1
+        assert client.tools[0]["function"]["description"] == "Original description"
 
-class TestCallSyncValidation:
-    """Tests for call_sync parameter validation."""
+        # Register same tool name with updated description
+        client.register_tool(
+            name="test_tool",
+            description="Updated description",
+            parameters={"type": "object", "properties": {"arg2": {"type": "integer"}}},
+        )
+
+        # Should still have only 1 tool, but with updated content
+        assert len(client.tools) == 1
+        assert client.tools[0]["function"]["description"] == "Updated description"
+        assert "arg2" in client.tools[0]["function"]["parameters"]["properties"]
+
+
+class TestToolChoiceIntegration:
+    """Integration tests for tool_choice in API calls."""
+
+    @pytest.fixture
+    def mock_openai(self) -> MagicMock:
+        """Mock the OpenAI client."""
+        with patch("bluebox.llms.openai_client.OpenAI") as mock_cls:
+            with patch("bluebox.llms.openai_client.AsyncOpenAI"):
+                mock_instance = MagicMock()
+                mock_cls.return_value = mock_instance
+                yield mock_instance
+
+    @pytest.fixture
+    def client(self, mock_openai: MagicMock) -> OpenAIClient:
+        """Create an OpenAIClient instance for testing."""
+        with patch("bluebox.llms.openai_client.Config") as mock_config:
+            mock_config.OPENAI_API_KEY = "test-key"
+            return OpenAIClient(model=OpenAIModel.GPT_5_MINI)
+
+    def test_tool_choice_auto_passed_to_api(self, client: OpenAIClient, mock_openai: MagicMock) -> None:
+        """Test that 'auto' tool_choice is passed correctly to API."""
+        mock_response = MagicMock()
+        mock_response.id = "resp_123"
+        mock_response.output = []
+        mock_openai.responses.create.return_value = mock_response
+
+        client.register_tool(
+            name="test_tool",
+            description="A test tool",
+            parameters={"type": "object", "properties": {}},
+        )
+
+        client.call_sync(input="Hello", tool_choice="auto")
+
+        # Verify tool_choice was passed as "auto"
+        call_kwargs = mock_openai.responses.create.call_args[1]
+        assert call_kwargs.get("tool_choice") == "auto"
+
+    def test_tool_choice_required_passed_to_api(self, client: OpenAIClient, mock_openai: MagicMock) -> None:
+        """Test that 'required' tool_choice is passed correctly to API."""
+        mock_response = MagicMock()
+        mock_response.id = "resp_123"
+        mock_response.output = []
+        mock_openai.responses.create.return_value = mock_response
+
+        client.register_tool(
+            name="test_tool",
+            description="A test tool",
+            parameters={"type": "object", "properties": {}},
+        )
+
+        client.call_sync(input="Hello", tool_choice="required")
+
+        # Verify tool_choice was passed as "required"
+        call_kwargs = mock_openai.responses.create.call_args[1]
+        assert call_kwargs.get("tool_choice") == "required"
+
+    def test_tool_choice_tool_name_passed_to_api(self, client: OpenAIClient, mock_openai: MagicMock) -> None:
+        """Test that tool name tool_choice is normalized and passed correctly to API."""
+        mock_response = MagicMock()
+        mock_response.id = "resp_123"
+        mock_response.output = []
+        mock_openai.responses.create.return_value = mock_response
+
+        client.register_tool(
+            name="test_tool",
+            description="A test tool",
+            parameters={"type": "object", "properties": {}},
+        )
+
+        client.call_sync(input="Hello", tool_choice="test_tool")
+
+        # Verify tool_choice was normalized to function dict
+        call_kwargs = mock_openai.responses.create.call_args[1]
+        assert call_kwargs.get("tool_choice") == {"type": "function", "name": "test_tool"}
+
+
+class TestToolChoiceNormalization:
+    """Tests for tool_choice normalization."""
 
     @pytest.fixture
     def client(self) -> OpenAIClient:
         """Create an OpenAIClient instance for testing."""
         return OpenAIClient(model=OpenAIModel.GPT_5_MINI)
 
-    def test_messages_required_for_chat_completions(self, client: OpenAIClient) -> None:
-        """Test that messages is required for Chat Completions API."""
-        with pytest.raises(ValueError, match="messages is required for Chat Completions API"):
-            client.call_sync(
-                messages=None,
-                input="Hello",
-                api_type=OpenAIAPIType.CHAT_COMPLETIONS,
-            )
+    def test_normalize_auto(self, client: OpenAIClient) -> None:
+        """Test that 'auto' normalizes to 'auto'."""
+        result = client._normalize_tool_choice("auto")
+        assert result == "auto"
 
-    def test_extended_reasoning_with_chat_completions_raises_error(self, client: OpenAIClient) -> None:
-        """Test that extended_reasoning with Chat Completions raises ValueError."""
-        with pytest.raises(ValueError, match="extended_reasoning=True requires Responses API"):
-            client.call_sync(
-                messages=[{"role": "user", "content": "Hello"}],
-                extended_reasoning=True,
-                api_type=OpenAIAPIType.CHAT_COMPLETIONS,
-            )
+    def test_normalize_required(self, client: OpenAIClient) -> None:
+        """Test that 'required' normalizes to 'required'."""
+        result = client._normalize_tool_choice("required")
+        assert result == "required"
+
+    def test_normalize_tool_name(self, client: OpenAIClient) -> None:
+        """Test that tool name normalizes to function dict."""
+        result = client._normalize_tool_choice("get_weather")
+        assert result == {"type": "function", "name": "get_weather"}
+
+    def test_normalize_none(self, client: OpenAIClient) -> None:
+        """Test that None normalizes to None."""
+        result = client._normalize_tool_choice(None)
+        assert result is None
+
+    def test_normalize_other_tool_name(self, client: OpenAIClient) -> None:
+        """Test that other tool names normalize correctly."""
+        result = client._normalize_tool_choice("search_docs")
+        assert result == {"type": "function", "name": "search_docs"}
 
 
 class TestLLMChatResponseFields:

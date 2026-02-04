@@ -38,6 +38,7 @@ dependencies = [
     "beautifulsoup4>=4.14.2",
     "ipykernel>=6.29.5",
     "jmespath>=1.0.1,<2",
+    "anthropic>=0.77.1",
     "openai>=2.6.1",
     "prompt_toolkit>=3.0.0",
     "pydantic>=2.11.4",

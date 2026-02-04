@@ -1,10 +1,10 @@
 """
 bluebox/llms/llm_client.py
 
-Unified LLM client for OpenAI models.
+Unified LLM client for OpenAI and Anthropic models.
 
 Contains:
-- LLMClient: High-level interface for chat completions
+- LLMClient: High-level interface for LLM interactions
 - Tool registration and execution
 - Streaming and non-streaming response handling
 - Structured output parsing with Pydantic
@@ -16,8 +16,12 @@ from typing import Any, Callable, TypeVar
 from pydantic import BaseModel
 
 from bluebox.data_models.llms.interaction import LLMChatResponse
-from bluebox.data_models.llms.vendors import OpenAIAPIType, OpenAIModel
-from bluebox.llms.openai_client import OpenAIClient
+from bluebox.data_models.llms.vendors import LLMModel
+from bluebox.llms.abstract_llm_vendor_client import AbstractLLMVendorClient
+
+# Import vendor clients to register them as subclasses of AbstractLLMVendorClient
+from bluebox.llms.anthropic_client import AnthropicClient  # noqa: F401
+from bluebox.llms.openai_client import OpenAIClient  # noqa: F401
 from bluebox.llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
 from bluebox.utils.logger import get_logger
 
@@ -29,24 +33,25 @@ T = TypeVar("T", bound=BaseModel)
 
 class LLMClient:
     """
-    Unified LLM client class for interacting with OpenAI APIs.
+    Unified LLM client class for interacting with OpenAI and Anthropic APIs.
 
-    This is a facade that delegates to OpenAIClient and provides
-    a convenient interface for tool registration.
+    This is a facade that delegates to the appropriate vendor client
+    and provides a convenient interface for tool registration.
 
     Supports:
     - Sync and async API calls
     - Streaming responses
     - Structured responses using Pydantic models
     - Tool/function registration
-    - Both Chat Completions and Responses APIs
+    - OpenAI Responses API
+    - Anthropic Messages API
     """
 
     # Magic methods ________________________________________________________________________________________________________
 
-    def __init__(self, llm_model: OpenAIModel) -> None:
+    def __init__(self, llm_model: LLMModel) -> None:
         self.llm_model = llm_model
-        self._client = OpenAIClient(model=llm_model)
+        self._client = AbstractLLMVendorClient.get_llm_vendor_client(llm_model)
         logger.info("Instantiated LLMClient with model: %s", llm_model)
 
     # Public methods _______________________________________________________________________________________________________
@@ -104,11 +109,19 @@ class LLMClient:
         When set, the file_search tool will be automatically included in LLM calls.
         This enables the LLM to search through the specified vectorstores.
 
+        Note: This feature is only supported by OpenAI. Other vendors will log a warning.
+
         Args:
             vector_store_ids: List of vectorstore IDs to search, or None to disable.
             filters: Optional filters for file_search (e.g., {"type": "eq", "key": "uuid", "value": ["..."]}).
         """
-        self._client.set_file_search_vectorstores(vector_store_ids, filters)
+        if hasattr(self._client, "set_file_search_vectorstores"):
+            self._client.set_file_search_vectorstores(vector_store_ids, filters)
+        else:
+            logger.warning(
+                "set_file_search_vectorstores is not supported by %s",
+                type(self._client).__name__,
+            )
 
     ## Unified API methods
 
@@ -121,26 +134,25 @@ class LLMClient:
         temperature: float | None = None,
         response_model: type[T] | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,
         previous_response_id: str | None = None,
-        api_type: OpenAIAPIType | None = None,
-        tool_choice: str | dict | None = None,
+        tool_choice: str | None = None,
     ) -> LLMChatResponse:
         """
-        Unified sync call to OpenAI.
+        Sync call to the LLM.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
-            input: Input string (Responses API shorthand).
+            input: Input string (shorthand for simple prompts).
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
-            extended_reasoning: Enable extended reasoning (Responses API only).
-            stateful: Enable stateful conversation (Responses API only).
-            previous_response_id: Previous response ID for chaining (Responses API only).
-            api_type: Explicit API type, or None for auto-resolution.
-            tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
+            extended_reasoning: Enable extended reasoning.
+            previous_response_id: Previous response ID for chaining.
+            tool_choice: Tool choice for the API call. Can be:
+                - "auto": Let the model decide (default)
+                - "required": Force the model to use at least one tool
+                - Tool name string: Force the model to use a specific tool (e.g., "get_weather")
 
         Returns:
             LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
@@ -153,9 +165,7 @@ class LLMClient:
             temperature=temperature,
             response_model=response_model,
             extended_reasoning=extended_reasoning,
-            stateful=stateful,
             previous_response_id=previous_response_id,
-            api_type=api_type,
             tool_choice=tool_choice,
         )
 
@@ -168,26 +178,25 @@ class LLMClient:
         temperature: float | None = None,
         response_model: type[T] | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,
         previous_response_id: str | None = None,
-        api_type: OpenAIAPIType | None = None,
-        tool_choice: str | dict | None = None,
+        tool_choice: str | None = None,
     ) -> LLMChatResponse:
         """
-        Unified async call to OpenAI.
+        Async call to the LLM.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
-            input: Input string (Responses API shorthand).
+            input: Input string (shorthand for simple prompts).
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
-            extended_reasoning: Enable extended reasoning (Responses API only).
-            stateful: Enable stateful conversation (Responses API only).
-            previous_response_id: Previous response ID for chaining (Responses API only).
-            api_type: Explicit API type, or None for auto-resolution.
-            tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
+            extended_reasoning: Enable extended reasoning.
+            previous_response_id: Previous response ID for chaining.
+            tool_choice: Tool choice for the API call. Can be:
+                - "auto": Let the model decide (default)
+                - "required": Force the model to use at least one tool
+                - Tool name string: Force the model to use a specific tool (e.g., "get_weather")
 
         Returns:
             LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
@@ -200,9 +209,7 @@ class LLMClient:
             temperature=temperature,
             response_model=response_model,
             extended_reasoning=extended_reasoning,
-            stateful=stateful,
             previous_response_id=previous_response_id,
-            api_type=api_type,
             tool_choice=tool_choice,
         )
 
@@ -214,27 +221,26 @@ class LLMClient:
         max_tokens: int | None = None,
         temperature: float | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,
         previous_response_id: str | None = None,
-        api_type: OpenAIAPIType | None = None,
-        tool_choice: str | dict | None = None,
+        tool_choice: str | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
-        Unified streaming call to OpenAI.
+        Streaming call to the LLM.
 
         Yields text chunks as they arrive, then yields the final LLMChatResponse.
 
         Args:
             messages: List of message dicts with 'role' and 'content' keys.
-            input: Input string (Responses API shorthand).
+            input: Input string (shorthand for simple prompts).
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
-            extended_reasoning: Enable extended reasoning (Responses API only).
-            stateful: Enable stateful conversation (Responses API only).
-            previous_response_id: Previous response ID for chaining (Responses API only).
-            api_type: Explicit API type, or None for auto-resolution.
-            tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
+            extended_reasoning: Enable extended reasoning.
+            previous_response_id: Previous response ID for chaining.
+            tool_choice: Tool choice for the API call. Can be:
+                - "auto": Let the model decide (default)
+                - "required": Force the model to use at least one tool
+                - Tool name string: Force the model to use a specific tool (e.g., "get_weather")
 
         Yields:
             str: Text chunks as they arrive.
@@ -247,8 +253,6 @@ class LLMClient:
             max_tokens=max_tokens,
             temperature=temperature,
             extended_reasoning=extended_reasoning,
-            stateful=stateful,
             previous_response_id=previous_response_id,
-            api_type=api_type,
             tool_choice=tool_choice,
         )

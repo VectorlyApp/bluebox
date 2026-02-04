@@ -64,7 +64,12 @@ from bluebox.data_models.llms.interaction import (
     PendingToolInvocation,
     ToolInvocationStatus,
 )
-from bluebox.data_models.llms.vendors import OpenAIModel
+from bluebox.data_models.llms.vendors import (
+    LLMModel,
+    OpenAIModel,
+    get_all_model_values,
+    get_model_by_value,
+)
 from bluebox.utils.data_utils import format_bytes
 from bluebox.utils.logger import get_logger
 
@@ -239,7 +244,7 @@ def print_assistant_message(content: str) -> None:
 def print_error(error: str) -> None:
     """Print an error message."""
     console.print()
-    console.print(f"[bold red]⚠ Error:[/bold red] [red]{escape(error)}[/red]")
+    console.print(f"[bold red]Error:[/bold red] [red]{escape(error)}[/red]")
     console.print()
 
 
@@ -257,7 +262,7 @@ def print_tool_call(invocation: PendingToolInvocation) -> None:
     console.print()
     console.print(Panel(
         content,
-        title="[bold yellow]⚙ TOOL CALL[/bold yellow]",
+        title="[bold yellow]TOOL CALL[/bold yellow]",
         style="yellow",
         box=box.ROUNDED,
     ))
@@ -269,7 +274,7 @@ def print_tool_result(
 ) -> None:
     """Print a tool invocation result."""
     if invocation.status == ToolInvocationStatus.EXECUTED:
-        console.print("[bold green]✓ Tool executed[/bold green]")
+        console.print("[bold green]Tool executed[/bold green]")
         if result:
             result_json = json.dumps(result, indent=2)
             # Limit display to 150 lines
@@ -281,7 +286,7 @@ def print_tool_result(
             console.print(Panel(display, title="Result", style="green", box=box.ROUNDED))
 
     elif invocation.status == ToolInvocationStatus.FAILED:
-        console.print("[bold red]✗ Tool execution failed[/bold red]")
+        console.print("[bold red]Tool execution failed[/bold red]")
         error = result.get("error") if result else None
         if error:
             console.print(Panel(str(error), title="Error", style="red", box=box.ROUNDED))
@@ -295,7 +300,7 @@ class TerminalDocsDiggerChat:
     def __init__(
         self,
         docs_store: DocumentationDataStore,
-        llm_model: OpenAIModel = OpenAIModel.GPT_5_1,
+        llm_model: LLMModel = OpenAIModel.GPT_5_1,
     ) -> None:
         """Initialize the terminal chat interface."""
         self._streaming_started: bool = False
@@ -547,7 +552,7 @@ def main() -> None:
         "--model",
         type=str,
         default="gpt-5.1",
-        help="LLM model to use (default: gpt-5.1)",
+        help=f"LLM model to use (default: gpt-5.1). Options: {', '.join(get_all_model_values())}",
     )
     args = parser.parse_args()
 
@@ -572,11 +577,13 @@ def main() -> None:
         console.print("[dim]Check your glob patterns and ensure files exist[/dim]")
         sys.exit(1)
 
-    # Map model string to enum
-    model_map = {
-        "gpt-5.1": OpenAIModel.GPT_5_1,
-    }
-    llm_model = model_map.get(args.model, OpenAIModel.GPT_5_1)
+    # Resolve model string to enum
+    model_result = get_model_by_value(args.model)
+    if model_result is None:
+        console.print(f"[bold red]Error: Unknown model '{args.model}'[/bold red]")
+        console.print(f"[dim]Available models: {', '.join(get_all_model_values())}[/dim]")
+        sys.exit(1)
+    llm_model = model_result
 
     print_welcome(args.model, docs_store)
 

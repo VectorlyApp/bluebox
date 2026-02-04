@@ -48,7 +48,12 @@ from bluebox.data_models.llms.interaction import (
     PendingToolInvocation,
     ToolInvocationStatus,
 )
-from bluebox.data_models.llms.vendors import OpenAIModel
+from bluebox.data_models.llms.vendors import (
+    LLMModel,
+    OpenAIModel,
+    get_all_model_values,
+    get_model_by_value,
+)
 from bluebox.utils.logger import get_logger
 
 
@@ -225,8 +230,8 @@ def print_tool_result(
         if result:
             result_json = json.dumps(result, indent=2)
             lines = result_json.split("\n")
-            if len(lines) > 100:
-                display = "\n".join(lines[:100]) + f"\n... ({len(lines) - 100} more lines)"
+            if len(lines) > 150:
+                display = "\n".join(lines[:150]) + f"\n... ({len(lines) - 150} more lines)"
             else:
                 display = result_json
             console.print(Panel(display, title="Result", style="green", box=box.ROUNDED))
@@ -248,7 +253,7 @@ class TerminalTraceHoundChat:
         network_store: NetworkDataStore | None = None,
         storage_store: StorageDataStore | None = None,
         window_store: WindowPropertyDataStore | None = None,
-        llm_model: OpenAIModel = OpenAIModel.GPT_5_1,
+        llm_model: LLMModel = OpenAIModel.GPT_5_1,
     ) -> None:
         """Initialize the terminal chat interface."""
         self._streaming_started: bool = False
@@ -485,7 +490,7 @@ def main() -> None:
         "--model",
         type=str,
         default="gpt-5.1",
-        help="LLM model to use (default: gpt-5.1)",
+        help=f"LLM model to use (default: gpt-5.1). Options: {', '.join(get_all_model_values())}",
     )
     args = parser.parse_args()
 
@@ -536,11 +541,13 @@ def main() -> None:
             console.print(f"[bold red]Error parsing window props JSONL: {e}[/bold red]")
             sys.exit(1)
 
-    # Map model string to enum
-    model_map = {
-        "gpt-5.1": OpenAIModel.GPT_5_1,
-    }
-    llm_model = model_map.get(args.model, OpenAIModel.GPT_5_1)
+    # Resolve model string to enum
+    model_result = get_model_by_value(args.model)
+    if model_result is None:
+        console.print(f"[bold red]Error: Unknown model '{args.model}'[/bold red]")
+        console.print(f"[dim]Available models: {', '.join(get_all_model_values())}[/dim]")
+        sys.exit(1)
+    llm_model = model_result
 
     print_welcome(args.model, network_store, storage_store, window_store)
 

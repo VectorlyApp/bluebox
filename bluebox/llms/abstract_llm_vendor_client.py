@@ -11,7 +11,7 @@ from typing import Any, ClassVar, TypeVar
 from pydantic import BaseModel
 
 from bluebox.data_models.llms.interaction import LLMChatResponse
-from bluebox.data_models.llms.vendors import OpenAIModel
+from bluebox.data_models.llms.vendors import LLMModel, LLMVendor
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -27,13 +27,27 @@ class AbstractLLMVendorClient(ABC):
 
     # Class attributes ____________________________________________________________________________________________________
 
+    _vendor: ClassVar[LLMVendor]
     DEFAULT_MAX_TOKENS: ClassVar[int] = 4_096
     DEFAULT_TEMPERATURE: ClassVar[float] = 0.7
     DEFAULT_STRUCTURED_TEMPERATURE: ClassVar[float] = 0.0
 
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        if not hasattr(cls, '_vendor'):
+            raise TypeError(f"{cls.__name__} must define _vendor class attribute")
+
+    @classmethod
+    def get_llm_vendor_client(cls, model: LLMModel) -> "AbstractLLMVendorClient":
+        """Create the appropriate vendor client for the given model."""
+        for subclass in cls.__subclasses__():
+            if subclass._vendor == model.vendor:
+                return subclass(model=model)
+        raise ValueError(f"No client found for vendor: {model.vendor}")
+
     # Magic methods ________________________________________________________________________________________________________
 
-    def __init__(self, model: OpenAIModel) -> None:
+    def __init__(self, model: LLMModel) -> None:
         """
         Initialize the vendor client.
 
@@ -42,6 +56,22 @@ class AbstractLLMVendorClient(ABC):
         """
         self.model = model
         self._tools: list[dict[str, Any]] = []
+
+    # Protected methods ____________________________________________________________________________________________________
+
+    def _resolve_max_tokens(self, max_tokens: int | None) -> int:
+        """Resolve max_tokens, using default if None."""
+        return max_tokens if max_tokens is not None else self.DEFAULT_MAX_TOKENS
+
+    def _resolve_temperature(
+        self,
+        temperature: float | None,
+        structured: bool = False,
+    ) -> float:
+        """Resolve temperature, using appropriate default if None."""
+        if temperature is not None:
+            return temperature
+        return self.DEFAULT_STRUCTURED_TEMPERATURE if structured else self.DEFAULT_TEMPERATURE
 
     # Tool management ______________________________________________________________________________________________________
 
@@ -83,8 +113,8 @@ class AbstractLLMVendorClient(ABC):
         temperature: float | None = None,
         response_model: type[T] | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,
         previous_response_id: str | None = None,
+        tool_choice: str | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified sync call to the LLM.
@@ -97,8 +127,8 @@ class AbstractLLMVendorClient(ABC):
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
             extended_reasoning: Enable extended reasoning (if supported).
-            stateful: Enable stateful conversation (if supported).
             previous_response_id: Previous response ID for chaining (if supported).
+            tool_choice: Tool selection mode ("auto", "none", "required", or specific tool).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -115,8 +145,8 @@ class AbstractLLMVendorClient(ABC):
         temperature: float | None = None,
         response_model: type[T] | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,
         previous_response_id: str | None = None,
+        tool_choice: str | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified async call to the LLM.
@@ -129,8 +159,8 @@ class AbstractLLMVendorClient(ABC):
             temperature: Sampling temperature (0.0-1.0).
             response_model: Pydantic model class for structured response.
             extended_reasoning: Enable extended reasoning (if supported).
-            stateful: Enable stateful conversation (if supported).
             previous_response_id: Previous response ID for chaining (if supported).
+            tool_choice: Tool selection mode ("auto", "none", "required", or specific tool).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -146,8 +176,8 @@ class AbstractLLMVendorClient(ABC):
         max_tokens: int | None = None,
         temperature: float | None = None,
         extended_reasoning: bool = False,
-        stateful: bool = False,
         previous_response_id: str | None = None,
+        tool_choice: str | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
         Unified streaming call to the LLM.
@@ -161,8 +191,8 @@ class AbstractLLMVendorClient(ABC):
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature (0.0-1.0).
             extended_reasoning: Enable extended reasoning (if supported).
-            stateful: Enable stateful conversation (if supported).
             previous_response_id: Previous response ID for chaining (if supported).
+            tool_choice: Tool selection mode ("auto", "none", "required", or specific tool).
 
         Yields:
             str: Text chunks as they arrive.

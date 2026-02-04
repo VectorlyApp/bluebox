@@ -35,6 +35,7 @@ class Config():
 
     # API keys
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
+    ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
 
     # Code execution sandbox configuration
     # Mode: "docker" (require Docker), "blocklist" (no Docker), "auto" (Docker if available)
