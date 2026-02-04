@@ -10,10 +10,16 @@ Reference: https://platform.claude.com/docs/en/agent-sdk/subagents
 
 IMPORTANT: Unlike openai-agents, you cannot wrap arbitrary Python functions.
 Subagents must accomplish their tasks using built-in file/system tools.
+
+python bluebox/agents/examples/anthropic_agents_example.py ./cdp_captures/
 """
 
 import asyncio
 from claude_agent_sdk import query, ClaudeAgentOptions, AgentDefinition
+
+from bluebox.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 # =============================================================================
@@ -117,6 +123,9 @@ async def run_routine_discovery(
     Returns:
         The final result text from the orchestrator
     """
+    logger.info("Starting routine discovery for task: %s", task)
+    logger.debug("CDP captures directory: %s", cdp_captures_dir)
+
     result_text = None
     session_id = None
 
@@ -149,12 +158,13 @@ Coordinate these specialists and synthesize their findings into a complete routi
             for block in message.content:
                 if getattr(block, 'type', None) == 'tool_use' and block.name == 'Task':
                     subagent = block.input.get('subagent_type', 'unknown')
-                    print(f"[Orchestrator] Invoking subagent: {subagent}")
+                    logger.info("Orchestrator invoking subagent: %s", subagent)
 
         # Capture final result
         if hasattr(message, "result"):
             result_text = message.result
 
+    logger.info("Routine discovery complete")
     return result_text
 
 
@@ -173,6 +183,7 @@ async def run_with_explicit_subagent(
     Use this when you know exactly which subagent should handle a task,
     rather than letting the orchestrator decide.
     """
+    logger.info("Explicitly invoking subagent '%s' for task: %s", subagent_name, task)
     result_text = None
 
     async for message in query(
@@ -187,6 +198,7 @@ async def run_with_explicit_subagent(
         if hasattr(message, "result"):
             result_text = message.result
 
+    logger.debug("Subagent '%s' execution complete", subagent_name)
     return result_text
 
 
@@ -198,24 +210,23 @@ async def main():
     import sys
 
     if len(sys.argv) < 2:
-        print("Usage: python anthropic_agents_example.py <cdp_captures_dir>")
-        print("\nThis will run routine discovery using Claude Agent SDK subagents.")
+        logger.error("Usage: python anthropic_agents_example.py <cdp_captures_dir>")
+        logger.info("This will run routine discovery using Claude Agent SDK subagents.")
         return
 
     cdp_captures_dir = sys.argv[1]
     task = "Search for one-way trains from Boston to New York"
 
-    print(f"Task: {task}")
-    print(f"CDP captures: {cdp_captures_dir}")
-    print("=" * 60)
+    logger.info("Starting routine discovery")
+    logger.info("Task: %s", task)
+    logger.info("CDP captures directory: %s", cdp_captures_dir)
 
     result = await run_routine_discovery(task, cdp_captures_dir)
 
     if result:
-        print("\n=== Final Result ===")
-        print(result)
+        logger.info("Final result:\n%s", result)
     else:
-        print("No result returned")
+        logger.warning("No result returned from routine discovery")
 
 
 if __name__ == "__main__":

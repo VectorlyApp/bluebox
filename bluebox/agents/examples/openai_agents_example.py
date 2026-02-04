@@ -12,6 +12,10 @@ Reference: https://cookbook.openai.com/examples/agents_sdk/parallel_agents
 import asyncio
 from agents import Agent, Runner, ModelSettings
 
+from bluebox.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 # =============================================================================
 # Define specialized agents
@@ -59,14 +63,18 @@ async def run_parallel_analysis(input_data: str) -> str:
     """
 
     async def run_agent(agent: Agent, data: str) -> str:
+        logger.debug("Running agent: %s", agent.name)
         result = await Runner.run(agent, data)
+        logger.debug("Agent %s completed", result.last_agent.name)
         return f"### {result.last_agent.name}\n{result.final_output}"
 
     # Run network and interaction analysis in parallel
+    logger.info("Running NetworkAnalyzer and InteractionAnalyzer in parallel")
     responses = await asyncio.gather(
         run_agent(network_analyzer, input_data),
         run_agent(interaction_analyzer, input_data),
     )
+    logger.info("Parallel analysis complete, passing to RoutineConstructor")
 
     # Combine results and pass to constructor
     combined = "\n\n".join(responses)
@@ -128,10 +136,12 @@ async def run_orchestrated_discovery(task: str, data: str) -> str:
     This pattern is flexible - the orchestrator decides based on the task.
     Good for: Variable workflows where different tasks need different agents.
     """
+    logger.info("Starting orchestrated discovery for task: %s", task)
     result = await Runner.run(
         orchestrator,
         f"Task: {task}\n\nData:\n{data}"
     )
+    logger.info("Orchestrated discovery complete")
     return result.final_output
 
 
@@ -153,17 +163,17 @@ async def main():
     """
 
     # Pattern 1: Explicit parallel
-    print("=== Pattern 1: asyncio.gather() ===")
+    logger.info("Running Pattern 1: asyncio.gather() - explicit parallel execution")
     result1 = await run_parallel_analysis(sample_data)
-    print(result1)
+    logger.info("Pattern 1 result:\n%s", result1)
 
     # Pattern 2: Dynamic orchestration
-    print("\n=== Pattern 2: agent.as_tool() ===")
+    logger.info("Running Pattern 2: agent.as_tool() - dynamic orchestration")
     result2 = await run_orchestrated_discovery(
         task="Build a routine for searching locations",
         data=sample_data
     )
-    print(result2)
+    logger.info("Pattern 2 result:\n%s", result2)
 
 
 if __name__ == "__main__":
