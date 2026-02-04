@@ -46,7 +46,7 @@ jobs:
       - name: Extract version
         id: get-version
         run: |
-          VERSION=$(ls dist/*.whl | sed 's/.*bluebox_sdk-\(.*\)-py3.*/\1/')
+          VERSION=$(ls dist/*.whl | sed 's/.*bluebox_lib-\(.*\)-py3.*/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Verify wheel installs
@@ -105,7 +105,7 @@ jobs:
       - name: Extract TestPyPI version
         id: get-version
         run: |
-          VERSION=$(ls dist/*.whl | sed 's/.*bluebox_sdk-\(.*\)-py3.*/\1/')
+          VERSION=$(ls dist/*.whl | sed 's/.*bluebox_lib-\(.*\)-py3.*/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - uses: pypa/gh-action-pypi-publish@release/v1
@@ -134,7 +134,7 @@ jobs:
               --index-url https://test.pypi.org/simple/ \
               --extra-index-url https://pypi.org/simple/ \
               --index-strategy unsafe-best-match \
-              "bluebox-sdk==$VERSION"; then
+              "bluebox-lib==$VERSION"; then
               python -c "import bluebox"
               exit 0
             fi
@@ -178,7 +178,7 @@ jobs:
         run: |
           VERSION="${{ needs.build.outputs.version }}"
           for i in {1..10}; do
-            if uv pip install --system "bluebox-sdk==$VERSION"; then
+            if uv pip install --system "bluebox-lib==$VERSION"; then
               python -c "import bluebox"
               exit 0
             fi

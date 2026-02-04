@@ -1,7 +1,7 @@
 import warnings
 
 warnings.warn(
-    "web-hacker has been renamed to bluebox-sdk. "
+    "web-hacker has been renamed to bluebox. "
     "Please update: pip install bluebox-sdk",
     DeprecationWarning,
     stacklevel=2,

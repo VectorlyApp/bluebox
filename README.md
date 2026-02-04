@@ -5,7 +5,7 @@
   <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-10b981?style=for-the-badge&logo=apache&logoColor=white" /></a>
 </p>
 
-# bluebox-sdk 🟦
+# bluebox 🟦
 
 REVERSE ENGINEER ANY WEB APP! ⚡️
 
@@ -281,7 +281,7 @@ The fastest way to get started is using the quickstart script, which automates t
 # Make sure bluebox-sdk is installed
 pip install bluebox-sdk 
 # Or install from the latest code
-# pip install "git+https://github.com/VectorlyApp/bluebox-sdk.git"
+# pip install "git+https://github.com/VectorlyApp/bluebox.git"
 
 # Set your OpenAI API key
 export OPENAI_API_KEY="sk-..."
