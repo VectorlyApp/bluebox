@@ -7,7 +7,7 @@ Supported backends (via BLUEBOX_SANDBOX_MODE env var):
 - "lambda": AWS Lambda isolation (recommended for ECS/cloud deployments)
 - "docker": Docker container isolation (network disabled, read-only, resource-limited)
 - "blocklist": Python-level blocklist sandboxing (fallback, not secure against adversarial input)
-- "auto": Automatically selects docker if available, otherwise blocklist
+- "auto": Automatically selects lambda (if registered) > docker (if available) > blocklist
 
 Security layers:
 1. Static pattern analysis (blocks dangerous code patterns)
@@ -336,7 +336,7 @@ def execute_python_sandboxed(
       - "lambda": Use AWS Lambda for isolation (requires servers' lambda_code_executor)
       - "docker": Use Docker container isolation
       - "blocklist": Use Python-level blocklist (not secure against adversarial input)
-      - "auto": Use Docker if available, otherwise blocklist
+      - "auto": Use Lambda if registered, else Docker if available, else blocklist
     - BLUEBOX_SANDBOX_IMAGE: Docker image to use (default: "python:3.12-slim")
     - BLUEBOX_SANDBOX_TIMEOUT: Execution timeout in seconds (default: 30)
     - BLUEBOX_SANDBOX_MEMORY: Container memory limit (default: "128m")
@@ -375,6 +375,10 @@ def execute_python_sandboxed(
         if not _is_docker_available():
             return {"error": "Docker sandbox requested but Docker is not available"}
     elif SANDBOX_MODE == "auto":
+        # Priority: lambda > docker > blocklist
+        if _lambda_executor_fn is not None:
+            logger.debug("Executing code via AWS Lambda sandbox (auto-selected)")
+            return _lambda_executor_fn(code, extra_globals)
         use_docker = _is_docker_available()
     # else: SANDBOX_MODE == "blocklist" -> use_docker stays False
 
