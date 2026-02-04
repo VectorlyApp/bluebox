@@ -135,9 +135,23 @@ class InteractionSpecialist(AbstractSpecialist):
         - `url`: URLs
         - `enum`: Selection from fixed options
 
+        ## CRITICAL: How to Finalize
+
+        When you have identified the parameters, you MUST call the `finalize_result` tool.
+        Do NOT output parameters as text — you MUST call the tool with structured data.
+
+        The `finalize_result` tool expects a `parameters` array where each parameter has:
+        - `name` (string, required): snake_case name like `departure_date`
+        - `type` (string, required): One of the parameter types above
+        - `description` (string, required): What the parameter represents
+        - `examples` (array of strings, optional): Observed values
+        - `source_element_css_path` (string, optional): CSS path of the element
+        - `source_element_tag` (string, optional): HTML tag name
+        - `source_element_name` (string, optional): Name attribute
+
         ## When finalize tools are available
 
-        - **finalize_result**: Submit discovered parameters
+        - **finalize_result**: Submit discovered parameters (MUST call this, not output text)
         - **finalize_failure**: Report that no parameters could be discovered
     """)
 
@@ -204,17 +218,20 @@ class InteractionSpecialist(AbstractSpecialist):
             if remaining <= 2:
                 urgency = (
                     f"\n\n## CRITICAL: Only {remaining} iterations remaining!\n"
-                    f"You MUST call finalize_result or finalize_failure NOW!"
+                    f"You MUST call finalize_result or finalize_failure NOW!\n"
+                    f"Do NOT output text — call the tool with your parameters array."
                 )
             elif remaining <= 4:
                 urgency = (
                     f"\n\n## URGENT: Only {remaining} iterations remaining.\n"
-                    f"Finalize your parameter discovery soon."
+                    f"Call finalize_result with your discovered parameters now.\n"
+                    f"Do NOT output parameters as text — use the tool."
                 )
             else:
                 urgency = (
                     "\n\n## Finalize tools are now available.\n"
-                    "Call finalize_result when you have identified all parameters."
+                    "Call finalize_result with your parameters array.\n"
+                    "Do NOT output parameters as text — you MUST call the tool."
                 )
         else:
             urgency = (
@@ -395,8 +412,10 @@ class InteractionSpecialist(AbstractSpecialist):
         """
         self._discovery_result = ParameterDiscoveryResult(parameters=parameters)
 
-        logger.info("Parameter discovery completed: %d parameter(s)", len(parameters))
-        for param in parameters:
+        # Use validated parameters from result (Pydantic converts dicts to DiscoveredParameter)
+        validated_params = self._discovery_result.parameters
+        logger.info("Parameter discovery completed: %d parameter(s)", len(validated_params))
+        for param in validated_params:
             logger.info("  - %s (%s): %s", param.name, param.type, param.description)
 
         return {

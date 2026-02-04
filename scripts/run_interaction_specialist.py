@@ -50,7 +50,7 @@ logger = get_logger(name=__name__)
 console = Console()
 
 SLASH_COMMANDS = [
-    ("/autonomous", "Run autonomous parameter discovery — /autonomous <task>"),
+    ("/autonomous", "Run autonomous parameter discovery; /autonomous <task>"),
     ("/reset", "Start a new conversation"),
     ("/help", "Show help"),
     ("/quit", "Exit"),
