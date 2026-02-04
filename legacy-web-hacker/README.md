@@ -1,12 +1,12 @@
-# web-hacker → bluebox-lib
+# web-hacker → bluebox
 
-**This package has been renamed to `bluebox-lib`.**
+**This package has been renamed to `bluebox`.**
 
 ## Migration
 
 ```bash
 pip uninstall web-hacker
-pip install bluebox-lib
+pip install bluebox-sdk
 ```
 
 Then update your imports:
@@ -19,6 +19,6 @@ from web_hacker import ...
 from bluebox import ...
 ```
 
-## About bluebox-lib
+## About bluebox
 
 Library for reverse engineering web apps. See the [bluebox repository](https://github.com/VectorlyApp/bluebox) for documentation and updates.
