@@ -20,6 +20,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from prompt_toolkit import prompt as pt_prompt
+from prompt_toolkit.formatted_text import HTML
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
@@ -28,6 +30,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from bluebox.utils.terminal_utils import SlashCommandCompleter, SlashCommandLexer
 from bluebox.agents.trace_hound_agent import (
     TraceHoundAgent,
     TokenOriginResult,
@@ -51,6 +54,13 @@ from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
 console = Console()
+
+SLASH_COMMANDS = [
+    ("/trace", "Trace where a token/value came from — /trace <value>"),
+    ("/reset", "Start a new conversation"),
+    ("/help", "Show help"),
+    ("/quit", "Exit"),
+]
 
 
 BANNER = """\
@@ -376,7 +386,12 @@ class TerminalTraceHoundChat:
         """Run the interactive chat loop."""
         while True:
             try:
-                user_input = console.input("[bold green]You>[/bold green] ")
+                user_input = pt_prompt(
+                    HTML("<b><ansimagenta>You&gt;</ansimagenta></b> "),
+                    completer=SlashCommandCompleter(SLASH_COMMANDS),
+                    lexer=SlashCommandLexer(),
+                    complete_while_typing=True,
+                )
 
                 if not user_input.strip():
                     continue

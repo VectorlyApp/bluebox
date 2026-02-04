@@ -5,6 +5,23 @@ scripts/run_guide_agent.py
 Interactive terminal interface for the Guide Agent.
 Guides users through creating web automation routines.
 
+Usage:
+    # Basic usage (starts interactive session)
+    python scripts/run_guide_agent.py
+
+    # With existing CDP captures
+    python scripts/run_guide_agent.py --cdp-captures-dir ./cdp_captures
+
+    # Suppress logs for cleaner output
+    python scripts/run_guide_agent.py -q
+
+    # With all options
+    python scripts/run_guide_agent.py \
+        --cdp-captures-dir ./cdp_captures \
+        --output-dir ./guide_output \
+        --model gpt-5.1 \
+        --quiet
+
 Commands:
   /load <routine.json>     Load a routine file (auto-reloads on edits)
   /unload                  Unload the current routine
@@ -33,6 +50,8 @@ from pathlib import Path
 from typing import Any
 
 from openai import OpenAI
+from prompt_toolkit import prompt as pt_prompt
+from prompt_toolkit.formatted_text import HTML
 
 # Package root for code_paths (scripts/ is sibling to bluebox/)
 BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent / "bluebox"
@@ -71,10 +90,27 @@ from bluebox.data_models.routine_discovery.message import RoutineDiscoveryMessag
 from bluebox.sdk import BrowserMonitor
 from bluebox.sdk.discovery import RoutineDiscovery
 from bluebox.utils.chrome_utils import ensure_chrome_running
-from bluebox.utils.terminal_utils import ask_yes_no
+from bluebox.utils.terminal_utils import ask_yes_no, SlashCommandCompleter, SlashCommandLexer
 
 
 console = Console()
+
+SLASH_COMMANDS = [
+    ("/load", "Load a routine file — /load <routine.json>"),
+    ("/unload", "Unload the current routine"),
+    ("/show", "Show current routine details"),
+    ("/validate", "Validate the current routine"),
+    ("/execute", "Execute the loaded routine — /execute [params.json]"),
+    ("/monitor", "Start browser monitoring session"),
+    ("/diff", "Show pending suggested edit diff"),
+    ("/accept", "Accept pending suggested edit"),
+    ("/reject", "Reject pending suggested edit"),
+    ("/status", "Show current state"),
+    ("/chats", "Show all messages in the thread"),
+    ("/reset", "Start a new conversation"),
+    ("/help", "Show help"),
+    ("/quit", "Exit"),
+]
 
 # Browser monitoring constants
 PORT = 9222
@@ -407,8 +443,8 @@ class TerminalGuideChat:
             console.print(f"[red]✗ Failed to save routine: {e}[/red]")
             console.print()
 
-    def _get_prompt(self) -> str:
-        """Get the input prompt with routine name if loaded."""
+    def _get_prompt(self) -> HTML:
+        """Get the input prompt with routine name if loaded (HTML format for prompt_toolkit)."""
         routine_str = self._agent.routine_state.current_routine_str
         if routine_str:
             routine_dict, _ = safe_parse_routine(routine_str)
@@ -417,10 +453,10 @@ class TerminalGuideChat:
                 # Truncate long names
                 if len(name) > 20:
                     name = name[:17] + "..."
-                return f"[bold green]You[/bold green] [dim]({name})[/dim][bold green]>[/bold green] "
+                return HTML(f"<b><ansigreen>You</ansigreen></b> <ansigray>({name})</ansigray><b><ansigreen>&gt;</ansigreen></b> ")
             else:
-                return f"[bold green]You[/bold green] [dim](invalid json)[/dim][bold green]>[/bold green] "
-        return "[bold green]You>[/bold green] "
+                return HTML("<b><ansigreen>You</ansigreen></b> <ansigray>(invalid json)</ansigray><b><ansigreen>&gt;</ansigreen></b> ")
+        return HTML("<b><ansigreen>You&gt;</ansigreen></b> ")
 
     def _handle_stream_chunk(self, chunk: str) -> None:
         """Handle a streaming text chunk from the LLM."""
@@ -1225,7 +1261,12 @@ class TerminalGuideChat:
                         else:
                             continue
                 else:
-                    user_input = console.input(self._get_prompt())
+                    user_input = pt_prompt(
+                        self._get_prompt(),
+                        completer=SlashCommandCompleter(SLASH_COMMANDS),
+                        lexer=SlashCommandLexer(),
+                        complete_while_typing=True,
+                    )
 
                 # Skip empty input
                 if not user_input.strip():
