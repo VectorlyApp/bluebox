@@ -21,7 +21,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from bluebox.agents.network_spy_agent import (
+from bluebox.agents.specialists.network_spy_agent import (
     NetworkSpyAgent,
     EndpointDiscoveryResult,
     DiscoveryFailureResult,

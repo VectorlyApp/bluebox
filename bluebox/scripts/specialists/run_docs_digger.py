@@ -26,7 +26,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 
-from bluebox.agents.docs_digger_agent import (
+from bluebox.agents.specialists.docs_digger_agent import (
     DocsDiggerAgent,
     DocumentSearchResult,
     DocumentSearchFailureResult,

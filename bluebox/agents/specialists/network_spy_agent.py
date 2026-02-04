@@ -1,5 +1,5 @@
 """
-bluebox/agents/network_spy_agent.py
+bluebox/agents/specialists/network_spy_agent.py
 
 # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 

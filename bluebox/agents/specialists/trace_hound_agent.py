@@ -1,5 +1,5 @@
 """
-bluebox/agents/trace_hound_agent.py
+bluebox/agents/specialists/trace_hound_agent.py
 
 # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 

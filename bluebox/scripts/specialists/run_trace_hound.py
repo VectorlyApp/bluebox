@@ -25,7 +25,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from bluebox.agents.trace_hound_agent import (
+from bluebox.agents.specialists.trace_hound_agent import (
     TraceHoundAgent,
     TokenOriginResult,
     TokenOriginFailure,
