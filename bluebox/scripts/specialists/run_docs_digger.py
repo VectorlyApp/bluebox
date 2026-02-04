@@ -42,8 +42,8 @@ from bluebox.utils.logger import get_logger
 logger = get_logger(name=__name__)
 console = Console()
 
-# Package root for default paths (scripts/ is sibling to bluebox/)
-BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent.parent / "bluebox"
+# Package root for default paths (scripts/ is now inside bluebox/)
+BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Default documentation and code paths (same as run_guide_agent.py)
 DEFAULT_DOCS_DIR = str(BLUEBOX_PACKAGE_ROOT / "agent_docs")

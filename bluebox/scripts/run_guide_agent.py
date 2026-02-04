@@ -53,8 +53,8 @@ from openai import OpenAI
 from prompt_toolkit import prompt as pt_prompt
 from prompt_toolkit.formatted_text import HTML
 
-# Package root for code_paths (scripts/ is sibling to bluebox/)
-BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent / "bluebox"
+# Package root for code_paths (scripts/ is now inside bluebox/)
+BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
