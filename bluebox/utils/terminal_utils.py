@@ -8,6 +8,8 @@ from typing import Any
 
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.document import Document
+from prompt_toolkit.lexers import Lexer
+from prompt_toolkit.formatted_text import StyleAndTextTuples
 
 # Colors for output (ANSI codes)
 GREEN = '\033[0;32m'
@@ -15,6 +17,32 @@ YELLOW = '\033[1;33m'
 BLUE = '\033[0;34m'
 CYAN = '\033[0;36m'
 NC = '\033[0m'  # No Color
+
+
+class SlashCommandLexer(Lexer):
+    """
+    Highlight slash commands (e.g., /help, /quit) in bold.
+
+    The slash command is considered to be the text from '/' until the first space
+    (or end of line if no space).
+    """
+
+    def lex_document(self, document: Document) -> Any:
+        """Return a callable that returns styled tokens for a given line."""
+        def get_line(lineno: int) -> StyleAndTextTuples:
+            line = document.lines[lineno]
+            if line.startswith("/"):
+                # find end of command (first space or end of line)
+                space_idx = line.find(" ")
+                if space_idx == -1:
+                    # entire line is the command
+                    return [("bold", line)]
+                else:
+                    # command portion + rest
+                    return [("bold", line[:space_idx]), ("", line[space_idx:])]
+            return [("", line)]
+
+        return get_line
 
 
 class SlashCommandCompleter(Completer):

@@ -32,7 +32,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from bluebox.utils.terminal_utils import SlashCommandCompleter
+from bluebox.utils.terminal_utils import SlashCommandCompleter, SlashCommandLexer
 from bluebox.agents.specialists.abstract_specialist import RunMode
 from bluebox.agents.specialists.js_specialist import (
     JSSpecialist,
@@ -320,6 +320,7 @@ class TerminalJSSpecialistChat:
                 user_input = pt_prompt(
                     HTML("<b><ansigreen>You&gt;</ansigreen></b> "),
                     completer=SlashCommandCompleter(SLASH_COMMANDS),
+                    lexer=SlashCommandLexer(),
                     complete_while_typing=True,
                 )
 
