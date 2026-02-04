@@ -6,34 +6,25 @@ bluebox/agents/trace_hound_agent.py
 Agent specialized in tracing where tokens/values originated from.
 
 Contains:
-- TraceHoundAgent: Traces values across network, storage, and window property data
+- TraceHoundAgent: Specialist for tracing values across network, storage, and window property data
 - TokenOriginResult: Result model for autonomous token tracing
-- Uses: LLMClient with tools for cross-store value searching
-- Maintains: ChatThread for multi-turn conversation
+- Uses: AbstractSpecialist base class for all agent plumbing
 """
 
-import json
+from __future__ import annotations
+
 import textwrap
-from datetime import datetime
 from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode, specialist_tool
 from bluebox.data_models.llms.interaction import (
     Chat,
-    ChatRole,
     ChatThread,
     EmittedMessage,
-    ChatResponseEmittedMessage,
-    ErrorEmittedMessage,
-    LLMChatResponse,
-    LLMToolCall,
-    ToolInvocationResultEmittedMessage,
-    PendingToolInvocation,
-    ToolInvocationStatus,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
-from bluebox.llms.llm_client import LLMClient
 from bluebox.llms.infra.network_data_store import NetworkDataStore
 from bluebox.llms.infra.storage_data_store import StorageDataStore
 from bluebox.llms.infra.window_property_data_store import WindowPropertyDataStore
@@ -95,7 +86,7 @@ class TokenOriginFailure(BaseModel):
     )
 
 
-class TraceHoundAgent:
+class TraceHoundAgent(AbstractSpecialist):
     """
     Trace hound agent that traces where tokens/values originated from.
 
@@ -175,6 +166,8 @@ class TraceHoundAgent:
         If the value cannot be found anywhere, call `finalize_failure` with an explanation.
     """).strip()
 
+    ## Magic methods
+
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
@@ -185,6 +178,7 @@ class TraceHoundAgent:
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
+        run_mode: RunMode = RunMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
     ) -> None:
@@ -200,374 +194,37 @@ class TraceHoundAgent:
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
             llm_model: The LLM model to use for conversation.
+            run_mode: How the specialist will be run (conversational or autonomous).
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
         """
-        self._emit_message_callable = emit_message_callable
-        self._persist_chat_callable = persist_chat_callable
-        self._persist_chat_thread_callable = persist_chat_thread_callable
-        self._stream_chunk_callable = stream_chunk_callable
-
         # Data stores
         self._network_data_store = network_data_store
         self._storage_data_store = storage_data_store
         self._window_property_data_store = window_property_data_store
 
-        self._previous_response_id: str | None = None
-        self._response_id_to_chat_index: dict[str, int] = {}
-
-        self.llm_model = llm_model
-        self.llm_client = LLMClient(llm_model)
-
-        # Register tools
-        self._register_tools()
-
-        # Initialize or load conversation state
-        self._thread = chat_thread or ChatThread()
-        self._chats: dict[str, Chat] = {}
-        if existing_chats:
-            for chat in existing_chats:
-                self._chats[chat.id] = chat
-
-        # Persist initial thread if callback provided
-        if self._persist_chat_thread_callable and chat_thread is None:
-            self._thread = self._persist_chat_thread_callable(self._thread)
-
-        # Autonomous mode state
-        self._autonomous_mode: bool = False
-        self._autonomous_iteration: int = 0
-        self._autonomous_max_iterations: int = 10
+        # Autonomous result state
         self._origin_result: TokenOriginResult | None = None
         self._origin_failure: TokenOriginFailure | None = None
-        self._finalize_tool_registered: bool = False
+
+        super().__init__(
+            emit_message_callable=emit_message_callable,
+            persist_chat_callable=persist_chat_callable,
+            persist_chat_thread_callable=persist_chat_thread_callable,
+            stream_chunk_callable=stream_chunk_callable,
+            llm_model=llm_model,
+            run_mode=run_mode,
+            chat_thread=chat_thread,
+            existing_chats=existing_chats,
+        )
 
         logger.debug(
-            "Instantiated TraceHoundAgent with model: %s, chat_thread_id: %s",
+            "TraceHoundAgent initialized with model: %s, chat_thread_id: %s",
             llm_model,
             self._thread.id,
         )
 
-    def _register_tools(self) -> None:
-        """Register tools for cross-store value searching."""
-
-        # search_everywhere
-        self.llm_client.register_tool(
-            name="search_everywhere",
-            description=(
-                "Search for a value across ALL data stores (network, storage, window properties). "
-                "This is the best starting point when tracing where a value came from. "
-                "Returns matches from each store with context about where the value was found."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "value": {
-                        "type": "string",
-                        "description": "The token/value to search for.",
-                    },
-                    "case_sensitive": {
-                        "type": "boolean",
-                        "description": "Whether the search should be case-sensitive. Defaults to false.",
-                    }
-                },
-                "required": ["value"],
-            },
-        )
-
-        # search_in_network
-        self.llm_client.register_tool(
-            name="search_in_network",
-            description=(
-                "Search network traffic response bodies for a specific value. "
-                "Returns matches with context showing where in the response the value appears."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "value": {
-                        "type": "string",
-                        "description": "The value to search for in response bodies.",
-                    },
-                    "case_sensitive": {
-                        "type": "boolean",
-                        "description": "Whether the search should be case-sensitive. Defaults to false.",
-                    }
-                },
-                "required": ["value"],
-            },
-        )
-
-        # search_in_storage
-        self.llm_client.register_tool(
-            name="search_in_storage",
-            description=(
-                "Search browser storage (cookies, localStorage, sessionStorage, IndexedDB) for a value. "
-                "Returns matches showing which storage type and key contains the value."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "value": {
-                        "type": "string",
-                        "description": "The value to search for in storage.",
-                    },
-                    "case_sensitive": {
-                        "type": "boolean",
-                        "description": "Whether the search should be case-sensitive. Defaults to false.",
-                    }
-                },
-                "required": ["value"],
-            },
-        )
-
-        # search_in_window_props
-        self.llm_client.register_tool(
-            name="search_in_window_props",
-            description=(
-                "Search window object property values for a specific value. "
-                "Returns matches showing which property path contains the value."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "value": {
-                        "type": "string",
-                        "description": "The value to search for in window properties.",
-                    },
-                    "case_sensitive": {
-                        "type": "boolean",
-                        "description": "Whether the search should be case-sensitive. Defaults to false.",
-                    }
-                },
-                "required": ["value"],
-            },
-        )
-
-        # get_network_entry
-        self.llm_client.register_tool(
-            name="get_network_entry",
-            description=(
-                "Get full details of a network entry by request_id. "
-                "Returns method, URL, headers, request body, and response body."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "request_id": {
-                        "type": "string",
-                        "description": "The request_id of the network entry to retrieve.",
-                    }
-                },
-                "required": ["request_id"],
-            },
-        )
-
-        # get_storage_entry
-        self.llm_client.register_tool(
-            name="get_storage_entry",
-            description=(
-                "Get full details of a storage entry by index. "
-                "Returns the storage event with all its fields."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "index": {
-                        "type": "integer",
-                        "description": "The index of the storage entry to retrieve.",
-                    }
-                },
-                "required": ["index"],
-            },
-        )
-
-        # get_window_prop_changes
-        self.llm_client.register_tool(
-            name="get_window_prop_changes",
-            description=(
-                "Get all changes for a specific window property path. "
-                "Returns the history of changes (added, changed, deleted) for that property."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "The property path to get changes for (e.g., 'dataLayer.0.userId').",
-                    },
-                    "exact": {
-                        "type": "boolean",
-                        "description": "If true, match path exactly. If false, match paths containing the substring. Defaults to false.",
-                    }
-                },
-                "required": ["path"],
-            },
-        )
-
-        # get_storage_by_key
-        self.llm_client.register_tool(
-            name="get_storage_by_key",
-            description=(
-                "Get all storage entries for a specific key name. "
-                "Use this when you want to find the VALUE stored under a given KEY "
-                "(e.g., 'get the value of _cb_svref_expires'). "
-                "Returns all events where this key was set, modified, or deleted."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "key": {
-                        "type": "string",
-                        "description": "The storage key name to look up.",
-                    }
-                },
-                "required": ["key"],
-            },
-        )
-
-        # execute_python
-        self.llm_client.register_tool(
-            name="execute_python",
-            description=(
-                "Execute Python code in a sandboxed environment to analyze data. "
-                "Pre-loaded variables: "
-                "`network_entries` (list of NetworkTransactionEvent dicts with request_id, url, method, status, "
-                "request_headers, response_headers, post_data, response_body), "
-                "`storage_entries` (list of StorageEvent dicts with type, origin, key, value, etc.), "
-                "`window_prop_entries` (list of WindowPropertyEvent dicts with url, timestamp, changes). "
-                "Use print() to output results. Example: "
-                "for e in storage_entries: if e['key'] == 'token': print(e)"
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "code": {
-                        "type": "string",
-                        "description": (
-                            "Python code to execute. Variables available: network_entries, storage_entries, "
-                            "window_prop_entries. The `json` module is available. Use print() for output. "
-                            "Note: imports are disabled for security."
-                        ),
-                    }
-                },
-                "required": ["code"],
-            },
-        )
-
-    def _register_finalize_tools(self) -> None:
-        """Register finalize tools for autonomous mode."""
-        if self._finalize_tool_registered:
-            return
-
-        self.llm_client.register_tool(
-            name="finalize_result",
-            description=(
-                "Finalize the token origin tracing with your findings. "
-                "Call this when you have traced where the value came from."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "value_searched": {
-                        "type": "string",
-                        "description": "The token/value that was searched for.",
-                    },
-                    "origins": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "source_type": {
-                                    "type": "string",
-                                    "enum": ["network", "storage", "window_property"],
-                                    "description": "Where the value was found.",
-                                },
-                                "location": {
-                                    "type": "string",
-                                    "description": "Specific location (URL, origin+key, or path).",
-                                },
-                                "context": {
-                                    "type": "string",
-                                    "description": "Brief context about how the value appears.",
-                                },
-                                "entry_id": {
-                                    "type": "string",
-                                    "description": "ID to retrieve the full entry.",
-                                },
-                            },
-                            "required": ["source_type", "location", "context", "entry_id"],
-                        },
-                        "description": "List of all discovered origins.",
-                    },
-                    "likely_source_index": {
-                        "type": "integer",
-                        "description": "Index in origins array of the most likely original source (or -1 if unclear).",
-                    },
-                    "explanation": {
-                        "type": "string",
-                        "description": "Explanation of how the value flows through the system.",
-                    },
-                },
-                "required": ["value_searched", "origins", "explanation"],
-            },
-        )
-
-        self.llm_client.register_tool(
-            name="finalize_failure",
-            description=(
-                "Signal that the token origin tracing failed to find the value. "
-                "Call this when you have searched thoroughly but cannot find the value."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "value_searched": {
-                        "type": "string",
-                        "description": "The token/value that was searched for.",
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "Explanation of why the value could not be found.",
-                    },
-                    "suggestions": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Suggestions for alternative searches.",
-                    },
-                },
-                "required": ["value_searched", "reason"],
-            },
-        )
-
-        self._finalize_tool_registered = True
-        logger.debug("Registered finalize_result and finalize_failure tools")
-
-    def _sync_tools(self, include_finalize: bool = False) -> None:
-        """Sync registered tools to match current mode.
-
-        Clears all tools and re-registers the appropriate set:
-        - Always: base search/get tools
-        - If include_finalize is True: also registers finalize tools
-
-        Args:
-            include_finalize: Whether to include finalize_result and finalize_failure tools.
-        """
-        self.llm_client.clear_tools()
-        self._finalize_tool_registered = False
-        self._register_tools()
-
-        if include_finalize:
-            self._register_finalize_tools()
-
-    @property
-    def chat_thread_id(self) -> str:
-        """Return the current thread ID."""
-        return self._thread.id
-
-    @property
-    def autonomous_iteration(self) -> int:
-        """Return the current/final autonomous iteration count."""
-        return self._autonomous_iteration
+    ## Abstract method implementations
 
     def _get_system_prompt(self) -> str:
         """Get system prompt with data store context."""
@@ -602,85 +259,72 @@ class TraceHoundAgent:
 
         return "".join(context_parts)
 
-    def _emit_message(self, message: EmittedMessage) -> None:
-        """Emit a message via the callback."""
-        self._emit_message_callable(message)
+    def _get_autonomous_system_prompt(self) -> str:
+        """Get system prompt for autonomous mode with urgency notices."""
+        # Replace base prompt with autonomous variant
+        base_prompt = self._get_system_prompt().replace(self.SYSTEM_PROMPT, self.AUTONOMOUS_SYSTEM_PROMPT)
 
-    def _add_chat(
-        self,
-        role: ChatRole,
-        content: str,
-        tool_call_id: str | None = None,
-        tool_calls: list[LLMToolCall] | None = None,
-        llm_provider_response_id: str | None = None,
-    ) -> Chat:
-        """Create and store a new Chat, update thread, persist if callbacks set."""
-        chat = Chat(
-            chat_thread_id=self._thread.id,
-            role=role,
-            content=content,
-            tool_call_id=tool_call_id,
-            tool_calls=tool_calls or [],
-            llm_provider_response_id=llm_provider_response_id,
+        if self.can_finalize:
+            remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
+            if remaining <= 2:
+                notice = (
+                    f"\n\n## CRITICAL: Call finalize_result NOW!\n"
+                    f"Only {remaining} iterations remaining. "
+                    f"You MUST call finalize_result with your findings immediately."
+                )
+            elif remaining <= 4:
+                notice = (
+                    f"\n\n## URGENT: Call finalize_result soon!\n"
+                    f"Only {remaining} iterations remaining. "
+                    f"Call finalize_result when ready."
+                )
+            else:
+                notice = "\n\n## finalize_result is now available. Call it when ready."
+        else:
+            notice = f"\n\n## Continue exploring (iteration {self._autonomous_iteration})."
+
+        return base_prompt + notice
+
+    def _get_autonomous_initial_message(self, task: str) -> str:
+        return (
+            f"TRACE VALUE: {task}\n\n"
+            "Find where this value originated from. Search across all data stores, "
+            "analyze the results, and call finalize_result with your findings."
         )
 
-        if self._persist_chat_callable:
-            chat = self._persist_chat_callable(chat)
+    def _check_autonomous_completion(self, tool_name: str) -> bool:
+        if tool_name == "finalize_result" and self._origin_result is not None:
+            return True
+        if tool_name == "finalize_failure" and self._origin_failure is not None:
+            return True
+        return False
 
-        self._chats[chat.id] = chat
-        self._thread.chat_ids.append(chat.id)
-        self._thread.updated_at = int(datetime.now().timestamp())
+    def _get_autonomous_result(self) -> BaseModel | None:
+        return self._origin_result or self._origin_failure
 
-        if llm_provider_response_id and role == ChatRole.ASSISTANT:
-            self._response_id_to_chat_index[llm_provider_response_id] = len(self._thread.chat_ids) - 1
+    def _reset_autonomous_state(self) -> None:
+        self._origin_result = None
+        self._origin_failure = None
 
-        if self._persist_chat_thread_callable:
-            self._thread = self._persist_chat_thread_callable(self._thread)
+    ## Tool handlers
 
-        return chat
-
-    def _build_messages_for_llm(self) -> list[dict[str, Any]]:
-        """Build messages list for LLM from Chat objects."""
-        messages: list[dict[str, Any]] = []
-
-        chats_to_include = self._thread.chat_ids
-        if self._previous_response_id is not None:
-            index = self._response_id_to_chat_index.get(self._previous_response_id)
-            if index is not None:
-                chats_to_include = self._thread.chat_ids[index + 1:]
-
-        for chat_id in chats_to_include:
-            chat = self._chats.get(chat_id)
-            if not chat:
-                continue
-            msg: dict[str, Any] = {
-                "role": chat.role.value,
-                "content": chat.content,
-            }
-            if chat.tool_call_id:
-                msg["tool_call_id"] = chat.tool_call_id
-            if chat.tool_calls:
-                msg["tool_calls"] = [
-                    {
-                        "call_id": tc.call_id if tc.call_id else f"call_{idx}_{chat_id[:8]}",
-                        "name": tc.tool_name,
-                        "arguments": tc.tool_arguments,
-                    }
-                    for idx, tc in enumerate(chat.tool_calls)
-                ]
-            messages.append(msg)
-        return messages
-
-    # ==================== Tool Implementations ====================
-
+    @specialist_tool()
     @token_optimized
-    def _tool_search_everywhere(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Search for a value across all data stores."""
-        value = tool_arguments.get("value", "")
+    def _search_everywhere(
+        self,
+        value: str,
+        case_sensitive: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Search for a value across ALL data stores (network, storage, window properties). This is the best starting point when tracing where a value came from. Returns matches from each store with context about where the value was found.
+
+        Args:
+            value: The token/value to search for.
+            case_sensitive: Whether the search should be case-sensitive. Defaults to false.
+        """
         if not value:
             return {"error": "value is required"}
 
-        case_sensitive = tool_arguments.get("case_sensitive", False)
         results: dict[str, Any] = {"value_searched": value, "case_sensitive": case_sensitive}
 
         # Search network
@@ -737,17 +381,26 @@ class TraceHoundAgent:
 
         return results
 
+    @specialist_tool()
     @token_optimized
-    def _tool_search_in_network(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Search network response bodies for a value."""
+    def _search_in_network(
+        self,
+        value: str,
+        case_sensitive: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Search network traffic response bodies for a specific value. Returns matches with context showing where in the response the value appears.
+
+        Args:
+            value: The value to search for in response bodies.
+            case_sensitive: Whether the search should be case-sensitive. Defaults to false.
+        """
         if not self._network_data_store:
             return {"error": "Network data store not available"}
 
-        value = tool_arguments.get("value", "")
         if not value:
             return {"error": "value is required"}
 
-        case_sensitive = tool_arguments.get("case_sensitive", False)
         results = self._network_data_store.search_response_bodies(
             value=value, case_sensitive=case_sensitive
         )
@@ -758,17 +411,26 @@ class TraceHoundAgent:
             "results": results[:20],
         }
 
+    @specialist_tool()
     @token_optimized
-    def _tool_search_in_storage(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Search browser storage for a value."""
+    def _search_in_storage(
+        self,
+        value: str,
+        case_sensitive: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Search browser storage (cookies, localStorage, sessionStorage, IndexedDB) for a value. Returns matches showing which storage type and key contains the value.
+
+        Args:
+            value: The value to search for in storage.
+            case_sensitive: Whether the search should be case-sensitive. Defaults to false.
+        """
         if not self._storage_data_store:
             return {"error": "Storage data store not available"}
 
-        value = tool_arguments.get("value", "")
         if not value:
             return {"error": "value is required"}
 
-        case_sensitive = tool_arguments.get("case_sensitive", False)
         results = self._storage_data_store.search_values(
             value=value, case_sensitive=case_sensitive
         )
@@ -779,17 +441,26 @@ class TraceHoundAgent:
             "results": results[:20],
         }
 
+    @specialist_tool()
     @token_optimized
-    def _tool_search_in_window_props(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Search window property values for a value."""
+    def _search_in_window_props(
+        self,
+        value: str,
+        case_sensitive: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Search window object property values for a specific value. Returns matches showing which property path contains the value.
+
+        Args:
+            value: The value to search for in window properties.
+            case_sensitive: Whether the search should be case-sensitive. Defaults to false.
+        """
         if not self._window_property_data_store:
             return {"error": "Window property data store not available"}
 
-        value = tool_arguments.get("value", "")
         if not value:
             return {"error": "value is required"}
 
-        case_sensitive = tool_arguments.get("case_sensitive", False)
         results = self._window_property_data_store.search_values(
             value=value, case_sensitive=case_sensitive
         )
@@ -800,13 +471,18 @@ class TraceHoundAgent:
             "results": results[:20],
         }
 
+    @specialist_tool()
     @token_optimized
-    def _tool_get_network_entry(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Get full details of a network entry."""
+    def _get_network_entry(self, request_id: str) -> dict[str, Any]:
+        """
+        Get full details of a network entry by request_id. Returns method, URL, headers, request body, and response body.
+
+        Args:
+            request_id: The request_id of the network entry to retrieve.
+        """
         if not self._network_data_store:
             return {"error": "Network data store not available"}
 
-        request_id = tool_arguments.get("request_id")
         if not request_id:
             return {"error": "request_id is required"}
 
@@ -832,15 +508,17 @@ class TraceHoundAgent:
             "response_content": response_content,
         }
 
+    @specialist_tool()
     @token_optimized
-    def _tool_get_storage_entry(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Get full details of a storage entry."""
+    def _get_storage_entry(self, index: int) -> dict[str, Any]:
+        """
+        Get full details of a storage entry by index. Returns the storage event with all its fields.
+
+        Args:
+            index: The index of the storage entry to retrieve.
+        """
         if not self._storage_data_store:
             return {"error": "Storage data store not available"}
-
-        index = tool_arguments.get("index")
-        if index is None:
-            return {"error": "index is required"}
 
         entry = self._storage_data_store.get_entry(index)
         if not entry:
@@ -851,17 +529,26 @@ class TraceHoundAgent:
             "entry": entry.model_dump(),
         }
 
+    @specialist_tool()
     @token_optimized
-    def _tool_get_window_prop_changes(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Get changes for a specific window property path."""
+    def _get_window_prop_changes(
+        self,
+        path: str,
+        exact: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Get all changes for a specific window property path. Returns the history of changes (added, changed, deleted) for that property.
+
+        Args:
+            path: The property path to get changes for (e.g., 'dataLayer.0.userId').
+            exact: If true, match path exactly. If false, match paths containing the substring. Defaults to false.
+        """
         if not self._window_property_data_store:
             return {"error": "Window property data store not available"}
 
-        path = tool_arguments.get("path")
         if not path:
             return {"error": "path is required"}
 
-        exact = tool_arguments.get("exact", False)
         results = self._window_property_data_store.get_changes_by_path(path, exact=exact)
 
         return {
@@ -871,13 +558,18 @@ class TraceHoundAgent:
             "changes": results[:20],
         }
 
+    @specialist_tool()
     @token_optimized
-    def _tool_get_storage_by_key(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Get all storage entries for a specific key name."""
+    def _get_storage_by_key(self, key: str) -> dict[str, Any]:
+        """
+        Get all storage entries for a specific key name. Use this when you want to find the VALUE stored under a given KEY (e.g., 'get the value of _cb_svref_expires'). Returns all events where this key was set, modified, or deleted.
+
+        Args:
+            key: The storage key name to look up.
+        """
         if not self._storage_data_store:
             return {"error": "Storage data store not available"}
 
-        key = tool_arguments.get("key")
         if not key:
             return {"error": "key is required"}
 
@@ -889,10 +581,14 @@ class TraceHoundAgent:
             "entries": [e.model_dump() for e in entries[:20]],
         }
 
-    def _tool_execute_python(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute Python code in a sandboxed environment with all data stores pre-loaded."""
-        code = tool_arguments.get("code", "")
+    @specialist_tool()
+    def _execute_python(self, code: str) -> dict[str, Any]:
+        """
+        Execute Python code in a sandboxed environment to analyze data. Pre-loaded variables: `network_entries` (list of NetworkTransactionEvent dicts with request_id, url, method, status, request_headers, response_headers, post_data, response_body), `storage_entries` (list of StorageEvent dicts with type, origin, key, value, etc.), `window_prop_entries` (list of WindowPropertyEvent dicts with url, timestamp, changes). Use print() to output results. Example: for e in storage_entries: if e['key'] == 'token': print(e)
 
+        Args:
+            code: Python code to execute. Variables available: network_entries, storage_entries, window_prop_entries. The `json` module is available. Use print() for output. Note: imports are disabled for security.
+        """
         # Build extra globals with all available data stores
         extra_globals: dict[str, Any] = {}
 
@@ -919,25 +615,82 @@ class TraceHoundAgent:
 
         return execute_python_sandboxed(code, extra_globals=extra_globals)
 
+    @specialist_tool(
+        availability=lambda self: self.can_finalize,
+        parameters={
+            "type": "object",
+            "properties": {
+                "value_searched": {
+                    "type": "string",
+                    "description": "The token/value that was searched for.",
+                },
+                "origins": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "source_type": {
+                                "type": "string",
+                                "enum": ["network", "storage", "window_property"],
+                                "description": "Where the value was found.",
+                            },
+                            "location": {
+                                "type": "string",
+                                "description": "Specific location (URL, origin+key, or path).",
+                            },
+                            "context": {
+                                "type": "string",
+                                "description": "Brief context about how the value appears.",
+                            },
+                            "entry_id": {
+                                "type": "string",
+                                "description": "ID to retrieve the full entry.",
+                            },
+                        },
+                        "required": ["source_type", "location", "context", "entry_id"],
+                    },
+                    "description": "List of all discovered origins.",
+                },
+                "explanation": {
+                    "type": "string",
+                    "description": "Explanation of how the value flows through the system.",
+                },
+                "likely_source_index": {
+                    "type": "integer",
+                    "description": "Index in origins array of the most likely original source (or -1 if unclear).",
+                },
+            },
+            "required": ["value_searched", "origins", "explanation"],
+        }
+    )
     @token_optimized
-    def _tool_finalize_result(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Handle finalize_result tool call."""
-        value_searched = tool_arguments.get("value_searched", "")
-        origins_data = tool_arguments.get("origins", [])
-        likely_source_index = tool_arguments.get("likely_source_index", -1)
-        explanation = tool_arguments.get("explanation", "")
+    def _finalize_result(
+        self,
+        value_searched: str,
+        origins: list[dict[str, Any]],
+        explanation: str,
+        likely_source_index: int = -1,
+    ) -> dict[str, Any]:
+        """
+        Finalize the token origin tracing with your findings. Call this when you have traced where the value came from.
 
+        Args:
+            value_searched: The token/value that was searched for.
+            origins: List of all discovered origins. Each origin should have: source_type, location, context, entry_id.
+            explanation: Explanation of how the value flows through the system.
+            likely_source_index: Index in origins array of the most likely original source (or -1 if unclear).
+        """
         if not value_searched:
             return {"error": "value_searched is required"}
-        if not origins_data:
+        if not origins:
             return {"error": "origins list is required and cannot be empty"}
         if not explanation:
             return {"error": "explanation is required"}
 
         # Build origin objects
-        origins: list[TokenOrigin] = []
-        for origin_data in origins_data:
-            origins.append(TokenOrigin(
+        origin_objects: list[TokenOrigin] = []
+        for origin_data in origins:
+            origin_objects.append(TokenOrigin(
                 source_type=origin_data.get("source_type"),
                 location=origin_data.get("location"),
                 context=origin_data.get("context"),
@@ -945,29 +698,42 @@ class TraceHoundAgent:
             ))
 
         likely_source = None
-        if 0 <= likely_source_index < len(origins):
-            likely_source = origins[likely_source_index]
+        if 0 <= likely_source_index < len(origin_objects):
+            likely_source = origin_objects[likely_source_index]
 
         self._origin_result = TokenOriginResult(
             value_searched=value_searched,
-            origins=origins,
+            origins=origin_objects,
             likely_source=likely_source,
             explanation=explanation,
         )
 
-        logger.info("Token origin tracing completed: %d origin(s) found", len(origins))
+        logger.info("Token origin tracing completed: %d origin(s) found", len(origin_objects))
 
         return {
             "status": "success",
-            "message": f"Token origin tracing completed with {len(origins)} origin(s)",
+            "message": f"Token origin tracing completed with {len(origin_objects)} origin(s)",
             "result": self._origin_result.model_dump(),
         }
 
+    @specialist_tool(availability=lambda self: self.can_finalize)
     @token_optimized
-    def _tool_finalize_failure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Handle finalize_failure tool call."""
-        # On first iteration where finalize is available, reject and suggest trying other methods
-        if self._autonomous_iteration == 2:
+    def _finalize_failure(
+        self,
+        value_searched: str,
+        reason: str,
+        suggestions: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Signal that the token origin tracing failed to find the value. Call this when you have searched thoroughly but cannot find the value.
+
+        Args:
+            value_searched: The token/value that was searched for.
+            reason: Explanation of why the value could not be found.
+            suggestions: Suggestions for alternative searches.
+        """
+        # On early iterations, reject and suggest trying other methods
+        if self._autonomous_iteration <= 3:
             return {
                 "error": "Too early to give up! You must try other methods first.",
                 "suggestions": [
@@ -977,12 +743,8 @@ class TraceHoundAgent:
                     "Check if the value appears in network request/response bodies",
                     "Look for related keys or paths that might contain the value",
                 ],
-                "iterations_remaining": self._autonomous_max_iterations - self._autonomous_iteration,
+                "iterations_remaining": self._autonomous_config.max_iterations - self._autonomous_iteration,
             }
-
-        value_searched = tool_arguments.get("value_searched", "")
-        reason = tool_arguments.get("reason", "")
-        suggestions = tool_arguments.get("suggestions", [])
 
         if not value_searched:
             return {"error": "value_searched is required"}
@@ -992,7 +754,7 @@ class TraceHoundAgent:
         self._origin_failure = TokenOriginFailure(
             value_searched=value_searched,
             reason=reason,
-            suggestions=suggestions,
+            suggestions=suggestions or [],
         )
 
         logger.info("Token origin tracing failed: %s", reason)
@@ -1002,342 +764,6 @@ class TraceHoundAgent:
             "message": "Token origin tracing failed",
             "result": self._origin_failure.model_dump(),
         }
-
-    def _execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute a tool and return the result."""
-        logger.debug("Executing tool %s", tool_name)
-
-        tool_map = {
-            "search_everywhere": self._tool_search_everywhere,
-            "search_in_network": self._tool_search_in_network,
-            "search_in_storage": self._tool_search_in_storage,
-            "search_in_window_props": self._tool_search_in_window_props,
-            "get_network_entry": self._tool_get_network_entry,
-            "get_storage_entry": self._tool_get_storage_entry,
-            "get_window_prop_changes": self._tool_get_window_prop_changes,
-            "get_storage_by_key": self._tool_get_storage_by_key,
-            "execute_python": self._tool_execute_python,
-            "finalize_result": self._tool_finalize_result,
-            "finalize_failure": self._tool_finalize_failure,
-        }
-
-        if tool_name in tool_map:
-            return tool_map[tool_name](tool_arguments)
-
-        return {"error": f"Unknown tool: {tool_name}"}
-
-    def _auto_execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> str:
-        """Auto-execute a tool and emit the result."""
-        invocation = PendingToolInvocation(
-            invocation_id="",
-            tool_name=tool_name,
-            tool_arguments=tool_arguments,
-            status=ToolInvocationStatus.CONFIRMED,
-        )
-
-        try:
-            result = self._execute_tool(tool_name, tool_arguments)
-            invocation.status = ToolInvocationStatus.EXECUTED
-
-            self._emit_message(
-                ToolInvocationResultEmittedMessage(
-                    tool_invocation=invocation,
-                    tool_result=result,
-                )
-            )
-
-            return json.dumps(result)
-
-        except Exception as e:
-            invocation.status = ToolInvocationStatus.FAILED
-
-            self._emit_message(
-                ToolInvocationResultEmittedMessage(
-                    tool_invocation=invocation,
-                    tool_result={"error": str(e)},
-                )
-            )
-
-            logger.error("Tool %s failed: %s", tool_name, e)
-            return json.dumps({"error": str(e)})
-
-    def process_new_message(self, content: str, role: ChatRole = ChatRole.USER) -> None:
-        """
-        Process a new message and emit responses via callback.
-
-        Args:
-            content: The message content
-            role: The role of the message sender (USER or SYSTEM)
-        """
-        self._add_chat(role, content)
-        self._run_agent_loop()
-
-    def _run_agent_loop(self) -> None:
-        """Run the agent loop: call LLM, execute tools, feed results back, repeat."""
-        max_iterations = 10
-
-        for iteration in range(max_iterations):
-            logger.debug("Agent loop iteration %d", iteration + 1)
-
-            # Sync tools for conversational mode (no finalize tools)
-            self._sync_tools(include_finalize=False)
-
-            messages = self._build_messages_for_llm()
-
-            try:
-                if self._stream_chunk_callable:
-                    response = self._process_streaming_response(messages)
-                else:
-                    response = self.llm_client.call_sync(
-                        messages=messages,
-                        system_prompt=self._get_system_prompt(),
-                        previous_response_id=self._previous_response_id,
-                    )
-
-                if response.response_id:
-                    self._previous_response_id = response.response_id
-
-                if response.content or response.tool_calls:
-                    chat = self._add_chat(
-                        ChatRole.ASSISTANT,
-                        response.content or "",
-                        tool_calls=response.tool_calls if response.tool_calls else None,
-                        llm_provider_response_id=response.response_id,
-                    )
-                    if response.content:
-                        self._emit_message(
-                            ChatResponseEmittedMessage(
-                                content=response.content,
-                                chat_id=chat.id,
-                                chat_thread_id=self._thread.id,
-                            )
-                        )
-
-                if not response.tool_calls:
-                    logger.debug("Agent loop complete - no more tool calls")
-                    return
-
-                for tool_call in response.tool_calls:
-                    result_str = self._auto_execute_tool(
-                        tool_call.tool_name, tool_call.tool_arguments
-                    )
-                    self._add_chat(
-                        ChatRole.TOOL,
-                        f"Tool '{tool_call.tool_name}' result: {result_str}",
-                        tool_call_id=tool_call.call_id,
-                    )
-
-            except Exception as e:
-                logger.exception("Error in agent loop: %s", e)
-                self._emit_message(ErrorEmittedMessage(error=str(e)))
-                return
-
-        logger.warning("Agent loop hit max iterations (%d)", max_iterations)
-
-    def _process_streaming_response(self, messages: list[dict[str, str]]) -> LLMChatResponse:
-        """Process LLM response with streaming."""
-        response: LLMChatResponse | None = None
-
-        for item in self.llm_client.call_stream_sync(
-            messages=messages,
-            system_prompt=self._get_system_prompt(),
-            previous_response_id=self._previous_response_id,
-        ):
-            if isinstance(item, str):
-                if self._stream_chunk_callable:
-                    self._stream_chunk_callable(item)
-            elif isinstance(item, LLMChatResponse):
-                response = item
-
-        if response is None:
-            raise ValueError("No final response received from streaming LLM")
-
-        return response
-
-    def run_autonomous(
-        self,
-        value: str,
-        min_iterations: int = 2,
-        max_iterations: int = 5,
-    ) -> TokenOriginResult | TokenOriginFailure | None:
-        """
-        Run the agent autonomously to trace where a value came from.
-
-        Args:
-            value: The token/value to trace
-            min_iterations: Minimum iterations before allowing finalize (default 2)
-            max_iterations: Maximum iterations before stopping (default 5)
-
-        Returns:
-            TokenOriginResult if origins were found,
-            TokenOriginFailure if value could not be found,
-            None if max iterations reached without finalization.
-        """
-        self._autonomous_mode = True
-        self._autonomous_iteration = 0
-        self._autonomous_max_iterations = max_iterations
-        self._origin_result = None
-        self._origin_failure = None
-        self._finalize_tool_registered = False
-
-        initial_message = (
-            f"TRACE VALUE: {value}\n\n"
-            "Find where this value originated from. Search across all data stores, "
-            "analyze the results, and call finalize_result with your findings."
-        )
-        self._add_chat(ChatRole.USER, initial_message)
-
-        logger.info("Starting autonomous token tracing for value: %s", value[:50])
-
-        self._run_autonomous_loop(min_iterations, max_iterations)
-
-        self._autonomous_mode = False
-
-        if self._origin_result is not None:
-            return self._origin_result
-        if self._origin_failure is not None:
-            return self._origin_failure
-        return None
-
-    def _run_autonomous_loop(self, min_iterations: int, max_iterations: int) -> None:
-        """Run the autonomous agent loop."""
-        for iteration in range(max_iterations):
-            self._autonomous_iteration = iteration + 1
-            logger.debug("Autonomous loop iteration %d/%d", self._autonomous_iteration, max_iterations)
-
-            # Sync tools: include finalize tools only after min_iterations
-            include_finalize = self._autonomous_iteration >= min_iterations
-            was_finalize_registered = self._finalize_tool_registered
-            self._sync_tools(include_finalize=include_finalize)
-
-            if include_finalize and not was_finalize_registered:
-                logger.info("Finalize tools now available (iteration %d)", self._autonomous_iteration)
-
-            messages = self._build_messages_for_llm()
-
-            try:
-                if self._stream_chunk_callable:
-                    response = self._process_streaming_response_autonomous(messages)
-                else:
-                    response = self.llm_client.call_sync(
-                        messages=messages,
-                        system_prompt=self._get_autonomous_system_prompt(),
-                        previous_response_id=self._previous_response_id,
-                    )
-
-                if response.response_id:
-                    self._previous_response_id = response.response_id
-
-                if response.content or response.tool_calls:
-                    chat = self._add_chat(
-                        ChatRole.ASSISTANT,
-                        response.content or "",
-                        tool_calls=response.tool_calls if response.tool_calls else None,
-                        llm_provider_response_id=response.response_id,
-                    )
-                    if response.content:
-                        self._emit_message(
-                            ChatResponseEmittedMessage(
-                                content=response.content,
-                                chat_id=chat.id,
-                                chat_thread_id=self._thread.id,
-                            )
-                        )
-
-                if not response.tool_calls:
-                    logger.warning("Autonomous loop: no tool calls in iteration %d", self._autonomous_iteration)
-                    return
-
-                for tool_call in response.tool_calls:
-                    result_str = self._auto_execute_tool(
-                        tool_call.tool_name, tool_call.tool_arguments
-                    )
-                    self._add_chat(
-                        ChatRole.TOOL,
-                        f"Tool '{tool_call.tool_name}' result: {result_str}",
-                        tool_call_id=tool_call.call_id,
-                    )
-
-                    if tool_call.tool_name == "finalize_result" and self._origin_result is not None:
-                        logger.info("Token tracing completed at iteration %d", self._autonomous_iteration)
-                        return
-
-                    if tool_call.tool_name == "finalize_failure" and self._origin_failure is not None:
-                        logger.info("Token tracing failed at iteration %d", self._autonomous_iteration)
-                        return
-
-            except Exception as e:
-                logger.exception("Error in autonomous loop: %s", e)
-                self._emit_message(ErrorEmittedMessage(error=str(e)))
-                return
-
-        logger.warning("Autonomous loop hit max iterations (%d)", max_iterations)
-
-    def _get_autonomous_system_prompt(self) -> str:
-        """Get system prompt for autonomous mode."""
-        base_prompt = self._get_system_prompt().replace(self.SYSTEM_PROMPT, self.AUTONOMOUS_SYSTEM_PROMPT)
-
-        if self._finalize_tool_registered:
-            remaining = self._autonomous_max_iterations - self._autonomous_iteration
-            if remaining <= 2:
-                notice = (
-                    f"\n\n## CRITICAL: Call finalize_result NOW!\n"
-                    f"Only {remaining} iterations remaining."
-                )
-            else:
-                notice = "\n\n## finalize_result is now available. Call it when ready."
-        else:
-            notice = f"\n\n## Continue exploring (iteration {self._autonomous_iteration})."
-
-        return base_prompt + notice
-
-    def _process_streaming_response_autonomous(self, messages: list[dict[str, str]]) -> LLMChatResponse:
-        """Process streaming response for autonomous mode."""
-        response: LLMChatResponse | None = None
-
-        for item in self.llm_client.call_stream_sync(
-            messages=messages,
-            system_prompt=self._get_autonomous_system_prompt(),
-            previous_response_id=self._previous_response_id,
-        ):
-            if isinstance(item, str):
-                if self._stream_chunk_callable:
-                    self._stream_chunk_callable(item)
-            elif isinstance(item, LLMChatResponse):
-                response = item
-
-        if response is None:
-            raise ValueError("No final response received from streaming LLM")
-
-        return response
-
-    def get_thread(self) -> ChatThread:
-        """Get the current conversation thread."""
-        return self._thread
-
-    def get_chats(self) -> list[Chat]:
-        """Get all Chat messages in order."""
-        return [self._chats[chat_id] for chat_id in self._thread.chat_ids if chat_id in self._chats]
-
-    def reset(self) -> None:
-        """Reset the conversation to a fresh state."""
-        old_chat_thread_id = self._thread.id
-        self._thread = ChatThread()
-        self._chats = {}
-        self._previous_response_id = None
-        self._response_id_to_chat_index = {}
-
-        self._autonomous_mode = False
-        self._autonomous_iteration = 0
-        self._autonomous_max_iterations = 10
-        self._origin_result = None
-        self._origin_failure = None
-        self._finalize_tool_registered = False
-
-        if self._persist_chat_thread_callable:
-            self._thread = self._persist_chat_thread_callable(self._thread)
-
-        logger.debug("Reset conversation from %s to %s", old_chat_thread_id, self._thread.id)
 
 
 # Backwards compatibility alias
