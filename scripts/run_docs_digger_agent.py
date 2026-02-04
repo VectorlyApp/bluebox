@@ -23,6 +23,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from prompt_toolkit import prompt as pt_prompt
+from prompt_toolkit.formatted_text import HTML
 from rich import box
 
 # Package root for default paths (scripts/ is sibling to bluebox/)
@@ -46,6 +48,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from bluebox.utils.terminal_utils import SlashCommandCompleter, SlashCommandLexer
 from bluebox.agents.docs_digger_agent import (
     DocsDiggerAgent,
     DocumentSearchResult,
@@ -68,6 +71,13 @@ from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
 console = Console()
+
+SLASH_COMMANDS = [
+    ("/search", "Autonomously search for documentation — /search <query>"),
+    ("/reset", "Start a new conversation"),
+    ("/help", "Show help"),
+    ("/quit", "Exit"),
+]
 
 
 BANNER = """\
@@ -439,7 +449,12 @@ class TerminalDocsDiggerChat:
         """Run the interactive chat loop."""
         while True:
             try:
-                user_input = console.input("[bold green]You>[/bold green] ")
+                user_input = pt_prompt(
+                    HTML("<b><ansigreen>You&gt;</ansigreen></b> "),
+                    completer=SlashCommandCompleter(SLASH_COMMANDS),
+                    lexer=SlashCommandLexer(),
+                    complete_while_typing=True,
+                )
 
                 if not user_input.strip():
                     continue

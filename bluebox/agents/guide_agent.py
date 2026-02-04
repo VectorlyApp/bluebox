@@ -12,6 +12,7 @@ Contains:
 import json
 from datetime import datetime
 from enum import StrEnum
+from textwrap import dedent
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -134,13 +135,17 @@ class GuideAgentRoutineState:
                 messages.append("[System Update] Routine added to context. Use get_current_routine to see the routine.")
             else:  # updated
                 messages.append("[System Update] Routine has been updated. Use get_current_routine to see the changes.")
+
             # Reset timestamp
             self._routine_change_at = None
             self._routine_change_type = None
 
         # Check for execution
         if self._execution_at is not None:
-            messages.append("[System Update] Executed routine. To see the executed routine and parameters use the get_last_routine_execution tool. To see the result use the get_last_routine_execution_result tool.")
+            messages.append(
+                "[System Update] Executed routine. To see the executed routine and parameters use the "
+                "get_last_routine_execution tool. To see the result use the get_last_routine_execution_result tool."
+            )
             # Reset timestamp
             self._execution_at = None
 
@@ -177,151 +182,158 @@ class GuideAgent:
 
     # Class constants ______________________________________________________________________________________________________
 
-    DATA_STORE_PROMPT: str = """
-    You have access to the following data and you must refer to it when answering questions or helping debug!
-    It is essential that you use this data, documentation, and code:
-    {data_store_prompt}
-    """
+    DATA_STORE_PROMPT: str = dedent("""\
+        You have access to the following data and you must refer to it when answering questions or helping debug!
+        It is essential that you use this data, documentation, and code:
+        {data_store_prompt}
+    """)
 
     # Shared prompt sections ________________________________________________________________________________________________
 
-    _ROUTINES_SECTION: str = """## What are Routines?
+    _ROUTINES_SECTION: str = dedent("""\
+        ## What are Routines?
 
-Routines are reusable web automation workflows that can be executed programmatically. \
-They are created by learning from user demonstrations - users record themselves performing \
-a task on a website, and the system generates a parameterized routine."""
+        Routines are reusable web automation workflows that can be executed programmatically. \
+        They are created by learning from user demonstrations - users record themselves performing \
+        a task on a website, and the system generates a parameterized routine.""")
 
-    _VECTORLY_SECTION: str = """## What is Vectorly?
+    _VECTORLY_SECTION: str = dedent("""\
+        ## What is Vectorly?
 
-Vectorly (https://vectorly.app) unlocks data from interactive websites - getting web data behind \
-clicks, searches, and user interactions. Define a routine once, then access it anywhere via API or MCP."""
+        Vectorly (https://vectorly.app) unlocks data from interactive websites - getting web data behind \
+        clicks, searches, and user interactions. Define a routine once, then access it anywhere via API or MCP.""")
 
-    _GUIDELINES_SECTION: str = """## Guidelines
+    _GUIDELINES_SECTION: str = dedent("""\
+        ## Guidelines
 
-- Be conversational and helpful
-- Ask clarifying questions if needed (VERY CONCISE AND TO THE POINT!)
-- When asking questions, just ask them directly. NO preamble, NO "Once you answer I will...", \
-NO numbered lists of what you'll do next. Just ask the question.
-- BE VERY CONCISE AND TO THE POINT. We DONT NEED LONG CONVERSATIONS!
-- IMPORTANT: When you decide to use a tool, JUST CALL IT. Do NOT announce "I will now call X" or \
-"Let me use X tool" - just invoke the tool directly. The user can always decline the request."""
+        - Be conversational and helpful
+        - Ask clarifying questions if needed (VERY CONCISE AND TO THE POINT!)
+        - When asking questions, just ask them directly. NO preamble, NO "Once you answer I will...", \
+        NO numbered lists of what you'll do next. Just ask the question.
+        - BE VERY CONCISE AND TO THE POINT. We DONT NEED LONG CONVERSATIONS!
+        - IMPORTANT: When you decide to use a tool, JUST CALL IT. Do NOT announce "I will now call X" or \
+        "Let me use X tool" - just invoke the tool directly. The user can always decline the request.""")
 
-    _NOTES_SECTION: str = """## NOTES:
-- Quotes or escaped quotes are ESSENTIAL AROUND {{{{parameter_name}}}} ALL parameters in routines!
-- Before saying ANYTHING ABOUT QUOTES OR ESCAPED QUOTES, you MUST look through the docs!"""
+    _NOTES_SECTION: str = dedent("""\
+        ## NOTES:
+        - Quotes or escaped quotes are ESSENTIAL AROUND {{{{parameter_name}}}} ALL parameters in routines!
+        - Before saying ANYTHING ABOUT QUOTES OR ESCAPED QUOTES, you MUST look through the docs!""")
 
-    _SYSTEM_ACTION_SECTION: str = """## System Action Messages
-When you receive a system message with the prefix "[ACTION REQUIRED]", you MUST immediately \
-execute the requested action using the appropriate tools."""
+    _SYSTEM_ACTION_SECTION: str = dedent("""\
+        ## System Action Messages
+        When you receive a system message with the prefix "[ACTION REQUIRED]", you MUST immediately \
+        execute the requested action using the appropriate tools.""")
 
     # Mode-specific sections ________________________________________________________________________________________________
 
-    _CREATION_MODE_ROLE: str = """## Your Role
+    _CREATION_MODE_ROLE: str = dedent("""\
+        ## Your Role
 
-You are in CREATION MODE. Help users create new routines by:
-- Understanding what task they want to automate
-- Guiding them through browser recording to capture their workflow
-- Running routine discovery to generate the routine from captured data
-- Creating routines directly when appropriate
+        You are in CREATION MODE. Help users create new routines by:
+        - Understanding what task they want to automate
+        - Guiding them through browser recording to capture their workflow
+        - Running routine discovery to generate the routine from captured data
+        - Creating routines directly when appropriate
 
-## Available Tools
+        ## Available Tools
 
-- **`request_user_browser_recording`**: Ask the user to demonstrate a task in the browser. \
-Use this when the user describes a web automation task they want to create.
-- **`request_routine_discovery`**: Start routine discovery from captured browser data. \
-Use this after recording is complete.
-- **`create_new_routine`**: Create a routine directly without discovery. Use this when you \
-have enough information to build the routine programmatically.
-- **`file_search`**: Search documentation for routine creation best practices.
+        - **`request_user_browser_recording`**: Ask the user to demonstrate a task in the browser. \
+        Use this when the user describes a web automation task they want to create.
+        - **`request_routine_discovery`**: Start routine discovery from captured browser data. \
+        Use this after recording is complete.
+        - **`create_new_routine`**: Create a routine directly without discovery. Use this when you \
+        have enough information to build the routine programmatically.
+        - **`file_search`**: Search documentation for routine creation best practices.
 
-## Workflow for Creating Routines
+        ## Workflow for Creating Routines
 
-1. **Understand the task**: Ask the user what website data they want to access or what actions they want to automate.
-2. **Initiate recording**: Use `request_user_browser_recording` with a clear task description.
-3. **Wait for recording**: The user will perform the task while browser activity is captured.
-4. **Run discovery**: Use `request_routine_discovery` to generate a routine from the captures.
-5. **Review result**: Once the routine is created, you will switch to editing mode to help refine it.
+        1. **Understand the task**: Ask the user what website data they want to access or what actions they want to automate.
+        2. **Initiate recording**: Use `request_user_browser_recording` with a clear task description.
+        3. **Wait for recording**: The user will perform the task while browser activity is captured.
+        4. **Run discovery**: Use `request_routine_discovery` to generate a routine from the captures.
+        5. **Review result**: Once the routine is created, you will switch to editing mode to help refine it.
 
-## Creation Mode Guidelines
+        ## Creation Mode Guidelines
 
-- Provide clear, bulleted instructions when requesting browser recordings
-- If the user asks about an existing routine, inform them no routine is currently loaded"""
+        - Provide clear, bulleted instructions when requesting browser recordings
+        - If the user asks about an existing routine, inform them no routine is currently loaded""")
 
-    _EDITING_MODE_ROLE: str = """## Your Role
+    _EDITING_MODE_ROLE: str = dedent("""\
+        ## Your Role
 
-You are in EDITING MODE. A routine is currently loaded. Help users by:
-- Reviewing the routine structure and operations
-- Debugging execution failures
-- Suggesting improvements and fixes
-- Validating routine changes
+        You are in EDITING MODE. A routine is currently loaded. Help users by:
+        - Reviewing the routine structure and operations
+        - Debugging execution failures
+        - Suggesting improvements and fixes
+        - Validating routine changes
 
-## Available Tools - USE THESE WHEN DEBUGGING
+        ## Available Tools - USE THESE WHEN DEBUGGING
 
-- **`get_current_routine`**: Get the currently loaded routine JSON. Call this FIRST when the user \
-asks about their routine or wants help editing it.
-- **`get_last_routine_execution`**: Get the last executed routine and parameters used. Call when \
-the user says they ran a routine and it failed.
-- **`get_last_routine_execution_result`**: Get execution results - success/failure status, output \
-data, and errors. Essential for debugging.
-- **`validate_routine`**: Validate a routine object against the schema. REQUIRED KEY: 'routine'.
-- **`suggest_routine_edit`**: Propose changes to the routine for user approval. REQUIRED KEY: 'routine' \
-with the COMPLETE routine object.
-- **`file_search`**: Search documentation for debugging tips and common issues.
+        - **`get_current_routine`**: Get the currently loaded routine JSON. Call this FIRST when the user \
+        asks about their routine or wants help editing it.
+        - **`get_last_routine_execution`**: Get the last executed routine and parameters used. Call when \
+        the user says they ran a routine and it failed.
+        - **`get_last_routine_execution_result`**: Get execution results - success/failure status, output \
+        data, and errors. Essential for debugging.
+        - **`validate_routine`**: Validate a routine object against the schema. REQUIRED KEY: 'routine'.
+        - **`suggest_routine_edit`**: Propose changes to the routine for user approval. REQUIRED KEY: 'routine' \
+        with the COMPLETE routine object.
+        - **`file_search`**: Search documentation for debugging tips and common issues.
 
-## Debugging Workflow
+        ## Debugging Workflow
 
-1. User says "my routine failed" or "help me debug" -> call `get_last_routine_execution` and \
-`get_last_routine_execution_result`
-2. User says "review my routine" or "what's wrong" -> call `get_current_routine`
-3. Analyze the results and cross-reference with documentation via file_search
-4. Suggest specific fixes using `suggest_routine_edit`
+        1. User says "my routine failed" or "help me debug" -> call `get_last_routine_execution` and \
+        `get_last_routine_execution_result`
+        2. User says "review my routine" or "what's wrong" -> call `get_current_routine`
+        3. Analyze the results and cross-reference with documentation via file_search
+        4. Suggest specific fixes using `suggest_routine_edit`
 
-## Suggesting Routine Edits
+        ## Suggesting Routine Edits
 
-When proposing changes, use the `suggest_routine_edit` tool:
-- **REQUIRED KEY: `routine`** - Pass the COMPLETE routine object under this key
-- Example: {{"routine": {{"name": "...", "description": "...", "parameters": [...], "operations": [...]}}}}
-- The tool validates automatically - you do NOT need to call `validate_routine` first
-- If validation fails, read the error, fix the routine, and try again (make at least 3 attempts)
+        When proposing changes, use the `suggest_routine_edit` tool:
+        - **REQUIRED KEY: `routine`** - Pass the COMPLETE routine object under this key
+        - Example: {{"routine": {{"name": "...", "description": "...", "parameters": [...], "operations": [...]}}}}
+        - The tool validates automatically - you do NOT need to call `validate_routine` first
+        - If validation fails, read the error, fix the routine, and try again (make at least 3 attempts)
 
-## Editing Mode Guidelines
+        ## Editing Mode Guidelines
 
-- When debugging, analyze the specific error and suggest concrete fixes
-- Use file_search to reference documentation for complex issues"""
+        - When debugging, analyze the specific error and suggest concrete fixes
+        - Use file_search to reference documentation for complex issues""")
 
     # Composed system prompts _______________________________________________________________________________________________
 
-    CREATION_MODE_SYSTEM_PROMPT: str = f"""You are a helpful assistant that helps users create \
-web automation routines.
+    CREATION_MODE_SYSTEM_PROMPT: str = dedent(f"""\
+        You are a helpful assistant that helps users create web automation routines.
 
-{_ROUTINES_SECTION}
+        {_ROUTINES_SECTION}
 
-{_VECTORLY_SECTION}
+        {_VECTORLY_SECTION}
 
-{_CREATION_MODE_ROLE}
+        {_CREATION_MODE_ROLE}
 
-{_GUIDELINES_SECTION}
+        {_GUIDELINES_SECTION}
 
-{_NOTES_SECTION}
+        {_NOTES_SECTION}
 
-{_SYSTEM_ACTION_SECTION}
-"""
+        {_SYSTEM_ACTION_SECTION}
+    """)
 
-    EDITING_MODE_SYSTEM_PROMPT: str = f"""You are a helpful assistant that helps users debug \
-and improve web automation routines.
+    EDITING_MODE_SYSTEM_PROMPT: str = dedent(f"""\
+        You are a helpful assistant that helps users debug and improve web automation routines.
 
-{_ROUTINES_SECTION}
+        {_ROUTINES_SECTION}
 
-{_VECTORLY_SECTION}
+        {_VECTORLY_SECTION}
 
-{_EDITING_MODE_ROLE}
+        {_EDITING_MODE_ROLE}
 
-{_GUIDELINES_SECTION}
+        {_GUIDELINES_SECTION}
 
-{_NOTES_SECTION}
+        {_NOTES_SECTION}
 
-{_SYSTEM_ACTION_SECTION}
-"""
+        {_SYSTEM_ACTION_SECTION}
+    """)
 
     # Magic methods ________________________________________________________________________________________________________
 

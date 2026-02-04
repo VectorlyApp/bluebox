@@ -26,7 +26,7 @@ import json
 import re
 import time
 from enum import StrEnum
-from typing import Annotated, ClassVar, Literal, Union
+from typing import Annotated, Literal, Union
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
@@ -38,6 +38,8 @@ from bluebox.data_models.ui_elements import MouseButton, ScrollBehavior, HTMLSco
 from bluebox.utils.data_utils import apply_params, assert_balanced_js_delimiters
 from bluebox.utils.logger import get_logger
 from bluebox.utils.js_utils import (
+    DANGEROUS_JS_PATTERNS,
+    IIFE_PATTERN,
     generate_fetch_js,
     generate_click_js,
     generate_type_js,
@@ -80,6 +82,7 @@ class RoutineOperationTypes(StrEnum):
 
     RETURN_HTML = "return_html"
     JS_EVALUATE = "js_evaluate"
+
 
 # Base operation class ____________________________________________________________________________
 
@@ -1036,27 +1039,6 @@ class RoutineJsEvaluateOperation(RoutineOperation):
         description="Optional session storage key to store the evaluation result"
     )
 
-    # Dangerous patterns that are blocked
-    DANGEROUS_PATTERNS: ClassVar[list[str]] = [
-        # Dynamic code generation
-        r'eval\s*\(',
-        r'(?:^|[^a-zA-Z0-9_])Function\s*\(', 
-
-        # Network / exfiltration
-        r'(?<![a-zA-Z0-9_])fetch\s*\(',
-        r'XMLHttpRequest',
-        r'WebSocket',
-        r'sendBeacon',
-
-        # Persistent event hooks
-        r'addEventListener\s*\(',
-        r'MutationObserver',
-        r'IntersectionObserver',
-
-        # Navigation / lifecycle control
-        r'window\.close\s*\(',
-    ]
-
     @field_validator("js")
     @classmethod
     def validate_js_code(cls, v: str) -> str:
@@ -1079,19 +1061,15 @@ class RoutineJsEvaluateOperation(RoutineOperation):
         except ValueError as e:
             raise ValueError(f"JavaScript syntax error: {e}")
 
-        # Validate IIFE format using regex
-        # Matches: (function() { ... })() or (function(...) { ... })() or (() => { ... })()
-        # Also matches async variants: (async function() { ... })() or (async () => { ... })()
-        # Optional semicolon at the end: })() or })();
-        iife_pattern = r'^\s*\(\s*(async\s+)?(function\s*\([^)]*\)\s*\{|\(\)\s*=>\s*\{).+\}\s*\)\s*\(\s*\)\s*;?\s*$'
-        if not re.match(iife_pattern, v, re.DOTALL):
+        # Validate IIFE format using shared pattern from js_utils
+        if not re.match(IIFE_PATTERN, v, re.DOTALL):
             raise ValueError(
                 "JavaScript code must be wrapped in an IIFE (Immediately Invoked Function Expression). "
                 "Use format: (function() { ... })() or (() => { ... })() or (async () => { ... })()"
             )
 
         # Check each dangerous pattern (case-sensitive to allow "function" keyword in IIFEs)
-        for pattern in cls.DANGEROUS_PATTERNS:
+        for pattern in DANGEROUS_JS_PATTERNS:
             if re.search(pattern, v, re.MULTILINE):
                 raise ValueError(
                     f"JavaScript code contains blocked pattern: {pattern}. "

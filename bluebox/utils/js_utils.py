@@ -15,7 +15,44 @@ Contains:
 """
 
 import json
+import re
+from textwrap import dedent
+from typing import NamedTuple
 
+
+class JSValidationResult(NamedTuple):
+    """Result of JavaScript code validation."""
+    errors: list[str]
+    warnings: list[str]
+
+    @property
+    def is_valid(self) -> bool:
+        """True if there are no errors (warnings are ok)."""
+        return len(self.errors) == 0
+
+
+# Constants ________________________________________________________________________________________
+
+# max line length before emitting a readability warning
+_MAX_JS_LINE_LENGTH = 200
+
+DANGEROUS_JS_PATTERNS: list[str] = [
+    r'eval\s*\(',
+    r'(?:^|[^a-zA-Z0-9_])Function\s*\(',
+    r'(?<![a-zA-Z0-9_])fetch\s*\(',
+    r'XMLHttpRequest',
+    r'WebSocket',
+    r'sendBeacon',
+    r'addEventListener\s*\(',
+    r'MutationObserver',
+    r'IntersectionObserver',
+    r'window\.close\s*\(',
+]
+
+IIFE_PATTERN = r'^\s*\(\s*(async\s+)?(function\s*\([^)]*\)\s*\{|\(\)\s*=>\s*\{).+\}\s*\)\s*\(\s*\)\s*;?\s*$'
+
+
+# Private helpers _________________________________________________________________________________
 
 def _get_body_resolution_js() -> list[str]:
     """Generate JavaScript code for resolving body placeholders.
@@ -273,6 +310,93 @@ def _get_fetch_setup_js(
     ]
 
 
+def _get_element_profile_js() -> str:
+    """Generate JavaScript helper function to extract element profile.
+
+    Returns:
+        JavaScript function definition for getElementProfile(element).
+    """
+    return dedent("""\
+        function getElementProfile(el) {
+            const style = window.getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            return {
+                tag: el.tagName.toLowerCase(),
+                id: el.id || null,
+                name: el.getAttribute('name') || null,
+                classes: el.className ? el.className.split(/\\s+/).filter(Boolean) : [],
+                type: el.getAttribute('type') || null,
+                placeholder: el.getAttribute('placeholder') || null,
+                value: (el.tagName.toLowerCase() === 'input' || el.tagName.toLowerCase() === 'textarea')
+                    ? (el.value ? el.value.substring(0, 100) : null) : null,
+                text: el.textContent ? el.textContent.trim().substring(0, 100) : null,
+                href: el.getAttribute('href') || null,
+                disabled: el.disabled || false,
+                readonly: el.readOnly || false,
+                rect: {
+                    x: Math.round(rect.x),
+                    y: Math.round(rect.y),
+                    width: Math.round(rect.width),
+                    height: Math.round(rect.height)
+                },
+                computed: {
+                    display: style.display,
+                    visibility: style.visibility,
+                    opacity: style.opacity
+                }
+            };
+        }
+    """)
+
+# Exports _________________________________________________________________________________________
+
+## Validation functions
+
+def validate_js(js_code: str) -> JSValidationResult:
+    """
+    Validate JavaScript code for IIFE format, blocked patterns, and readability.
+
+    Args:
+        js_code: The JavaScript code to validate.
+
+    Returns:
+        JSValidationResult with separate errors and warnings lists.
+        Use result.is_valid to check if the code passes validation.
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not js_code or not js_code.strip():
+        errors.append("JavaScript code cannot be empty")
+        return JSValidationResult(errors=errors, warnings=warnings)
+
+    if not re.match(pattern=IIFE_PATTERN, string=js_code, flags=re.DOTALL):
+        errors.append(
+            "JavaScript code must be wrapped in an IIFE: (function() { ... })() or (() => { ... })()"
+        )
+
+    for pattern in DANGEROUS_JS_PATTERNS:
+        if re.search(pattern=pattern, string=js_code, flags=re.MULTILINE):
+            errors.append(f"Blocked pattern detected: {pattern}")
+
+    # readability check; soft warning, not a blocking error
+    first_brace = js_code.find("{")
+    last_brace = js_code.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        body = js_code[first_brace + 1:last_brace]
+        for line in body.split("\n"):
+            if len(line) > _MAX_JS_LINE_LENGTH:
+                warnings.append(
+                    f"Line exceeds {_MAX_JS_LINE_LENGTH} chars. "
+                    "Please reformat with proper line breaks and indentation for readability."
+                )
+                break  # one warning is enough
+
+    return JSValidationResult(errors=errors, warnings=warnings)
+
+
+## Generation functions
+
 def generate_fetch_js(
     fetch_url: str,
     headers: dict,
@@ -337,7 +461,8 @@ def generate_download_js(
     endpoint_credentials: str,
     filename: str,
 ) -> str:
-    """Generate JavaScript code for downloading a file as base64.
+    """
+    Generate JavaScript code for downloading a file as base64.
 
     Args:
         download_url: The URL to download from.
@@ -415,47 +540,9 @@ def generate_download_js(
     return "\n".join(js_lines)
 
 
-def _get_element_profile_js() -> str:
-    """Generate JavaScript helper function to extract element profile.
-
-    Returns:
-        JavaScript function definition for getElementProfile(element).
-    """
-    return """
-    function getElementProfile(el) {
-        const style = window.getComputedStyle(el);
-        const rect = el.getBoundingClientRect();
-        return {
-            tag: el.tagName.toLowerCase(),
-            id: el.id || null,
-            name: el.getAttribute('name') || null,
-            classes: el.className ? el.className.split(/\\s+/).filter(Boolean) : [],
-            type: el.getAttribute('type') || null,
-            placeholder: el.getAttribute('placeholder') || null,
-            value: (el.tagName.toLowerCase() === 'input' || el.tagName.toLowerCase() === 'textarea')
-                ? (el.value ? el.value.substring(0, 100) : null) : null,
-            text: el.textContent ? el.textContent.trim().substring(0, 100) : null,
-            href: el.getAttribute('href') || null,
-            disabled: el.disabled || false,
-            readonly: el.readOnly || false,
-            rect: {
-                x: Math.round(rect.x),
-                y: Math.round(rect.y),
-                width: Math.round(rect.width),
-                height: Math.round(rect.height)
-            },
-            computed: {
-                display: style.display,
-                visibility: style.visibility,
-                opacity: style.opacity
-            }
-        };
-    }
-"""
-
-
 def generate_click_js(selector: str, ensure_visible: bool) -> str:
-    """Generate JavaScript to find element and get click coordinates.
+    """
+    Generate JavaScript to find element and get click coordinates.
 
     Args:
         selector: CSS selector for the element.
@@ -464,63 +551,64 @@ def generate_click_js(selector: str, ensure_visible: bool) -> str:
     Returns:
         JavaScript code that returns element coordinates or error info.
     """
-    return f"""
-(function() {{
-    const selector = {json.dumps(selector)};
-    const element = document.querySelector(selector);
-    {_get_element_profile_js()}
+    return dedent(f"""\
+        (function() {{
+            const selector = {json.dumps(selector)};
+            const element = document.querySelector(selector);
+            {_get_element_profile_js()}
 
-    if (!element) {{
-        const allInputs = Array.from(document.querySelectorAll('input')).map(el => {{
-            return {{
-                name: el.getAttribute('name'),
-                id: el.id,
-                type: el.type,
-                class: el.className
-            }};
-        }}).slice(0, 10);
+            if (!element) {{
+                const allInputs = Array.from(document.querySelectorAll('input')).map(el => {{
+                    return {{
+                        name: el.getAttribute('name'),
+                        id: el.id,
+                        type: el.type,
+                        class: el.className
+                    }};
+                }}).slice(0, 10);
 
-        return {{
-            error: 'Element not found: ' + selector,
-            debug: {{
-                pageTitle: document.title,
-                url: window.location.href,
-                readyState: document.readyState,
-                bodyLength: document.body ? document.body.innerHTML.length : 0,
-                bodyHTML: document.body ? document.body.innerHTML : '',
-                allInputs: allInputs
+                return {{
+                    error: 'Element not found: ' + selector,
+                    debug: {{
+                        pageTitle: document.title,
+                        url: window.location.href,
+                        readyState: document.readyState,
+                        bodyLength: document.body ? document.body.innerHTML.length : 0,
+                        bodyHTML: document.body ? document.body.innerHTML : '',
+                        allInputs: allInputs
+                    }}
+                }};
             }}
-        }};
-    }}
 
-    const style = window.getComputedStyle(element);
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {{
-        return {{ error: 'Element is hidden: ' + selector, element: getElementProfile(element) }};
-    }}
+            const style = window.getComputedStyle(element);
+            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {{
+                return {{ error: 'Element is hidden: ' + selector, element: getElementProfile(element) }};
+            }}
 
-    if ({json.dumps(ensure_visible)}) {{
-        element.scrollIntoView({{ behavior: 'auto', block: 'center', inline: 'center' }});
-    }}
+            if ({json.dumps(ensure_visible)}) {{
+                element.scrollIntoView({{ behavior: 'auto', block: 'center', inline: 'center' }});
+            }}
 
-    const rect = element.getBoundingClientRect();
+            const rect = element.getBoundingClientRect();
 
-    if (rect.width === 0 || rect.height === 0) {{
-        return {{ error: 'Element has no dimensions: ' + selector, element: getElementProfile(element) }};
-    }}
+            if (rect.width === 0 || rect.height === 0) {{
+                return {{ error: 'Element has no dimensions: ' + selector, element: getElementProfile(element) }};
+            }}
 
-    return {{
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-        width: rect.width,
-        height: rect.height,
-        element: getElementProfile(element)
-    }};
-}})()
-"""
+            return {{
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2,
+                width: rect.width,
+                height: rect.height,
+                element: getElementProfile(element)
+            }};
+        }})()
+    """)
 
 
 def generate_type_js(selector: str, clear: bool) -> str:
-    """Generate JavaScript to find and focus an input element.
+    """
+    Generate JavaScript to find and focus an input element.
 
     Args:
         selector: CSS selector for the element.
@@ -529,46 +617,47 @@ def generate_type_js(selector: str, clear: bool) -> str:
     Returns:
         JavaScript code that focuses the element or returns error.
     """
-    return f"""
-(function() {{
-    const selector = {json.dumps(selector)};
-    const element = document.querySelector(selector);
-    {_get_element_profile_js()}
+    return dedent(f"""\
+        (function() {{
+            const selector = {json.dumps(selector)};
+            const element = document.querySelector(selector);
+            {_get_element_profile_js()}
 
-    if (!element) {{
-        return {{ error: 'Element not found: ' + selector }};
-    }}
+            if (!element) {{
+                return {{ error: 'Element not found: ' + selector }};
+            }}
 
-    const style = window.getComputedStyle(element);
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {{
-        return {{ error: 'Element is hidden: ' + selector, element: getElementProfile(element) }};
-    }}
+            const style = window.getComputedStyle(element);
+            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {{
+                return {{ error: 'Element is hidden: ' + selector, element: getElementProfile(element) }};
+            }}
 
-    const tagName = element.tagName.toLowerCase();
-    const isInput = tagName === 'input' || tagName === 'textarea';
-    const isContentEditable = element.isContentEditable;
+            const tagName = element.tagName.toLowerCase();
+            const isInput = tagName === 'input' || tagName === 'textarea';
+            const isContentEditable = element.isContentEditable;
 
-    if (!isInput && !isContentEditable) {{
-        return {{ error: 'Element is not an input, textarea, or contenteditable: ' + selector, element: getElementProfile(element) }};
-    }}
+            if (!isInput && !isContentEditable) {{
+                return {{ error: 'Element is not an input, textarea, or contenteditable: ' + selector, element: getElementProfile(element) }};
+            }}
 
-    if ({json.dumps(clear)}) {{
-        if (isInput) {{
-            element.value = '';
-        }} else if (isContentEditable) {{
-            element.textContent = '';
-        }}
-    }}
+            if ({json.dumps(clear)}) {{
+                if (isInput) {{
+                    element.value = '';
+                }} else if (isContentEditable) {{
+                    element.textContent = '';
+                }}
+            }}
 
-    element.focus();
+            element.focus();
 
-    return {{ success: true, element: getElementProfile(element) }};
-}})()
-"""
+            return {{ success: true, element: getElementProfile(element) }};
+        }})()
+    """)
 
 
 def generate_scroll_element_js(selector: str, delta_x: int, delta_y: int, behavior: str) -> str:
-    """Generate JavaScript to scroll a specific element.
+    """
+    Generate JavaScript to scroll a specific element.
 
     Args:
         selector: CSS selector for the element.
@@ -579,29 +668,29 @@ def generate_scroll_element_js(selector: str, delta_x: int, delta_y: int, behavi
     Returns:
         JavaScript code that scrolls the element.
     """
-    return f"""
-(function() {{
-    const selector = {json.dumps(selector)};
-    const element = document.querySelector(selector);
+    return dedent(f"""\
+        (function() {{
+            const selector = {json.dumps(selector)};
+            const element = document.querySelector(selector);
 
-    if (!element) {{
-        return {{ error: 'Element not found: ' + selector }};
-    }}
+            if (!element) {{
+                return {{ error: 'Element not found: ' + selector }};
+            }}
 
-    const deltaX = {json.dumps(delta_x)};
-    const deltaY = {json.dumps(delta_y)};
+            const deltaX = {json.dumps(delta_x)};
+            const deltaY = {json.dumps(delta_y)};
 
-    if (deltaX !== 0 || deltaY !== 0) {{
-        element.scrollBy({{
-            left: deltaX,
-            top: deltaY,
-            behavior: {json.dumps(behavior)}
-        }});
-    }}
+            if (deltaX !== 0 || deltaY !== 0) {{
+                element.scrollBy({{
+                    left: deltaX,
+                    top: deltaY,
+                    behavior: {json.dumps(behavior)}
+                }});
+            }}
 
-    return {{ success: true }};
-}})()
-"""
+            return {{ success: true }};
+        }})()
+    """)
 
 
 def generate_scroll_window_js(
@@ -611,7 +700,8 @@ def generate_scroll_window_js(
     delta_y: int,
     behavior: str,
 ) -> str:
-    """Generate JavaScript to scroll the window.
+    """
+    Generate JavaScript to scroll the window.
 
     Args:
         x: Absolute X position (or None for relative).
@@ -623,36 +713,37 @@ def generate_scroll_window_js(
     Returns:
         JavaScript code that scrolls the window.
     """
-    return f"""
-(function() {{
-    const x = {json.dumps(x)};
-    const y = {json.dumps(y)};
-    const deltaX = {json.dumps(delta_x)};
-    const deltaY = {json.dumps(delta_y)};
-    const behavior = {json.dumps(behavior)};
+    return dedent(f"""\
+        (function() {{
+            const x = {json.dumps(x)};
+            const y = {json.dumps(y)};
+            const deltaX = {json.dumps(delta_x)};
+            const deltaY = {json.dumps(delta_y)};
+            const behavior = {json.dumps(behavior)};
 
-    if (x !== null || y !== null) {{
-        window.scrollTo({{
-            left: x !== null ? x : window.scrollX,
-            top: y !== null ? y : window.scrollY,
-            behavior: behavior
-        }});
-    }}
-    else if (deltaX !== 0 || deltaY !== 0) {{
-        window.scrollBy({{
-            left: deltaX,
-            top: deltaY,
-            behavior: behavior
-        }});
-    }}
+            if (x !== null || y !== null) {{
+                window.scrollTo({{
+                    left: x !== null ? x : window.scrollX,
+                    top: y !== null ? y : window.scrollY,
+                    behavior: behavior
+                }});
+            }}
+            else if (deltaX !== 0 || deltaY !== 0) {{
+                window.scrollBy({{
+                    left: deltaX,
+                    top: deltaY,
+                    behavior: behavior
+                }});
+            }}
 
-    return {{ success: true }};
-}})()
-"""
+            return {{ success: true }};
+        }})()
+    """)
 
 
 def generate_wait_for_url_js(url_regex: str) -> str:
-    """Generate JavaScript to check if current URL matches a regex.
+    """
+    Generate JavaScript to check if current URL matches a regex.
 
     Args:
         url_regex: Regular expression pattern to match.
@@ -660,23 +751,24 @@ def generate_wait_for_url_js(url_regex: str) -> str:
     Returns:
         JavaScript code that checks URL match.
     """
-    return f"""
-(function() {{
-    const urlRegex = new RegExp({json.dumps(url_regex)});
-    const currentUrl = window.location.href;
-    const matches = urlRegex.test(currentUrl);
+    return dedent(f"""\
+        (function() {{
+            const urlRegex = new RegExp({json.dumps(url_regex)});
+            const currentUrl = window.location.href;
+            const matches = urlRegex.test(currentUrl);
 
-    return {{
-        matches: matches,
-        currentUrl: currentUrl,
-        pattern: {json.dumps(url_regex)}
-    }};
-}})()
-"""
+            return {{
+                matches: matches,
+                currentUrl: currentUrl,
+                pattern: {json.dumps(url_regex)}
+            }};
+        }})()
+    """)
 
 
 def generate_store_in_session_storage_js(key: str, value_json: str) -> str:
-    """Generate JavaScript to store a value in session storage.
+    """
+    Generate JavaScript to store a value in session storage.
 
     Args:
         key: Session storage key.
@@ -685,20 +777,21 @@ def generate_store_in_session_storage_js(key: str, value_json: str) -> str:
     Returns:
         JavaScript code that stores the value.
     """
-    return f"""
-(function() {{
-    try {{
-        window.sessionStorage.setItem({json.dumps(key)}, {json.dumps(value_json)});
-        return {{ ok: true }};
-    }} catch(e) {{
-        return {{ ok: false, error: String(e) }};
-    }}
-}})()
-"""
+    return dedent(f"""\
+        (function() {{
+            try {{
+                window.sessionStorage.setItem({json.dumps(key)}, {json.dumps(value_json)});
+                return {{ ok: true }};
+            }} catch(e) {{
+                return {{ ok: false, error: String(e) }};
+            }}
+        }})()
+    """)
 
 
 def generate_get_session_storage_length_js(key: str) -> str:
-    """Generate JavaScript to get length of a session storage value.
+    """
+    Generate JavaScript to get length of a session storage value.
 
     Args:
         key: Session storage key.
@@ -710,7 +803,8 @@ def generate_get_session_storage_length_js(key: str) -> str:
 
 
 def generate_get_session_storage_chunk_js(key: str, offset: int, end: int) -> str:
-    """Generate JavaScript to get a chunk of a session storage value.
+    """
+    Generate JavaScript to get a chunk of a session storage value.
 
     Args:
         key: Session storage key.
@@ -720,16 +814,17 @@ def generate_get_session_storage_chunk_js(key: str, offset: int, end: int) -> st
     Returns:
         JavaScript code that returns the substring.
     """
-    return f"""
-(function() {{
-    const val = window.sessionStorage.getItem({json.dumps(key)});
-    return val.substring({offset}, {end});
-}})()
-"""
+    return dedent(f"""\
+        (function() {{
+            const val = window.sessionStorage.getItem({json.dumps(key)});
+            return val.substring({offset}, {end});
+        }})()
+    """)
 
 
 def generate_get_download_chunk_js(offset: int, end: int) -> str:
-    """Generate JavaScript to get a chunk of download data.
+    """
+    Generate JavaScript to get a chunk of download data.
 
     Args:
         offset: Start offset.
@@ -742,7 +837,8 @@ def generate_get_download_chunk_js(offset: int, end: int) -> str:
 
 
 def generate_get_html_js(selector: str | None = None) -> str:
-    """Generate JavaScript to get HTML content.
+    """
+    Generate JavaScript to get HTML content.
 
     Args:
         selector: CSS selector for element, or None for full page.
@@ -836,5 +932,3 @@ def generate_js_evaluate_wrapper_js(
         execution_error: __executionError
     }};
 }})()"""
-
-

@@ -10,6 +10,7 @@ Contains:
 
 import json
 from functools import wraps
+from textwrap import dedent
 from typing import Any, Callable, Type
 
 from openai import OpenAI
@@ -17,15 +18,16 @@ from openai.types.responses import Response
 from pydantic import BaseModel
 from toon import encode
 
-from bluebox.config import Config
+from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.exceptions import LLMStructuredOutputError
 from bluebox.utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(name=__name__)
 
 
 def token_optimized(func: Callable[..., dict[str, Any]]) -> Callable[..., str]:
-    """Decorator that encodes dict outputs with toon for token efficiency.
+    """
+    Decorator that encodes dict outputs with toon for token efficiency.
 
     Use this decorator on tool functions that return dict outputs where
     structural integrity is not critical. The output will be encoded
@@ -49,7 +51,7 @@ def manual_llm_parse_text_to_model(
     pydantic_model: Type[BaseModel],
     client: OpenAI,
     context: str | None = None,
-    llm_model: str = "gpt-5-mini",
+    llm_model: LLMModel = OpenAIModel.GPT_5_MINI,
     n_tries: int = 3,
 ) -> BaseModel:
     """
@@ -65,11 +67,11 @@ def manual_llm_parse_text_to_model(
         BaseModel: The parsed pydantic model.
     """
     # define system prompt
-    SYSTEM_PROMPT = f"""
-    You are a helpful assistant that extracts information and structures it into a JSON object.
-    You must output ONLY the valid JSON object that matches the provided schema.
-    Do not include any explanations, markdown formatting, or code blocks.
-    """
+    SYSTEM_PROMPT = dedent("""\
+        You are a helpful assistant that extracts information and structures it into a JSON object.
+        You must output ONLY the valid JSON object that matches the provided schema.
+        Do not include any explanations, markdown formatting, or code blocks.
+    """)
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -80,17 +82,16 @@ def manual_llm_parse_text_to_model(
     ]
 
     for current_try in range(n_tries):
-        
         try:
             response = client.chat.completions.create(
                 model=llm_model,
                 messages=messages,
                 response_format={"type": "json_object"},
             )
-            
+
             response_content = response.choices[0].message.content
             messages.append({"role": "assistant", "content": response_content})
-            
+
             # Basic cleanup to ensure we just get the JSON
             clean_content = response_content.strip()
             if clean_content.startswith("```json"):
@@ -105,12 +106,18 @@ def manual_llm_parse_text_to_model(
             return parsed_model
 
         except Exception as e:
-            logger.warning(f"Try {current_try + 1} failed with error: {e}")
+            logger.warning("Try %s failed with error: %s", current_try + 1, e)
             messages.append(
-                {"role": "user", "content": f"Previous attempt failed with error: {e}. Please try again and ensure the JSON matches the schema exactly."}
+                {
+                    "role": "user",
+                    "content": (
+                        f"Previous attempt failed with error: {e}. "
+                        "Please try again and ensure the JSON matches the schema exactly."
+                    )
+                },
             )
 
-    logger.error(f"Failed to parse text to model after {n_tries} tries")
+    logger.error("Failed to parse text to model after %s tries", n_tries)
     raise LLMStructuredOutputError(f"Failed to parse text to model after {n_tries} tries")
 
 

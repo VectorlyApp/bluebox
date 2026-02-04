@@ -136,14 +136,14 @@ class OpenAIClient(AbstractLLMVendorClient):
                 converted_msg = {k: v for k, v in msg.items() if k != "tool_calls"}
                 converted_msg["tool_calls"] = [
                     {
-                        "id": tc.get("call_id"),
+                        "id": tc.get("call_id") or f"call_{idx}",
                         "type": "function",
                         "function": {
                             "name": tc.get("name"),
                             "arguments": json.dumps(tc.get("arguments", {})) if isinstance(tc.get("arguments"), dict) else tc.get("arguments", "{}"),
                         },
                     }
-                    for tc in msg["tool_calls"]
+                    for idx, tc in enumerate(msg["tool_calls"])
                 ]
                 converted.append(converted_msg)
             else:

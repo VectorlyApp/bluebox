@@ -40,6 +40,8 @@ def get_browser_websocket_url(remote_debugging_address: str) -> str:
         RuntimeError: If unable to get the WebSocket URL from the browser.
     """
     base = remote_debugging_address.rstrip("/")
+    if not base.startswith(("http://", "https://")):
+        base = f"http://{base}"
     try:
         ver = requests.get(f"{base}/json/version", timeout=5)
         ver.raise_for_status()
@@ -131,6 +133,8 @@ def get_existing_tabs(remote_debugging_address: str) -> list[dict]:
         List of target info dicts with keys: id, title, url, type, etc.
     """
     base = remote_debugging_address.rstrip("/")
+    if not base.startswith(("http://", "https://")):
+        base = f"http://{base}"
     try:
         response = requests.get(f"{base}/json/list", timeout=5)
         response.raise_for_status()

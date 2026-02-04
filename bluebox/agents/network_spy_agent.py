@@ -13,10 +13,10 @@ Contains:
 """
 
 import json
-import textwrap
 from datetime import datetime
 from typing import Any, Callable
 from urllib.parse import urlparse, parse_qs
+from textwrap import dedent
 
 from pydantic import BaseModel, Field
 
@@ -40,13 +40,11 @@ from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
-
 logger = get_logger(name=__name__)
 
 
 class DiscoveredEndpoint(BaseModel):
     """A single discovered API endpoint."""
-
     request_ids: list[str] = Field(
         description="HAR entry request_ids for this endpoint"
     )
@@ -68,7 +66,6 @@ class EndpointDiscoveryResult(BaseModel):
     Contains one or more discovered endpoints needed to complete the user's task.
     Multiple endpoints may be needed for multi-step flows (e.g., auth -> search -> details).
     """
-
     endpoints: list[DiscoveredEndpoint] = Field(
         description="List of discovered endpoints needed for the task"
     )
@@ -80,7 +77,6 @@ class DiscoveryFailureResult(BaseModel):
 
     Returned when the agent cannot find the appropriate endpoints after exhaustive search.
     """
-
     reason: str = Field(
         description="Explanation of why the endpoint could not be found"
     )
@@ -102,7 +98,7 @@ class NetworkSpyAgent:
     to search and analyze network traffic.
     """
 
-    SYSTEM_PROMPT: str = textwrap.dedent("""
+    SYSTEM_PROMPT: str = dedent("""
         You are a network traffic analyst specializing in HAR (HTTP Archive) file analysis.
 
         ## Your Role
@@ -146,7 +142,7 @@ class NetworkSpyAgent:
         - Always use search_har_by_terms first when looking for specific data
     """).strip()
 
-    AUTONOMOUS_SYSTEM_PROMPT: str = textwrap.dedent("""
+    AUTONOMOUS_SYSTEM_PROMPT: str = dedent("""
         You are a network traffic analyst that autonomously identifies API endpoints.
 
         ## Your Mission
@@ -245,7 +241,6 @@ class NetworkSpyAgent:
         self._discovery_result: EndpointDiscoveryResult | None = None
         self._discovery_failure: DiscoveryFailureResult | None = None
         self._finalize_tool_registered: bool = False
-
         logger.debug(
             "Instantiated NetworkSpyAgent with model: %s, chat_thread_id: %s, entries: %d",
             llm_model,

@@ -41,8 +41,8 @@ class OpenAIModel(StrEnum):
 #     CLAUDE_HAIKU_4_5 = "claude-haiku-4-5-20251001"
 
 
-# LLMModel type; only OpenAI models for now
-type LLMModel = OpenAIModel
+# LLMModel is only OpenAI models for now
+LLMModel = OpenAIModel
 
 
 # Build model to vendor lookup from OpenAI models only
