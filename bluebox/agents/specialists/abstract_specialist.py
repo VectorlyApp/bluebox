@@ -27,6 +27,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Callable, NamedTuple, get_type_hints
 
+from pydantic import BaseModel, TypeAdapter, ValidationError
+
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatRole,
@@ -44,7 +46,6 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.llm_client import LLMClient
 from bluebox.llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
 from bluebox.utils.logger import get_logger
-from pydantic import BaseModel, TypeAdapter, ValidationError
 
 logger = get_logger(name=__name__)
 
