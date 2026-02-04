@@ -37,6 +37,24 @@ DOCKER_MEMORY_LIMIT: str = os.getenv("BLUEBOX_SANDBOX_MEMORY", "128m")
 # Cache for Docker availability check
 _docker_available: bool | None = None
 
+# Lambda executor function (registered by cloud deployments at startup)
+_lambda_executor_fn: Any | None = None
+
+
+def register_lambda_executor(fn: Any) -> None:
+    """
+    Register the Lambda executor function for BLUEBOX_SANDBOX_MODE=lambda.
+
+    This should be called at application startup in cloud deployments.
+    The function must have signature: (code: str, extra_globals: dict | None) -> dict
+
+    Args:
+        fn: The Lambda executor function to register.
+    """
+    global _lambda_executor_fn
+    _lambda_executor_fn = fn
+    logger.debug("Lambda executor registered")
+
 
 # Blocked modules - dangerous for file/network/system access
 BLOCKED_MODULES: frozenset[str] = frozenset({
@@ -338,14 +356,17 @@ def execute_python_sandboxed(
     if safety_error:
         return {"error": f"Blocked: {safety_error}"}
 
-    # Lambda mode: delegate to AWS Lambda executor
+    # Lambda mode: use registered Lambda executor (set via register_lambda_executor at startup)
     if SANDBOX_MODE == "lambda":
-        try:
-            from utils.aws.lambda_code_executor import execute_python_via_lambda
-            logger.debug("Executing code via AWS Lambda sandbox")
-            return execute_python_via_lambda(code, extra_globals)
-        except ImportError as e:
-            return {"error": f"Lambda sandbox requested but lambda_code_executor not available: {e}"}
+        if _lambda_executor_fn is None:
+            return {
+                "error": (
+                    "BLUEBOX_SANDBOX_MODE=lambda requires a registered executor. "
+                    "For local development, use BLUEBOX_SANDBOX_MODE=docker or BLUEBOX_SANDBOX_MODE=blocklist"
+                )
+            }
+        logger.debug("Executing code via AWS Lambda sandbox")
+        return _lambda_executor_fn(code, extra_globals)
 
     # Determine execution mode for docker/blocklist/auto
     use_docker = False
