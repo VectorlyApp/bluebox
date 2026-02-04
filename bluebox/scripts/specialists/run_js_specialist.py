@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-scripts/specialists/js_specialist.py
+bluebox/scripts/specialists/run_js_specialist.py
 
 Interactive CLI for the JS Specialist agent.
 
 Usage:
-    python scripts/specialists/js_specialist.py
-
-    python scripts/specialists/js_specialist.py \
+    bluebox-js-specialist
+    bluebox-js-specialist --dom-snapshots-dir ./cdp_captures/dom/
+    bluebox-js-specialist \
         --dom-snapshots-dir ./cdp_captures/dom/ \
         --javascript-events-jsonl-path ./cdp_captures/network/javascript_events.jsonl \
         --network-events-jsonl-path ./cdp_captures/network/events.jsonl \

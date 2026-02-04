@@ -1,5 +1,5 @@
 """
-bluebox/cli/discover_routine.py
+bluebox/scripts/discover_routine.py
 
 Script for discovering routines from the network transactions.
 """
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
-# Package root for code_paths (bluebox/cli/ -> bluebox/)
+# Package root for code_paths (bluebox/scripts/ -> bluebox/)
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
 from bluebox.config import Config

@@ -62,9 +62,23 @@ dev = [
 ]
 
 [project.scripts]
-bluebox-monitor = "bluebox.cli.browser_monitor:main"
-bluebox-discover = "bluebox.cli.discover_routine:main"
-bluebox-execute = "bluebox.cli.execute_routine:main"
+# Core commands
+bluebox-monitor = "bluebox.scripts.browser_monitor:main"
+bluebox-discover = "bluebox.scripts.discover_routine:main"
+bluebox-execute = "bluebox.scripts.execute_routine:main"
+
+# Guide agent
+bluebox-guide = "bluebox.scripts.run_guide_agent:main"
+
+# Specialist agents
+bluebox-network-spy = "bluebox.scripts.specialists.run_network_spy:main"
+bluebox-trace-hound = "bluebox.scripts.specialists.run_trace_hound:main"
+bluebox-js-specialist = "bluebox.scripts.specialists.run_js_specialist:main"
+bluebox-interaction-specialist = "bluebox.scripts.specialists.run_interaction_specialist:main"
+bluebox-docs-digger = "bluebox.scripts.specialists.run_docs_digger:main"
+
+# Dev tools
+bluebox-benchmarks = "bluebox.scripts.run_benchmarks:main"
 
 [project.urls]
 Homepage = "https://vectorly.app"

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-scripts/specialists/interaction_specialist.py
+bluebox/scripts/specialists/run_interaction_specialist.py
 
 Interactive CLI for the Interaction Specialist agent.
 
 Usage:
-    python scripts/specialists/interaction_specialist.py --jsonl-path ./cdp_captures/interaction/events.jsonl
+    bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl
+    bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl --model gpt-5.1
 """
 
 import argparse

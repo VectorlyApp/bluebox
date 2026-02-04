@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """
-Script to run routine discovery benchmarks from S3 zip files.
+bluebox/scripts/run_benchmarks.py
+
+Run routine discovery benchmarks from S3 zip files.
 
 Downloads CDP capture zips from S3, extracts them, runs routine discovery
 and evaluation tests, then saves results.
+
+Usage:
+    bluebox-benchmarks
+    bluebox-benchmarks --verbose
+    bluebox-benchmarks --skip-llm-tests
 """
 
 import argparse

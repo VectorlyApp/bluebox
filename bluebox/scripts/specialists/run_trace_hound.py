@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-scripts/specialists/trace_hound.py
+bluebox/scripts/specialists/run_trace_hound.py
 
 # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
 Interactive CLI for the Trace Hound agent - traces where tokens/values originated from.
 
 Usage:
-    python scripts/specialists/trace_hound.py \
+    bluebox-trace-hound --network-jsonl ./cdp_captures/network/events.jsonl
+    bluebox-trace-hound --storage-jsonl ./cdp_captures/storage/events.jsonl
+    bluebox-trace-hound \
         --network-jsonl ./cdp_captures/network/events.jsonl \
         --storage-jsonl ./cdp_captures/storage/events.jsonl \
         --window-props-jsonl ./cdp_captures/window_properties/events.jsonl

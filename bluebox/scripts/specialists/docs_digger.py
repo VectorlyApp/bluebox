@@ -1,20 +1,19 @@
-#!/usr/bin/env python3
-"""
-scripts/specialists/docs_digger.py
+    #!/usr/bin/env python3
+    """
+    bluebox/scripts/specialists/docs_digger.py
 
-# NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
+    # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
-Interactive CLI for the Docs Digger agent - searches documentation and code.
+    Interactive CLI for the Docs Digger agent - searches documentation and code.
 
-Usage:
-    # Run with defaults (bluebox agent_docs and core modules)
-    python scripts/specialists/docs_digger.py
+    Usage:
+        # Run with defaults (bluebox agent_docs and core modules)
+        bluebox-docs-digger
 
-    # Or specify custom paths
-    python scripts/specialists/docs_digger.py \
-        --docs-paths "docs/**/*.md" \
-        --code-paths "src/**/*.py"
-"""
+        # Or specify custom paths
+        bluebox-docs-digger --docs-paths "docs/**/*.md" --code-paths "src/**/*.py"
+        bluebox-docs-digger --model gpt-5.1
+    """
 
 import argparse
 import sys

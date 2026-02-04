@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-scripts/agents/run_guide_agent.py
+bluebox/scripts/run_guide_agent.py
 
 Interactive terminal interface for the Guide Agent.
 Guides users through creating web automation routines.
 
 Usage:
     # Basic usage (starts interactive session)
-    python scripts/agents/run_guide_agent.py
+    bluebox-guide
 
     # With existing CDP captures
-    python scripts/agents/run_guide_agent.py --cdp-captures-dir ./cdp_captures
+    bluebox-guide --cdp-captures-dir ./cdp_captures
 
     # Suppress logs for cleaner output
-    python scripts/agents/run_guide_agent.py -q
+    bluebox-guide -q
 
     # With all options
-    python scripts/agents/run_guide_agent.py \
+    bluebox-guide \
         --cdp-captures-dir ./cdp_captures \
         --output-dir ./guide_output \
         --model gpt-5.1 \

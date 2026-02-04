@@ -1,5 +1,5 @@
 """
-bluebox/cli/browser_monitor.py
+bluebox/scripts/browser_monitor.py
 
 CDP-based web scraper that blocks trackers and captures network requests.
 """
