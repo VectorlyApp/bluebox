@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-bluebox/scripts/specialists/run_network_spy.py
+bluebox/scripts/specialists/run_network_specialist.py
 
 # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
-Interactive CLI for the Network Spy agent.
+Interactive CLI for the NetworkSpecialist.
 
 Usage:
-    bluebox-network-spy --jsonl-path ./cdp_captures/network/events.jsonl
-    bluebox-network-spy --jsonl-path ./cdp_captures/network/events.jsonl --model gpt-5.1
+    bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl
+    bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl --model gpt-5.1
 """
 
 import argparse

@@ -42,7 +42,7 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus, SpecialistAgentType
 from bluebox.data_models.orchestration.state import SuperDiscoveryState, SuperDiscoveryPhase
 from bluebox.data_models.routine.routine import Routine
-from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
+from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader, FileType
 from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
@@ -754,8 +754,6 @@ class SuperDiscoveryAgent(AbstractAgent):
         """
         if not self._documentation_data_loader:
             return {"error": "No documentation data store available"}
-
-        from bluebox.llms.data_loaders.documentation_data_loader import FileType
 
         file_type_enum = None
         if file_type:
