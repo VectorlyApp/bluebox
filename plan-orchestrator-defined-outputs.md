@@ -2,7 +2,7 @@
 
 ## Summary
 
-Allow `SuperDiscoveryAgent` to define what result structure a specialist should return at task creation time, wrapping results in a universal container with complaints/errors/warnings.
+Allow `SuperDiscoveryAgent` (the orchestrator LLM) to **dynamically define** what result structure a specialist should return at task creation time. The orchestrator decides the schema on each call based on what information it needs. Results are wrapped in a universal container with notes.
 
 ## Current State
 
@@ -108,43 +108,53 @@ This is a clean break — all specialist-specific result models are removed. All
 
 ## Schema Validation Approach
 
-Use `jsonschema` library to validate `data` against `output_schema` in `_finalize_with_data()`. On validation failure, return error to LLM so it can fix the data.
+Use `jsonschema` library to validate `output` against `output_schema` in `_finalize_with_output()`. On validation failure, return error to LLM so it can fix the output.
 
-## Example Usage
+## Example: How the Orchestrator LLM Uses This
 
+The orchestrator LLM (SuperDiscoveryAgent) **dynamically decides** what schema it needs based on the task at hand. The schema is not hardcoded — the orchestrator constructs it when calling `create_task`:
+
+```
+Orchestrator LLM thinks: "I need to find the search API endpoint. I want the specialist
+to return the URL, HTTP method, and any required headers."
+
+Orchestrator LLM calls create_task:
+  agent_type: "network_spy"
+  prompt: "Find the API endpoint that handles train searches"
+  output_schema: {
+    "type": "object",
+    "properties": {
+      "url": {"type": "string", "description": "Full endpoint URL"},
+      "method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE"]},
+      "required_headers": {"type": "object", "description": "Headers needed for the request"}
+    },
+    "required": ["url", "method"]
+  }
+  output_description: "Return the search endpoint details"
+```
+
+The specialist sees the schema in its system prompt and uses `finalize_with_output()` to return matching data:
+
+```
+Specialist calls finalize_with_output:
+  output: {
+    "url": "https://api.amtrak.com/v2/search",
+    "method": "POST",
+    "required_headers": {"x-api-key": "...", "content-type": "application/json"}
+  }
+```
+
+Result returned to orchestrator:
 ```python
-# SuperDiscoveryAgent creates task with expected schema
-@agent_tool()
-def _create_task(self, ...):
-    task = Task(
-        agent_type="network_spy",
-        prompt="Find the search API endpoint",
-        output_schema={
-            "type": "object",
-            "properties": {
-                "url": {"type": "string"},
-                "method": {"type": "string", "enum": ["GET", "POST"]},
-                "headers": {"type": "object"},
-            },
-            "required": ["url", "method"],
-        },
-        output_description="Return the main API endpoint details",
-    )
-
-# Specialist receives schema in system prompt, uses generic finalize:
-# "finalize_with_output(output={'url': '...', 'method': 'POST', 'headers': {...}})"
-
-# Result returned to orchestrator:
 {
-    "output": {"url": "...", "method": "POST", "headers": {...}},
+    "output": {"url": "...", "method": "POST", "required_headers": {...}},
     "success": True,
-    "notes": [
-        "Response body was truncated, may be missing fields",
-        "Found 3 similar endpoints, returned most likely match",
-    ],
+    "notes": ["Found 3 similar endpoints, returned the primary search API"],
     "failure_reason": None,
 }
 ```
+
+The key point: **the orchestrator chooses the schema dynamically based on what it needs**, not based on a predefined model.
 
 ## Verification
 
