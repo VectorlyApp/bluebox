@@ -102,18 +102,36 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     SYSTEM_PROMPT: str = dedent("""\
         You are an expert at analyzing network traffic and building web automation routines.
-        You coordinate specialist agents to help you discover and construct routines.
+        You coordinate specialist agents to discover and construct routines.
 
         ## Your Task
         Analyze captured browser network data to create a reusable routine that accomplishes the user's task.
 
+        ## CRITICAL: You MUST Delegate to Specialists
+
+        **DO NOT** try to do everything yourself with direct tools. You are an ORCHESTRATOR.
+        Your job is to coordinate specialists, not to manually inspect every transaction.
+
+        **ALWAYS delegate to specialists for:**
+        - Finding the right endpoint → use `network_specialist`
+        - Tracing dynamic token origins → use `value_trace_resolver`
+        - Browser JavaScript needs → use `js_specialist`
+        - UI interactions → use `interaction_specialist`
+
         ## Workflow
         Follow these phases in order:
 
-        ### Phase 1: Identify Transaction
-        1. Use `list_transactions` to see available transactions
-        2. Use `get_transaction` to examine promising candidates
-        3. Use `record_identified_endpoint` when you find the transaction that accomplishes the user's task
+        ### Phase 1: Identify Transaction (DELEGATE TO network_specialist)
+        1. **REQUIRED**: Create a task for network_specialist to find the endpoint:
+           ```
+           create_task(
+               agent_type="network_specialist",
+               prompt="Find the API endpoint that accomplishes: <user's task>. Search for relevant keywords."
+           )
+           ```
+        2. Call `run_pending_tasks()` to execute
+        3. Review results with `get_task_result(task_id)`
+        4. Use `record_identified_endpoint` with the specialist's findings
 
         ### Phase 2: Process Transactions (BFS Queue)
         For each transaction in the queue:
@@ -122,26 +140,34 @@ class SuperDiscoveryAgent(AbstractAgent):
            - PARAMETER: User input (search_query, item_id) - things the user explicitly provides
            - DYNAMIC_TOKEN: Auth/session values (CSRF, JWT, session_id) - require resolution
            - STATIC_VALUE: Constants (app version, User-Agent) - can be hardcoded
-        3. For each DYNAMIC_TOKEN, use `scan_for_value` to find its source
-        4. Use `record_resolved_variable` to record where each token comes from
+        3. **For DYNAMIC_TOKENs - DELEGATE TO value_trace_resolver**:
+           ```
+           create_task(
+               agent_type="value_trace_resolver",
+               prompt="Trace the origin of value '<observed_value>' (variable: <name>). Find where it comes from."
+           )
+           ```
+        4. Call `run_pending_tasks()` then `get_task_result(task_id)` to get findings
+        5. Use `record_resolved_variable` to record where each token comes from
            - If source is another transaction, it will be auto-added to the queue
            - IMPORTANT: If value is found in BOTH storage AND a prior transaction,
              use source_type='transaction' as the primary source. Session storage may
              be empty in a fresh session - prefer network sources for reliability.
-        5. Use `mark_transaction_processed` when done with a transaction (all variables extracted/resolved)
-        6. Continue until queue is empty
+        6. Use `mark_transaction_processed` when done with a transaction (all variables extracted/resolved)
+        7. Continue until queue is empty
 
         ### Phase 3: Construct and Finalize Routine
-        1. Use `get_discovery_context` to see all processed data
+        1. Use `get_discovery_context` to see all processed data (includes CRITICAL_OBSERVED_VALUES)
         2. **IMPORTANT**: If you need help with routine structure, check the documentation:
            - Use search_documentation to find examples and schemas for routine construction
            - run_pending_tasks() then get_task_result() to get examples
            - This is MUCH better than search_documentation which may return 0 results
-        3. Use `construct_routine` to build the routine from all processed data
-           - For each parameter, specify `observed_value` from the extracted variable's observed_value
-           - Example: parameter name "origin" with observed_value "LAX" (from extracted variable's observed_value)
-           - Observed values are embedded in the routine for immediate testing
-        4. construct_routine AUTOMATICALLY executes the routine and returns results
+        3. Use `construct_routine` with TWO required arguments:
+           - `routine`: the routine definition (name, description, parameters, operations)
+           - `test_parameters`: dict mapping parameter names to observed values
+           - Example: test_parameters={{"origin": "NYC", "destination": "BOS"}}
+           - Get these values from extracted variables' observed_value fields (see CRITICAL_OBSERVED_VALUES)
+        4. construct_routine AUTOMATICALLY executes the routine with test_parameters and returns results
         5. Review execution results:
            - If execution_success=True: call `done`
            - If execution_success=False: fix issues and call construct_routine again
@@ -164,17 +190,19 @@ class SuperDiscoveryAgent(AbstractAgent):
         - Examples: App version, User-Agent, clientName, timeZone, language codes
         - Rule: If you can hardcode it and it will work across sessions, it's STATIC
 
-        ## Specialist Agents (Optional - Use When Needed)
+        ## Specialist Agents (REQUIRED for Discovery)
 
-        You have 4 specialist agents available. Delegate to them when you need help:
+        You MUST use these specialists - they have specialized tools and context you don't have direct access to:
 
-        ### 1. network_specialist - Endpoint Discovery Expert
-        - Searches network traffic by keywords to find relevant API endpoints
-        - Use when you need help finding which endpoint does what
+        ### 1. network_specialist - Endpoint Discovery Expert (REQUIRED for Phase 1)
+        - Has specialized search tools for network traffic analysis
+        - Can find endpoints by semantic meaning, not just keyword matching
+        - **ALWAYS use for initial endpoint identification**
 
-        ### 2. value_trace_resolver - Value Origin Detective
-        - Traces where values come from across transactions
-        - Use when scan_for_value isn't enough or you need deep analysis
+        ### 2. value_trace_resolver - Value Origin Detective (REQUIRED for DYNAMIC_TOKENs)
+        - Traces value origins across ALL data sources simultaneously
+        - Has deep analysis capabilities beyond simple scan_for_value
+        - **ALWAYS use for resolving dynamic tokens**
 
         ### 3. js_specialist - Browser JavaScript Expert
         - Writes IIFE JavaScript for DOM manipulation and extraction
@@ -184,7 +212,10 @@ class SuperDiscoveryAgent(AbstractAgent):
         - Handles browser UI interactions (clicks, typing, etc.)
         - Use when routine needs to interact with page elements
 
-        To delegate: create_task(agent_type="network_specialist", prompt="..."), then run_pending_tasks()
+        **How to delegate:**
+        1. `create_task(agent_type="network_specialist", prompt="...")`
+        2. `run_pending_tasks()`
+        3. `get_task_result(task_id)` to review findings
 
         ## Important Notes
         - Focus on the user's INTENT, not literal wording
@@ -341,8 +372,13 @@ class SuperDiscoveryAgent(AbstractAgent):
         Returns:
             The discovered Routine, or None if discovery failed.
         """
-        # Seed the conversation
-        initial_message = f"TASK: {self._task}\n\nAnalyze the network captures and build a routine."
+        # Seed the conversation with emphasis on delegation
+        initial_message = (
+            f"TASK: {self._task}\n\n"
+            "IMPORTANT: Start by delegating to network_specialist to find the relevant endpoint. "
+            "Call create_task(agent_type='network_specialist', prompt='Find the API endpoint for: <task>') "
+            "then run_pending_tasks(). DO NOT manually browse transactions yourself."
+        )
         self._add_chat(ChatRole.USER, initial_message)
 
         # Run the main loop
@@ -393,26 +429,28 @@ class SuperDiscoveryAgent(AbstractAgent):
                     phase = self._discovery_state.phase
                     if phase == DiscoveryPhase.PLANNING:
                         guidance = (
-                            "Phase: PLANNING. Skip manual inspection and delegate immediately. "
-                            "Create specialist tasks (network_specialist, value_trace_resolver) to analyze the data."
+                            "Phase: PLANNING. You MUST delegate to specialists! "
+                            "Call create_task(agent_type='network_specialist', prompt='Find the API endpoint for: <task>') "
+                            "then run_pending_tasks(). DO NOT use list_transactions or get_transaction directly."
                         )
                     elif phase == DiscoveryPhase.DISCOVERING:
                         task_status = self._orchestration_state.get_queue_status()
                         if task_status["pending_tasks"] > 0:
                             guidance = (
                                 f"Phase: DISCOVERING. You have {task_status['pending_tasks']} pending tasks. "
-                                "Call run_pending_tasks to execute them."
+                                "Call run_pending_tasks() to execute them."
                             )
                         elif task_status["completed_tasks"] > 0:
                             guidance = (
-                                "Phase: DISCOVERING. Tasks completed. Review results with get_task_result, "
-                                "then record findings using record_identified_endpoint, record_extracted_variable, "
-                                "and record_resolved_variable tools."
+                                "Phase: DISCOVERING. Tasks completed. Review results with get_task_result(task_id), "
+                                "then record findings using record_identified_endpoint, record_extracted_variable. "
+                                "For DYNAMIC_TOKENs, delegate to value_trace_resolver - don't use scan_for_value directly."
                             )
                         else:
                             guidance = (
-                                "Phase: DISCOVERING. No tasks created yet. "
-                                "Create specialist tasks to analyze the data."
+                                "Phase: DISCOVERING. No tasks created yet! You MUST delegate: "
+                                "create_task(agent_type='network_specialist', prompt='...') then run_pending_tasks(). "
+                                "DO NOT manually inspect transactions - let specialists do the work."
                             )
                     elif phase == DiscoveryPhase.CONSTRUCTING:
                         if not self._discovery_state.production_routine:
@@ -938,7 +976,7 @@ class SuperDiscoveryAgent(AbstractAgent):
     ## Tools - Data Access
 
     @agent_tool(
-        description="List all available transaction IDs from the network captures.",
+        description="[PREFER network_specialist] List transaction IDs. For finding the RIGHT endpoint, delegate to network_specialist instead - it can search semantically.",
         parameters={"type": "object", "properties": {}, "required": []},
         availability=lambda self: self._network_data_loader is not None,
     )
@@ -963,7 +1001,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         }
 
     @agent_tool(
-        description="Get full details of a transaction.",
+        description="Get full details of a transaction. Use AFTER network_specialist identifies the right transaction ID.",
         parameters={
             "type": "object",
             "properties": {
@@ -1004,7 +1042,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         }
 
     @agent_tool(
-        description="Search for a value across all data sources (network, storage, window properties).",
+        description="[PREFER value_trace_resolver SPECIALIST] Basic value search. For DYNAMIC_TOKENs, delegate to value_trace_resolver instead - it has deeper analysis capabilities.",
         parameters={
             "type": "object",
             "properties": {
@@ -1524,8 +1562,20 @@ class SuperDiscoveryAgent(AbstractAgent):
     @agent_tool()
     def _get_discovery_context(self) -> dict[str, Any]:
         """Get complete discovery context for routine construction."""
+        # Build CRITICAL observed values reminder - this goes at the TOP
+        observed_values_for_params: dict[str, str] = {}
+        for tx_id, tx_data in self._discovery_state.transaction_data.items():
+            if tx_data.get("extracted_variables"):
+                for var in tx_data["extracted_variables"].variables:
+                    if var.type == VariableType.PARAMETER and var.observed_value:
+                        observed_values_for_params[var.name] = var.observed_value
+
         context: dict[str, Any] = {
             "phase": self._discovery_state.phase.value,
+            "CRITICAL_OBSERVED_VALUES": {
+                "message": "YOU MUST INCLUDE THESE observed_value FIELDS WHEN CONSTRUCTING ROUTINE PARAMETERS!",
+                "parameters_with_observed_values": observed_values_for_params,
+            },
             "root_transaction": None,
             "processed_transactions": [],
             "all_variables": {
@@ -1621,7 +1671,7 @@ class SuperDiscoveryAgent(AbstractAgent):
                         "description": {"type": "string", "description": "What the routine does"},
                         "parameters": {
                             "type": "array",
-                            "description": "Input parameters. Each needs: name, type (string|number|boolean|date|enum), description, observed_value.",
+                            "description": "Input parameters. Each needs: name, type (string|number|boolean|date|enum), description.",
                             "items": {"type": "object"},
                         },
                         "operations": {
@@ -1640,23 +1690,41 @@ class SuperDiscoveryAgent(AbstractAgent):
                     },
                     "required": ["name", "description", "parameters", "operations"],
                 },
+                "test_parameters": {
+                    "type": "object",
+                    "description": (
+                        "REQUIRED: Test parameter values from observed data. "
+                        "Map of parameter_name -> observed_value. "
+                        "Example: {\"origin\": \"NYC\", \"destination\": \"BOS\"}. "
+                        "Get these from the extracted variables' observed_value fields."
+                    ),
+                    "additionalProperties": {"type": "string"},
+                },
             },
-            "required": ["routine"],
+            "required": ["routine", "test_parameters"],
         },
         availability=lambda self: (
             self._discovery_state.root_transaction is not None and
             not self._discovery_state.transaction_queue
         ),
     )
-    def _construct_routine(self, routine: dict[str, Any]) -> dict[str, Any]:
+    def _construct_routine(
+        self,
+        routine: dict[str, Any],
+        test_parameters: dict[str, str],
+    ) -> dict[str, Any]:
         """
         Construct a routine from discovered data. Auto-executes if browser connected.
 
         Args:
             routine: The routine dict with name, description, parameters, and operations.
+            test_parameters: Map of parameter names to observed values for testing.
         """
         self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
         self._discovery_state.construction_attempts += 1
+
+        # Store test_parameters in discovery state for later saving
+        self._discovery_state.test_parameters = test_parameters
 
         try:
             routine_obj = Routine.model_validate(routine)
@@ -1679,15 +1747,9 @@ class SuperDiscoveryAgent(AbstractAgent):
                 # Import here to avoid circular dependency
                 from bluebox.llms.tools.execute_routine_tool import execute_routine
 
-                # Build test params from observed values
-                test_params = {}
-                for param in routine_obj.parameters:
-                    if param.observed_value:
-                        test_params[param.name] = param.observed_value
-
                 result = execute_routine(
                     routine=routine_obj.model_dump(),
-                    parameters=test_params,
+                    parameters=test_parameters,
                     remote_debugging_address=self._remote_debugging_address,
                     timeout=60,
                     close_tab_when_done=True,

@@ -85,6 +85,10 @@ class RoutineDiscoveryState(BaseModel):
         default=None,
         description="Final production routine"
     )
+    test_parameters: dict[str, str] = Field(
+        default_factory=dict,
+        description="Test parameter values (observed values) for routine execution"
+    )
 
     # Progress tracking
     phase: DiscoveryPhase = Field(
@@ -195,6 +199,7 @@ class RoutineDiscoveryState(BaseModel):
         self.all_resolved_variables = []
         self.dev_routine = None
         self.production_routine = None
+        self.test_parameters = {}
         self.phase = DiscoveryPhase.PLANNING
         self.identification_attempts = 0
         self.construction_attempts = 0

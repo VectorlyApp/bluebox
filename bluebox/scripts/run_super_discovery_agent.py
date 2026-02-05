@@ -8,12 +8,14 @@ Usage:
     # Basic usage (starts interactive session)
     bluebox-super-discovery --cdp-captures-dir ./cdp_captures
     
-
     # Run discovery immediately
     bluebox-super-discovery --cdp-captures-dir ./cdp_captures --task "Search for trains"
 
     # Suppress logs for cleaner output
     bluebox-super-discovery --cdp-captures-dir ./cdp_captures -q
+    
+    # Run with routine validation (will validate the routine after discovery)
+    bluebox-super-discovery --cdp-captures-dir ./cdp_captures --remote-debugging-address http://127.0.0.1:9222
 
 Commands:
     /discover <task>         Start routine discovery for the given task
@@ -394,8 +396,8 @@ class TerminalSuperDiscoveryChat:
                 routine_path.write_text(json.dumps(routine.model_dump(), indent=2))
                 console.print(f"[dim]Saved to: {routine_path}[/dim]")
 
-                # Save test parameters
-                test_params = {p.name: p.observed_value or "" for p in routine.parameters}
+                # Save test parameters from discovery state (provided by agent)
+                test_params = self._current_agent._discovery_state.test_parameters
                 test_params_path = self._output_dir / "test_parameters.json"
                 test_params_path.write_text(json.dumps(test_params, indent=2))
                 console.print(f"[dim]Test params: {test_params_path}[/dim]")
