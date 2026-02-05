@@ -298,11 +298,17 @@ class AbstractAgent(ABC):
                 else:
                     validated_arguments[param_name] = value
         except ValidationError as e:
-            # extract readable error message
+            # extract readable error message with full details
             errors = e.errors()
             if errors:
                 err = errors[0]
-                msg = f"{param_name}: expected {err.get('type', 'valid type')}, got {type(value).__name__}"
+                loc = ".".join(str(x) for x in err.get("loc", []))
+                err_type = err.get("type", "validation_error")
+                err_msg = err.get("msg", "")
+                if loc:
+                    msg = f"{param_name}.{loc}: {err_msg} (type: {err_type})"
+                else:
+                    msg = f"{param_name}: {err_msg} (type: {err_type})"
             else:
                 msg = str(e)
             return {"error": f"Invalid argument type: {msg}"}

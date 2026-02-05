@@ -1595,33 +1595,44 @@ class SuperDiscoveryAgent(AbstractAgent):
     ## Tools - Routine Construction
 
     @agent_tool(
+        description="Construct a routine from discovered data. Auto-executes if browser connected.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "routine": {
+                    "type": "object",
+                    "description": "The routine object with name, description, parameters, and operations"
+                }
+            },
+            "required": ["routine"]
+        },
         availability=lambda self: (
             self._discovery_state.root_transaction is not None and
             not self._discovery_state.transaction_queue
         ),
     )
-    def _construct_routine(self, routine: Routine) -> dict[str, Any]:
+    def _construct_routine(self, routine: dict[str, Any]) -> dict[str, Any]:
         """
         Construct a routine from discovered data. Auto-executes if browser connected.
 
         Args:
-            routine: The routine to construct.
+            routine: The routine dict with name, description, parameters, and operations.
         """
         self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
         self._discovery_state.construction_attempts += 1
 
         try:
-            routine = Routine(
-                name=routine.name,
-                description=routine.description,
-                parameters=routine.parameters,
-                operations=routine.operations,
+            routine_obj = Routine(
+                name=routine.get("name", ""),
+                description=routine.get("description", ""),
+                parameters=routine.get("parameters", []),
+                operations=routine.get("operations", []),
             )
 
             # Validate routine structure and collect warnings
-            structure_warnings = routine.get_structure_warnings()
+            structure_warnings = routine_obj.get_structure_warnings()
 
-            self._discovery_state.production_routine = routine
+            self._discovery_state.production_routine = routine_obj
 
             # Auto-execute if browser connected
             if self._remote_debugging_address:
@@ -1632,12 +1643,12 @@ class SuperDiscoveryAgent(AbstractAgent):
 
                 # Build test params from observed values
                 test_params = {}
-                for param in routine.parameters:
+                for param in routine_obj.parameters:
                     if param.observed_value:
                         test_params[param.name] = param.observed_value
 
                 result = execute_routine(
-                    routine=routine.model_dump(),
+                    routine=routine_obj.model_dump(),
                     parameters=test_params,
                     remote_debugging_address=self._remote_debugging_address,
                     timeout=60,
@@ -1648,21 +1659,21 @@ class SuperDiscoveryAgent(AbstractAgent):
                     exec_result = result.get("result")
                     if exec_result and exec_result.ok and exec_result.data is not None:
                         return {
-                            "routine_name": routine.name,
+                            "routine_name": routine_obj.name,
                             "data_preview": str(exec_result.data)[:500],
                             "warnings": structure_warnings,
                             "message": "Routine constructed and validated successfully! Ensure that the returned data is correct for the original task (IF NOT REVIEW DOCS and UPDATE ROUTINE). Call done() to complete.",
                         }
                     else:
                         return {
-                            "routine_name": routine.name,
+                            "routine_name": routine_obj.name,
                             "exec_result": exec_result.model_dump() if exec_result else None,
                             "warnings": structure_warnings,
                             "message": "Routine executed but the 'data' field is missing or empty. Ensure the routine returns the data required by the original task",
                         }
                 else:
                     return {
-                        "routine_name": routine.name,
+                        "routine_name": routine_obj.name,
                         "error": result.get("error", "Unknown error"),
                         "warnings": structure_warnings,
                         "message": "Routine execution failed. Fix issues and try again. review docs if necessary",
@@ -1670,7 +1681,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             else:
                 # No browser - just construct
                 return {
-                    "routine_name": routine.name,
+                    "routine_name": routine_obj.name,
                     "warnings": structure_warnings,
                     "message": "Routine constructed (no browser for validation). Call done() to complete",
                 }
