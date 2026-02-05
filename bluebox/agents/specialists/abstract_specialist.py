@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from enum import StrEnum
-from typing import Any, Callable, NamedTuple
+from typing import Callable, ClassVar, NamedTuple
 
 from pydantic import BaseModel
 
@@ -74,6 +74,21 @@ class AbstractSpecialist(AbstractAgent):
       - Autonomous mode with iteration tracking and finalize gating
       - Conversational mode for interactive chat
     """
+
+    # Class-level tracking of all specialist subclasses
+    _subclasses: ClassVar[list[type[AbstractSpecialist]]] = []
+
+    def __init_subclass__(cls: type[AbstractSpecialist], **kwargs: NamedTuple) -> None:
+        """Register subclass when it's defined."""
+        super().__init_subclass__(**kwargs)
+        # Only register concrete specialists (not intermediate ABCs)
+        if not cls.__name__.startswith("Abstract"):
+            cls._subclasses.append(cls)
+
+    @classmethod
+    def get_all_subclasses(cls) -> list[type[AbstractSpecialist]]:
+        """Return a copy of all registered specialist subclasses."""
+        return cls._subclasses.copy()
 
     ## Additional abstract methods for autonomous mode
 

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from bluebox.data_models.cdp import UIInteractionEvent
+from bluebox.llms.infra.abstract_data_store import AbstractDataStore
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -51,7 +52,7 @@ class InteractionStats:
         return "\n".join(lines)
 
 
-class InteractionsDataStore:
+class InteractionsDataStore(AbstractDataStore[UIInteractionEvent, InteractionStats]):
     """
     Data store for UI interaction events.
 
@@ -68,13 +69,13 @@ class InteractionsDataStore:
         Args:
             events: List of UIInteractionEvent objects.
         """
-        self._events: list[UIInteractionEvent] = events
+        self._entries: list[UIInteractionEvent] = events
         self._stats: InteractionStats = InteractionStats()
         self._compute_stats()
 
         logger.debug(
             "InteractionsDataStore initialized with %d events",
-            len(self._events),
+            len(self._entries),
         )
 
     ## Class methods
@@ -114,13 +115,23 @@ class InteractionsDataStore:
 
     @property
     def events(self) -> list[UIInteractionEvent]:
-        """Return all interaction events."""
-        return self._events
+        """Return all interaction events (alias for entries)."""
+        return self._entries
 
-    @property
-    def stats(self) -> InteractionStats:
-        """Return computed statistics."""
-        return self._stats
+    ## Abstract method implementations
+
+    def get_entry_id(self, entry: UIInteractionEvent) -> str:
+        """Get a unique identifier for the interaction event."""
+        el = entry.element
+        return el.css_path or f"{el.tag_name}:{el.id or ''}:{el.name or ''}"
+
+    def get_searchable_content(self, entry: UIInteractionEvent) -> str | None:
+        """Get searchable content from the element value."""
+        return entry.element.value
+
+    def get_entry_url(self, entry: UIInteractionEvent) -> str | None:
+        """Get the URL from the entry."""
+        return entry.url
 
     ## Private methods
 
@@ -130,7 +141,7 @@ class InteractionsDataStore:
         urls: set[str] = set()
         element_keys: set[str] = set()
 
-        for event in self._events:
+        for event in self._entries:
             type_counts[event.type.value] += 1
             urls.add(event.url)
 
@@ -140,7 +151,7 @@ class InteractionsDataStore:
             element_keys.add(key)
 
         self._stats = InteractionStats(
-            total_events=len(self._events),
+            total_events=len(self._entries),
             unique_urls=len(urls),
             events_by_type=dict(type_counts),
             unique_elements=len(element_keys),
@@ -159,7 +170,7 @@ class InteractionsDataStore:
             List of matching events.
         """
         types_lower = {t.lower() for t in types}
-        return [e for e in self._events if e.type.value.lower() in types_lower]
+        return [e for e in self._entries if e.type.value.lower() in types_lower]
 
     def filter_by_element(
         self,
@@ -181,7 +192,7 @@ class InteractionsDataStore:
             List of matching events.
         """
         results: list[UIInteractionEvent] = []
-        for event in self._events:
+        for event in self._entries:
             el = event.element
             if tag_name and el.tag_name.lower() != tag_name.lower():
                 continue
@@ -204,7 +215,7 @@ class InteractionsDataStore:
             element type, css_path, and interaction type.
         """
         results: list[dict[str, Any]] = []
-        for event in self._events:
+        for event in self._entries:
             if event.type.value not in ("input", "change"):
                 continue
             el = event.element
@@ -230,7 +241,7 @@ class InteractionsDataStore:
         """
         element_data: dict[str, dict[str, Any]] = {}
 
-        for event in self._events:
+        for event in self._entries:
             el = event.element
             key = el.css_path or f"{el.tag_name}:{el.id or ''}:{el.name or ''}"
 
@@ -267,6 +278,6 @@ class InteractionsDataStore:
         Returns:
             Full event dict, or None if index is out of range.
         """
-        if index < 0 or index >= len(self._events):
+        if index < 0 or index >= len(self._entries):
             return None
-        return self._events[index].model_dump()
+        return self._entries[index].model_dump()

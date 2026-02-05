@@ -37,7 +37,7 @@ from bluebox.data_models.llms.interaction import (
     ErrorEmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
-from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus, AgentType
+from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus, SpecialistAgentType
 from bluebox.data_models.orchestration.state import SuperDiscoveryState, SuperDiscoveryPhase
 from bluebox.data_models.routine.routine import Routine
 from bluebox.llms.infra.js_data_store import JSDataStore
@@ -313,16 +313,16 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         return agent
 
-    def _create_specialist(self, agent_type: AgentType) -> AbstractSpecialist:
+    def _create_specialist(self, agent_type: SpecialistAgentType) -> AbstractSpecialist:
         """Create a specialist instance based on type."""
-        if agent_type == AgentType.JS_SPECIALIST:
+        if agent_type == SpecialistAgentType.JS_SPECIALIST:
             return JSSpecialist(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
                 remote_debugging_address=self._remote_debugging_address,
             )
 
-        elif agent_type == AgentType.TRACE_HOUND:
+        elif agent_type == SpecialistAgentType.TRACE_HOUND:
             return TraceHoundAgent(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
@@ -389,7 +389,7 @@ class SuperDiscoveryAgent(AbstractAgent):
     ## Tools - Task Management
 
     # Available agent types for task creation
-    AVAILABLE_AGENT_TYPES = {AgentType.JS_SPECIALIST, AgentType.TRACE_HOUND}
+    AVAILABLE_AGENT_TYPES = {SpecialistAgentType.JS_SPECIALIST, SpecialistAgentType.TRACE_HOUND}
 
     @agent_tool()
     def _create_task(
@@ -409,7 +409,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             max_loops: Maximum LLM iterations for this task (default 5).
         """
         try:
-            parsed_type = AgentType(agent_type)
+            parsed_type = SpecialistAgentType(agent_type)
         except ValueError:
             valid_types = [t.value for t in self.AVAILABLE_AGENT_TYPES]
             return {"error": f"Invalid agent_type. Must be one of: {valid_types}"}

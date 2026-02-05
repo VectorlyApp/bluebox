@@ -9,9 +9,6 @@ by FileEventWriter) and provides JS-specific query methods.
 
 import fnmatch
 import json
-import threading
-
-import regex
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +16,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from bluebox.data_models.cdp import NetworkTransactionEvent
+from bluebox.llms.infra.abstract_data_store import AbstractDataStore
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -56,7 +54,7 @@ class JSFileStats:
         return f"{num_bytes:.1f} TB"
 
 
-class JSDataStore:
+class JSDataStore(AbstractDataStore[NetworkTransactionEvent, JSFileStats]):
     """
     Data store for JavaScript files from browser captures.
 
@@ -121,178 +119,21 @@ class JSDataStore:
             hosts=dict(hosts),
         )
 
-    @property
-    def entries(self) -> list[NetworkTransactionEvent]:
-        """Return all JS file entries."""
-        return self._entries
+    # Abstract method implementations
 
-    @property
-    def stats(self) -> JSFileStats:
-        """Return computed statistics."""
-        return self._stats
+    def get_entry_id(self, entry: NetworkTransactionEvent) -> str:
+        """Get the request_id as the unique identifier."""
+        return entry.request_id
 
-    def search_by_terms(
-        self,
-        terms: list[str],
-        top_n: int = 20,
-    ) -> list[dict[str, Any]]:
-        """
-        Search JS file response bodies by terms, ranked by relevance.
+    def get_searchable_content(self, entry: NetworkTransactionEvent) -> str | None:
+        """Get the response body as searchable content."""
+        return entry.response_body
 
-        Args:
-            terms: List of search terms (case-insensitive).
-            top_n: Number of top results to return.
+    def get_entry_url(self, entry: NetworkTransactionEvent) -> str | None:
+        """Get the URL from the entry."""
+        return entry.url
 
-        Returns:
-            List of dicts with keys: id, url, unique_terms_found, total_hits, score.
-        """
-        results: list[dict[str, Any]] = []
-        terms_lower = [t.lower() for t in terms]
-        num_terms = len(terms_lower)
-
-        if num_terms == 0:
-            return results
-
-        for entry in self._entries:
-            if not entry.response_body:
-                continue
-
-            content_lower = entry.response_body.lower()
-            unique_terms_found = 0
-            total_hits = 0
-
-            for term in terms_lower:
-                count = content_lower.count(term)
-                if count > 0:
-                    unique_terms_found += 1
-                    total_hits += count
-
-            if unique_terms_found == 0:
-                continue
-
-            avg_hits = total_hits / num_terms
-            score = avg_hits * unique_terms_found
-
-            results.append({
-                "id": entry.request_id,
-                "url": entry.url,
-                "unique_terms_found": unique_terms_found,
-                "total_hits": total_hits,
-                "score": score,
-            })
-
-        results.sort(key=lambda x: x["score"], reverse=True)
-        return results[:top_n]
-
-    def search_by_regex(
-        self,
-        pattern: str,
-        top_n: int = 20,
-        max_matches_per_file: int = 10,
-        context_chars: int = 80,
-        timeout_seconds: float = 15.0,
-    ) -> dict[str, Any]:
-        """
-        Search JS file response bodies by regex pattern.
-
-        Args:
-            pattern: Regex pattern to search for.
-            top_n: Max number of files to return.
-            max_matches_per_file: Max matches to return per file.
-            context_chars: Characters of context around each match.
-            timeout_seconds: Max time to spend searching.
-
-        Returns:
-            Dict with keys: files (list of matches), timed_out (bool), error (str | None).
-        """
-        try:
-            compiled = regex.compile(pattern, flags=regex.IGNORECASE)
-        except regex.error as e:
-            logger.error("Invalid regex: %s", e)
-            return {
-                "files": [],
-                "timed_out": False,
-                "error": f"Invalid regex: {e}",
-            }
-
-        # Per-file timeout to catch catastrophic backtracking
-        per_file_timeout = min(5.0, timeout_seconds / 2)
-
-        results: list[dict[str, Any]] = []
-        timed_out = False
-        stop_event = threading.Event()
-
-        def _search_worker() -> None:
-            nonlocal timed_out
-            for entry in self._entries:
-                if stop_event.is_set():
-                    timed_out = True
-                    break
-
-                if not entry.response_body:
-                    continue
-
-                content = entry.response_body
-                matches: list[dict[str, Any]] = []
-
-                try:
-                    for match in compiled.finditer(content, timeout=per_file_timeout):
-                        if stop_event.is_set():
-                            timed_out = True
-                            break
-                        if len(matches) >= max_matches_per_file:
-                            break
-
-                        start = match.start()
-                        end = match.end()
-
-                        # extract context snippet
-                        snippet_start = max(0, start - context_chars)
-                        snippet_end = min(len(content), end + context_chars)
-                        snippet = content[snippet_start:snippet_end]
-
-                        # add ellipsis markers if truncated
-                        prefix = "..." if snippet_start > 0 else ""
-                        suffix = "..." if snippet_end < len(content) else ""
-
-                        matches.append({
-                            "match": match.group(),
-                            "position": start,
-                            "snippet": f"{prefix}{snippet}{suffix}",
-                        })
-                except TimeoutError:
-                    logger.warning("Regex timed out on file %s, skipping", entry.url)
-
-                if matches:
-                    results.append({
-                        "request_id": entry.request_id,
-                        "url": entry.url,
-                        "match_count": len(matches),
-                        "matches": matches,
-                    })
-
-                    if len(results) >= top_n:
-                        break
-
-        # run search in thread with timeout
-        thread = threading.Thread(
-            target=_search_worker,
-            daemon=True,
-        )
-        thread.start()
-        thread.join(timeout=timeout_seconds)
-
-        if thread.is_alive():
-            logger.warning("Regex search timed out after %s seconds. Returning partial results.", timeout_seconds)
-            stop_event.set()
-            thread.join(timeout=1.0)  # give it a moment to stop
-            timed_out = True
-
-        return {
-            "files": results,
-            "timed_out": timed_out,
-            "error": None,
-        }
+    # JS-specific methods
 
     def get_file(self, request_id: str) -> NetworkTransactionEvent | None:
         """Get a JS file entry by request_id."""

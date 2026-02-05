@@ -7,12 +7,34 @@ Tasks represent units of work delegated to specialist subagents.
 SubAgents are persistent specialist instances that can handle multiple tasks.
 """
 
+import secrets
+import string
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
-from uuid import uuid4
 
 from pydantic import BaseModel, Field
+
+
+# Short ID alphabet: alphanumeric, no ambiguous chars (0/O, 1/l/I)
+_SHORT_ID_ALPHABET = string.ascii_lowercase + string.digits
+_SHORT_ID_ALPHABET = _SHORT_ID_ALPHABET.replace("0", "").replace("o", "").replace("l", "").replace("1", "")
+
+
+def generate_short_id(length: int = 6) -> str:
+    """
+    Generate a short, LLM-friendly ID.
+
+    Uses lowercase alphanumeric chars (excluding ambiguous 0/o/l/1).
+    6 chars = ~2 billion combinations, sufficient for task tracking.
+
+    Args:
+        length: Number of characters (default 6).
+
+    Returns:
+        Short alphanumeric ID like "k7x9m2".
+    """
+    return "".join(secrets.choice(_SHORT_ID_ALPHABET) for _ in range(length))
 
 
 class TaskStatus(StrEnum):
@@ -24,7 +46,7 @@ class TaskStatus(StrEnum):
     FAILED = "failed"             # Failed with an error
 
 
-class AgentType(StrEnum):
+class SpecialistAgentType(StrEnum):
     """Types of specialist agents available for task delegation."""
     JS_SPECIALIST = "js_specialist"
     NETWORK_SPY = "network_spy"
@@ -40,8 +62,8 @@ class Task(BaseModel):
     Tasks track the full lifecycle from creation through completion,
     including pause/resume support for long-running operations.
     """
-    id: str = Field(default_factory=lambda: str(uuid4()))
-    agent_type: AgentType = Field(description="Type of specialist to handle this task")
+    id: str = Field(default_factory=generate_short_id)
+    agent_type: SpecialistAgentType = Field(description="Type of specialist to handle this task")
     agent_id: str | None = Field(
         default=None,
         description="ID of the subagent to use. None means create new instance."
@@ -80,8 +102,8 @@ class SubAgent(BaseModel):
     SubAgents maintain state across tasks, allowing conversation history
     and learned context to persist.
     """
-    id: str = Field(default_factory=lambda: str(uuid4()))
-    type: AgentType = Field(description="The type of specialist this agent is")
+    id: str = Field(default_factory=generate_short_id)
+    type: SpecialistAgentType = Field(description="The type of specialist this agent is")
     llm_model: str = Field(description="The LLM model used by this agent")
     task_ids: list[str] = Field(
         default_factory=list,

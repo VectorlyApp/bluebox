@@ -15,6 +15,7 @@ from bluebox.data_models.cdp import (
     WindowPropertyChangeType,
     WindowPropertyEvent,
 )
+from bluebox.llms.infra.abstract_data_store import AbstractDataStore
 from bluebox.utils.data_utils import read_jsonl
 from bluebox.utils.logger import get_logger
 
@@ -47,7 +48,7 @@ class WindowPropertyStats:
         ])
 
 
-class WindowPropertyDataStore:
+class WindowPropertyDataStore(AbstractDataStore[WindowPropertyEvent, WindowPropertyStats]):
     """
     Data store for window property events.
 
@@ -80,14 +81,14 @@ class WindowPropertyDataStore:
                 logger.warning("Failed to validate line %d: %s", line_num + 1, e)
                 continue
 
-        self._stats = self._compute_stats()
+        self._compute_stats()
 
         logger.info(
             "WindowPropertyDataStore initialized with %d events",
             len(self._entries),
         )
 
-    def _compute_stats(self) -> WindowPropertyStats:
+    def _compute_stats(self) -> None:
         """Compute summary statistics."""
         urls: set[str] = set()
         paths: set[str] = set()
@@ -108,7 +109,7 @@ class WindowPropertyDataStore:
                 elif change.change_type == WindowPropertyChangeType.DELETED:
                     deleted += 1
 
-        return WindowPropertyStats(
+        self._stats = WindowPropertyStats(
             total_events=len(self._entries),
             total_changes=total_changes,
             changes_added=added,
@@ -118,15 +119,25 @@ class WindowPropertyDataStore:
             unique_property_paths=len(paths),
         )
 
-    @property
-    def entries(self) -> list[WindowPropertyEvent]:
-        """Return all window property events."""
-        return self._entries
+    # Abstract method implementations
 
-    @property
-    def stats(self) -> WindowPropertyStats:
-        """Return computed statistics."""
-        return self._stats
+    def get_entry_id(self, entry: WindowPropertyEvent) -> str:
+        """Get a unique identifier for the event."""
+        return f"{entry.timestamp}:{entry.url}"
+
+    def get_searchable_content(self, entry: WindowPropertyEvent) -> str | None:
+        """Get searchable content from all change values."""
+        parts = []
+        for change in entry.changes:
+            if change.value is not None:
+                parts.append(str(change.value))
+        return " ".join(parts) if parts else None
+
+    def get_entry_url(self, entry: WindowPropertyEvent) -> str | None:
+        """Get the URL from the entry."""
+        return entry.url
+
+    # Window property-specific methods
 
     def get_entry(self, index: int) -> WindowPropertyEvent | None:
         """Get entry by index."""

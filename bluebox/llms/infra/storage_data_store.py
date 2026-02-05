@@ -8,12 +8,12 @@ methods for token tracing - finding where values originated from.
 """
 
 import json
-from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from bluebox.data_models.cdp import StorageEvent, StorageEventType
+from bluebox.llms.infra.abstract_data_store import AbstractDataStore
 from bluebox.utils.data_utils import read_jsonl
 from bluebox.utils.logger import get_logger
 
@@ -46,7 +46,7 @@ class StorageStats:
         ])
 
 
-class StorageDataStore:
+class StorageDataStore(AbstractDataStore[StorageEvent, StorageStats]):
     """
     Data store for browser storage events.
 
@@ -79,14 +79,14 @@ class StorageDataStore:
                 logger.warning("Failed to validate line %d: %s", line_num + 1, e)
                 continue
 
-        self._stats = self._compute_stats()
+        self._compute_stats()
 
         logger.info(
             "StorageDataStore initialized with %d events",
             len(self._entries),
         )
 
-    def _compute_stats(self) -> StorageStats:
+    def _compute_stats(self) -> None:
         """Compute summary statistics."""
         origins: set[str] = set()
         keys: set[str] = set()
@@ -110,7 +110,7 @@ class StorageDataStore:
             elif entry.type in StorageEventType.indexed_db_types():
                 indexeddb_count += 1
 
-        return StorageStats(
+        self._stats = StorageStats(
             total_events=len(self._entries),
             cookie_events=cookie_count,
             local_storage_events=local_count,
@@ -120,15 +120,22 @@ class StorageDataStore:
             unique_keys=len(keys),
         )
 
-    @property
-    def entries(self) -> list[StorageEvent]:
-        """Return all storage events."""
-        return self._entries
+    # Abstract method implementations
 
-    @property
-    def stats(self) -> StorageStats:
-        """Return computed statistics."""
-        return self._stats
+    def get_entry_id(self, entry: StorageEvent) -> str:
+        """Get a composite identifier for the storage event."""
+        return f"{entry.origin}:{entry.key}:{entry.type}"
+
+    def get_searchable_content(self, entry: StorageEvent) -> str | None:
+        """Get searchable content from all value fields."""
+        parts = []
+        for field_name in StorageEvent.SEARCHABLE_FIELDS:
+            val = getattr(entry, field_name)
+            if val is not None:
+                parts.append(val if isinstance(val, str) else json.dumps(val))
+        return " ".join(parts) if parts else None
+
+    # Storage-specific methods
 
     def get_entry(self, index: int) -> StorageEvent | None:
         """Get entry by index."""

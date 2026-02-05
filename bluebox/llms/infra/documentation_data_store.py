@@ -13,6 +13,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from bluebox.llms.infra.abstract_data_store import AbstractDataStore
 from bluebox.utils.data_utils import (
     format_bytes,
     parse_markdown_summary,
@@ -101,7 +102,7 @@ class DocumentationStats:
         return "\n".join(lines)
 
 
-class DocumentationDataStore:
+class DocumentationDataStore(AbstractDataStore[FileEntry, DocumentationStats]):
     """
     Data store for documentation and code file analysis.
 
@@ -152,15 +153,17 @@ class DocumentationDataStore:
             self._stats.total_code,
         )
 
-    @property
-    def entries(self) -> list[FileEntry]:
-        """Return all file entries."""
-        return self._entries
+    # Abstract method implementations
 
-    @property
-    def stats(self) -> DocumentationStats:
-        """Return computed statistics."""
-        return self._stats
+    def get_entry_id(self, entry: FileEntry) -> str:
+        """Get the file path as the unique identifier."""
+        return str(entry.path)
+
+    def get_searchable_content(self, entry: FileEntry) -> str | None:
+        """Get the file content as searchable content."""
+        return entry.content
+
+    # Documentation-specific properties
 
     @property
     def documentation_files(self) -> list[FileEntry]:
