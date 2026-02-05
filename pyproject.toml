@@ -67,7 +67,7 @@ dev = [
 # Core commands
 bluebox-monitor = "bluebox.scripts.browser_monitor:main"
 bluebox-discover = "bluebox.scripts.discover_routine:main"
-bluebox-super-discover = "bluebox.scripts.super_discover_routine:main"
+bluebox-super-discovery = "bluebox.scripts.run_super_discovery_agent:main"
 bluebox-execute = "bluebox.scripts.execute_routine:main"
 
 # Guide agent

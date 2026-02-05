@@ -1,11 +1,11 @@
 """
-bluebox/scripts/super_discover_routine.py
+bluebox/scripts/run_super_discovery_agent.py
 
-Script for discovering routines using the SuperDiscoveryAgent orchestrator.
+Run the SuperDiscoveryAgent orchestrator for routine discovery.
 
 Usage:
-    bluebox-super-discover --task "Search for flights" --cdp-captures-dir ./cdp_captures
-    bluebox-super-discover --task "Search for flights" \
+    bluebox-super-discovery --task "Search for flights" --cdp-captures-dir ./cdp_captures
+    bluebox-super-discovery --task "Search for flights" \
         --network-jsonl ./cdp_captures/network/events.jsonl \
         --storage-jsonl ./cdp_captures/storage/events.jsonl
 """
