@@ -130,12 +130,16 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         ### Phase 3: Construct and Finalize Routine
         1. Use `get_discovery_context` to see all processed data
-        2. Use `construct_routine` to build the routine from all processed data
+        2. **IMPORTANT**: If you need help with routine structure, use docs_digger specialist:
+           - create_task(agent_type="docs_digger", prompt="Find complete example routines with fetch operations. Show the full structure including parameters and operations.")
+           - run_pending_tasks() then get_task_result() to get examples
+           - This is MUCH better than search_documentation which may return 0 results
+        3. Use `construct_routine` to build the routine from all processed data
            - For each parameter, specify `observed_value` from the extracted variable's observed_value
            - Example: parameter name "origin" with observed_value "LAX" (from extracted variable's observed_value)
            - Observed values are embedded in the routine for immediate testing
-        3. construct_routine AUTOMATICALLY executes the routine and returns results
-        4. Review execution results:
+        4. construct_routine AUTOMATICALLY executes the routine and returns results
+        5. Review execution results:
            - If execution_success=True: call `done`
            - If execution_success=False: fix issues and call construct_routine again
 
@@ -1019,7 +1023,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             },
             "required": ["transaction_id", "name", "type", "observed_value", "requires_dynamic_resolution"]
         },
-        availability=True,
+        availability=lambda self: self._discovery_state.root_transaction is not None,
     )
     def _record_extracted_variable(
         self,
@@ -1135,7 +1139,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             },
             "required": ["variable_name", "transaction_id", "source_type"]
         },
-        availability=True,
+        availability=lambda self: self._discovery_state.root_transaction is not None,
     )
     def _record_resolved_variable(
         self,
@@ -1504,7 +1508,10 @@ class SuperDiscoveryAgent(AbstractAgent):
             },
             "required": ["transaction_id", "reason"]
         },
-        availability=lambda self: self._network_data_loader is not None,
+        availability=lambda self: (
+            self._network_data_loader is not None and
+            self._discovery_state.root_transaction is not None
+        ),
     )
     def _add_transaction_to_queue(
         self,
@@ -1534,7 +1541,7 @@ class SuperDiscoveryAgent(AbstractAgent):
     @agent_tool(
         description="Get current queue status.",
         parameters={"type": "object", "properties": {}, "required": []},
-        availability=True,
+        availability=lambda self: self._discovery_state.root_transaction is not None,
     )
     def _get_queue_status(self) -> dict[str, Any]:
         """Get current queue status."""
@@ -1552,7 +1559,10 @@ class SuperDiscoveryAgent(AbstractAgent):
             },
             "required": ["transaction_id"]
         },
-        availability=True,
+        availability=lambda self: (
+            self._discovery_state.root_transaction is not None and
+            (self._discovery_state.current_transaction is not None or len(self._discovery_state.transaction_queue) > 0)
+        ),
     )
     def _mark_transaction_complete(self, transaction_id: str) -> dict[str, Any]:
         """
@@ -1726,7 +1736,14 @@ The backslash-quote \\"{{param}}\\" is MANDATORY! Parameter names must match exa
             },
             "required": ["routine"]
         },
-        availability=True,
+        availability=lambda self: (
+            # Must have root transaction
+            self._discovery_state.root_transaction is not None and
+            # Transaction queue must be empty (all dependencies processed)
+            len(self._discovery_state.transaction_queue) == 0 and
+            # Must have processed at least the root transaction
+            len(self._discovery_state.processed_transactions) > 0
+        ),
     )
     def _construct_routine(
         self,
@@ -1851,12 +1868,24 @@ The backslash-quote \\"{{param}}\\" is MANDATORY! Parameter names must match exa
                 )
                 return result
 
-            # Execution SUCCESS!
+            # Execution ran without errors, but check if data was actually returned
+            if routine_exec_result.data is None:
+                result["execution_success"] = False
+                result["execution_error"] = "Routine executed but returned NO DATA. The return operation is likely missing or incorrect."
+                result["message"] = (
+                    "Routine constructed and executed, but returned NO DATA (data=None). "
+                    "This means the routine is incomplete or has a missing/incorrect return operation. "
+                    "Fix the routine to actually return data, then call construct_routine again. "
+                    "DO NOT call done until data is returned!"
+                )
+                return result
+
+            # Execution SUCCESS with data!
             result["execution_success"] = True
-            result["execution_data_preview"] = str(routine_exec_result.data)[:500] if routine_exec_result.data else None
+            result["execution_data_preview"] = str(routine_exec_result.data)[:500]
             result["message"] = (
                 "Routine constructed and executed SUCCESSFULLY! "
-                "The routine works correctly. You can now call done to complete discovery."
+                "The routine works correctly and returned data. You can now call done to complete discovery."
             )
             return result
 
@@ -1987,7 +2016,10 @@ The backslash-quote \\"{{param}}\\" is MANDATORY! Parameter names must match exa
     @agent_tool(
         description="Mark discovery as complete. Call this ONLY after construct_routine shows execution_success=True.",
         parameters={"type": "object", "properties": {}, "required": []},
-        availability=True,
+        availability=lambda self: (
+            self._discovery_state.production_routine is not None and
+            self._discovery_state.phase == DiscoveryPhase.VALIDATING
+        ),
     )
     def _done(self) -> dict[str, Any]:
         """Mark discovery as complete. Call this ONLY after construct_routine shows execution_success=True."""

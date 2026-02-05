@@ -64,7 +64,7 @@ def main() -> None:
     parser.add_argument("--js-jsonl", type=str, default=None, help="Path to JavaScript events JSONL file.")
 
     # Output and model options
-    parser.add_argument("--output-dir", type=str, default="./super_discovery_output", help="Output directory.")
+    parser.add_argument("--output-dir", type=str, default="./routine_discovery_output", help="Output directory.")
     parser.add_argument("--llm-model", type=str, default="gpt-5.1", help="LLM model for orchestrator.")
     parser.add_argument("--subagent-llm-model", type=str, default=None, help="LLM model for subagents (defaults to --llm-model).")
     parser.add_argument("--remote-debugging-address", type=str, default=None, help="Chrome remote debugging address (e.g., http://127.0.0.1:9222).")
