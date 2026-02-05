@@ -114,13 +114,21 @@ AI agents that power routine discovery and conversational interactions:
 - `bluebox/agents/guide_agent.py` - Conversational agent for guiding users through routine creation/editing (maintains chat history, dynamic tool registration)
 
 **LLM Infrastructure:**
-- `bluebox/llms/infra/data_store.py` - Data stores for CDP captures and vectorstore management (used by both agents)
+- `bluebox/llms/data_loaders/` - Specialized data loaders for CDP capture analysis:
+  - `NetworkDataLoader` - HTTP request/response transactions
+  - `JSDataLoader` - JavaScript files
+  - `StorageDataLoader` - Cookies, localStorage, sessionStorage, IndexedDB
+  - `WindowPropertyDataLoader` - Window property changes
+  - `InteractionsDataLoader` - UI interaction events
+  - `DocumentationDataLoader` - Documentation files
+- `bluebox/llms/infra/data_store.py` - Legacy data stores (soon to be deprecated)
 
 **Import patterns:**
 ```python
 from bluebox.agents.guide_agent import GuideAgent
 from bluebox.agents.routine_discovery_agent import RoutineDiscoveryAgent
-from bluebox.llms.infra.data_store import DiscoveryDataStore, LocalDiscoveryDataStore
+from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
+from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 ```
 
 ### Important Patterns
