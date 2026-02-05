@@ -14,7 +14,8 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode, specialist_tool
+from bluebox.agents.abstract_agent import agent_tool
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
 from bluebox.cdp.connection import (
     cdp_new_tab,
     create_cdp_helpers,
@@ -288,7 +289,7 @@ class JSSpecialist(AbstractSpecialist):
         return "".join(context_parts)
 
     # _register_tools and _execute_tool are provided by the base class
-    # via @specialist_tool decorators below.
+    # via @agent_tool decorators below.
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         return (
@@ -313,7 +314,7 @@ class JSSpecialist(AbstractSpecialist):
 
     ## Tools
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _validate_js_code(self, js_code: str) -> dict[str, Any]:
         """
@@ -342,7 +343,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: bool(self._dom_snapshots))
+    @agent_tool(availability=lambda self: bool(self._dom_snapshots))
     @token_optimized
     def _get_dom_snapshot(self, index: int = -1) -> dict[str, Any]:
         """
@@ -379,7 +380,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self.can_finalize)
+    @agent_tool(availability=lambda self: self.can_finalize)
     @token_optimized
     def _submit_js_code(
         self,
@@ -422,7 +423,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self.can_finalize)
+    @agent_tool(availability=lambda self: self.can_finalize)
     @token_optimized
     def _finalize_failure(
         self,
@@ -450,7 +451,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self._network_data_store is not None)
+    @agent_tool(availability=lambda self: self._network_data_store is not None)
     @token_optimized
     def _search_network_traffic(
         self,
@@ -507,7 +508,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self._network_data_store is not None)
+    @agent_tool(availability=lambda self: self._network_data_store is not None)
     @token_optimized
     def _get_network_entry(
         self,
@@ -554,7 +555,7 @@ class JSSpecialist(AbstractSpecialist):
         return result
 
 
-    @specialist_tool(availability=lambda self: self._js_data_store is not None)
+    @agent_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
     def _search_js_files(self, terms: list[str], top_n: int = 10) -> dict[str, Any]:
         """
@@ -579,7 +580,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self._js_data_store is not None)
+    @agent_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
     def _search_js_files_regex(
         self,
@@ -621,7 +622,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self._js_data_store is not None)
+    @agent_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
     def _get_js_file_content(self, request_id: str, max_chars: int = 10_000) -> dict[str, Any]:
         """
@@ -648,7 +649,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self._js_data_store is not None)
+    @agent_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
     def _list_js_files(self) -> dict[str, Any]:
         """List all captured JS files with URLs and sizes. Use this to see what JS files are available before searching."""
@@ -665,7 +666,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: bool(self._remote_debugging_address))
+    @agent_tool(availability=lambda self: bool(self._remote_debugging_address))
     @token_optimized
     def _execute_js_in_browser(
         self,

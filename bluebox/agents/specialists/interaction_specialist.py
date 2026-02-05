@@ -14,7 +14,8 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode, specialist_tool
+from bluebox.agents.abstract_agent import agent_tool
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -242,7 +243,7 @@ class InteractionSpecialist(AbstractSpecialist):
         return self.AUTONOMOUS_SYSTEM_PROMPT + context + urgency
 
     # _register_tools and _execute_tool are provided by the base class
-    # via @specialist_tool decorators below.
+    # via @agent_tool decorators below.
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         return (
@@ -268,7 +269,7 @@ class InteractionSpecialist(AbstractSpecialist):
 
     ## Tool handlers
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _get_interaction_summary(self) -> dict[str, Any]:
         """Get summary statistics of all recorded interactions."""
@@ -281,7 +282,7 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _search_interactions_by_type(self, types: list[str]) -> dict[str, Any]:
         """
@@ -316,7 +317,7 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _search_interactions_by_element(
         self,
@@ -363,7 +364,7 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _get_interaction_detail(self, index: int) -> dict[str, Any]:
         """
@@ -379,7 +380,7 @@ class InteractionSpecialist(AbstractSpecialist):
         return detail
 
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _get_form_inputs(self) -> dict[str, Any]:
         """Get all input/change events with their values and element info."""
@@ -390,7 +391,7 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _get_unique_elements(self) -> dict[str, Any]:
         """Get deduplicated elements with interaction counts and types."""
@@ -401,7 +402,7 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self.can_finalize)
+    @agent_tool(availability=lambda self: self.can_finalize)
     @token_optimized
     def _finalize_result(self, parameters: list[DiscoveredParameter]) -> dict[str, Any]:
         """
@@ -425,7 +426,7 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self.can_finalize)
+    @agent_tool(availability=lambda self: self.can_finalize)
     @token_optimized
     def _finalize_failure(self, reason: str, interaction_summary: str) -> dict[str, Any]:
         """

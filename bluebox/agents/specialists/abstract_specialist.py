@@ -13,7 +13,7 @@ This class extends AbstractAgent to add:
   - Autonomous mode with iteration tracking and finalize gating
   - Conversational mode for interactive chat
 
-Tools are defined declaratively via the @specialist_tool decorator (alias for @agent_tool).
+Tools are defined declaratively via the @agent_tool decorator.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from typing import Callable, ClassVar, NamedTuple
 
 from pydantic import BaseModel
 
-from bluebox.agents.abstract_agent import AbstractAgent, agent_tool, _ToolMeta
+from bluebox.agents.abstract_agent import AbstractAgent
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatRole,
@@ -38,8 +38,6 @@ from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
 
-# Re-export agent_tool as specialist_tool for backwards compatibility
-specialist_tool = agent_tool
 
 
 class RunMode(StrEnum):
@@ -66,7 +64,7 @@ class AbstractSpecialist(AbstractAgent):
       - _get_autonomous_initial_message()
       - _check_autonomous_completion() — inspect tool results for finalize signals
 
-    Tools are defined declaratively via the @specialist_tool decorator on handler
+    Tools are defined declaratively via the @agent_tool decorator on handler
     methods. Each tool's ``availability`` controls when it is registered: True
     (always), or a callable evaluated before each LLM call.
 
@@ -75,7 +73,7 @@ class AbstractSpecialist(AbstractAgent):
       - Conversational mode for interactive chat
     """
 
-    # Class-level tracking of all specialist subclasses
+    ## Class-level tracking of all specialist subclasses
     _subclasses: ClassVar[list[type[AbstractSpecialist]]] = []
 
     def __init_subclass__(cls: type[AbstractSpecialist], **kwargs: NamedTuple) -> None:
@@ -165,12 +163,12 @@ class AbstractSpecialist(AbstractAgent):
             chat_thread: Existing ChatThread to continue, or None for new.
             existing_chats: Existing Chat messages if loading from persistence.
         """
-        # Lifecycle state (must be set before parent __init__, which calls _sync_tools)
+        # lifecycle state (must be set before parent __init__, which calls _sync_tools)
         self.run_mode: RunMode = run_mode
         self._autonomous_iteration: int = 0
         self._autonomous_config: AutonomousConfig = AutonomousConfig()
 
-        # Call parent init
+        # call parent init
         super().__init__(
             emit_message_callable=emit_message_callable,
             persist_chat_callable=persist_chat_callable,

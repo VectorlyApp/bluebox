@@ -19,7 +19,8 @@ from urllib.parse import urlparse, parse_qs
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode, specialist_tool
+from bluebox.agents.abstract_agent import agent_tool
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -352,7 +353,7 @@ class NetworkSpecialist(AbstractSpecialist):
 
     ## Tool handlers
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _search_har_responses_by_terms(self, terms: list[str]) -> dict[str, Any]:
         """
@@ -378,7 +379,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "results": results,
         }
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _get_entry_detail(self, request_id: str) -> dict[str, Any]:
         """
@@ -418,7 +419,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "response_key_structure": key_structure,
         }
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _get_response_body_schema(self, request_id: str) -> dict[str, Any]:
         """
@@ -439,7 +440,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "key_structure": key_structure,
         }
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _get_unique_urls(self) -> dict[str, Any]:
         """Get all unique URLs from the HAR file. Returns a sorted list of all unique URLs observed in the traffic."""
@@ -449,7 +450,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "url_counts": url_counts,
         }
 
-    @specialist_tool()
+    @agent_tool()
     def _execute_python(self, code: str) -> dict[str, Any]:
         """
         Execute Python code in a sandboxed environment to analyze network entries. The variable `entries` is pre-loaded as a list of NetworkTransactionEvent dicts. Each entry has: request_id, url, method, status, mime_type, request_headers, response_headers, post_data, response_body. Use print() to output results. Example: for e in entries[:5]: print(e['url'])
@@ -460,7 +461,7 @@ class NetworkSpecialist(AbstractSpecialist):
         entries = [e.model_dump() for e in self._network_data_store.entries]
         return execute_python_sandboxed(code, extra_globals={"entries": entries})
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _search_har_by_request(
         self,
@@ -546,7 +547,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "results": results[:20],  # Top 20
         }
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _search_response_bodies(
         self,
@@ -581,7 +582,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "results": results[:20],  # Top 20
         }
 
-    @specialist_tool(availability=lambda self: self.can_finalize)
+    @agent_tool(availability=lambda self: self.can_finalize)
     @token_optimized
     def _finalize_result(self, endpoints: list[dict[str, Any]]) -> dict[str, Any]:
         """
@@ -641,7 +642,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "result": self._discovery_result.model_dump(),
         }
 
-    @specialist_tool(availability=lambda self: self.can_finalize)
+    @agent_tool(availability=lambda self: self.can_finalize)
     @token_optimized
     def _finalize_failure(
         self,

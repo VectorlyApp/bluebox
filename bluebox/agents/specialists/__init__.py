@@ -10,8 +10,8 @@ from bluebox.agents.specialists.abstract_specialist import (
     AbstractSpecialist,
     AutonomousConfig,
     RunMode,
-    specialist_tool,
 )
+from bluebox.agents.abstract_agent import agent_tool
 
 # Import all specialist classes to trigger AbstractSpecialist.__init_subclass__
 from bluebox.agents.specialists.docs_specialist import DocsSpecialist
@@ -25,7 +25,7 @@ __all__ = [
     "AbstractSpecialist",
     "AutonomousConfig",
     "RunMode",
-    "specialist_tool",
+    "agent_tool",
     # Concrete specialists
     "DocsSpecialist",
     "InteractionSpecialist",

@@ -18,7 +18,8 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode, specialist_tool
+from bluebox.agents.abstract_agent import agent_tool
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -345,7 +346,7 @@ class DocsSpecialist(AbstractSpecialist):
 
     ## Tool handlers
 
-    @specialist_tool(
+    @agent_tool(
         parameters={
             "type": "object",
             "properties": {
@@ -406,7 +407,7 @@ class DocsSpecialist(AbstractSpecialist):
             "results": results[:20],  # Top 20 files
         }
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _get_file_content(
         self,
@@ -467,7 +468,7 @@ class DocsSpecialist(AbstractSpecialist):
             "content": content,
         }
 
-    @specialist_tool(
+    @agent_tool(
         availability=lambda self: self.can_finalize,
         parameters={
             "type": "object",
@@ -574,7 +575,7 @@ class DocsSpecialist(AbstractSpecialist):
             "result": self._search_result.model_dump(),
         }
 
-    @specialist_tool(availability=lambda self: self.can_finalize)
+    @agent_tool(availability=lambda self: self.can_finalize)
     @token_optimized
     def _finalize_failure(
         self,

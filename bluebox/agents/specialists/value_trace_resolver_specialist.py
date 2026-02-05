@@ -18,7 +18,8 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode, specialist_tool
+from bluebox.agents.abstract_agent import agent_tool
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -308,7 +309,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
     ## Tool handlers
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _search_everywhere(
         self,
@@ -381,7 +382,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         return results
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _search_in_network(
         self,
@@ -411,7 +412,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "results": results[:20],
         }
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _search_in_storage(
         self,
@@ -441,7 +442,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "results": results[:20],
         }
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _search_in_window_props(
         self,
@@ -471,7 +472,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "results": results[:20],
         }
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _get_network_entry(self, request_id: str) -> dict[str, Any]:
         """
@@ -508,7 +509,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "response_content": response_content,
         }
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _get_storage_entry(self, index: int) -> dict[str, Any]:
         """
@@ -529,7 +530,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "entry": entry.model_dump(),
         }
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _get_window_prop_changes(
         self,
@@ -558,7 +559,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "changes": results[:20],
         }
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _get_storage_by_key(self, key: str) -> dict[str, Any]:
         """
@@ -581,7 +582,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "entries": [e.model_dump() for e in entries[:20]],
         }
 
-    @specialist_tool()
+    @agent_tool()
     def _execute_python(self, code: str) -> dict[str, Any]:
         """
         Execute Python code in a sandboxed environment to analyze data. Pre-loaded variables: `network_entries` (list of NetworkTransactionEvent dicts with request_id, url, method, status, request_headers, response_headers, post_data, response_body), `storage_entries` (list of StorageEvent dicts with type, origin, key, value, etc.), `window_prop_entries` (list of WindowPropertyEvent dicts with url, timestamp, changes). Use print() to output results. Example: for e in storage_entries: if e['key'] == 'token': print(e)
@@ -615,7 +616,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         return execute_python_sandboxed(code, extra_globals=extra_globals)
 
-    @specialist_tool(
+    @agent_tool(
         availability=lambda self: self.can_finalize,
         parameters={
             "type": "object",
@@ -716,7 +717,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "result": self._origin_result.model_dump(),
         }
 
-    @specialist_tool(availability=lambda self: self.can_finalize)
+    @agent_tool(availability=lambda self: self.can_finalize)
     @token_optimized
     def _finalize_failure(
         self,
