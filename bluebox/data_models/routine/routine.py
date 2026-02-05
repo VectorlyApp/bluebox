@@ -125,9 +125,11 @@ class Routine(BaseModel):
                 else:
                     # string types: MUST use escape-quoted \"{{...}}\"
                     if quote_type != PlaceholderQuoteType.ESCAPE_QUOTED:
+                        ph = "{{" + content + "}}"  # e.g. {{query}}
                         raise ValueError(
-                            f"String parameter '{{{{{content}}}}}' in routine '{self.name}' must use escape-quoted format. "
-                            f"Use '\\\"{{{{content}}}}\\\"' instead of '\"{{{{content}}}}\"'."
+                            f"String parameter '{ph}' in routine '{self.name}' must use escape-quoted format. "
+                            f'Use \\"{ph}\\" instead of "{ph}". '
+                            f"In the body dict, the value should be '\"" + ph + "\"' (placeholder wrapped in quotes)."
                         )
 
         # Check 1: All defined parameters must be used

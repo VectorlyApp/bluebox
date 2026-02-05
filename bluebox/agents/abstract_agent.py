@@ -300,20 +300,18 @@ class AbstractAgent(ABC):
                 else:
                     validated_arguments[param_name] = value
         except ValidationError as e:
-            # extract readable error message with full details
+            # Surface full validation error details so the LLM can fix the issue
             errors = e.errors()
             if errors:
-                err = errors[0]
-                loc = ".".join(str(x) for x in err.get("loc", []))
-                err_type = err.get("type", "validation_error")
-                err_msg = err.get("msg", "")
-                if loc:
-                    msg = f"{param_name}.{loc}: {err_msg} (type: {err_type})"
-                else:
-                    msg = f"{param_name}: {err_msg} (type: {err_type})"
+                err_messages = []
+                for err in errors[:5]:  # show up to 5 errors
+                    loc = " -> ".join(str(loc_part) for loc_part in err.get("loc", []))
+                    err_msg = err.get("msg", "validation error")
+                    err_messages.append(f"{loc}: {err_msg}" if loc else err_msg)
+                msg = f"{param_name}: {'; '.join(err_messages)}"
             else:
                 msg = str(e)
-            return {"error": f"Invalid argument type: {msg}"}
+            return {"error": f"Validation error: {msg}"}
 
         logger.debug("Executing tool %s with arguments: %s", tool_name, tool_arguments)
         # handler is unbound (from cls, not self) so pass self explicitly

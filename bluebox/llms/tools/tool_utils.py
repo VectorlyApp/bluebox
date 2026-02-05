@@ -80,6 +80,7 @@ def generate_parameters_schema(func: Callable[..., Any]) -> dict[str, Any]:
 
     properties: dict[str, Any] = {}
     required: list[str] = []
+    all_defs: dict[str, Any] = {}  # collect $defs from all params for top-level hoisting
 
     for param_name, param in sig.parameters.items():
         if param_name in ("self", "cls"):
@@ -92,6 +93,10 @@ def generate_parameters_schema(func: Callable[..., Any]) -> dict[str, Any]:
         # remove pydantic metadata that's not needed for tool schemas
         schema.pop("title", None)
 
+        # hoist $defs to top level so $ref resolution works across all LLM providers
+        if "$defs" in schema:
+            all_defs.update(schema.pop("$defs"))
+
         # add description from docstring if available
         if param_name in param_descs:
             schema["description"] = param_descs[param_name]
@@ -102,8 +107,11 @@ def generate_parameters_schema(func: Callable[..., Any]) -> dict[str, Any]:
         if param.default is inspect.Parameter.empty:
             required.append(param_name)
 
-    return {
+    result: dict[str, Any] = {
         "type": "object",
         "properties": properties,
         "required": required,
     }
+    if all_defs:
+        result["$defs"] = all_defs
+    return result
