@@ -29,6 +29,7 @@ from bluebox.data_models.llms.interaction import (
     ToolInvocationResultEmittedMessage,
 )
 from bluebox.data_models.llms.vendors import OpenAIModel
+from bluebox.llms.infra.documentation_data_store import DocumentationDataStore
 from bluebox.llms.infra.js_data_store import JSDataStore
 from bluebox.llms.infra.network_data_store import NetworkDataStore
 from bluebox.llms.infra.storage_data_store import StorageDataStore
@@ -127,6 +128,27 @@ def main() -> None:
         js_data_store = JSDataStore(js_jsonl)
         logger.info("JS data loaded: %d files", js_data_store.stats.total_files)
 
+    # Initialize documentation data store with defaults from run_docs_digger.py
+    BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+    DEFAULT_DOCS_DIR = str(BLUEBOX_PACKAGE_ROOT / "agent_docs")
+    DEFAULT_CODE_PATHS = [
+        str(BLUEBOX_PACKAGE_ROOT / "data_models" / "routine"),
+        str(BLUEBOX_PACKAGE_ROOT / "data_models" / "ui_elements.py"),
+        str(BLUEBOX_PACKAGE_ROOT / "agents" / "routine_discovery_agent.py"),
+        str(BLUEBOX_PACKAGE_ROOT / "llms" / "infra" / "data_store.py"),
+        str(BLUEBOX_PACKAGE_ROOT / "utils" / "js_utils.py"),
+        str(BLUEBOX_PACKAGE_ROOT / "utils" / "data_utils.py"),
+        "!" + str(BLUEBOX_PACKAGE_ROOT / "**" / "__init__.py"),
+    ]
+
+    documentation_data_store = DocumentationDataStore(
+        documentation_paths=[DEFAULT_DOCS_DIR],
+        code_paths=DEFAULT_CODE_PATHS,
+    )
+    logger.info("Documentation data loaded: %d docs, %d code files",
+                documentation_data_store.stats.total_docs,
+                documentation_data_store.stats.total_code)
+
     # Message handler
     def handle_message(message: EmittedMessage) -> None:
         if isinstance(message, ChatResponseEmittedMessage):
@@ -149,6 +171,7 @@ def main() -> None:
         storage_data_store=storage_data_store,
         window_property_data_store=window_property_data_store,
         js_data_store=js_data_store,
+        documentation_data_store=documentation_data_store,
         llm_model=llm_model,
         subagent_llm_model=subagent_model,
         max_iterations=args.max_iterations,
