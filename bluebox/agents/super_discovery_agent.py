@@ -3,7 +3,7 @@ bluebox/agents/super_discovery_agent.py
 
 SuperDiscoveryAgent - orchestrator for routine discovery.
 
-This agent coordinates specialist subagents (JSSpecialist, NetworkSpyAgent, etc.)
+This agent coordinates specialist subagents (JSSpecialist, NetworkSpecialist, etc.)
 to discover routines from CDP captures. It delegates specific tasks to specialists
 while managing the overall discovery workflow:
 
@@ -26,10 +26,10 @@ from pydantic import BaseModel
 
 from bluebox.agents.abstract_agent import AbstractAgent, agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, AutonomousConfig
-from bluebox.agents.specialists.docs_digger_agent import DocsDiggerAgent
+from bluebox.agents.specialists.docs_specialist import DocsSpecialist
 from bluebox.agents.specialists.js_specialist import JSSpecialist
-from bluebox.agents.specialists.network_spy_agent import NetworkSpyAgent
-from bluebox.agents.specialists.trace_hound_agent import TraceHoundAgent
+from bluebox.agents.specialists.network_specialist import NetworkSpecialist
+from bluebox.agents.specialists.value_trace_resolver_specialist import ValueTraceResolverSpecialist
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatRole,
@@ -476,7 +476,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             )
 
         elif agent_type == SpecialistAgentType.TRACE_HOUND:
-            return TraceHoundAgent(
+            return ValueTraceResolverSpecialist(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
                 network_data_loader=self._network_data_loader,
@@ -490,7 +490,7 @@ class SuperDiscoveryAgent(AbstractAgent):
                     "network_spy specialist requires network_data_store, "
                     "but it was not provided to SuperDiscoveryAgent"
                 )
-            return NetworkSpyAgent(
+            return NetworkSpecialist(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
                 network_data_loader=self._network_data_loader,
@@ -499,10 +499,10 @@ class SuperDiscoveryAgent(AbstractAgent):
         elif agent_type == SpecialistAgentType.DOCS_DIGGER:
             if not self._documentation_data_loader:
                 raise ValueError(
-                    "DocsDiggerAgent requires documentation_data_store. "
+                    "DocsSpecialist requires documentation_data_store. "
                     "Ensure SuperDiscoveryAgent was initialized with documentation_data_store."
                 )
-            return DocsDiggerAgent(
+            return DocsSpecialist(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
                 documentation_data_loader=self._documentation_data_loader,

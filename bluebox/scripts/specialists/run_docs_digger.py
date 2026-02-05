@@ -26,8 +26,8 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 
-from bluebox.agents.specialists.docs_digger_agent import (
-    DocsDiggerAgent,
+from bluebox.agents.specialists.docs_specialist import (
+    DocsSpecialist,
     DocumentSearchResult,
     DocumentSearchFailureResult,
 )
@@ -98,9 +98,9 @@ class TerminalDocsDiggerChat(AbstractTerminalAgentChat):
         self.llm_model = llm_model
         super().__init__(console=console, agent_color="green")
 
-    def _create_agent(self) -> DocsDiggerAgent:
+    def _create_agent(self) -> DocsSpecialist:
         """Create the Docs Digger agent instance."""
-        return DocsDiggerAgent(
+        return DocsSpecialist(
             emit_message_callable=self._handle_message,
             documentation_data_store=self.docs_store,
             stream_chunk_callable=self._handle_stream_chunk,

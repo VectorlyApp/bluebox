@@ -21,8 +21,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from bluebox.agents.specialists.network_spy_agent import (
-    NetworkSpyAgent,
+from bluebox.agents.specialists.network_specialist import (
+    NetworkSpecialist,
     EndpointDiscoveryResult,
     DiscoveryFailureResult,
 )
@@ -77,9 +77,9 @@ class TerminalNetworkSpyChat(AbstractTerminalAgentChat):
         self.data_path = data_path
         super().__init__(console=console, agent_color="cyan")
 
-    def _create_agent(self) -> NetworkSpyAgent:
+    def _create_agent(self) -> NetworkSpecialist:
         """Create the Network Spy agent instance."""
-        return NetworkSpyAgent(
+        return NetworkSpecialist(
             emit_message_callable=self._handle_message,
             network_data_store=self.network_store,
             stream_chunk_callable=self._handle_stream_chunk,

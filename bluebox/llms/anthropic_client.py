@@ -374,7 +374,7 @@ class AnthropicClient(AbstractLLMVendorClient):
 
         # NOTE: We intentionally do NOT return response_id for Anthropic.
         # Anthropic doesn't support response ID chaining like OpenAI's Responses API.
-        # Returning an ID would cause NetworkSpyAgent to skip messages (via _previous_response_id),
+        # Returning an ID would cause NetworkSpecialist to skip messages (via _previous_response_id),
         # which breaks Anthropic's requirement that every tool_result has a preceding tool_use.
         return LLMChatResponse(
             content=content,
