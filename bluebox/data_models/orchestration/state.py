@@ -15,16 +15,6 @@ from pydantic import BaseModel, Field, ConfigDict
 from bluebox.data_models.orchestration.task import Task, SubAgent
 
 
-class SuperDiscoveryPhase(StrEnum):
-    """Current phase of the super discovery process."""
-    PLANNING = "planning"             # Analyzing task, planning approach
-    DISCOVERING = "discovering"       # Delegating discovery tasks to specialists
-    CONSTRUCTING = "constructing"     # Building the routine from discoveries
-    VALIDATING = "validating"         # Testing the constructed routine
-    COMPLETE = "complete"             # Discovery finished successfully
-    FAILED = "failed"                 # Discovery failed
-
-
 class AgentOrchestrationState(BaseModel):
     """
     Manages state for agent orchestration workflows.
@@ -35,9 +25,6 @@ class AgentOrchestrationState(BaseModel):
     specialist agents rather than doing it directly.
     """
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    # Current phase
-    phase: SuperDiscoveryPhase = Field(default=SuperDiscoveryPhase.PLANNING)
 
     # Task and subagent management
     tasks: dict[str, Task] = Field(
@@ -79,7 +66,6 @@ class AgentOrchestrationState(BaseModel):
     def get_queue_status(self) -> dict[str, Any]:
         """Get a summary of task status for system prompt."""
         return {
-            "phase": self.phase.value,
             "pending_tasks": len(self.get_pending_tasks()),
             "in_progress_tasks": len(self.get_in_progress_tasks()),
             "paused_tasks": len(self.get_paused_tasks()),
@@ -91,6 +77,5 @@ class AgentOrchestrationState(BaseModel):
 
     def reset(self) -> None:
         """Reset all state for a fresh orchestration run."""
-        self.phase = SuperDiscoveryPhase.PLANNING
         self.tasks = {}
         self.subagents = {}

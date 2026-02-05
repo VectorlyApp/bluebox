@@ -19,11 +19,21 @@ from bluebox.data_models.routine.dev_routine import DevRoutine
 
 class DiscoveryPhase(StrEnum):
     """Current phase of the routine discovery process."""
+    # Orchestration phases (for SuperDiscoveryAgent)
+    PLANNING = "planning"
+    DISCOVERING = "discovering"
+
+    # Transaction processing phases (for RoutineDiscoveryAgent)
     IDENTIFY_TRANSACTION = "identify_transaction"
     PROCESS_QUEUE = "process_queue"
-    CONSTRUCT_ROUTINE = "construct_routine"
-    VALIDATE_ROUTINE = "validate_routine"
+
+    # Common phases (both agents)
+    CONSTRUCTING = "constructing"  # Alias for CONSTRUCT_ROUTINE
+    CONSTRUCT_ROUTINE = "constructing"  # Legacy name
+    VALIDATING = "validating"  # Alias for VALIDATE_ROUTINE
+    VALIDATE_ROUTINE = "validating"  # Legacy name
     COMPLETE = "complete"
+    FAILED = "failed"
 
 
 class RoutineDiscoveryState(BaseModel):
@@ -80,7 +90,7 @@ class RoutineDiscoveryState(BaseModel):
 
     # Progress tracking
     phase: DiscoveryPhase = Field(
-        default=DiscoveryPhase.IDENTIFY_TRANSACTION,
+        default=DiscoveryPhase.PLANNING,
         description="Current phase of discovery"
     )
 
@@ -187,7 +197,7 @@ class RoutineDiscoveryState(BaseModel):
         self.all_resolved_variables = []
         self.dev_routine = None
         self.production_routine = None
-        self.phase = DiscoveryPhase.IDENTIFY_TRANSACTION
+        self.phase = DiscoveryPhase.PLANNING
         self.identification_attempts = 0
         self.construction_attempts = 0
         self.validation_attempts = 0

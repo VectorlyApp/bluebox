@@ -40,9 +40,9 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus, SpecialistAgentType
-from bluebox.data_models.orchestration.state import AgentOrchestrationState, SuperDiscoveryPhase
+from bluebox.data_models.orchestration.state import AgentOrchestrationState
 from bluebox.data_models.routine.routine import Routine
-from bluebox.data_models.routine_discovery.state import RoutineDiscoveryState
+from bluebox.data_models.routine_discovery.state import RoutineDiscoveryState, DiscoveryPhase
 from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
 from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
@@ -357,7 +357,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         prompt_parts.append(dedent(f"""\
 
             ## Current State
-            - Phase: {status['phase']}
+            - Phase: {self._discovery_state.phase.value}
             - Pending tasks: {status['pending_tasks']}
             - In-progress tasks: {status['in_progress_tasks']}
             - Completed tasks: {status['completed_tasks']}
@@ -387,13 +387,13 @@ class SuperDiscoveryAgent(AbstractAgent):
         # Run the main loop
         for iteration in range(self._max_iterations):
             logger.debug("SuperDiscovery iteration %d/%d, phase: %s",
-                        iteration + 1, self._max_iterations, self._orchestration_state.phase.value)
+                        iteration + 1, self._max_iterations, self._discovery_state.phase.value)
 
             # Check for completion
-            if self._orchestration_state.phase == SuperDiscoveryPhase.COMPLETE:
+            if self._discovery_state.phase == DiscoveryPhase.COMPLETE:
                 return self._final_routine
 
-            if self._orchestration_state.phase == SuperDiscoveryPhase.FAILED:
+            if self._discovery_state.phase == DiscoveryPhase.FAILED:
                 logger.error("Discovery failed: %s", self._failure_reason)
                 return None
 
@@ -427,18 +427,18 @@ class SuperDiscoveryAgent(AbstractAgent):
                     # Prompt the agent to continue if no tool calls
                     self._add_chat(
                         ChatRole.SYSTEM,
-                        f"[ACTION REQUIRED] Phase: {self._orchestration_state.phase.value}. Use tools to make progress."
+                        f"[ACTION REQUIRED] Phase: {self._discovery_state.phase.value}. Use tools to make progress."
                     )
 
             except Exception as e:
                 logger.exception("Error in SuperDiscovery loop: %s", e)
                 self._emit_message(ErrorEmittedMessage(error=str(e)))
-                self._orchestration_state.phase = SuperDiscoveryPhase.FAILED
+                self._discovery_state.phase = DiscoveryPhase.FAILED
                 self._failure_reason = str(e)
                 return None
 
         logger.warning("SuperDiscovery hit max iterations (%d)", self._max_iterations)
-        self._orchestration_state.phase = SuperDiscoveryPhase.FAILED
+        self._discovery_state.phase = DiscoveryPhase.FAILED
         self._failure_reason = f"Max iterations ({self._max_iterations}) reached"
         return None
 
@@ -610,7 +610,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         )
 
         self._orchestration_state.add_task(task)
-        self._orchestration_state.phase = SuperDiscoveryPhase.DISCOVERING
+        self._discovery_state.phase = DiscoveryPhase.DISCOVERING
 
         return {
             "success": True,
@@ -683,12 +683,12 @@ class SuperDiscoveryAgent(AbstractAgent):
             if self._orchestration_state.get_failed_tasks():
                 pass  # Some failed, let orchestrator decide
             else:
-                self._orchestration_state.phase = SuperDiscoveryPhase.CONSTRUCTING
+                self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
 
         return {
             "executed": len(results),
             "results": results,
-            "phase": self._orchestration_state.phase.value,
+            "phase": self._discovery_state.phase.value,
         }
 
     ## Tools - Data Store Access
@@ -860,7 +860,7 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         """
         self._discovery_state.construction_attempts += 1
-        self._orchestration_state.phase = SuperDiscoveryPhase.CONSTRUCTING
+        self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
 
         try:
             routine = Routine(
@@ -874,7 +874,7 @@ class SuperDiscoveryAgent(AbstractAgent):
 
             # Move to validation if browser available, otherwise complete
             if self._remote_debugging_address:
-                self._orchestration_state.phase = SuperDiscoveryPhase.VALIDATING
+                self._discovery_state.phase = DiscoveryPhase.VALIDATING
                 return {
                     "success": True,
                     "routine_name": routine.name,
@@ -883,7 +883,7 @@ class SuperDiscoveryAgent(AbstractAgent):
                     "next_step": "Use execute_routine to validate",
                 }
             else:
-                self._orchestration_state.phase = SuperDiscoveryPhase.COMPLETE
+                self._discovery_state.phase = DiscoveryPhase.COMPLETE
                 self._final_routine = routine
                 return {
                     "success": True,
@@ -961,7 +961,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             }
 
         # Success!
-        self._orchestration_state.phase = SuperDiscoveryPhase.COMPLETE
+        self._discovery_state.phase = DiscoveryPhase.COMPLETE
         self._final_routine = self._discovery_state.production_routine
         return {
             "success": True,
@@ -977,7 +977,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         if not self._discovery_state.production_routine:
             return {"error": "No routine constructed. Use construct_routine first."}
 
-        self._orchestration_state.phase = SuperDiscoveryPhase.COMPLETE
+        self._discovery_state.phase = DiscoveryPhase.COMPLETE
         self._final_routine = self._discovery_state.production_routine
         return {
             "success": True,
@@ -993,7 +993,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         Args:
             reason: Why discovery could not be completed.
         """
-        self._orchestration_state.phase = SuperDiscoveryPhase.FAILED
+        self._discovery_state.phase = DiscoveryPhase.FAILED
         self._failure_reason = reason
         return {
             "success": True,
