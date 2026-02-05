@@ -14,6 +14,7 @@ Security layers:
 2. Backend-specific isolation (Lambda microVM, Docker container, or blocklist)
 """
 
+import base64
 import builtins as real_builtins
 import io
 import json
@@ -23,17 +24,17 @@ import shutil
 import subprocess
 import sys
 import time
-import base64
 from typing import Any
 
 from bluebox.config import Config
 
 logger = logging.getLogger(__name__)
 
-SANDBOX_MODE: str = os.getenv("BLUEBOX_SANDBOX_MODE", "auto")  # "lambda", "docker", "blocklist", "auto"
-DOCKER_IMAGE: str = os.getenv("BLUEBOX_SANDBOX_IMAGE", "python:3.12-slim")
-DOCKER_TIMEOUT: int = int(os.getenv("BLUEBOX_SANDBOX_TIMEOUT", "30"))
-DOCKER_MEMORY_LIMIT: str = os.getenv("BLUEBOX_SANDBOX_MEMORY", "128m")
+# Sandbox configuration from Config
+SANDBOX_MODE: str = Config.SANDBOX_MODE
+DOCKER_IMAGE: str = Config.SANDBOX_IMAGE
+DOCKER_TIMEOUT: int = Config.SANDBOX_TIMEOUT
+DOCKER_MEMORY_LIMIT: str = Config.SANDBOX_MEMORY
 
 # cache for Docker availability check
 _docker_available: bool | None = None
