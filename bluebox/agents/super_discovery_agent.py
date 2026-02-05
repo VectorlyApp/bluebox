@@ -57,6 +57,7 @@ from bluebox.data_models.routine_discovery.llm_responses import (
     SessionStorageType,
 )
 from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
+from bluebox.llms.data_loaders.interactions_data_loader import InteractionsDataLoader
 from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
@@ -207,6 +208,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         storage_data_loader: StorageDataLoader | None = None,
         window_property_data_loader: WindowPropertyDataLoader | None = None,
         js_data_loader: JSDataLoader | None = None,
+        interaction_data_loader: InteractionsDataLoader | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
         subagent_llm_model: LLMModel | None = None,
@@ -228,6 +230,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             storage_data_loader: Optional StorageDataLoader for browser storage.
             window_property_data_loader: Optional WindowPropertyDataLoader for window properties.
             js_data_loader: Optional JSDataLoader for JavaScript files.
+            interaction_data_loader: Optional InteractionsDataLoader for interaction events.
             documentation_data_loader: Optional DocumentationDataLoader for docs and code files.
             llm_model: LLM model for the orchestrator.
             subagent_llm_model: LLM model for subagents (defaults to orchestrator's model).
@@ -243,6 +246,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         self._storage_data_loader = storage_data_loader
         self._window_property_data_loader = window_property_data_loader
         self._js_data_loader = js_data_loader
+        self._interaction_data_loader = interaction_data_loader
         self._documentation_data_loader = documentation_data_loader
         self._task = task
         self._subagent_llm_model = subagent_llm_model or llm_model
@@ -503,10 +507,15 @@ class SuperDiscoveryAgent(AbstractAgent):
             )
 
         elif agent_type == SpecialistAgentType.INTERACTION_SPECIALIST:
+            if not self._interaction_data_loader:
+                raise ValueError(
+                    "interaction_specialist requires interaction_data_loader, "
+                    "but it was not provided to SuperDiscoveryAgent"
+                )
             return InteractionSpecialist(
                 emit_message_callable=self._emit_message_callable,
+                interaction_data_store=self._interaction_data_loader,
                 llm_model=self._subagent_llm_model,
-                remote_debugging_address=self._remote_debugging_address,
                 run_mode=RunMode.AUTONOMOUS,
             )
 
