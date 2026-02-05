@@ -13,7 +13,6 @@ from typing import Any
 from pydantic import BaseModel, Field, ConfigDict
 
 from bluebox.data_models.orchestration.task import Task, SubAgent
-from bluebox.data_models.routine.routine import Routine
 
 
 class SuperDiscoveryPhase(StrEnum):
@@ -49,16 +48,6 @@ class AgentOrchestrationState(BaseModel):
         default_factory=dict,
         description="All subagent instances by ID"
     )
-
-    # Routine construction
-    current_routine: Routine | None = Field(
-        default=None,
-        description="The routine being constructed from specialist results"
-    )
-
-    # Retry counters
-    construction_attempts: int = Field(default=0)
-    validation_attempts: int = Field(default=0)
 
     ## Task management methods
 
@@ -101,10 +90,7 @@ class AgentOrchestrationState(BaseModel):
     ## Reset
 
     def reset(self) -> None:
-        """Reset all state for a fresh discovery run."""
+        """Reset all state for a fresh orchestration run."""
         self.phase = SuperDiscoveryPhase.PLANNING
         self.tasks = {}
         self.subagents = {}
-        self.current_routine = None
-        self.construction_attempts = 0
-        self.validation_attempts = 0
