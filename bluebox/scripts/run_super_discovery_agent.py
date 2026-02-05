@@ -29,11 +29,11 @@ from bluebox.data_models.llms.interaction import (
     ToolInvocationResultEmittedMessage,
 )
 from bluebox.data_models.llms.vendors import OpenAIModel
-from bluebox.llms.infra.documentation_data_store import DocumentationDataStore
-from bluebox.llms.infra.js_data_store import JSDataStore
-from bluebox.llms.infra.network_data_store import NetworkDataStore
-from bluebox.llms.infra.storage_data_store import StorageDataStore
-from bluebox.llms.infra.window_property_data_store import WindowPropertyDataStore
+from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
+from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
+from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
+from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
+from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
 from bluebox.utils.exceptions import ApiKeyNotFoundError
 from bluebox.utils.logger import get_logger
 
@@ -110,23 +110,23 @@ def main() -> None:
     # Load data stores
     logger.info("Loading data stores...")
 
-    network_data_store = NetworkDataStore(network_jsonl)
-    logger.info("Network data loaded: %d transactions", network_data_store.stats.total_requests)
+    network_data_loader = NetworkDataLoader(network_jsonl)
+    logger.info("Network data loaded: %d transactions", network_data_loader.stats.total_requests)
 
-    storage_data_store: StorageDataStore | None = None
+    storage_data_loader: StorageDataLoader | None = None
     if storage_jsonl and Path(storage_jsonl).exists():
-        storage_data_store = StorageDataStore(storage_jsonl)
-        logger.info("Storage data loaded: %d events", storage_data_store.stats.total_events)
+        storage_data_loader = StorageDataLoader(storage_jsonl)
+        logger.info("Storage data loaded: %d events", storage_data_loader.stats.total_events)
 
-    window_property_data_store: WindowPropertyDataStore | None = None
+    window_property_data_loader: WindowPropertyDataLoader | None = None
     if window_props_jsonl and Path(window_props_jsonl).exists():
-        window_property_data_store = WindowPropertyDataStore(window_props_jsonl)
-        logger.info("Window property data loaded: %d events", window_property_data_store.stats.total_events)
+        window_property_data_loader = WindowPropertyDataLoader(window_props_jsonl)
+        logger.info("Window property data loaded: %d events", window_property_data_loader.stats.total_events)
 
-    js_data_store: JSDataStore | None = None
+    js_data_loader: JSDataLoader | None = None
     if js_jsonl and Path(js_jsonl).exists():
-        js_data_store = JSDataStore(js_jsonl)
-        logger.info("JS data loaded: %d files", js_data_store.stats.total_files)
+        js_data_loader = JSDataLoader(js_jsonl)
+        logger.info("JS data loaded: %d files", js_data_loader.stats.total_files)
 
     # Initialize documentation data store with defaults from run_docs_digger.py
     BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
@@ -141,13 +141,13 @@ def main() -> None:
         "!" + str(BLUEBOX_PACKAGE_ROOT / "**" / "__init__.py"),
     ]
 
-    documentation_data_store = DocumentationDataStore(
+    documentation_data_loader = DocumentationDataLoader(
         documentation_paths=[DEFAULT_DOCS_DIR],
         code_paths=DEFAULT_CODE_PATHS,
     )
     logger.info("Documentation data loaded: %d docs, %d code files",
-                documentation_data_store.stats.total_docs,
-                documentation_data_store.stats.total_code)
+                documentation_data_loader.stats.total_docs,
+                documentation_data_loader.stats.total_code)
 
     # Message handler
     def handle_message(message: EmittedMessage) -> None:
@@ -166,12 +166,12 @@ def main() -> None:
 
     agent = SuperDiscoveryAgent(
         emit_message_callable=handle_message,
-        network_data_store=network_data_store,
+        network_data_loader=network_data_loader,
         task=args.task,
-        storage_data_store=storage_data_store,
-        window_property_data_store=window_property_data_store,
-        js_data_store=js_data_store,
-        documentation_data_store=documentation_data_store,
+        storage_data_loader=storage_data_loader,
+        window_property_data_loader=window_property_data_loader,
+        js_data_loader=js_data_loader,
+        documentation_data_loader=documentation_data_loader,
         llm_model=llm_model,
         subagent_llm_model=subagent_model,
         max_iterations=args.max_iterations,
