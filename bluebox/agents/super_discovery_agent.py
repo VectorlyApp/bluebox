@@ -1660,29 +1660,66 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     @agent_tool(
         description="Construct a routine from discovered data. Auto-executes if browser connected.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "routine": {
+                    "type": "object",
+                    "description": "The routine to construct.",
+                    "properties": {
+                        "name": {"type": "string", "description": "Routine name"},
+                        "description": {"type": "string", "description": "What the routine does"},
+                        "parameters": {
+                            "type": "array",
+                            "description": "Input parameters. Each needs: name, type (string|number|boolean|date|enum), description, observed_value.",
+                            "items": {"type": "object"},
+                        },
+                        "operations": {
+                            "type": "array",
+                            "description": (
+                                "Ordered operations. Each needs a 'type' field: "
+                                "navigate|fetch|return|sleep|click|input_text|press|"
+                                "wait_for_url|scroll|get_cookies|download|return_html|js_evaluate. "
+                                "Key schemas — navigate: {type, url}. "
+                                "fetch: {type, endpoint: {url, method, headers?, body?}, session_storage_key}. "
+                                "return: {type, session_storage_key, tables?}. "
+                                "Use {{paramName}} placeholders in URLs/bodies for parameters."
+                            ),
+                            "items": {"type": "object"},
+                        },
+                    },
+                    "required": ["name", "description", "parameters", "operations"],
+                },
+            },
+            "required": ["routine"],
+        },
         availability=lambda self: self._discovery_state.root_transaction is not None,
     )
-    def _construct_routine(self, routine: Routine) -> dict[str, Any]:
+    def _construct_routine(self, routine: dict[str, Any]) -> dict[str, Any]:
         """
         Construct a routine from discovered data.
 
         Args:
-            routine: The routine to construct.
+            routine: Dict with name, description, parameters, and operations.
         """
         self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
         self._discovery_state.construction_attempts += 1
 
-        # Validate routine structure and collect warnings
-        structure_warnings = self._validate_routine_structure(routine.parameters, routine.operations)
+        try:
+            routine = Routine.model_validate(routine)
+        except Exception as e:
+            return {
+                "error": f"Invalid routine structure: {e}",
+                "message": "Failed to parse routine. Check schema in the docs and try again.",
+            }
+
+        # Validate routine structure and collect warnings (expects dicts, not models)
+        structure_warnings = self._validate_routine_structure(
+            [p.model_dump() for p in routine.parameters],
+            [op.model_dump() for op in routine.operations],
+        )
 
         try:
-            routine = Routine(
-                name=routine.name,
-                description=routine.description,
-                parameters=routine.parameters,
-                operations=routine.operations,
-            )
-
             self._discovery_state.production_routine = routine
 
             # Auto-execute if browser connected
