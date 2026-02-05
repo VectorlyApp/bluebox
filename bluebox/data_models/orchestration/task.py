@@ -46,6 +46,7 @@ class TaskStatus(StrEnum):
     FAILED = "failed"             # Failed with an error
 
 
+# TODO: just use the fucking subclasses of the abstract specialist class
 class SpecialistAgentType(StrEnum):
     """Types of specialist agents available for task delegation."""
     JS_SPECIALIST = "js_specialist"
