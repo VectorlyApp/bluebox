@@ -604,7 +604,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         for task in self._state.tasks.values():
             tasks_summary.append({
                 "id": task.id,
-                "agent_type": task.agent_type.value,
+                "agent_type": task.agent_type,
                 "status": task.status.value,
                 "prompt": task.prompt[:100] + "..." if len(task.prompt) > 100 else task.prompt,
                 "loops_used": task.loops_used,
@@ -652,7 +652,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             result = self._execute_task(task)
             results.append({
                 "task_id": task.id,
-                "agent_type": task.agent_type.value,
+                "agent_type": task.agent_type,
                 **result,
             })
 
