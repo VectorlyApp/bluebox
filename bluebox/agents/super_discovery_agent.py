@@ -41,8 +41,20 @@ from bluebox.data_models.llms.interaction import (
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus, SpecialistAgentType
 from bluebox.data_models.orchestration.state import AgentOrchestrationState
+from bluebox.data_models.routine.endpoint import HTTPMethod
 from bluebox.data_models.routine.routine import Routine
 from bluebox.data_models.routine_discovery.state import RoutineDiscoveryState, DiscoveryPhase
+from bluebox.data_models.routine_discovery.llm_responses import (
+    TransactionIdentificationResponse,
+    Variable,
+    VariableType,
+    ExtractedVariableResponse,
+    ResolvedVariableResponse,
+    SessionStorageSource,
+    TransactionSource,
+    WindowPropertySource,
+    SessionStorageType,
+)
 from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
 from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
@@ -253,6 +265,73 @@ class SuperDiscoveryAgent(AbstractAgent):
         - ALWAYS delegate before concluding anything
         - Run multiple specialists in parallel when possible
         - Never call `fail` without specialist confirmation
+
+        ## Discovery State Tracking (IMPORTANT!)
+
+        You have tools to systematically track discoveries. USE THEM to build structured knowledge:
+
+        ### After network_spy finds endpoints:
+        1. Call `record_identified_endpoint` with the main transaction from network_spy results
+           - Use the request_id from endpoints[].request_ids
+           - This sets the root_transaction and adds it to the processing queue
+        2. For each parameter/token you identify in the endpoint:
+           - Call `record_extracted_variable` with:
+             - transaction_id: The request_id
+             - name: Variable name (e.g., "origin_city", "x-trace-id")
+             - type: "parameter" (user input), "dynamic_token" (auth/session), or "static_value" (constant)
+             - observed_value: The actual value from the capture
+             - requires_dynamic_resolution: true for tokens that need runtime resolution
+           - This builds your extracted variables database
+
+        ### After trace_hound traces token origins:
+        1. For each origin found in trace_hound results:
+           - Call `record_resolved_variable` with:
+             - variable_name: The token name you're resolving
+             - transaction_id: The transaction that uses this token
+             - source_type: "storage", "window_property", or "transaction"
+             - Plus the appropriate source dict (storage_source, window_property_source, or transaction_source)
+           - If source is a transaction, it's AUTO-ADDED to your queue for processing
+           - This tracks dependencies automatically
+
+        ### Before constructing the routine:
+        1. Call `get_discovery_context` to see everything you've learned:
+           - Root transaction info
+           - All processed transactions with their variables
+           - All parameters (categorized by type)
+           - All dynamic tokens with their sources
+           - All static values
+           - Transaction execution order (for building operations)
+        2. Use this context to construct complete parameters and operations
+        3. Call `construct_routine` with the full routine structure
+
+        ### Benefits of State Tracking:
+        - **No lost information** - Everything specialists find is preserved
+        - **Automatic dependencies** - Transaction queue builds itself
+        - **Better error recovery** - Can see exactly what's been discovered
+        - **Complete context** - All data available for routine construction
+        - **Clear progress** - Can track what's done and what's pending
+
+        ### Example Workflow with State Tracking:
+        ```
+        1. create_task(network_spy, "Find train search API")
+        2. run_pending_tasks
+        3. get_task_result(network_spy task)
+        4. record_identified_endpoint(request_id from network_spy)
+        5. record_extracted_variable("origin", "parameter", "LAX", ...)
+        6. record_extracted_variable("x-trace-id", "dynamic_token", "abc123", ...)
+        7. create_task(trace_hound, "Find origin of x-trace-id")
+        8. run_pending_tasks
+        9. get_task_result(trace_hound task)
+        10. record_resolved_variable("x-trace-id", "transaction", {...})
+        11. get_discovery_context  # See everything discovered
+        12. construct_routine(parameters from context, operations from context)
+        13. execute_routine (if browser available)
+        14. done
+        ```
+
+        CRITICAL: Use these state tracking tools! They prevent lost information and enable
+        systematic discovery. Every network_spy endpoint should be recorded. Every trace_hound
+        finding should be recorded. Get discovery context before constructing routine.
     """)
 
     ## Magic methods
@@ -364,6 +443,18 @@ class SuperDiscoveryAgent(AbstractAgent):
             - Failed tasks: {status['failed_tasks']}
         """))
 
+        # Add discovery state tracking info
+        discovery_status = self._discovery_state.get_queue_status()
+        if self._discovery_state.root_transaction or self._discovery_state.processed_transactions:
+            prompt_parts.append(dedent(f"""\
+
+            ## Discovery Progress
+            - Root transaction: {"Set" if self._discovery_state.root_transaction else "Not set"}
+            - Transaction queue: {discovery_status['pending_count']} pending, {discovery_status['processed_count']} processed
+            - Resolved variables: {len(self._discovery_state.all_resolved_variables)}
+            - Routine: {"Constructed" if self._discovery_state.production_routine else "Not constructed"}
+            """))
+
         if self._remote_debugging_address:
             prompt_parts.append("\n- Browser: Connected (validation available)")
         else:
@@ -424,11 +515,51 @@ class SuperDiscoveryAgent(AbstractAgent):
                 if response.tool_calls:
                     self._process_tool_calls(response.tool_calls)
                 else:
-                    # Prompt the agent to continue if no tool calls
-                    self._add_chat(
-                        ChatRole.SYSTEM,
-                        f"[ACTION REQUIRED] Phase: {self._discovery_state.phase.value}. Use tools to make progress."
-                    )
+                    # Prompt the agent to continue if no tool calls - provide phase-specific guidance
+                    phase = self._discovery_state.phase
+                    if phase == DiscoveryPhase.PLANNING:
+                        guidance = (
+                            "Phase: PLANNING. Skip manual inspection and delegate immediately. "
+                            "Create specialist tasks (network_spy, trace_hound) to analyze the data."
+                        )
+                    elif phase == DiscoveryPhase.DISCOVERING:
+                        task_status = self._orchestration_state.get_queue_status()
+                        if task_status["pending_tasks"] > 0:
+                            guidance = (
+                                f"Phase: DISCOVERING. You have {task_status['pending_tasks']} pending tasks. "
+                                "Call run_pending_tasks to execute them."
+                            )
+                        elif task_status["completed_tasks"] > 0:
+                            guidance = (
+                                "Phase: DISCOVERING. Tasks completed. Review results with get_task_result, "
+                                "then record findings using record_identified_endpoint, record_extracted_variable, "
+                                "and record_resolved_variable tools."
+                            )
+                        else:
+                            guidance = (
+                                "Phase: DISCOVERING. No tasks created yet. "
+                                "Create specialist tasks to analyze the data."
+                            )
+                    elif phase == DiscoveryPhase.CONSTRUCTING:
+                        if not self._discovery_state.production_routine:
+                            guidance = (
+                                "Phase: CONSTRUCTING. Call get_discovery_context to see all discovered data, "
+                                "then use construct_routine to build the routine."
+                            )
+                        else:
+                            guidance = (
+                                "Phase: CONSTRUCTING. Routine already constructed. "
+                                "Proceed to validation or mark as done."
+                            )
+                    elif phase == DiscoveryPhase.VALIDATING:
+                        guidance = (
+                            "Phase: VALIDATING. Call execute_routine to test the routine. "
+                            "If it fails, fix issues and reconstruct."
+                        )
+                    else:
+                        guidance = f"Phase: {phase.value}. Use tools to make progress."
+
+                    self._add_chat(ChatRole.SYSTEM, f"[ACTION REQUIRED] {guidance}")
 
             except Exception as e:
                 logger.exception("Error in SuperDiscovery loop: %s", e)
@@ -565,6 +696,106 @@ class SuperDiscoveryAgent(AbstractAgent):
             logger.error("Task %s failed: %s", task.id, e)
             return {"success": False, "error": str(e)}
 
+    def _validate_discovery_completeness(self) -> tuple[bool, list[str]]:
+        """
+        Check if discovery state is complete enough to construct routine.
+
+        Returns:
+            Tuple of (is_complete, list_of_blockers).
+            If is_complete is False, blockers explain what's missing.
+        """
+        blockers = []
+
+        # Check if root transaction is set
+        if not self._discovery_state.root_transaction:
+            blockers.append("No root transaction recorded")
+
+        # Check for unresolved dynamic tokens
+        unresolved_tokens = []
+        for tx_id, tx_data in self._discovery_state.transaction_data.items():
+            if tx_data.get("extracted_variables"):
+                extracted = tx_data["extracted_variables"]
+                resolved_names = {
+                    rv.variable.name
+                    for rv in tx_data.get("resolved_variables", [])
+                }
+                for var in extracted.variables:
+                    if var.requires_dynamic_resolution and var.name not in resolved_names:
+                        unresolved_tokens.append(f"{var.name} (in {tx_id})")
+
+        if unresolved_tokens:
+            blockers.append(f"Unresolved dynamic tokens: {', '.join(unresolved_tokens)}")
+
+        # Check if transaction queue is not empty
+        if self._discovery_state.transaction_queue:
+            blockers.append(
+                f"Transaction dependencies pending: {self._discovery_state.transaction_queue}"
+            )
+
+        is_complete = len(blockers) == 0
+        return is_complete, blockers
+
+    def _get_discovery_summary(self) -> str:
+        """
+        Get a human-readable summary of the current discovery state.
+
+        Returns:
+            Formatted string summarizing discovery progress.
+        """
+        lines = []
+        lines.append("=== Discovery State Summary ===")
+
+        # Root transaction
+        if self._discovery_state.root_transaction:
+            root = self._discovery_state.root_transaction
+            lines.append(f"Root Transaction: {root.url} ({root.method.value})")
+        else:
+            lines.append("Root Transaction: Not set")
+
+        # Transaction processing
+        status = self._discovery_state.get_queue_status()
+        lines.append(
+            f"Transactions: {status['processed_count']} processed, "
+            f"{status['pending_count']} pending"
+        )
+
+        # Variables
+        params = [
+            rv.variable for rv in self._discovery_state.all_resolved_variables
+            if rv.variable.type == VariableType.PARAMETER
+        ]
+        tokens = [
+            rv.variable for rv in self._discovery_state.all_resolved_variables
+            if rv.variable.type == VariableType.DYNAMIC_TOKEN
+        ]
+        statics = [
+            rv.variable for rv in self._discovery_state.all_resolved_variables
+            if rv.variable.type == VariableType.STATIC_VALUE
+        ]
+
+        lines.append(f"Parameters: {len(params)} ({', '.join(p.name for p in params) if params else 'none'})")
+        lines.append(f"Dynamic Tokens: {len(tokens)} ({', '.join(t.name for t in tokens) if tokens else 'none'})")
+        lines.append(f"Static Values: {len(statics)}")
+
+        # Routine status
+        if self._discovery_state.production_routine:
+            routine = self._discovery_state.production_routine
+            lines.append(
+                f"Routine: Constructed ({len(routine.parameters)} params, "
+                f"{len(routine.operations)} operations)"
+            )
+        else:
+            lines.append("Routine: Not constructed")
+
+        # Completeness check
+        is_complete, blockers = self._validate_discovery_completeness()
+        if is_complete:
+            lines.append("Status: Ready to construct routine")
+        else:
+            lines.append(f"Status: Not ready - {'; '.join(blockers)}")
+
+        return "\n".join(lines)
+
     ## Tools - Task Management
 
     # Available agent types for task creation
@@ -678,18 +909,440 @@ class SuperDiscoveryAgent(AbstractAgent):
                 **result,
             })
 
-        # Check if all tasks are done
+        # Check if all tasks are done and update phase
+        phase_message = None
         if not self._orchestration_state.get_pending_tasks() and not self._orchestration_state.get_in_progress_tasks():
             if self._orchestration_state.get_failed_tasks():
-                pass  # Some failed, let orchestrator decide
+                phase_message = "Some tasks failed. Review results and decide next steps."
             else:
-                self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
+                # All tasks completed successfully
+                # Check if we can transition to CONSTRUCTING
+                can_construct = True
+                construction_blockers = []
 
-        return {
+                # Check if root transaction is set
+                if not self._discovery_state.root_transaction:
+                    construction_blockers.append("No root transaction recorded (use record_identified_endpoint)")
+
+                # Check if any unresolved dynamic tokens exist
+                unresolved_tokens = []
+                for tx_id, tx_data in self._discovery_state.transaction_data.items():
+                    if tx_data.get("extracted_variables"):
+                        extracted = tx_data["extracted_variables"]
+                        resolved_names = {
+                            rv.variable.name
+                            for rv in tx_data.get("resolved_variables", [])
+                        }
+                        for var in extracted.variables:
+                            if var.requires_dynamic_resolution and var.name not in resolved_names:
+                                unresolved_tokens.append(var.name)
+
+                if unresolved_tokens:
+                    construction_blockers.append(
+                        f"Unresolved dynamic tokens: {unresolved_tokens} "
+                        f"(use trace_hound and record_resolved_variable)"
+                    )
+
+                # Check if transaction queue is not empty (dependencies pending)
+                if self._discovery_state.transaction_queue:
+                    construction_blockers.append(
+                        f"Transaction queue not empty: {self._discovery_state.transaction_queue} "
+                        f"(process dependencies first)"
+                    )
+
+                if construction_blockers:
+                    can_construct = False
+                    phase_message = (
+                        "All tasks completed, but cannot construct routine yet. Blockers: " +
+                        "; ".join(construction_blockers)
+                    )
+                else:
+                    # Can transition to CONSTRUCTING
+                    self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
+                    phase_message = (
+                        "All tasks completed and discovery is complete! "
+                        "Use get_discovery_context to see all discovered data, "
+                        "then construct_routine to build the routine."
+                    )
+
+        result = {
             "executed": len(results),
             "results": results,
             "phase": self._discovery_state.phase.value,
         }
+
+        if phase_message:
+            result["phase_message"] = phase_message
+
+        return result
+
+    ## Tools - State Population
+
+    @agent_tool()
+    def _record_identified_endpoint(
+        self,
+        request_id: str,
+        url: str,
+        method: str,
+        description: str
+    ) -> dict[str, Any]:
+        """
+        Record the main transaction identified by network_spy.
+        This becomes the root_transaction in discovery state.
+
+        Args:
+            request_id: The HAR entry ID from network_spy results.
+            url: The URL of the endpoint.
+            method: HTTP method (GET, POST, etc).
+            description: What this transaction does.
+        """
+        # Validate request_id exists in network data
+        if not self._network_data_loader:
+            return {"error": "No network data loader available"}
+
+        entry = self._network_data_loader.get_entry(request_id)
+        if not entry:
+            available_ids = [e.request_id for e in self._network_data_loader.entries[:10]]
+            return {
+                "error": f"Request ID '{request_id}' not found",
+                "sample_ids": available_ids
+            }
+
+        # Parse HTTP method
+        try:
+            http_method = HTTPMethod(method.upper())
+        except ValueError:
+            return {"error": f"Invalid HTTP method '{method}'. Use GET, POST, PUT, DELETE, etc."}
+
+        # Create TransactionIdentificationResponse
+        root_transaction = TransactionIdentificationResponse(
+            transaction_id=request_id,
+            description=description,
+            url=url,
+            method=http_method,
+            short_explanation=f"Main endpoint for {description}"
+        )
+
+        # Store in discovery state
+        self._discovery_state.root_transaction = root_transaction
+
+        # Add to transaction queue
+        added, position = self._discovery_state.add_to_queue(request_id)
+
+        # Initialize transaction data
+        self._discovery_state.store_transaction_data(
+            transaction_id=request_id,
+            request={
+                "url": entry.url,
+                "method": entry.method,
+                "headers": entry.request_headers,
+                "body": entry.post_data,
+            }
+        )
+
+        # Transition to DISCOVERING phase
+        self._discovery_state.phase = DiscoveryPhase.DISCOVERING
+
+        return {
+            "success": True,
+            "transaction_id": request_id,
+            "added_to_queue": added,
+            "queue_position": position,
+            "message": f"Recorded root transaction: {url}"
+        }
+
+    @agent_tool()
+    def _record_extracted_variable(
+        self,
+        transaction_id: str,
+        name: str,
+        type: str,
+        observed_value: str,
+        requires_dynamic_resolution: bool,
+        values_to_scan_for: list[str] | None = None
+    ) -> dict[str, Any]:
+        """
+        Record a variable discovered from analyzing a transaction.
+        Typically called when reviewing NetworkSpyAgent findings.
+
+        Args:
+            transaction_id: The transaction this variable belongs to.
+            name: Variable name (e.g., "origin_city", "x-trace-id").
+            type: Variable type - "parameter", "dynamic_token", or "static_value".
+            observed_value: The actual value seen in the capture.
+            requires_dynamic_resolution: True if value must be resolved at runtime.
+            values_to_scan_for: Optional list of values to search for (defaults to [observed_value]).
+        """
+        # Validate variable type
+        try:
+            var_type = VariableType(type)
+        except ValueError:
+            return {
+                "error": f"Invalid variable type '{type}'. Use: parameter, dynamic_token, or static_value"
+            }
+
+        # Create Variable object
+        variable = Variable(
+            type=var_type,
+            requires_dynamic_resolution=requires_dynamic_resolution,
+            name=name,
+            observed_value=observed_value,
+            values_to_scan_for=values_to_scan_for or [observed_value]
+        )
+
+        # Check if transaction_data exists for this transaction
+        if transaction_id not in self._discovery_state.transaction_data:
+            self._discovery_state.transaction_data[transaction_id] = {
+                "request": None,
+                "extracted_variables": None,
+                "resolved_variables": []
+            }
+
+        # Get or create ExtractedVariableResponse
+        tx_data = self._discovery_state.transaction_data[transaction_id]
+        if tx_data.get("extracted_variables") is None:
+            extracted = ExtractedVariableResponse(
+                transaction_id=transaction_id,
+                variables=[variable]
+            )
+            tx_data["extracted_variables"] = extracted
+        else:
+            # Add to existing variables
+            tx_data["extracted_variables"].variables.append(variable)
+
+        return {
+            "success": True,
+            "transaction_id": transaction_id,
+            "variable_name": name,
+            "variable_type": type,
+            "requires_resolution": requires_dynamic_resolution,
+            "message": f"Recorded variable '{name}' for transaction {transaction_id}"
+        }
+
+    @agent_tool()
+    def _record_resolved_variable(
+        self,
+        variable_name: str,
+        transaction_id: str,
+        source_type: str,
+        storage_source: dict[str, Any] | None = None,
+        window_property_source: dict[str, Any] | None = None,
+        transaction_source: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """
+        Record how to resolve a dynamic token based on TraceHoundAgent findings.
+        Auto-adds dependency transactions to the queue.
+
+        Args:
+            variable_name: Name of the variable being resolved.
+            transaction_id: The transaction this variable belongs to.
+            source_type: Where the value comes from - "storage", "window_property", or "transaction".
+            storage_source: For storage source - {"type": "cookie|localStorage|sessionStorage", "dot_path": "path"}.
+            window_property_source: For window source - {"dot_path": "path"}.
+            transaction_source: For transaction source - {"transaction_id": "id", "dot_path": "path"}.
+        """
+        # Find the variable in extracted variables
+        tx_data = self._discovery_state.transaction_data.get(transaction_id)
+        if not tx_data or not tx_data.get("extracted_variables"):
+            return {
+                "error": f"No extracted variables found for transaction {transaction_id}. "
+                        f"Call record_extracted_variable first."
+            }
+
+        extracted = tx_data["extracted_variables"]
+        variable = None
+        for v in extracted.variables:
+            if v.name == variable_name:
+                variable = v
+                break
+
+        if not variable:
+            available = [v.name for v in extracted.variables]
+            return {
+                "error": f"Variable '{variable_name}' not found in transaction {transaction_id}. "
+                        f"Available variables: {available}"
+            }
+
+        # Build source objects based on source_type
+        session_storage_src = None
+        transaction_src = None
+        window_property_src = None
+        dependency_tx_id = None
+
+        if source_type == "storage" and storage_source:
+            try:
+                storage_type = SessionStorageType(storage_source["type"])
+                session_storage_src = SessionStorageSource(
+                    type=storage_type,
+                    dot_path=storage_source["dot_path"]
+                )
+            except (KeyError, ValueError) as e:
+                return {"error": f"Invalid storage_source format: {e}"}
+
+        elif source_type == "window_property" and window_property_source:
+            try:
+                window_property_src = WindowPropertySource(
+                    dot_path=window_property_source["dot_path"]
+                )
+            except KeyError as e:
+                return {"error": f"Invalid window_property_source format: {e}"}
+
+        elif source_type == "transaction" and transaction_source:
+            try:
+                transaction_src = TransactionSource(
+                    transaction_id=transaction_source["transaction_id"],
+                    dot_path=transaction_source["dot_path"]
+                )
+                # Auto-add dependency to queue
+                dep_tx_id = transaction_source["transaction_id"]
+                if dep_tx_id not in self._discovery_state.processed_transactions:
+                    added, _ = self._discovery_state.add_to_queue(dep_tx_id)
+                    if added:
+                        dependency_tx_id = dep_tx_id
+            except KeyError as e:
+                return {"error": f"Invalid transaction_source format: {e}"}
+        else:
+            return {
+                "error": f"Invalid source_type '{source_type}' or missing source data. "
+                        f"Provide storage_source, window_property_source, or transaction_source."
+            }
+
+        # Create ResolvedVariableResponse
+        resolved = ResolvedVariableResponse(
+            variable=variable,
+            session_storage_source=session_storage_src,
+            transaction_source=transaction_src,
+            window_property_source=window_property_src,
+            short_explanation=f"Resolved {variable_name} from {source_type}"
+        )
+
+        # Store in state
+        self._discovery_state.store_transaction_data(
+            transaction_id=transaction_id,
+            resolved_variable=resolved
+        )
+
+        result = {
+            "success": True,
+            "variable_name": variable_name,
+            "source_type": source_type,
+            "added_to_all_resolved": True
+        }
+
+        if dependency_tx_id:
+            result["dependency_added"] = True
+            result["dependency_transaction_id"] = dependency_tx_id
+            result["message"] = f"Resolved '{variable_name}' and added dependency {dependency_tx_id} to queue"
+        else:
+            result["message"] = f"Resolved '{variable_name}' from {source_type}"
+
+        return result
+
+    @agent_tool()
+    def _get_discovery_context(self) -> dict[str, Any]:
+        """
+        Get formatted summary of everything discovered so far.
+        Use this before constructing the routine to see all available data.
+
+        Returns:
+            Comprehensive discovery context including transactions, variables, and resolution info.
+        """
+        context: dict[str, Any] = {
+            "root_transaction": None,
+            "processed_transactions": [],
+            "all_parameters": [],
+            "all_dynamic_tokens": [],
+            "all_static_values": [],
+            "transaction_order": []
+        }
+
+        # Root transaction
+        if self._discovery_state.root_transaction:
+            context["root_transaction"] = {
+                "id": self._discovery_state.root_transaction.transaction_id,
+                "url": self._discovery_state.root_transaction.url,
+                "method": self._discovery_state.root_transaction.method.value,
+                "description": self._discovery_state.root_transaction.description
+            }
+
+        # Processed transactions with their data
+        for tx_id in self._discovery_state.processed_transactions:
+            tx_data = self._discovery_state.transaction_data.get(tx_id, {})
+            tx_info: dict[str, Any] = {"id": tx_id}
+
+            # Add request info
+            if tx_data.get("request"):
+                req = tx_data["request"]
+                tx_info["url"] = req.get("url", "")
+                tx_info["method"] = req.get("method", "")
+
+            # Add extracted variables
+            if tx_data.get("extracted_variables"):
+                extracted = tx_data["extracted_variables"]
+                tx_info["extracted_variables"] = [
+                    {
+                        "name": v.name,
+                        "type": v.type.value,
+                        "observed_value": v.observed_value,
+                        "requires_resolution": v.requires_dynamic_resolution
+                    }
+                    for v in extracted.variables
+                ]
+
+            # Add resolved variables
+            if tx_data.get("resolved_variables"):
+                tx_info["resolved_variables"] = [
+                    {
+                        "name": rv.variable.name,
+                        "source_type": (
+                            "storage" if rv.session_storage_source else
+                            "transaction" if rv.transaction_source else
+                            "window_property" if rv.window_property_source else
+                            "unknown"
+                        ),
+                        "explanation": rv.short_explanation
+                    }
+                    for rv in tx_data["resolved_variables"]
+                ]
+
+            context["processed_transactions"].append(tx_info)
+
+        # Categorize all resolved variables by type
+        for resolved in self._discovery_state.all_resolved_variables:
+            var = resolved.variable
+            var_dict = {
+                "name": var.name,
+                "observed_value": var.observed_value,
+                "source": (
+                    f"storage:{resolved.session_storage_source.dot_path}" if resolved.session_storage_source else
+                    f"transaction:{resolved.transaction_source.transaction_id}:{resolved.transaction_source.dot_path}" if resolved.transaction_source else
+                    f"window:{resolved.window_property_source.dot_path}" if resolved.window_property_source else
+                    "unknown"
+                )
+            }
+
+            if var.type == VariableType.PARAMETER:
+                context["all_parameters"].append(var_dict)
+            elif var.type == VariableType.DYNAMIC_TOKEN:
+                context["all_dynamic_tokens"].append(var_dict)
+            elif var.type == VariableType.STATIC_VALUE:
+                context["all_static_values"].append(var_dict)
+
+        # Transaction execution order (dependencies first)
+        ordered = self._discovery_state.get_ordered_transactions()
+        context["transaction_order"] = list(ordered.keys())
+
+        # Add summary stats
+        context["summary"] = {
+            "total_transactions": len(self._discovery_state.processed_transactions),
+            "total_parameters": len(context["all_parameters"]),
+            "total_dynamic_tokens": len(context["all_dynamic_tokens"]),
+            "total_static_values": len(context["all_static_values"]),
+            "queue_pending": len(self._discovery_state.transaction_queue),
+            "current_phase": self._discovery_state.phase.value
+        }
+
+        return context
 
     ## Tools - Data Store Access
 
@@ -862,6 +1515,39 @@ class SuperDiscoveryAgent(AbstractAgent):
         self._discovery_state.construction_attempts += 1
         self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
 
+        # Optional: Provide guidance if discovery state has data
+        warnings = []
+        if self._discovery_state.all_resolved_variables:
+            # Check if routine uses discovered variables
+            discovered_param_names = {
+                rv.variable.name for rv in self._discovery_state.all_resolved_variables
+                if rv.variable.type == VariableType.PARAMETER
+            }
+            discovered_token_names = {
+                rv.variable.name for rv in self._discovery_state.all_resolved_variables
+                if rv.variable.type == VariableType.DYNAMIC_TOKEN
+            }
+
+            routine_param_names = {p["name"] for p in parameters}
+
+            # Warn about discovered parameters not used in routine
+            unused_params = discovered_param_names - routine_param_names
+            if unused_params:
+                warnings.append(
+                    f"Discovered parameters not used in routine: {unused_params}. "
+                    f"Consider if these should be included."
+                )
+
+            # Note: We don't validate token usage here since they're embedded in placeholders
+
+        # Suggest transaction order if multiple transactions were processed
+        if len(self._discovery_state.processed_transactions) > 1:
+            ordered_txs = list(self._discovery_state.get_ordered_transactions().keys())
+            warnings.append(
+                f"Multiple transactions were processed. Suggested operation order "
+                f"(dependencies first): {ordered_txs}"
+            )
+
         try:
             routine = Routine(
                 name=name,
@@ -875,32 +1561,51 @@ class SuperDiscoveryAgent(AbstractAgent):
             # Move to validation if browser available, otherwise complete
             if self._remote_debugging_address:
                 self._discovery_state.phase = DiscoveryPhase.VALIDATING
-                return {
+                result = {
                     "success": True,
                     "routine_name": routine.name,
                     "operations_count": len(routine.operations),
                     "parameters_count": len(routine.parameters),
                     "next_step": "Use execute_routine to validate",
                 }
+                if warnings:
+                    result["warnings"] = warnings
+                return result
             else:
                 self._discovery_state.phase = DiscoveryPhase.COMPLETE
                 self._final_routine = routine
-                return {
+                result = {
                     "success": True,
                     "routine_name": routine.name,
                     "operations_count": len(routine.operations),
                     "parameters_count": len(routine.parameters),
                     "message": "Routine constructed (no browser for validation)",
                 }
+                if warnings:
+                    result["warnings"] = warnings
+                return result
 
         except Exception as e:
+            error_msg = str(e)
+            help_text = "Review the construct_routine tool documentation for schema and examples. "
+
+            # Provide state-aware help
+            if self._discovery_state.all_resolved_variables:
+                help_text += (
+                    f"You have {len(self._discovery_state.all_resolved_variables)} resolved variables available. "
+                    f"Call get_discovery_context to see all discovered data and use it to build the routine."
+                )
+            elif self._discovery_state.root_transaction:
+                help_text += (
+                    "You have a root transaction recorded but no resolved variables. "
+                    "Consider using trace_hound to resolve dynamic tokens before constructing."
+                )
+
             return {
                 "success": False,
-                "error": str(e),
+                "error": error_msg,
                 "attempt": self._discovery_state.construction_attempts,
-                "help": (
-                    "Review the construct_routine tool documentation for schema and examples. "
-                ),
+                "help": help_text,
             }
 
     @agent_tool()

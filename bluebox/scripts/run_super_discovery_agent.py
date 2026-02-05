@@ -6,9 +6,10 @@ Run the SuperDiscoveryAgent orchestrator for routine discovery.
 Usage:
     bluebox-super-discovery --task "Search for trains" --cdp-captures-dir ./cdp_captures
 
-    bluebox-super-discovery --task "Search for trains from one station to another" \
+    bluebox-super-discovery --task "get the live standings of a premier league football season" \
         --network-jsonl ./cdp_captures/network/events.jsonl \
-        --storage-jsonl ./cdp_captures/storage/events.jsonl
+        --storage-jsonl ./cdp_captures/storage/events.jsonl \
+        --window-props-jsonl ./cdp_captures/window_properties/events.jsonl
 
     bluebox-super-discovery --task "Search for flights" \
         --network-jsonl ./cdp_captures/network/events.jsonl \
@@ -29,11 +30,11 @@ from bluebox.data_models.llms.interaction import (
     ToolInvocationResultEmittedMessage,
 )
 from bluebox.data_models.llms.vendors import OpenAIModel
-from bluebox.llms.infra.documentation_data_store import DocumentationDataStore
-from bluebox.llms.infra.js_data_store import JSDataStore
-from bluebox.llms.infra.network_data_store import NetworkDataStore
-from bluebox.llms.infra.storage_data_store import StorageDataStore
-from bluebox.llms.infra.window_property_data_store import WindowPropertyDataStore
+from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
+from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
+from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
+from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
+from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
 from bluebox.utils.exceptions import ApiKeyNotFoundError
 from bluebox.utils.logger import get_logger
 
@@ -149,16 +150,37 @@ def main() -> None:
                 documentation_data_store.stats.total_docs,
                 documentation_data_store.stats.total_code)
 
+    # Message history storage
+    message_history: list[dict] = []
+    message_history_path = os.path.join(args.output_dir, "message_history.json")
+
     # Message handler
     def handle_message(message: EmittedMessage) -> None:
+        # Store message in history
+        message_dict = {
+            "type": message.__class__.__name__,
+            "timestamp": message.timestamp if hasattr(message, "timestamp") else None,
+        }
+
         if isinstance(message, ChatResponseEmittedMessage):
             logger.info("💬 %s", message.content[:200] + "..." if len(message.content) > 200 else message.content)
+            message_dict["content"] = message.content
         elif isinstance(message, ErrorEmittedMessage):
             logger.error("❌ %s", message.error)
+            message_dict["error"] = message.error
         elif isinstance(message, ToolInvocationResultEmittedMessage):
             tool_name = message.tool_invocation.tool_name
             status = message.tool_invocation.status.value
             logger.info("🔧 %s [%s]", tool_name, status)
+            message_dict["tool_name"] = tool_name
+            message_dict["status"] = status
+            message_dict["result"] = message.tool_invocation.result if hasattr(message.tool_invocation, "result") else None
+
+        message_history.append(message_dict)
+
+        # Save message history after every message
+        with open(message_history_path, mode="w", encoding="utf-8") as f:
+            json.dump(message_history, f, ensure_ascii=False, indent=2)
 
     # Initialize agent
     llm_model = OpenAIModel(args.llm_model)
@@ -178,6 +200,7 @@ def main() -> None:
         remote_debugging_address=args.remote_debugging_address,
     )
     logger.info("SuperDiscoveryAgent initialized.")
+    logger.info("📝 Message history will be saved to: %s", message_history_path)
 
     if args.remote_debugging_address:
         logger.info("Validation enabled via: %s", args.remote_debugging_address)
@@ -203,6 +226,7 @@ def main() -> None:
     else:
         logger.error("❌ Discovery failed - no routine produced")
 
+    logger.info("📝 Message history saved (%d messages): %s", len(message_history), message_history_path)
     logger.info("Done.")
 
 
