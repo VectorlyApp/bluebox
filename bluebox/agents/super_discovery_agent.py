@@ -1660,10 +1660,7 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     @agent_tool(
         description="Construct a routine from discovered data. Auto-executes if browser connected.",
-        parameters={"type": "object", "properties": {}, "required": []},
-        availability=lambda self: (
-            self._discovery_state.root_transaction is not None
-        ),
+        availability=lambda self: self._discovery_state.root_transaction is not None,
     )
     def _construct_routine(self, routine: Routine) -> dict[str, Any]:
         """

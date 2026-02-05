@@ -150,7 +150,7 @@ def main() -> None:
 
     interaction_data_loader: InteractionsDataLoader | None = None
     if interaction_jsonl and Path(interaction_jsonl).exists():
-        interaction_data_loader = InteractionsDataLoader(interaction_jsonl)
+        interaction_data_loader = InteractionsDataLoader.from_jsonl(interaction_jsonl)
         logger.info("Interaction data loaded: %d events", interaction_data_loader.stats.total_events)
 
     # Initialize documentation data loader with defaults from run_docs_digger.py
