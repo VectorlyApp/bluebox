@@ -40,7 +40,10 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus, AgentType
 from bluebox.data_models.orchestration.state import SuperDiscoveryState, SuperDiscoveryPhase
 from bluebox.data_models.routine.routine import Routine
-from bluebox.llms.infra.data_store import DiscoveryDataStore
+from bluebox.llms.infra.js_data_store import JSDataStore
+from bluebox.llms.infra.network_data_store import NetworkDataStore
+from bluebox.llms.infra.storage_data_store import StorageDataStore
+from bluebox.llms.infra.window_property_data_store import WindowPropertyDataStore
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -109,8 +112,11 @@ class SuperDiscoveryAgent(AbstractAgent):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
-        data_store: DiscoveryDataStore,
+        network_data_store: NetworkDataStore,
         task: str,
+        storage_data_store: StorageDataStore | None = None,
+        window_property_data_store: WindowPropertyDataStore | None = None,
+        js_data_store: JSDataStore | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
         subagent_llm_model: LLMModel | None = None,
         max_iterations: int = 50,
@@ -126,8 +132,11 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         Args:
             emit_message_callable: Callback to emit messages to the host.
-            data_store: Data store with CDP captures.
+            network_data_store: NetworkDataStore with network traffic data.
             task: The discovery task description.
+            storage_data_store: Optional StorageDataStore for browser storage.
+            window_property_data_store: Optional WindowPropertyDataStore for window properties.
+            js_data_store: Optional JSDataStore for JavaScript files.
             llm_model: LLM model for the orchestrator.
             subagent_llm_model: LLM model for subagents (defaults to orchestrator's model).
             max_iterations: Maximum iterations for the main loop.
@@ -138,7 +147,10 @@ class SuperDiscoveryAgent(AbstractAgent):
             chat_thread: Existing ChatThread to continue, or None for new.
             existing_chats: Existing Chat messages if loading from persistence.
         """
-        self._data_store = data_store
+        self._network_data_store = network_data_store
+        self._storage_data_store = storage_data_store
+        self._window_property_data_store = window_property_data_store
+        self._js_data_store = js_data_store
         self._task = task
         self._subagent_llm_model = subagent_llm_model or llm_model
         self._max_iterations = max_iterations
@@ -168,11 +180,22 @@ class SuperDiscoveryAgent(AbstractAgent):
         """Build the complete system prompt with current state."""
         prompt_parts = [self.SYSTEM_PROMPT]
 
-        # Add data store context
-        if self._data_store:
-            data_store_prompt = self._data_store.generate_data_store_prompt()
-            if data_store_prompt:
-                prompt_parts.append(f"\n\n{data_store_prompt}")
+        # Add data store summaries
+        data_store_info = []
+        if self._network_data_store:
+            stats = self._network_data_store.stats
+            data_store_info.append(f"Network: {stats.total_requests} transactions")
+        if self._storage_data_store:
+            stats = self._storage_data_store.stats
+            data_store_info.append(f"Storage: {stats.total_events} events")
+        if self._window_property_data_store:
+            stats = self._window_property_data_store.stats
+            data_store_info.append(f"Window: {stats.total_events} events")
+        if self._js_data_store:
+            data_store_info.append("JS files: available")
+
+        if data_store_info:
+            prompt_parts.append(f"\n\n## Data Sources\n{', '.join(data_store_info)}")
 
         # Add current state
         status = self._state.get_queue_status()
@@ -300,15 +323,12 @@ class SuperDiscoveryAgent(AbstractAgent):
             )
 
         elif agent_type == AgentType.TRACE_HOUND:
-            # TraceHoundAgent needs specific data stores - we'll pass what we have
-            # from the DiscoveryDataStore (or None if not available)
             return TraceHoundAgent(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
-                # TraceHoundAgent accepts these as optional
-                network_data_store=None,  # Would need NetworkDataStore
-                storage_data_store=None,  # Would need StorageDataStore
-                window_property_data_store=None,  # Would need WindowPropertyDataStore
+                network_data_store=self._network_data_store,
+                storage_data_store=self._storage_data_store,
+                window_property_data_store=self._window_property_data_store,
             )
 
         else:
@@ -491,11 +511,19 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     @agent_tool()
     def _list_transactions(self) -> dict[str, Any]:
-        """List all available transaction IDs from the CDP captures."""
-        tx_ids = self._data_store.get_all_transaction_ids()
+        """List all available transaction IDs from the network captures."""
+        if not self._network_data_store:
+            return {"error": "No network data store available"}
+
+        entries = self._network_data_store.entries
+        tx_summaries = [
+            {"id": e.request_id, "method": e.method, "url": e.url[:100]}
+            for e in entries[:50]  # Limit to first 50 for readability
+        ]
         return {
-            "transaction_ids": tx_ids,
-            "count": len(tx_ids),
+            "transactions": tx_summaries,
+            "count": len(entries),
+            "showing": len(tx_summaries),
         }
 
     @agent_tool()
@@ -506,39 +534,57 @@ class SuperDiscoveryAgent(AbstractAgent):
         Args:
             transaction_id: The ID of the transaction to retrieve.
         """
-        all_ids = self._data_store.get_all_transaction_ids()
-        if transaction_id not in all_ids:
-            return {"error": f"Transaction {transaction_id} not found. Available: {all_ids[:10]}..."}
+        if not self._network_data_store:
+            return {"error": "No network data store available"}
 
-        tx = self._data_store.get_transaction_by_id(transaction_id)
+        entry = self._network_data_store.get_entry(transaction_id)
+        if not entry:
+            # Show some available IDs as hints
+            available = [e.request_id for e in self._network_data_store.entries[:10]]
+            return {"error": f"Transaction {transaction_id} not found. Sample IDs: {available}"}
+
         return {
             "transaction_id": transaction_id,
-            "request": tx.get("request", {}),
-            "response": tx.get("response", {}),
+            "method": entry.method,
+            "url": entry.url,
+            "status": entry.status,
+            "request_headers": entry.request_headers,
+            "post_data": entry.post_data,
+            "response_headers": entry.response_headers,
+            "response_body": entry.response_body[:5000] if entry.response_body else None,  # Truncate large bodies
         }
 
     @agent_tool()
-    def _scan_for_value(self, value: str, before_transaction_id: str | None = None) -> dict[str, Any]:
+    def _scan_for_value(self, value: str) -> dict[str, Any]:
         """
-        Scan storage, window properties, and transactions for a value.
+        Scan storage, window properties, and network responses for a value.
+
+        Use this to trace where a token/value originated from.
 
         Args:
             value: The value to search for.
-            before_transaction_id: Optional - only search transactions before this one.
         """
-        max_timestamp = None
-        if before_transaction_id:
-            max_timestamp = self._data_store.get_transaction_timestamp(before_transaction_id)
+        storage_sources: list[dict[str, Any]] = []
+        window_sources: list[dict[str, Any]] = []
+        network_sources: list[dict[str, Any]] = []
 
-        storage_sources = self._data_store.scan_storage_for_value(value)
-        window_sources = self._data_store.scan_window_properties_for_value(value)
-        tx_sources = self._data_store.scan_transaction_responses(value, max_timestamp=max_timestamp)
+        # Search storage events
+        if self._storage_data_store:
+            storage_sources = self._storage_data_store.search_values(value)[:5]
+
+        # Search window properties
+        if self._window_property_data_store:
+            window_sources = self._window_property_data_store.search_values(value)[:5]
+
+        # Search network response bodies
+        if self._network_data_store:
+            network_sources = self._network_data_store.search_response_bodies(value)[:5]
 
         return {
-            "storage_sources": storage_sources[:5],
-            "window_property_sources": window_sources[:5],
-            "transaction_sources": tx_sources[:5],
-            "found_count": len(storage_sources) + len(window_sources) + len(tx_sources),
+            "storage_sources": storage_sources,
+            "window_property_sources": window_sources,
+            "network_sources": network_sources,
+            "found_count": len(storage_sources) + len(window_sources) + len(network_sources),
         }
 
     ## Tools - Routine Construction

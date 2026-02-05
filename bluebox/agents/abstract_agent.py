@@ -20,6 +20,7 @@ from __future__ import annotations
 import functools
 import json
 from abc import ABC, abstractmethod
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, get_type_hints
@@ -467,17 +468,45 @@ class AbstractAgent(ABC):
             return json.dumps({"error": str(e)})
 
     def _process_tool_calls(self, tool_calls: list[LLMToolCall]) -> None:
-        """Execute a list of tool calls and add results to chat history."""
-        for tool_call in tool_calls:
-            logger.debug("Auto-executing tool %s", tool_call.tool_name)
+        """Execute a list of tool calls in parallel and add results to chat history."""
+        if len(tool_calls) == 1:
+            # Single tool call - no need for threading overhead
+            tool_call = tool_calls[0]
+            logger.debug("Executing tool %s", tool_call.tool_name)
             result_str = self._auto_execute_tool(tool_call.tool_name, tool_call.tool_arguments)
             self._add_chat(
                 ChatRole.TOOL,
                 f"Tool '{tool_call.tool_name}' result: {result_str}",
                 tool_call_id=tool_call.call_id,
             )
+            return
 
-    ## Agent loop (basic implementation, can be overridden)
+        # multiple tool calls, execute in parallel
+        logger.debug("Executing %d tool calls in parallel", len(tool_calls))
+
+        def execute_one(tc: LLMToolCall) -> tuple[LLMToolCall, str]:
+            result_str = self._auto_execute_tool(tc.tool_name, tc.tool_arguments)
+            return tc, result_str
+
+        results: list[tuple[LLMToolCall, str]] = []
+        with ThreadPoolExecutor(max_workers=len(tool_calls)) as executor:
+            futures: dict[Future[tuple[LLMToolCall, str]], LLMToolCall] = {
+                executor.submit(execute_one, tc): tc for tc in tool_calls
+            }
+            for future in as_completed(futures):
+                results.append(future.result())
+
+        # add results to chat history in original order
+        call_id_to_result = {tc.call_id: result_str for tc, result_str in results}
+        for tool_call in tool_calls:
+            result_str = call_id_to_result[tool_call.call_id]
+            self._add_chat(
+                ChatRole.TOOL,
+                f"Tool '{tool_call.tool_name}' result: {result_str}",
+                tool_call_id=tool_call.call_id,
+            )
+
+    ## agent loop (basic implementation, can be overridden)
 
     def _run_agent_loop(self) -> None:
         """Run a basic agent loop: call LLM → execute tools → repeat."""
