@@ -173,7 +173,7 @@ class AbstractDataLoader(ABC, Generic[EntryT, StatsT]):
         pattern: str,
         top_n: int = 20,
         max_matches_per_entry: int = 10,
-        context_chars: int = 80,
+        snippet_padding_chars: int = 80,
         timeout_seconds: float = 15.0,
     ) -> dict[str, Any]:
         """
@@ -185,7 +185,7 @@ class AbstractDataLoader(ABC, Generic[EntryT, StatsT]):
             pattern: Regex pattern to search for.
             top_n: Max number of entries to return.
             max_matches_per_entry: Max matches to return per entry.
-            context_chars: Characters of context around each match.
+            snippet_padding_chars: Characters of context around each match.
             timeout_seconds: Max time to spend searching.
 
         Returns:
@@ -236,8 +236,8 @@ class AbstractDataLoader(ABC, Generic[EntryT, StatsT]):
                         end = match.end()
 
                         # extract context snippet
-                        snippet_start = max(0, start - context_chars)
-                        snippet_end = min(len(content), end + context_chars)
+                        snippet_start = max(0, start - snippet_padding_chars)
+                        snippet_end = min(len(content), end + snippet_padding_chars)
                         snippet = content[snippet_start:snippet_end]
 
                         # add ellipsis markers if truncated
@@ -288,7 +288,7 @@ class AbstractDataLoader(ABC, Generic[EntryT, StatsT]):
         self,
         value: str,
         case_sensitive: bool = False,
-        context_chars: int = 50,
+        snippet_padding_chars: int = 50,
     ) -> list[dict[str, Any]]:
         """
         Search entry contents for a given value and return matches with context.
@@ -296,7 +296,7 @@ class AbstractDataLoader(ABC, Generic[EntryT, StatsT]):
         Args:
             value: The value to search for.
             case_sensitive: Whether the search should be case-sensitive.
-            context_chars: Characters of context around match.
+            snippet_padding_chars: Characters of context around match.
 
         Returns:
             List of dicts with keys: id, url, count, sample
@@ -321,8 +321,8 @@ class AbstractDataLoader(ABC, Generic[EntryT, StatsT]):
 
             # Find first occurrence and extract context
             pos = search_content.find(search_value)
-            context_start = max(0, pos - context_chars)
-            context_end = min(len(content), pos + len(value) + context_chars)
+            context_start = max(0, pos - snippet_padding_chars)
+            context_end = min(len(content), pos + len(value) + snippet_padding_chars)
 
             sample = content[context_start:context_end]
 

@@ -198,7 +198,7 @@ class JSDataLoader(AbstractDataLoader[NetworkTransactionEvent, JSFileStats]):
         pattern: str,
         top_n: int = 20,
         max_matches_per_file: int = 10,
-        context_chars: int = 80,
+        snippet_padding_chars: int = 80,
         timeout_seconds: float = 15.0,
     ) -> dict[str, Any]:
         """
@@ -208,7 +208,7 @@ class JSDataLoader(AbstractDataLoader[NetworkTransactionEvent, JSFileStats]):
             pattern: Regex pattern to search for.
             top_n: Max number of files to return.
             max_matches_per_file: Max matches to return per file.
-            context_chars: Characters of context around each match.
+            snippet_padding_chars: Characters of context around each match.
             timeout_seconds: Max time to spend searching.
 
         Returns:
@@ -256,8 +256,8 @@ class JSDataLoader(AbstractDataLoader[NetworkTransactionEvent, JSFileStats]):
                         end = match.end()
 
                         # extract context snippet
-                        snippet_start = max(0, start - context_chars)
-                        snippet_end = min(len(content), end + context_chars)
+                        snippet_start = max(0, start - snippet_padding_chars)
+                        snippet_end = min(len(content), end + snippet_padding_chars)
                         snippet = content[snippet_start:snippet_end]
 
                         # add ellipsis markers if truncated

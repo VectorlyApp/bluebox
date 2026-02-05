@@ -586,7 +586,7 @@ class JSSpecialist(AbstractSpecialist):
         pattern: str,
         top_n: int = 20,
         max_matches_per_file: int = 10,
-        context_chars: int = 80,
+        snippet_padding_chars: int = 80,
     ) -> dict[str, Any]:
         """
         Search captured JS files by regex pattern. Returns matches with surrounding context snippets. WARNING: Regex searches can be expensive on large minified JS files. There is a 15-second timeout. Prefer search_js_files (keyword search) for simple lookups.
@@ -595,7 +595,7 @@ class JSSpecialist(AbstractSpecialist):
             pattern: Regex pattern to search for (case-insensitive).
             top_n: Max files to return (default 20).
             max_matches_per_file: Max matches per file (default 10).
-            context_chars: Characters of context around each match (default 80).
+            snippet_padding_chars: Characters of context around each match (default 80).
         """
         if self._js_data_store is None:
             return {"error": "No JS data store available"}
@@ -607,7 +607,7 @@ class JSSpecialist(AbstractSpecialist):
             pattern=pattern,
             top_n=top_n,
             max_matches_per_file=max_matches_per_file,
-            context_chars=context_chars,
+            snippet_padding_chars=snippet_padding_chars,
         )
 
         if result["error"]:

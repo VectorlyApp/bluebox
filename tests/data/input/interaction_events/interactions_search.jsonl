@@ -1,0 +1,6 @@
+{"type": "input", "url": "https://example.com/profile", "element": {"tag_name": "input", "id": "fullname", "name": "fullname", "type_attr": "text", "value": "Alice Johnson", "placeholder": "Full name", "css_path": "input#fullname"}}
+{"type": "input", "url": "https://example.com/profile", "element": {"tag_name": "input", "id": "email", "name": "email", "type_attr": "email", "value": "alice@example.com", "placeholder": "Email address", "css_path": "input#email"}}
+{"type": "click", "url": "https://example.com/products", "element": {"tag_name": "button", "id": "add-to-cart", "text": "Add Widget to Cart", "class_names": ["btn", "btn-primary"], "css_path": "button#add-to-cart"}}
+{"type": "input", "url": "https://example.com/checkout", "element": {"tag_name": "input", "id": "card-number", "name": "cardNumber", "type_attr": "text", "value": "4111-1111-1111-1111", "placeholder": "Card number", "css_path": "input#card-number"}}
+{"type": "click", "url": "https://example.com/checkout", "element": {"tag_name": "button", "id": "pay-btn", "text": "Pay Now", "class_names": ["btn", "btn-success"], "css_path": "button#pay-btn"}}
+{"type": "input", "url": "https://analytics.example.com/dashboard", "element": {"tag_name": "input", "id": "tracking-id", "name": "trackingId", "type_attr": "text", "value": "TRACK-ABC-123", "css_path": "input#tracking-id"}}

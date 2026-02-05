@@ -123,8 +123,8 @@ class InteractionsDataLoader(AbstractDataLoader[UIInteractionEvent, InteractionS
         el = entry.element
         if el.value:
             parts.append(el.value)
-        if el.text_content:
-            parts.append(el.text_content)
+        if el.text:
+            parts.append(el.text)
         if el.placeholder:
             parts.append(el.placeholder)
         if el.id:

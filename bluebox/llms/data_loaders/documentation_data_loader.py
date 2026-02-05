@@ -299,7 +299,7 @@ class DocumentationDataLoader(AbstractDataLoader[FileEntry, DocumentationStats])
         query: str,
         file_type: FileType | None = None,
         case_sensitive: bool = False,
-        context_chars: int = 100,
+        snippet_padding_chars: int = 100,
     ) -> list[dict[str, Any]]:
         """
         Search file contents for a query string.
@@ -308,7 +308,7 @@ class DocumentationDataLoader(AbstractDataLoader[FileEntry, DocumentationStats])
             query: The string to search for.
             file_type: Optional filter by file type.
             case_sensitive: Whether search is case-sensitive.
-            context_chars: Number of context characters around matches.
+            snippet_padding_chars: Number of context characters around matches.
 
         Returns:
             List of dicts with path, file_type, count, and sample context.
@@ -333,8 +333,8 @@ class DocumentationDataLoader(AbstractDataLoader[FileEntry, DocumentationStats])
 
             # Find first occurrence and extract context
             pos = content.find(search_query)
-            context_start = max(0, pos - context_chars)
-            context_end = min(len(original_content), pos + len(query) + context_chars)
+            context_start = max(0, pos - snippet_padding_chars)
+            context_end = min(len(original_content), pos + len(query) + snippet_padding_chars)
 
             sample = original_content[context_start:context_end]
             if context_start > 0:
