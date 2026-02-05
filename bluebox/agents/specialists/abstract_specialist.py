@@ -92,6 +92,27 @@ class AbstractSpecialist(AbstractAgent):
         """Return a copy of all registered specialist subclasses."""
         return cls._subclasses.copy()
 
+    @classmethod
+    def get_by_type(cls, agent_type: str) -> type[AbstractSpecialist] | None:
+        """
+        Look up a specialist class by name.
+
+        Args:
+            agent_type: The class name (e.g., "NetworkSpecialist", "JSSpecialist").
+
+        Returns:
+            The specialist class, or None if not found.
+        """
+        for subclass in cls._subclasses:
+            if subclass.__name__ == agent_type:
+                return subclass
+        return None
+
+    @classmethod
+    def get_all_agent_types(cls) -> list[str]:
+        """Return all registered specialist class names."""
+        return [subclass.__name__ for subclass in cls._subclasses]
+
     ## Additional abstract methods for autonomous mode
 
     @abstractmethod

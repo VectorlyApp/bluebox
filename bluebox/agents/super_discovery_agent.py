@@ -25,11 +25,14 @@ from typing import Any, Callable
 from pydantic import BaseModel
 
 from bluebox.agents.abstract_agent import AbstractAgent, agent_tool
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, AutonomousConfig
-from bluebox.agents.specialists.docs_specialist import DocsSpecialist
-from bluebox.agents.specialists.js_specialist import JSSpecialist
-from bluebox.agents.specialists.network_specialist import NetworkSpecialist
-from bluebox.agents.specialists.value_trace_resolver_specialist import ValueTraceResolverSpecialist
+from bluebox.agents.specialists import (  # importing registers all specialists
+    AbstractSpecialist,
+    AutonomousConfig,
+    DocsSpecialist,
+    JSSpecialist,
+    NetworkSpecialist,
+    ValueTraceResolverSpecialist,
+)
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatRole,
@@ -39,7 +42,7 @@ from bluebox.data_models.llms.interaction import (
     ErrorEmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
-from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus, SpecialistAgentType
+from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus
 from bluebox.data_models.orchestration.state import SuperDiscoveryState, SuperDiscoveryPhase
 from bluebox.data_models.routine.routine import Routine
 from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader, FileType
@@ -71,7 +74,7 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         You have 4 specialist agents. Each has specific expertise and tools:
 
-        ### 1. trace_hound - Value Origin Detective
+        ### 1. ValueTraceResolverSpecialist - Value Origin Detective
         **What it does:**
         - Traces where values come from (API responses, cookies, localStorage, windowProperty)
         - Resolves dynamic tokens and session IDs (finds auth tokens, trace IDs, session keys)
@@ -88,9 +91,9 @@ class SuperDiscoveryAgent(AbstractAgent):
         ✓ GOOD: "Find where the x-amtrak-trace-id header value comes from and how to extract it"
         ✓ GOOD: "Trace the origin of the stationCode parameter - which API returns this?"
         ✗ BAD: "Analyze all the data" (too vague)
-        ✗ BAD: "Find the train search endpoint" (use network_spy for this)
+        ✗ BAD: "Find the train search endpoint" (use NetworkSpecialist for this)
 
-        ### 2. network_spy - Endpoint Discovery Expert
+        ### 2. NetworkSpecialist - Endpoint Discovery Expert
         **What it does:**
         - Searches network traffic by keywords to find relevant API endpoints
         - Analyzes request/response patterns
@@ -106,10 +109,10 @@ class SuperDiscoveryAgent(AbstractAgent):
         **How to prompt:**
         ✓ GOOD: "Find the API endpoint that returns train pricing and schedule data"
         ✓ GOOD: "Which endpoint handles the search request? Show me its structure"
-        ✗ BAD: "Find where the token comes from" (use trace_hound for this)
-        ✗ BAD: "Write code to extract data" (use js_specialist for this)
+        ✗ BAD: "Find where the token comes from" (use ValueTraceResolverSpecialist for this)
+        ✗ BAD: "Write code to extract data" (use JSSpecialist for this)
 
-        ### 3. js_specialist - Browser JavaScript Expert
+        ### 3. JSSpecialist - Browser JavaScript Expert
         **What it does:**
         - Writes IIFE JavaScript for DOM manipulation
         - Creates code for data extraction from page elements
@@ -125,10 +128,10 @@ class SuperDiscoveryAgent(AbstractAgent):
         **How to prompt:**
         ✓ GOOD: "Write JavaScript to extract train departure times from the results table"
         ✓ GOOD: "Generate code to click the 'Search' button by selector"
-        ✗ BAD: "Find the search API" (use network_spy)
-        ✗ BAD: "Analyze network traffic" (use trace_hound or network_spy)
+        ✗ BAD: "Find the search API" (use NetworkSpecialist)
+        ✗ BAD: "Analyze network traffic" (use ValueTraceResolverSpecialist or NetworkSpecialist)
 
-        ### 4. docs_digger - Schema & Documentation Expert
+        ### 4. DocsSpecialist - Schema & Documentation Expert
         **What it does:**
         - Searches documentation files for schemas and examples
         - Finds routine examples and patterns
@@ -144,8 +147,8 @@ class SuperDiscoveryAgent(AbstractAgent):
         **How to prompt:**
         ✓ GOOD: "Find example routines that use fetch operations with POST requests"
         ✓ GOOD: "Look up the schema for Parameter objects - what fields are required?"
-        ✗ BAD: "Find the API endpoint" (use network_spy)
-        ✗ BAD: "Trace this token" (use trace_hound)
+        ✗ BAD: "Find the API endpoint" (use NetworkSpecialist)
+        ✗ BAD: "Trace this token" (use ValueTraceResolverSpecialist)
 
         ## CRITICAL: You MUST Delegate
 
@@ -166,7 +169,7 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         ### Phase 1: Planning (OPTIONAL - Can skip entirely!)
         You can optionally call `list_transactions` to see total count, but that's it!
-        DO NOT call `get_transaction` - that's network_spy's job!
+        DO NOT call `get_transaction` - that's NetworkSpecialist's job!
 
         Better approach: Skip Phase 1 and go straight to Phase 2!
 
@@ -176,17 +179,17 @@ class SuperDiscoveryAgent(AbstractAgent):
         **Typical task delegation:**
         ```
         Task 1: create_task(
-            agent_type="network_spy",
+            agent_type="NetworkSpecialist",
             prompt="Find the main API endpoint that returns [DATA USER WANTS]. Show URL, method, and response structure."
         )
 
         Task 2: create_task(
-            agent_type="trace_hound",
+            agent_type="ValueTraceResolverSpecialist",
             prompt="Find where the x-trace-id header comes from. Trace its origin and show how to extract it."
         )
 
         Task 3 (if needed): create_task(
-            agent_type="trace_hound",
+            agent_type="ValueTraceResolverSpecialist",
             prompt="Identify all dynamic values needed for the main API call and trace their origins."
         )
         ```
@@ -200,16 +203,16 @@ class SuperDiscoveryAgent(AbstractAgent):
         Use specialist results to build the routine:
         1. `construct_routine` with parameters and operations based on specialist findings
         2. If construction fails, check error message:
-           - Schema issues? → Create docs_digger task to look up examples
-           - Missing values? → Create trace_hound task to find them
-           - Wrong endpoint? → Create network_spy task to verify
+           - Schema issues? → Create DocsSpecialist task to look up examples
+           - Missing values? → Create ValueTraceResolverSpecialist task to find them
+           - Wrong endpoint? → Create NetworkSpecialist task to verify
 
         ### Phase 4: Validating (if browser connected)
         1. `execute_routine` - Test the routine
         2. If execution fails:
-           - Placeholder resolution failed? → trace_hound to verify value paths
-           - Wrong API? → network_spy to double-check endpoint
-           - Need DOM extraction? → js_specialist for browser code
+           - Placeholder resolution failed? → ValueTraceResolverSpecialist to verify value paths
+           - Wrong API? → NetworkSpecialist to double-check endpoint
+           - Need DOM extraction? → JSSpecialist for browser code
 
         ### Phase 5: Completion
         1. `done` - When routine works
@@ -220,8 +223,8 @@ class SuperDiscoveryAgent(AbstractAgent):
         User task: "Build routine to search for trains on Amtrak"
 
         ✓ CORRECT approach (Immediate delegation):
-        1. create_task(network_spy, "Find the Amtrak API endpoint that returns train schedules and pricing")
-        2. create_task(trace_hound, "Identify any auth tokens, session IDs, or dynamic values needed for the search API")
+        1. create_task(NetworkSpecialist, "Find the Amtrak API endpoint that returns train schedules and pricing")
+        2. create_task(ValueTraceResolverSpecialist, "Identify any auth tokens, session IDs, or dynamic values needed for the search API")
         3. run_pending_tasks
         4. get_task_result for each task
         5. If gaps found, create more specialist tasks
@@ -239,14 +242,14 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         ✓ ALTERNATIVE (If you really want overview):
         1. list_transactions (just to see count - optional)
-        2. create_task(network_spy, ...) - IMMEDIATELY delegate
-        3. create_task(trace_hound, ...)
+        2. create_task(NetworkSpecialist, ...) - IMMEDIATELY delegate
+        3. create_task(ValueTraceResolverSpecialist, ...)
         4. run_pending_tasks
         5. ... continue from specialist results
 
         ## Key Rules
 
-        - NEVER use get_transaction - that's network_spy's job!
+        - NEVER use get_transaction - that's NetworkSpecialist's job!
         - list_transactions is optional (just shows count)
         - Create specialist tasks IMMEDIATELY
         - ALWAYS delegate before concluding anything
@@ -466,54 +469,46 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         return agent
 
-    def _create_specialist(self, agent_type: SpecialistAgentType) -> AbstractSpecialist:
+    def _create_specialist(self, agent_type: str) -> AbstractSpecialist:
         """Create a specialist instance based on type."""
-        if agent_type == SpecialistAgentType.JS_SPECIALIST:
-            return JSSpecialist(
-                emit_message_callable=self._emit_message_callable,
-                llm_model=self._subagent_llm_model,
-                remote_debugging_address=self._remote_debugging_address,
-            )
-
-        elif agent_type == SpecialistAgentType.TRACE_HOUND:
-            return ValueTraceResolverSpecialist(
-                emit_message_callable=self._emit_message_callable,
-                llm_model=self._subagent_llm_model,
-                network_data_loader=self._network_data_loader,
-                storage_data_loader=self._storage_data_loader,
-                window_property_data_loader=self._window_property_data_loader,
-            )
-
-        elif agent_type == SpecialistAgentType.NETWORK_SPY:
-            if not self._network_data_loader:
-                raise ValueError(
-                    "network_spy specialist requires network_data_store, "
-                    "but it was not provided to SuperDiscoveryAgent"
-                )
-            return NetworkSpecialist(
-                emit_message_callable=self._emit_message_callable,
-                llm_model=self._subagent_llm_model,
-                network_data_loader=self._network_data_loader,
-            )
-
-        elif agent_type == SpecialistAgentType.DOCS_DIGGER:
-            if not self._documentation_data_loader:
-                raise ValueError(
-                    "DocsSpecialist requires documentation_data_store. "
-                    "Ensure SuperDiscoveryAgent was initialized with documentation_data_store."
-                )
-            return DocsSpecialist(
-                emit_message_callable=self._emit_message_callable,
-                llm_model=self._subagent_llm_model,
-                documentation_data_loader=self._documentation_data_loader,
-            )
-
-        else:
-            # For other agent types that aren't fully implemented yet
+        specialist_class = AbstractSpecialist.get_by_type(agent_type)
+        if not specialist_class:
+            available = AbstractSpecialist.get_all_agent_types()
             raise NotImplementedError(
-                f"Agent type {agent_type.value} is not yet supported. "
-                f"Available types: js_specialist, trace_hound, docs_digger, network_spy"
+                f"Agent type '{agent_type}' is not supported. Available: {available}"
             )
+
+        kwargs = self._get_specialist_kwargs(agent_type)
+        return specialist_class(**kwargs)
+
+    def _get_specialist_kwargs(self, agent_type: str) -> dict[str, Any]:
+        """Build kwargs for specialist constructor based on type."""
+        # Common kwargs for all specialists
+        kwargs: dict[str, Any] = {
+            "emit_message_callable": self._emit_message_callable,
+            "llm_model": self._subagent_llm_model,
+        }
+
+        # Type-specific kwargs and validation
+        if agent_type == JSSpecialist.__name__:
+            kwargs["remote_debugging_address"] = self._remote_debugging_address
+
+        elif agent_type == ValueTraceResolverSpecialist.__name__:
+            kwargs["network_data_store"] = self._network_data_loader
+            kwargs["storage_data_store"] = self._storage_data_loader
+            kwargs["window_property_data_store"] = self._window_property_data_loader
+
+        elif agent_type == NetworkSpecialist.__name__:
+            if not self._network_data_loader:
+                raise ValueError(f"{NetworkSpecialist.__name__} requires network_data_loader")
+            kwargs["network_data_store"] = self._network_data_loader
+
+        elif agent_type == DocsSpecialist.__name__:
+            if not self._documentation_data_loader:
+                raise ValueError(f"{DocsSpecialist.__name__} requires documentation_data_loader")
+            kwargs["documentation_data_store"] = self._documentation_data_loader
+
+        return kwargs
 
     def _execute_task(self, task: Task) -> dict[str, Any]:
         """Execute a task using the appropriate specialist."""
@@ -572,14 +567,6 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     ## Tools - Task Management
 
-    # Available agent types for task creation
-    AVAILABLE_AGENT_TYPES = {
-        SpecialistAgentType.JS_SPECIALIST,
-        SpecialistAgentType.TRACE_HOUND,
-        SpecialistAgentType.DOCS_DIGGER,
-        SpecialistAgentType.NETWORK_SPY,
-    }
-
     @agent_tool()
     def _create_task(
         self,
@@ -594,7 +581,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         Create a new task for a specialist subagent.
 
         Args:
-            agent_type: Type of specialist (js_specialist, trace_hound, network_spy, docs_digger).
+            agent_type: Type of specialist (JSSpecialist, NetworkSpecialist, ValueTraceResolverSpecialist, DocsSpecialist).
             prompt: Task instructions for the specialist.
             output_schema: JSON Schema defining the expected output structure (dict).
                 The specialist will return data matching this schema. Example:
@@ -603,18 +590,13 @@ class SuperDiscoveryAgent(AbstractAgent):
             agent_id: Optional ID of existing agent to reuse (preserves context).
             max_loops: Maximum LLM iterations for this task (default 5).
         """
-        try:
-            parsed_type = SpecialistAgentType(agent_type)
-        except ValueError:
-            valid_types = [t.value for t in self.AVAILABLE_AGENT_TYPES]
-            return {"error": f"Invalid agent_type. Must be one of: {valid_types}"}
-
-        if parsed_type not in self.AVAILABLE_AGENT_TYPES:
-            valid_types = [t.value for t in self.AVAILABLE_AGENT_TYPES]
-            return {"error": f"Agent type '{agent_type}' not available. Use: {valid_types}"}
+        # Validate agent_type against registered specialists
+        valid_types = AbstractSpecialist.get_all_agent_types()
+        if agent_type not in valid_types:
+            return {"error": f"Invalid agent_type '{agent_type}'. Must be one of: {valid_types}"}
 
         task = Task(
-            agent_type=parsed_type,
+            agent_type=agent_type,
             agent_id=agent_id,
             prompt=prompt,
             max_loops=max_loops,

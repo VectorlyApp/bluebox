@@ -7,7 +7,6 @@ Data models for orchestration: tasks, subagents, state, and results.
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.data_models.orchestration.state import SuperDiscoveryPhase, SuperDiscoveryState
 from bluebox.data_models.orchestration.task import (
-    SpecialistAgentType,
     SubAgent,
     Task,
     TaskStatus,
@@ -16,7 +15,6 @@ from bluebox.data_models.orchestration.task import (
 
 __all__ = [
     "generate_short_id",
-    "SpecialistAgentType",
     "SpecialistResultWrapper",
     "SubAgent",
     "SuperDiscoveryPhase",
