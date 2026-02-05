@@ -1,7 +1,7 @@
 """
-bluebox/llms/infra/documentation_data_store.py
+bluebox/llms/data_loaders/documentation_data_loader.py
 
-Data store for documentation and code file analysis.
+Data loader for documentation and code file analysis.
 
 Replaces the OpenAI vectorstore-based approach with local indexing
 and search capabilities for documentation and code files.
@@ -13,7 +13,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from bluebox.llms.infra.abstract_data_store import AbstractDataStore
+from bluebox.llms.data_loaders.abstract_data_loader import AbstractDataLoader
 from bluebox.utils.data_utils import (
     format_bytes,
     parse_markdown_summary,
@@ -28,7 +28,7 @@ logger = get_logger(name=__name__)
 
 
 class FileType(StrEnum):
-    """Types of files in the documentation data store."""
+    """Types of files in the documentation data loader."""
 
     DOCUMENTATION = "documentation"
     CODE = "code"
@@ -36,7 +36,7 @@ class FileType(StrEnum):
 
 @dataclass
 class FileEntry:
-    """Represents a single file in the data store."""
+    """Represents a single file in the data loader."""
 
     path: Path
     file_type: FileType
@@ -102,9 +102,9 @@ class DocumentationStats:
         return "\n".join(lines)
 
 
-class DocumentationDataStore(AbstractDataStore[FileEntry, DocumentationStats]):
+class DocumentationDataLoader(AbstractDataLoader[FileEntry, DocumentationStats]):
     """
-    Data store for documentation and code file analysis.
+    Data loader for documentation and code file analysis.
 
     Loads files from specified paths and provides local search capabilities
     without requiring external vectorstore services.
@@ -123,7 +123,7 @@ class DocumentationDataStore(AbstractDataStore[FileEntry, DocumentationStats]):
         code_extensions: set[str] | None = None,
     ) -> None:
         """
-        Initialize the DocumentationDataStore.
+        Initialize the DocumentationDataLoader.
 
         Args:
             documentation_paths: Paths/patterns for documentation files (.md).
@@ -146,24 +146,22 @@ class DocumentationDataStore(AbstractDataStore[FileEntry, DocumentationStats]):
             self._load_files()
             self._compute_stats()
 
-        logger.info(
-            "DocumentationDataStore initialized with %d files (%d docs, %d code)",
+        logger.debug(
+            "DocumentationDataLoader initialized with %d files (%d docs, %d code)",
             len(self._entries),
             self._stats.total_docs,
             self._stats.total_code,
         )
 
-    # Abstract method implementations
+    ## Abstract method implementations
 
     def get_entry_id(self, entry: FileEntry) -> str:
-        """Get the file path as the unique identifier."""
+        """Get unique identifier for a file entry (uses path)."""
         return str(entry.path)
 
     def get_searchable_content(self, entry: FileEntry) -> str | None:
-        """Get the file content as searchable content."""
+        """Get searchable content from a file entry."""
         return entry.content
-
-    # Documentation-specific properties
 
     @property
     def documentation_files(self) -> list[FileEntry]:
@@ -301,7 +299,7 @@ class DocumentationDataStore(AbstractDataStore[FileEntry, DocumentationStats]):
         query: str,
         file_type: FileType | None = None,
         case_sensitive: bool = False,
-        context_chars: int = 100,
+        snippet_padding_chars: int = 100,
     ) -> list[dict[str, Any]]:
         """
         Search file contents for a query string.
@@ -310,7 +308,7 @@ class DocumentationDataStore(AbstractDataStore[FileEntry, DocumentationStats]):
             query: The string to search for.
             file_type: Optional filter by file type.
             case_sensitive: Whether search is case-sensitive.
-            context_chars: Number of context characters around matches.
+            snippet_padding_chars: Number of context characters around matches.
 
         Returns:
             List of dicts with path, file_type, count, and sample context.
@@ -335,8 +333,8 @@ class DocumentationDataStore(AbstractDataStore[FileEntry, DocumentationStats]):
 
             # Find first occurrence and extract context
             pos = content.find(search_query)
-            context_start = max(0, pos - context_chars)
-            context_end = min(len(original_content), pos + len(query) + context_chars)
+            context_start = max(0, pos - snippet_padding_chars)
+            context_end = min(len(original_content), pos + len(query) + snippet_padding_chars)
 
             sample = original_content[context_start:context_end]
             if context_start > 0:

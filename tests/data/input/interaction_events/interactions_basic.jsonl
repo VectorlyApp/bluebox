@@ -1,0 +1,8 @@
+{"type": "click", "url": "https://example.com/", "element": {"tag_name": "button", "id": "submit-btn", "text": "Submit", "css_path": "button#submit-btn"}}
+{"type": "input", "url": "https://example.com/", "element": {"tag_name": "input", "id": "email-input", "name": "email", "type_attr": "email", "value": "alice@example.com", "placeholder": "Enter email", "css_path": "input#email-input"}}
+{"type": "input", "url": "https://example.com/", "element": {"tag_name": "input", "id": "password-input", "name": "password", "type_attr": "password", "value": "secret123", "placeholder": "Enter password", "css_path": "input#password-input"}}
+{"type": "click", "url": "https://example.com/dashboard", "element": {"tag_name": "a", "id": "nav-home", "text": "Home", "href": "/", "css_path": "a#nav-home"}}
+{"type": "change", "url": "https://example.com/settings", "element": {"tag_name": "select", "id": "theme-select", "name": "theme", "value": "dark", "css_path": "select#theme-select"}}
+{"type": "focus", "url": "https://example.com/", "element": {"tag_name": "input", "id": "search-box", "type_attr": "text", "placeholder": "Search...", "css_path": "input#search-box"}}
+{"type": "blur", "url": "https://example.com/", "element": {"tag_name": "input", "id": "search-box", "type_attr": "text", "placeholder": "Search...", "css_path": "input#search-box"}}
+{"type": "keydown", "url": "https://example.com/", "element": {"tag_name": "input", "id": "search-box", "type_attr": "text", "css_path": "input#search-box"}, "interaction": {"key_value": "Enter", "key_code": "Enter"}}

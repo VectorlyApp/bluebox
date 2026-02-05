@@ -25,9 +25,9 @@ from bluebox.data_models.llms.interaction import (
     EmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
-from bluebox.llms.infra.network_data_store import NetworkDataStore
-from bluebox.llms.infra.storage_data_store import StorageDataStore
-from bluebox.llms.infra.window_property_data_store import WindowPropertyDataStore
+from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
+from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
+from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
 from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
@@ -171,9 +171,9 @@ class TraceHoundAgent(AbstractSpecialist):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
-        network_data_store: NetworkDataStore | None = None,
-        storage_data_store: StorageDataStore | None = None,
-        window_property_data_store: WindowPropertyDataStore | None = None,
+        network_data_store: NetworkDataLoader | None = None,
+        storage_data_store: StorageDataLoader | None = None,
+        window_property_data_store: WindowPropertyDataLoader | None = None,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -187,9 +187,9 @@ class TraceHoundAgent(AbstractSpecialist):
 
         Args:
             emit_message_callable: Callback function to emit messages to the host.
-            network_data_store: NetworkDataStore for network traffic analysis.
-            storage_data_store: StorageDataStore for browser storage analysis.
-            window_property_data_store: WindowPropertyDataStore for window props analysis.
+            network_data_store: NetworkDataLoader for network traffic analysis.
+            storage_data_store: StorageDataLoader for browser storage analysis.
+            window_property_data_store: WindowPropertyDataLoader for window props analysis.
             persist_chat_callable: Optional callback to persist Chat objects.
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.

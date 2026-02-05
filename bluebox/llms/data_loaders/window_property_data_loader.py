@@ -1,7 +1,7 @@
 """
-bluebox/llms/infra/window_property_data_store.py
+bluebox/llms/data_loaders/window_property_data_loader.py
 
-Data store for window property event analysis.
+Data loader for window property event analysis.
 
 Parses JSONL files with WindowPropertyEvent entries and provides
 methods for token tracing - finding where values originated from.
@@ -15,7 +15,7 @@ from bluebox.data_models.cdp import (
     WindowPropertyChangeType,
     WindowPropertyEvent,
 )
-from bluebox.llms.infra.abstract_data_store import AbstractDataStore
+from bluebox.llms.data_loaders.abstract_data_loader import AbstractDataLoader
 from bluebox.utils.data_utils import read_jsonl
 from bluebox.utils.logger import get_logger
 
@@ -48,9 +48,9 @@ class WindowPropertyStats:
         ])
 
 
-class WindowPropertyDataStore(AbstractDataStore[WindowPropertyEvent, WindowPropertyStats]):
+class WindowPropertyDataLoader(AbstractDataLoader[WindowPropertyEvent, WindowPropertyStats]):
     """
-    Data store for window property events.
+    Data loader for window property events.
 
     Focused on token tracing - finding where values came from
     in window object properties.
@@ -58,7 +58,7 @@ class WindowPropertyDataStore(AbstractDataStore[WindowPropertyEvent, WindowPrope
 
     def __init__(self, jsonl_path: str) -> None:
         """
-        Initialize the WindowPropertyDataStore from a JSONL file.
+        Initialize the WindowPropertyDataLoader from a JSONL file.
 
         Args:
             jsonl_path: Path to JSONL file containing WindowPropertyEvent entries.
@@ -83,10 +83,31 @@ class WindowPropertyDataStore(AbstractDataStore[WindowPropertyEvent, WindowPrope
 
         self._compute_stats()
 
-        logger.info(
-            "WindowPropertyDataStore initialized with %d events",
+        logger.debug(
+            "WindowPropertyDataLoader initialized with %d events",
             len(self._entries),
         )
+
+    ## Abstract method implementations
+
+    def get_entry_id(self, entry: WindowPropertyEvent) -> str:
+        """Get unique identifier for a window property event (uses index)."""
+        return str(self._entries.index(entry))
+
+    def get_searchable_content(self, entry: WindowPropertyEvent) -> str | None:
+        """Get searchable content from a window property event."""
+        parts = []
+        for change in entry.changes:
+            if change.value is not None:
+                parts.append(str(change.value))
+            parts.append(change.path)
+        return " ".join(parts) if parts else None
+
+    def get_entry_url(self, entry: WindowPropertyEvent) -> str | None:
+        """Get URL associated with a window property event."""
+        return entry.url
+
+    ## Private methods
 
     def _compute_stats(self) -> None:
         """Compute summary statistics."""
@@ -119,25 +140,7 @@ class WindowPropertyDataStore(AbstractDataStore[WindowPropertyEvent, WindowPrope
             unique_property_paths=len(paths),
         )
 
-    # Abstract method implementations
-
-    def get_entry_id(self, entry: WindowPropertyEvent) -> str:
-        """Get a unique identifier for the event."""
-        return f"{entry.timestamp}:{entry.url}"
-
-    def get_searchable_content(self, entry: WindowPropertyEvent) -> str | None:
-        """Get searchable content from all change values."""
-        parts = []
-        for change in entry.changes:
-            if change.value is not None:
-                parts.append(str(change.value))
-        return " ".join(parts) if parts else None
-
-    def get_entry_url(self, entry: WindowPropertyEvent) -> str | None:
-        """Get the URL from the entry."""
-        return entry.url
-
-    # Window property-specific methods
+    ## Public methods
 
     def get_entry(self, index: int) -> WindowPropertyEvent | None:
         """Get entry by index."""

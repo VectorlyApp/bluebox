@@ -1,15 +1,15 @@
 """
-tests/unit/test_network_data_store.py
+tests/unit/data_loaders/test_network_data_loader.py
 
-Comprehensive unit tests for NetworkDataStore and related classes.
+Comprehensive unit tests for NetworkDataLoader and related classes.
 """
 
 from pathlib import Path
 
 import pytest
 
-from bluebox.llms.infra.network_data_store import (
-    NetworkDataStore,
+from bluebox.llms.data_loaders.network_data_loader import (
+    NetworkDataLoader,
     NetworkStats,
 )
 
@@ -23,33 +23,33 @@ def network_events_dir(tests_root: Path) -> Path:
 
 
 @pytest.fixture
-def basic_store(network_events_dir: Path) -> NetworkDataStore:
-    """NetworkDataStore loaded from basic test data."""
-    return NetworkDataStore(str(network_events_dir / "network_basic.jsonl"))
+def basic_store(network_events_dir: Path) -> NetworkDataLoader:
+    """NetworkDataLoader loaded from basic test data."""
+    return NetworkDataLoader(str(network_events_dir / "network_basic.jsonl"))
 
 
 @pytest.fixture
-def api_store(network_events_dir: Path) -> NetworkDataStore:
-    """NetworkDataStore loaded from API test data."""
-    return NetworkDataStore(str(network_events_dir / "network_api.jsonl"))
+def api_store(network_events_dir: Path) -> NetworkDataLoader:
+    """NetworkDataLoader loaded from API test data."""
+    return NetworkDataLoader(str(network_events_dir / "network_api.jsonl"))
 
 
 @pytest.fixture
-def search_store(network_events_dir: Path) -> NetworkDataStore:
-    """NetworkDataStore loaded from search test data."""
-    return NetworkDataStore(str(network_events_dir / "network_search.jsonl"))
+def search_store(network_events_dir: Path) -> NetworkDataLoader:
+    """NetworkDataLoader loaded from search test data."""
+    return NetworkDataLoader(str(network_events_dir / "network_search.jsonl"))
 
 
 @pytest.fixture
-def hosts_store(network_events_dir: Path) -> NetworkDataStore:
-    """NetworkDataStore loaded from hosts test data."""
-    return NetworkDataStore(str(network_events_dir / "network_hosts.jsonl"))
+def hosts_store(network_events_dir: Path) -> NetworkDataLoader:
+    """NetworkDataLoader loaded from hosts test data."""
+    return NetworkDataLoader(str(network_events_dir / "network_hosts.jsonl"))
 
 
 @pytest.fixture
-def malformed_store(network_events_dir: Path) -> NetworkDataStore:
-    """NetworkDataStore loaded from malformed test data (should skip bad lines)."""
-    return NetworkDataStore(str(network_events_dir / "network_malformed.jsonl"))
+def malformed_store(network_events_dir: Path) -> NetworkDataLoader:
+    """NetworkDataLoader loaded from malformed test data (should skip bad lines)."""
+    return NetworkDataLoader(str(network_events_dir / "network_malformed.jsonl"))
 
 
 # --- NetworkStats Tests ---
@@ -85,12 +85,12 @@ class TestNetworkStats:
         assert "JSON request bodies present" in summary
 
 
-# --- NetworkDataStore Initialization Tests ---
+# --- NetworkDataLoader Initialization Tests ---
 
-class TestNetworkDataStoreInit:
-    """Tests for NetworkDataStore initialization."""
+class TestNetworkDataLoaderInit:
+    """Tests for NetworkDataLoader initialization."""
 
-    def test_init_basic_file(self, basic_store: NetworkDataStore) -> None:
+    def test_init_basic_file(self, basic_store: NetworkDataLoader) -> None:
         """Initialize from basic JSONL file."""
         # Should filter out CSS, JS, and image entries
         # Expected: HTML (req-001), JSON entries (req-002, req-004, req-007, req-008)
@@ -99,14 +99,14 @@ class TestNetworkDataStoreInit:
     def test_init_file_not_found(self, network_events_dir: Path) -> None:
         """Raise FileNotFoundError when file doesn't exist."""
         with pytest.raises(FileNotFoundError):
-            NetworkDataStore(str(network_events_dir / "nonexistent.jsonl"))
+            NetworkDataLoader(str(network_events_dir / "nonexistent.jsonl"))
 
     def test_init_empty_file(self, network_events_dir: Path) -> None:
         """Initialize from empty file produces empty store."""
-        store = NetworkDataStore(str(network_events_dir / "network_empty.jsonl"))
+        store = NetworkDataLoader(str(network_events_dir / "network_empty.jsonl"))
         assert len(store.entries) == 0
 
-    def test_init_malformed_skips_bad_lines(self, malformed_store: NetworkDataStore) -> None:
+    def test_init_malformed_skips_bad_lines(self, malformed_store: NetworkDataLoader) -> None:
         """Malformed lines are skipped, valid entries are loaded."""
         # Should have 3 valid entries (good-001, good-002, good-003)
         assert len(malformed_store.entries) == 3
@@ -118,39 +118,39 @@ class TestNetworkDataStoreInit:
 
 # --- Properties Tests ---
 
-class TestNetworkDataStoreProperties:
-    """Tests for NetworkDataStore properties."""
+class TestNetworkDataLoaderProperties:
+    """Tests for NetworkDataLoader properties."""
 
-    def test_entries_returns_list(self, basic_store: NetworkDataStore) -> None:
+    def test_entries_returns_list(self, basic_store: NetworkDataLoader) -> None:
         """entries property returns list of NetworkTransactionEvent."""
         entries = basic_store.entries
         assert isinstance(entries, list)
         assert len(entries) > 0
 
-    def test_stats_returns_network_stats(self, basic_store: NetworkDataStore) -> None:
+    def test_stats_returns_network_stats(self, basic_store: NetworkDataLoader) -> None:
         """stats property returns NetworkStats instance."""
         stats = basic_store.stats
         assert isinstance(stats, NetworkStats)
         assert stats.total_requests == len(basic_store.entries)
 
-    def test_stats_methods_counted(self, basic_store: NetworkDataStore) -> None:
+    def test_stats_methods_counted(self, basic_store: NetworkDataLoader) -> None:
         """Stats correctly counts HTTP methods."""
         stats = basic_store.stats
         assert "GET" in stats.methods or "POST" in stats.methods
 
-    def test_stats_status_codes_counted(self, basic_store: NetworkDataStore) -> None:
+    def test_stats_status_codes_counted(self, basic_store: NetworkDataLoader) -> None:
         """Stats correctly counts status codes."""
         stats = basic_store.stats
         assert 200 in stats.status_codes or 201 in stats.status_codes
 
-    def test_raw_data_structure(self, basic_store: NetworkDataStore) -> None:
+    def test_raw_data_structure(self, basic_store: NetworkDataLoader) -> None:
         """raw_data returns dict with entries key."""
         raw = basic_store.raw_data
         assert isinstance(raw, dict)
         assert "entries" in raw
         assert isinstance(raw["entries"], list)
 
-    def test_url_counts_returns_dict(self, basic_store: NetworkDataStore) -> None:
+    def test_url_counts_returns_dict(self, basic_store: NetworkDataLoader) -> None:
         """url_counts returns dict mapping URLs to counts."""
         counts = basic_store.url_counts
         assert isinstance(counts, dict)
@@ -159,31 +159,31 @@ class TestNetworkDataStoreProperties:
             assert isinstance(count, int)
             assert count > 0
 
-    def test_url_counts_duplicate_urls(self, basic_store: NetworkDataStore) -> None:
+    def test_url_counts_duplicate_urls(self, basic_store: NetworkDataLoader) -> None:
         """url_counts correctly counts duplicate URLs."""
         counts = basic_store.url_counts
         # req-002 and req-008 both hit /api/users
         if "https://example.com/api/users" in counts:
             assert counts["https://example.com/api/users"] == 2
 
-    def test_api_urls_detects_versioned_apis(self, api_store: NetworkDataStore) -> None:
+    def test_api_urls_detects_versioned_apis(self, api_store: NetworkDataLoader) -> None:
         """api_urls detects versioned API endpoints (/v1/, /v2/, etc.)."""
         api_urls = api_store.api_urls
         assert any("/v1/" in url for url in api_urls)
         assert any("/v2/" in url for url in api_urls)
 
-    def test_api_urls_detects_api_keywords(self, api_store: NetworkDataStore) -> None:
+    def test_api_urls_detects_api_keywords(self, api_store: NetworkDataLoader) -> None:
         """api_urls detects endpoints with API keywords."""
         api_urls = api_store.api_urls
         # Should detect graphql, rest/api
         assert any("graphql" in url for url in api_urls)
 
-    def test_api_urls_excludes_non_api(self, api_store: NetworkDataStore) -> None:
+    def test_api_urls_excludes_non_api(self, api_store: NetworkDataLoader) -> None:
         """api_urls excludes non-API URLs like .html pages."""
         api_urls = api_store.api_urls
         assert not any(url.endswith(".html") for url in api_urls)
 
-    def test_api_urls_sorted(self, api_store: NetworkDataStore) -> None:
+    def test_api_urls_sorted(self, api_store: NetworkDataLoader) -> None:
         """api_urls returns sorted list."""
         api_urls = api_store.api_urls
         assert api_urls == sorted(api_urls)
@@ -194,58 +194,58 @@ class TestNetworkDataStoreProperties:
 class TestSearchEntries:
     """Tests for search_entries method."""
 
-    def test_search_by_method_get(self, basic_store: NetworkDataStore) -> None:
+    def test_search_by_method_get(self, basic_store: NetworkDataLoader) -> None:
         """Filter entries by GET method."""
         results = basic_store.search_entries(method="GET")
         assert all(e.method == "GET" for e in results)
 
-    def test_search_by_method_post(self, basic_store: NetworkDataStore) -> None:
+    def test_search_by_method_post(self, basic_store: NetworkDataLoader) -> None:
         """Filter entries by POST method."""
         results = basic_store.search_entries(method="POST")
         assert all(e.method == "POST" for e in results)
 
-    def test_search_by_method_case_insensitive(self, basic_store: NetworkDataStore) -> None:
+    def test_search_by_method_case_insensitive(self, basic_store: NetworkDataLoader) -> None:
         """Method filter is case-insensitive."""
         results_upper = basic_store.search_entries(method="GET")
         results_lower = basic_store.search_entries(method="get")
         assert len(results_upper) == len(results_lower)
 
-    def test_search_by_host_contains(self, basic_store: NetworkDataStore) -> None:
+    def test_search_by_host_contains(self, basic_store: NetworkDataLoader) -> None:
         """Filter entries by host substring."""
         results = basic_store.search_entries(host_contains="api")
         assert all("api" in e.url.lower() for e in results)
 
-    def test_search_by_path_contains(self, basic_store: NetworkDataStore) -> None:
+    def test_search_by_path_contains(self, basic_store: NetworkDataLoader) -> None:
         """Filter entries by path substring."""
         results = basic_store.search_entries(path_contains="users")
         assert all("users" in e.url.lower() for e in results)
 
-    def test_search_by_status_code(self, basic_store: NetworkDataStore) -> None:
+    def test_search_by_status_code(self, basic_store: NetworkDataLoader) -> None:
         """Filter entries by exact status code."""
         results = basic_store.search_entries(status_code=200)
         assert all(e.status == 200 for e in results)
 
-    def test_search_by_content_type(self, basic_store: NetworkDataStore) -> None:
+    def test_search_by_content_type(self, basic_store: NetworkDataLoader) -> None:
         """Filter entries by content type substring."""
         results = basic_store.search_entries(content_type_contains="json")
         assert all("json" in e.mime_type.lower() for e in results)
 
-    def test_search_by_has_post_data_true(self, basic_store: NetworkDataStore) -> None:
+    def test_search_by_has_post_data_true(self, basic_store: NetworkDataLoader) -> None:
         """Filter entries that have POST data."""
         results = basic_store.search_entries(has_post_data=True)
         assert all(e.post_data is not None for e in results)
 
-    def test_search_by_has_post_data_false(self, basic_store: NetworkDataStore) -> None:
+    def test_search_by_has_post_data_false(self, basic_store: NetworkDataLoader) -> None:
         """Filter entries that don't have POST data."""
         results = basic_store.search_entries(has_post_data=False)
         assert all(e.post_data is None for e in results)
 
-    def test_search_combined_filters(self, basic_store: NetworkDataStore) -> None:
+    def test_search_combined_filters(self, basic_store: NetworkDataLoader) -> None:
         """Combine multiple filters."""
         results = basic_store.search_entries(method="GET", status_code=200)
         assert all(e.method == "GET" and e.status == 200 for e in results)
 
-    def test_search_no_matches(self, basic_store: NetworkDataStore) -> None:
+    def test_search_no_matches(self, basic_store: NetworkDataLoader) -> None:
         """Return empty list when no entries match."""
         results = basic_store.search_entries(status_code=999)
         assert results == []
@@ -256,18 +256,18 @@ class TestSearchEntries:
 class TestEntryRetrieval:
     """Tests for get_entry and get_entry_ids_by_url_pattern."""
 
-    def test_get_entry_found(self, basic_store: NetworkDataStore) -> None:
+    def test_get_entry_found(self, basic_store: NetworkDataLoader) -> None:
         """Get entry by valid request_id."""
         entry = basic_store.get_entry("req-001")
         assert entry is not None
         assert entry.request_id == "req-001"
 
-    def test_get_entry_not_found(self, basic_store: NetworkDataStore) -> None:
+    def test_get_entry_not_found(self, basic_store: NetworkDataLoader) -> None:
         """Return None for non-existent request_id."""
         entry = basic_store.get_entry("nonexistent-id")
         assert entry is None
 
-    def test_get_entry_ids_by_url_pattern_wildcard(self, basic_store: NetworkDataStore) -> None:
+    def test_get_entry_ids_by_url_pattern_wildcard(self, basic_store: NetworkDataLoader) -> None:
         """Match URLs with wildcard pattern."""
         ids = basic_store.get_entry_ids_by_url_pattern("*api*")
         assert len(ids) > 0
@@ -276,17 +276,17 @@ class TestEntryRetrieval:
             entry = basic_store.get_entry(request_id)
             assert "api" in entry.url.lower()
 
-    def test_get_entry_ids_by_url_pattern_exact(self, basic_store: NetworkDataStore) -> None:
+    def test_get_entry_ids_by_url_pattern_exact(self, basic_store: NetworkDataLoader) -> None:
         """Match URLs with exact pattern."""
         ids = basic_store.get_entry_ids_by_url_pattern("https://example.com/page")
         assert "req-001" in ids
 
-    def test_get_entry_ids_by_url_pattern_no_match(self, basic_store: NetworkDataStore) -> None:
+    def test_get_entry_ids_by_url_pattern_no_match(self, basic_store: NetworkDataLoader) -> None:
         """Return empty list when no URLs match pattern."""
         ids = basic_store.get_entry_ids_by_url_pattern("*nonexistent*")
         assert ids == []
 
-    def test_get_entry_ids_by_url_pattern_prefix(self, basic_store: NetworkDataStore) -> None:
+    def test_get_entry_ids_by_url_pattern_prefix(self, basic_store: NetworkDataLoader) -> None:
         """Match URLs with prefix pattern."""
         ids = basic_store.get_entry_ids_by_url_pattern("https://example.com/*")
         assert len(ids) > 0
@@ -297,18 +297,18 @@ class TestEntryRetrieval:
 class TestSearchEntriesByTerms:
     """Tests for search_entries_by_terms method."""
 
-    def test_search_single_term(self, search_store: NetworkDataStore) -> None:
+    def test_search_single_term(self, search_store: NetworkDataLoader) -> None:
         """Search with single term."""
         results = search_store.search_entries_by_terms(["train"])
         assert len(results) > 0
         assert all("train" in r["url"].lower() or r["total_hits"] > 0 for r in results)
 
-    def test_search_multiple_terms(self, search_store: NetworkDataStore) -> None:
+    def test_search_multiple_terms(self, search_store: NetworkDataLoader) -> None:
         """Search with multiple terms."""
         results = search_store.search_entries_by_terms(["price", "NYC", "Boston"])
         assert len(results) > 0
 
-    def test_search_returns_scored_results(self, search_store: NetworkDataStore) -> None:
+    def test_search_returns_scored_results(self, search_store: NetworkDataLoader) -> None:
         """Results include score, unique_terms_found, total_hits."""
         results = search_store.search_entries_by_terms(["price"])
         assert len(results) > 0
@@ -319,35 +319,35 @@ class TestSearchEntriesByTerms:
             assert "unique_terms_found" in r
             assert "total_hits" in r
 
-    def test_search_sorted_by_score(self, search_store: NetworkDataStore) -> None:
+    def test_search_sorted_by_score(self, search_store: NetworkDataLoader) -> None:
         """Results are sorted by score descending."""
         results = search_store.search_entries_by_terms(["price", "train"])
         if len(results) > 1:
             scores = [r["score"] for r in results]
             assert scores == sorted(scores, reverse=True)
 
-    def test_search_respects_top_n(self, search_store: NetworkDataStore) -> None:
+    def test_search_respects_top_n(self, search_store: NetworkDataLoader) -> None:
         """Results limited to top_n."""
         results = search_store.search_entries_by_terms(["the", "a"], top_n=2)
         assert len(results) <= 2
 
-    def test_search_empty_terms(self, search_store: NetworkDataStore) -> None:
+    def test_search_empty_terms(self, search_store: NetworkDataLoader) -> None:
         """Return empty list for empty terms."""
         results = search_store.search_entries_by_terms([])
         assert results == []
 
-    def test_search_no_matches(self, search_store: NetworkDataStore) -> None:
+    def test_search_no_matches(self, search_store: NetworkDataLoader) -> None:
         """Return empty list when no terms match."""
         results = search_store.search_entries_by_terms(["xyznonexistent123"])
         assert results == []
 
-    def test_search_case_insensitive(self, search_store: NetworkDataStore) -> None:
+    def test_search_case_insensitive(self, search_store: NetworkDataLoader) -> None:
         """Search is case-insensitive."""
         results_lower = search_store.search_entries_by_terms(["nyc"])
         results_upper = search_store.search_entries_by_terms(["NYC"])
         assert len(results_lower) == len(results_upper)
 
-    def test_unique_terms_found_counts_each_term_once(self, search_store: NetworkDataStore) -> None:
+    def test_unique_terms_found_counts_each_term_once(self, search_store: NetworkDataLoader) -> None:
         """unique_terms_found counts each term only once, not per occurrence."""
         # Search with terms that may appear multiple times in same entry
         results = search_store.search_entries_by_terms(["price", "train"])
@@ -363,13 +363,13 @@ class TestSearchEntriesByTerms:
 class TestGetHostStats:
     """Tests for get_host_stats method."""
 
-    def test_host_stats_returns_list(self, hosts_store: NetworkDataStore) -> None:
+    def test_host_stats_returns_list(self, hosts_store: NetworkDataLoader) -> None:
         """get_host_stats returns list of dicts."""
         stats = hosts_store.get_host_stats()
         assert isinstance(stats, list)
         assert len(stats) > 0
 
-    def test_host_stats_structure(self, hosts_store: NetworkDataStore) -> None:
+    def test_host_stats_structure(self, hosts_store: NetworkDataLoader) -> None:
         """Each host stat has required keys."""
         stats = hosts_store.get_host_stats()
         for hs in stats:
@@ -378,24 +378,24 @@ class TestGetHostStats:
             assert "methods" in hs
             assert "status_codes" in hs
 
-    def test_host_stats_sorted_by_request_count(self, hosts_store: NetworkDataStore) -> None:
+    def test_host_stats_sorted_by_request_count(self, hosts_store: NetworkDataLoader) -> None:
         """Results sorted by request count descending."""
         stats = hosts_store.get_host_stats()
         if len(stats) > 1:
             counts = [hs["request_count"] for hs in stats]
             assert counts == sorted(counts, reverse=True)
 
-    def test_host_stats_filter(self, hosts_store: NetworkDataStore) -> None:
+    def test_host_stats_filter(self, hosts_store: NetworkDataLoader) -> None:
         """Filter hosts by substring."""
         stats = hosts_store.get_host_stats(host_filter="api")
         assert all("api" in hs["host"].lower() for hs in stats)
 
-    def test_host_stats_filter_no_match(self, hosts_store: NetworkDataStore) -> None:
+    def test_host_stats_filter_no_match(self, hosts_store: NetworkDataLoader) -> None:
         """Return empty list when filter matches nothing."""
         stats = hosts_store.get_host_stats(host_filter="nonexistent")
         assert stats == []
 
-    def test_host_stats_methods_counted(self, hosts_store: NetworkDataStore) -> None:
+    def test_host_stats_methods_counted(self, hosts_store: NetworkDataLoader) -> None:
         """Methods are correctly counted per host."""
         stats = hosts_store.get_host_stats()
         for hs in stats:
@@ -408,12 +408,12 @@ class TestGetHostStats:
 class TestSearchResponseBodies:
     """Tests for search_response_bodies method."""
 
-    def test_search_finds_value(self, search_store: NetworkDataStore) -> None:
+    def test_search_finds_value(self, search_store: NetworkDataLoader) -> None:
         """Find entries containing a specific value."""
         results = search_store.search_response_bodies("49.99")
         assert len(results) > 0
 
-    def test_search_returns_context(self, search_store: NetworkDataStore) -> None:
+    def test_search_returns_context(self, search_store: NetworkDataLoader) -> None:
         """Results include sample with context."""
         results = search_store.search_response_bodies("Boston")
         assert len(results) > 0
@@ -421,7 +421,7 @@ class TestSearchResponseBodies:
             assert "sample" in r
             assert "Boston" in r["sample"] or "boston" in r["sample"].lower()
 
-    def test_search_returns_count(self, search_store: NetworkDataStore) -> None:
+    def test_search_returns_count(self, search_store: NetworkDataLoader) -> None:
         """Results include occurrence count."""
         results = search_store.search_response_bodies("price")
         assert len(results) > 0
@@ -429,30 +429,30 @@ class TestSearchResponseBodies:
             assert "count" in r
             assert r["count"] > 0
 
-    def test_search_case_insensitive_default(self, search_store: NetworkDataStore) -> None:
+    def test_search_case_insensitive_default(self, search_store: NetworkDataLoader) -> None:
         """Search is case-insensitive by default."""
         results_lower = search_store.search_response_bodies("boston")
         results_upper = search_store.search_response_bodies("BOSTON")
         assert len(results_lower) == len(results_upper)
 
-    def test_search_case_sensitive(self, search_store: NetworkDataStore) -> None:
+    def test_search_case_sensitive(self, search_store: NetworkDataLoader) -> None:
         """Case-sensitive search when specified."""
         results_sensitive = search_store.search_response_bodies("Boston", case_sensitive=True)
         results_wrong_case = search_store.search_response_bodies("BOSTON", case_sensitive=True)
         # "Boston" appears with capital B, so sensitive search for "BOSTON" should find fewer/none
         assert len(results_sensitive) >= len(results_wrong_case)
 
-    def test_search_empty_value(self, search_store: NetworkDataStore) -> None:
+    def test_search_empty_value(self, search_store: NetworkDataLoader) -> None:
         """Return empty list for empty search value."""
         results = search_store.search_response_bodies("")
         assert results == []
 
-    def test_search_no_matches(self, search_store: NetworkDataStore) -> None:
+    def test_search_no_matches(self, search_store: NetworkDataLoader) -> None:
         """Return empty list when value not found."""
         results = search_store.search_response_bodies("xyznonexistent123")
         assert results == []
 
-    def test_search_ellipsis_truncation(self, search_store: NetworkDataStore) -> None:
+    def test_search_ellipsis_truncation(self, search_store: NetworkDataLoader) -> None:
         """Sample includes ellipsis when truncated."""
         results = search_store.search_response_bodies("trains")
         assert len(results) > 0
@@ -468,7 +468,7 @@ class TestSearchResponseBodies:
 class TestGetResponseBodySchema:
     """Tests for get_response_body_schema method."""
 
-    def test_schema_for_json_response(self, basic_store: NetworkDataStore) -> None:
+    def test_schema_for_json_response(self, basic_store: NetworkDataLoader) -> None:
         """Extract schema from JSON response body."""
         # req-002 has JSON response: {"id": 123, "name": "Alice", "email": "..."}
         schema = basic_store.get_response_body_schema("req-002")
@@ -477,20 +477,20 @@ class TestGetResponseBodySchema:
         assert "id" in schema
         assert "name" in schema
 
-    def test_schema_for_array_response(self, basic_store: NetworkDataStore) -> None:
+    def test_schema_for_array_response(self, basic_store: NetworkDataLoader) -> None:
         """Extract schema from JSON array response."""
         # req-004 has JSON array response
         schema = basic_store.get_response_body_schema("req-004")
         assert schema is not None
         assert schema["_type"] == "list"
 
-    def test_schema_for_non_json_returns_none(self, basic_store: NetworkDataStore) -> None:
+    def test_schema_for_non_json_returns_none(self, basic_store: NetworkDataLoader) -> None:
         """Return None for non-JSON response body."""
         # req-001 is HTML
         schema = basic_store.get_response_body_schema("req-001")
         assert schema is None
 
-    def test_schema_for_nonexistent_entry(self, basic_store: NetworkDataStore) -> None:
+    def test_schema_for_nonexistent_entry(self, basic_store: NetworkDataLoader) -> None:
         """Return None for non-existent entry."""
         schema = basic_store.get_response_body_schema("nonexistent-id")
         assert schema is None
@@ -501,17 +501,17 @@ class TestGetResponseBodySchema:
 class TestFeatureDetection:
     """Tests for feature detection in stats."""
 
-    def test_detects_auth_headers(self, hosts_store: NetworkDataStore) -> None:
+    def test_detects_auth_headers(self, hosts_store: NetworkDataLoader) -> None:
         """Detect presence of authorization headers."""
         stats = hosts_store.stats
         assert stats.has_auth_headers is True
 
-    def test_detects_json_requests(self, hosts_store: NetworkDataStore) -> None:
+    def test_detects_json_requests(self, hosts_store: NetworkDataLoader) -> None:
         """Detect presence of JSON request bodies."""
         stats = hosts_store.stats
         assert stats.has_json_requests is True
 
-    def test_detects_form_data(self, hosts_store: NetworkDataStore) -> None:
+    def test_detects_form_data(self, hosts_store: NetworkDataLoader) -> None:
         """Detect presence of form data."""
         stats = hosts_store.stats
         assert stats.has_form_data is True

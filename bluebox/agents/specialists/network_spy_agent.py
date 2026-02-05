@@ -26,7 +26,7 @@ from bluebox.data_models.llms.interaction import (
     EmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
-from bluebox.llms.infra.network_data_store import NetworkDataStore
+from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
@@ -181,7 +181,7 @@ class NetworkSpyAgent(AbstractSpecialist):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
-        network_data_store: NetworkDataStore,
+        network_data_store: NetworkDataLoader,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -195,7 +195,7 @@ class NetworkSpyAgent(AbstractSpecialist):
 
         Args:
             emit_message_callable: Callback function to emit messages to the host.
-            network_data_store: The NetworkDataStore containing parsed HAR data.
+            network_data_store: The NetworkDataLoader containing parsed HAR data.
             persist_chat_callable: Optional callback to persist Chat objects.
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.

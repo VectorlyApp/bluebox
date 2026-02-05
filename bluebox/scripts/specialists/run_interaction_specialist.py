@@ -26,7 +26,7 @@ from bluebox.agents.specialists.interaction_specialist import (
     ParameterDiscoveryResult,
     ParameterDiscoveryFailureResult,
 )
-from bluebox.llms.infra.interactions_data_store import InteractionsDataStore
+from bluebox.llms.data_loaders.interactions_data_loader import InteractionsDataLoader
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
 from bluebox.agents.terminal_agent_base import AbstractTerminalAgentChat
@@ -71,7 +71,7 @@ class TerminalInteractionSpecialistChat(AbstractTerminalAgentChat):
 
     def __init__(
         self,
-        interaction_store: InteractionsDataStore,
+        interaction_store: InteractionsDataLoader,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
         data_path: str = "",
     ) -> None:
@@ -237,7 +237,7 @@ def main() -> None:
     console.print(f"[dim]Loading JSONL file: {jsonl_path}[/dim]")
 
     try:
-        interaction_store = InteractionsDataStore.from_jsonl(str(jsonl_path))
+        interaction_store = InteractionsDataLoader.from_jsonl(str(jsonl_path))
     except ValueError as e:
         console.print(f"[bold red]Error parsing JSONL file: {e}[/bold red]")
         sys.exit(1)

@@ -1,7 +1,7 @@
 """
-bluebox/llms/infra/interactions_data_store.py
+bluebox/llms/data_loaders/interactions_data_loader.py
 
-Data store for UI interaction events analysis.
+Data loader for UI interaction events analysis.
 
 Parses JSONL files with UIInteractionEvent entries and provides
 structured access to interaction data.
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from bluebox.data_models.cdp import UIInteractionEvent
-from bluebox.llms.infra.abstract_data_store import AbstractDataStore
+from bluebox.llms.data_loaders.abstract_data_loader import AbstractDataLoader
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -52,9 +52,9 @@ class InteractionStats:
         return "\n".join(lines)
 
 
-class InteractionsDataStore(AbstractDataStore[UIInteractionEvent, InteractionStats]):
+class InteractionsDataLoader(AbstractDataLoader[UIInteractionEvent, InteractionStats]):
     """
-    Data store for UI interaction events.
+    Data loader for UI interaction events.
 
     Parses JSONL content and provides structured access to interaction data
     including filtering, searching, and summary capabilities.
@@ -64,7 +64,7 @@ class InteractionsDataStore(AbstractDataStore[UIInteractionEvent, InteractionSta
 
     def __init__(self, events: list[UIInteractionEvent]) -> None:
         """
-        Initialize the interactions data store.
+        Initialize the interactions data loader.
 
         Args:
             events: List of UIInteractionEvent objects.
@@ -74,22 +74,22 @@ class InteractionsDataStore(AbstractDataStore[UIInteractionEvent, InteractionSta
         self._compute_stats()
 
         logger.debug(
-            "InteractionsDataStore initialized with %d events",
+            "InteractionsDataLoader initialized with %d events",
             len(self._entries),
         )
 
     ## Class methods
 
     @classmethod
-    def from_jsonl(cls, path: str) -> InteractionsDataStore:
+    def from_jsonl(cls, path: str) -> InteractionsDataLoader:
         """
-        Create an InteractionsDataStore from a JSONL file.
+        Create an InteractionsDataLoader from a JSONL file.
 
         Args:
             path: Path to JSONL file containing UIInteractionEvent entries.
 
         Returns:
-            InteractionsDataStore instance.
+            InteractionsDataLoader instance.
         """
         file_path = Path(path)
         if not file_path.exists():
@@ -111,26 +111,30 @@ class InteractionsDataStore(AbstractDataStore[UIInteractionEvent, InteractionSta
 
         return cls(events=events)
 
-    ## Properties
-
-    @property
-    def events(self) -> list[UIInteractionEvent]:
-        """Return all interaction events (alias for entries)."""
-        return self._entries
-
     ## Abstract method implementations
 
     def get_entry_id(self, entry: UIInteractionEvent) -> str:
-        """Get a unique identifier for the interaction event."""
-        el = entry.element
-        return el.css_path or f"{el.tag_name}:{el.id or ''}:{el.name or ''}"
+        """Get unique identifier for an interaction event (uses index)."""
+        return str(self._entries.index(entry))
 
     def get_searchable_content(self, entry: UIInteractionEvent) -> str | None:
-        """Get searchable content from the element value."""
-        return entry.element.value
+        """Get searchable content from an interaction event."""
+        parts = []
+        el = entry.element
+        if el.value:
+            parts.append(el.value)
+        if el.text:
+            parts.append(el.text)
+        if el.placeholder:
+            parts.append(el.placeholder)
+        if el.id:
+            parts.append(el.id)
+        if el.name:
+            parts.append(el.name)
+        return " ".join(parts) if parts else None
 
     def get_entry_url(self, entry: UIInteractionEvent) -> str | None:
-        """Get the URL from the entry."""
+        """Get URL associated with an interaction event."""
         return entry.url
 
     ## Private methods
