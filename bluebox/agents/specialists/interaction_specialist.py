@@ -40,10 +40,6 @@ class InteractionSpecialist(AbstractSpecialist):
     SYSTEM_PROMPT: str = dedent("""\
         You are a UI interaction analyst specializing in discovering routine parameters from recorded browser interactions.
 
-        ## Your Role
-
-        You analyze recorded UI interactions (clicks, keypresses, form inputs, etc.) to identify which interactions represent parameterizable inputs for a routine.
-
         ## What to Look For
 
         - **Form inputs**: Text fields, search boxes, email/password fields
@@ -54,26 +50,25 @@ class InteractionSpecialist(AbstractSpecialist):
 
         ## What to Ignore
 
-        - **Navigational clicks**: Clicks on links, buttons that just navigate
-        - **Non-parameterizable interactions**: Scroll events, hover effects, focus/blur without input
-        - **UI framework noise**: Internal framework events
+        - Navigational clicks, scroll events, hover effects, focus/blur without input
+        - UI framework noise / internal framework events
 
         ## Parameter Requirements
 
         Each discovered parameter needs:
-        - **name**: snake_case name (e.g., `search_query`, `departure_date`)
+        - **name**: snake_case (e.g., `search_query`, `departure_date`)
         - **type**: One of: string, integer, number, boolean, date, datetime, email, url, enum
-        - **description**: Clear description of what the parameter represents
+        - **description**: What the parameter represents
         - **examples**: Observed values from the interactions
 
         ## Tools
 
-        - **get_interaction_summary**: Overview statistics of all interactions
-        - **search_interactions_by_type**: Filter by interaction type (click, input, change, etc.)
-        - **search_interactions_by_element**: Filter by element attributes (tag, id, class, type)
-        - **get_interaction_detail**: Full detail of a specific interaction event
-        - **get_form_inputs**: All input/change events with values
-        - **get_unique_elements**: Deduplicated elements with interaction counts
+        - `get_interaction_summary` — overview stats
+        - `search_interactions_by_type` — filter by type (click, input, change, etc.)
+        - `search_interactions_by_element` — filter by element attributes
+        - `get_interaction_detail` — full detail for a specific event
+        - `get_form_inputs` — all input/change events with values
+        - `get_unique_elements` — deduplicated elements with interaction counts
     """)
 
     AUTONOMOUS_SYSTEM_PROMPT: str = dedent("""\
@@ -81,43 +76,19 @@ class InteractionSpecialist(AbstractSpecialist):
 
         ## Your Mission
 
-        Analyze the recorded UI interactions to identify all parameterizable inputs, then produce structured output matching the orchestrator's expected schema.
+        Analyze recorded UI interactions to identify all parameterizable inputs.
 
         ## Process
 
-        1. **Survey**: Use `get_interaction_summary` to understand the overall interaction data
-        2. **Focus on inputs**: Use `get_form_inputs` to find all form input events
-        3. **Analyze elements**: Use `get_unique_elements` to see which elements were interacted with
-        4. **Detail check**: Use `get_interaction_detail` for specific events needing closer inspection
+        1. **Survey**: Use `get_interaction_summary` for an overview
+        2. **Focus on inputs**: Use `get_form_inputs` to find form input events
+        3. **Analyze elements**: Use `get_unique_elements` to see interacted elements
+        4. **Detail check**: Use `get_interaction_detail` for events needing closer inspection
         5. **Finalize**: Call the appropriate finalize tool with your findings
 
-        ## Parameter Types (for reference)
+        ## Parameter Types
 
-        - `string`: General text input
-        - `date`: Date values (YYYY-MM-DD)
-        - `datetime`: Date+time values
-        - `integer`: Whole numbers
-        - `number`: Decimal numbers
-        - `boolean`: True/false (checkboxes, toggles)
-        - `email`: Email addresses
-        - `url`: URLs
-        - `enum`: Selection from fixed options
-
-        ## CRITICAL: How to Finalize
-
-        When you have completed your analysis, call the appropriate finalize tool.
-
-        Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
-
-        ## When finalize tools are available
-
-        **If output schema is specified:**
-        - **finalize_with_output**: Submit your findings matching the expected output schema
-        - **finalize_with_failure**: Report that the task could not be completed
-
-        **If NO output schema is specified:**
-        - **finalize_result**: Submit your findings as a dictionary
-        - **finalize_failure**: Report that the task could not be completed
+        string, date (YYYY-MM-DD), datetime, integer, number, boolean, email, url, enum
     """)
 
     ## Magic methods
@@ -175,40 +146,12 @@ class InteractionSpecialist(AbstractSpecialist):
             f"- Unique Elements: {stats.unique_elements}\n"
         )
 
-        # Include output schema if set by orchestrator
-        schema_section = self._get_output_schema_prompt_section()
-
-        # urgency notices - use correct tool names based on output schema
-        finalize_success = "finalize_with_output" if self.has_output_schema else "finalize_result"
-        finalize_fail = "finalize_with_failure" if self.has_output_schema else "finalize_failure"
-
-        if self.can_finalize:
-            remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
-            if remaining <= 2:
-                urgency = (
-                    f"\n\n## CRITICAL: Only {remaining} iterations remaining!\n"
-                    f"You MUST call {finalize_success} or {finalize_fail} NOW!"
-                )
-            elif remaining <= 4:
-                urgency = (
-                    f"\n\n## URGENT: Only {remaining} iterations remaining.\n"
-                    f"Call {finalize_success} with your findings now."
-                )
-            else:
-                urgency = (
-                    f"\n\n## Finalize tools are now available.\n"
-                    f"Call {finalize_success} when ready."
-                )
-        else:
-            urgency = (
-                f"\n\n## Continue exploring (iteration {self._autonomous_iteration}).\n"
-                "Finalize tools will become available after more exploration."
-            )
-
-        return self.AUTONOMOUS_SYSTEM_PROMPT + context + schema_section + urgency
-
-    # _register_tools and _execute_tool are provided by the base class
-    # via @agent_tool decorators below.
+        return (
+            self.AUTONOMOUS_SYSTEM_PROMPT
+            + context
+            + self._get_output_schema_prompt_section()
+            + self._get_urgency_notice()
+        )
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         # Use correct tool names based on whether output schema is set
@@ -220,18 +163,6 @@ class InteractionSpecialist(AbstractSpecialist):
             f"Focus on form inputs, typed values, dropdown selections, and date pickers. "
             f"When confident, use {finalize_success} to report your findings."
         )
-
-    def _check_autonomous_completion(self, tool_name: str) -> bool:
-        # Delegate to base class (handles generic finalize tools)
-        return super()._check_autonomous_completion(tool_name)
-
-    def _get_autonomous_result(self):
-        # Delegate to base class (returns wrapped result)
-        return super()._get_autonomous_result()
-
-    def _reset_autonomous_state(self) -> None:
-        # Call base class to reset generic state
-        super()._reset_autonomous_state()
 
     ## Tool handlers
 

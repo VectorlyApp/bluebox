@@ -48,41 +48,29 @@ class NetworkSpecialist(AbstractSpecialist):
 
         ## Your Role
 
-        You help users find and analyze specific network requests in captured traffic. Your main job is to:
-        - Find the network entry containing the data the user is looking for
-        - Identify API endpoints and their purposes
-        - Analyze request/response patterns
+        You help users find and analyze specific network requests in captured traffic.
 
         ## Finding Relevant Entries
 
-        When the user asks about specific data (e.g., "train prices", "search results", "user data"):
+        When the user asks about specific data (e.g., "train prices", "search results"):
 
-        1. Generate 20-30 relevant search terms that might appear in the response body
-           - Include variations: singular/plural, different casings, related terms
-           - Include data field names: "price", "amount", "cost", "fare", "total"
-           - Include domain-specific terms: "departure", "arrival", "origin", "destination"
+        1. Generate 20-30 relevant search terms (variations, field names, domain-specific terms)
+        2. Use `search_responses_by_terms` with your terms
+        3. Analyze the top results — highest score = most likely match
 
-        2. Use the `search_responses_by_terms` tool with your terms
+        ## Tools
 
-        3. Analyze the top results - the entry with the highest score is most likely to contain the data
-
-        ## Available Tools
-
-        - **`search_responses_by_terms`**: Search network entries by a list of terms. Returns top 10 entries ranked by relevance.
-          - Pass 20-30 search terms for best results
-          - Only searches HTML/JSON response bodies (excludes JS, images, media)
-          - Returns: id, url, unique_terms_found, total_hits, score
-
-        - **`get_entry_detail`**: Get full details of a specific network entry by ID.
-          - Use this after finding a relevant entry to see headers, request body, response body
-
-        - **`get_response_body_schema`**: Get the schema of a JSON response body.
-          - Use this to understand the shape of large JSON responses without retrieving all the data
-          - Shows structure with types at every level
+        - `search_responses_by_terms` — search response bodies by term list (20-30 terms recommended)
+        - `search_requests_by_terms` — search request side (URL, headers, body)
+        - `search_response_bodies` — exact-match search with context snippets
+        - `get_entry_detail` — full details of a network entry by ID
+        - `get_response_body_schema` — JSON schema of a response body
+        - `get_unique_urls` — all unique URLs in captured traffic
+        - `execute_python` — sandboxed Python with `entries` pre-loaded
 
         ## Guidelines
 
-        - Be concise and direct in your responses
+        - Be concise and direct
         - When you find a relevant entry, report its ID and URL
         - Always use search_responses_by_terms first when looking for specific data
     """).strip()
@@ -92,36 +80,20 @@ class NetworkSpecialist(AbstractSpecialist):
 
         ## Your Mission
 
-        Given a user task, find the API endpoint(s) that return the data needed for that task.
-        Return structured output matching the orchestrator's expected schema.
+        Given a user task, find the API endpoint(s) that return the data needed.
 
         ## Process
 
-        1. **Search**: Use `search_responses_by_terms` with 20-30 relevant terms for the task
-        2. **Analyze**: Look at top results, examine their structure with `get_response_body_schema`
+        1. **Search**: Use `search_responses_by_terms` with 20-30 relevant terms
+        2. **Analyze**: Examine top results, check structure with `get_response_body_schema`
         3. **Verify**: Use `get_entry_detail` to confirm the endpoint has the right data
-        4. **Finalize**: Call `finalize_with_output` with your findings matching the expected schema
+        4. **Finalize**: Call the appropriate finalize tool with your findings
 
         ## Strategy
 
-        - Identify ALL endpoints needed to complete the task
         - Look for API/XHR calls (not HTML pages, JS files, or images)
         - Prefer endpoints with structured JSON responses
-        - Consider multi-step flows: authentication, search, pagination, detail fetches
-
-        ## When finalize tools are available
-
-        After sufficient exploration, finalize tools become available:
-
-        **If output schema is specified:**
-        - **finalize_with_output**: Submit your findings matching the expected output schema
-        - **finalize_with_failure**: Report that the task could not be completed
-
-        **If NO output schema is specified:**
-        - **finalize_result**: Submit your findings as a dictionary
-        - **finalize_failure**: Report that the task could not be completed
-
-        Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
+        - Consider multi-step flows: authentication, search, pagination
     """).strip()
 
     ## Magic methods
@@ -234,45 +206,17 @@ class NetworkSpecialist(AbstractSpecialist):
         likely_urls = self._network_data_store.api_urls
         if likely_urls:
             urls_list = "\n".join(f"- {url}" for url in likely_urls[:30])
-            urls_context = (
-                f"\n\n## Likely API Endpoints\n"
-                f"{urls_list}"
-            )
+            urls_context = f"\n\n## Likely API Endpoints\n{urls_list}"
         else:
             urls_context = ""
 
-        # Include output schema if set by orchestrator
-        schema_section = self._get_output_schema_prompt_section()
-
-        # Add finalize tool availability notice
-        # Use correct tool name based on whether output schema is set
-        finalize_tool = "finalize_with_output" if self.has_output_schema else "finalize_result"
-
-        if self.can_finalize:
-            remaining_iterations = self._autonomous_config.max_iterations - self._autonomous_iteration
-            if remaining_iterations <= 2:
-                finalize_notice = (
-                    f"\n\n## CRITICAL: YOU MUST CALL {finalize_tool} NOW!\n"
-                    f"Only {remaining_iterations} iterations remaining."
-                )
-            elif remaining_iterations <= 4:
-                finalize_notice = (
-                    f"\n\n## URGENT: Call {finalize_tool} soon!\n"
-                    f"Only {remaining_iterations} iterations remaining."
-                )
-            else:
-                finalize_notice = (
-                    f"\n\n## IMPORTANT: {finalize_tool} is now available!\n"
-                    "Call it when you have identified the endpoint."
-                )
-        else:
-            finalize_notice = (
-                f"\n\n## Note: Continue exploring\n"
-                f"Finalize tools will become available after more exploration. "
-                f"Currently on iteration {self._autonomous_iteration}."
-            )
-
-        return self.AUTONOMOUS_SYSTEM_PROMPT + stats_context + urls_context + schema_section + finalize_notice
+        return (
+            self.AUTONOMOUS_SYSTEM_PROMPT
+            + stats_context
+            + urls_context
+            + self._get_output_schema_prompt_section()
+            + self._get_urgency_notice()
+        )
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         # Use correct tool names based on whether output schema is set
@@ -290,18 +234,6 @@ class NetworkSpecialist(AbstractSpecialist):
             f"If after thorough search you determine the endpoint does not exist in the traffic, "
             f"use {finalize_fail} to report why."
         )
-
-    def _check_autonomous_completion(self, tool_name: str) -> bool:
-        # Delegate to base class (handles generic finalize tools)
-        return super()._check_autonomous_completion(tool_name)
-
-    def _get_autonomous_result(self):
-        # Delegate to base class (returns wrapped result)
-        return super()._get_autonomous_result()
-
-    def _reset_autonomous_state(self) -> None:
-        # Call base class to reset generic state
-        super()._reset_autonomous_state()
 
     ## Tool handlers
 
