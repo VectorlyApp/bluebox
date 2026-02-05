@@ -270,6 +270,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             llm_model=llm_model,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
+            documentation_data_loader=documentation_data_loader,
         )
 
     ## Abstract method implementations
@@ -294,8 +295,8 @@ class SuperDiscoveryAgent(AbstractAgent):
         if self._js_data_loader:
             data_store_info.append("JS files: available")
         if self._documentation_data_loader:
-            stats = self._documentation_data_loader.stats
-            data_store_info.append(f"Documentation: {stats.total_docs} docs, {stats.total_code} code files")
+            summary = self._documentation_data_loader.stats.to_summary()
+            data_store_info.append(f"Documentation: {summary}")
 
         if data_store_info:
             prompt_parts.append(f"\n\n## Data Sources\n{', '.join(data_store_info)}")

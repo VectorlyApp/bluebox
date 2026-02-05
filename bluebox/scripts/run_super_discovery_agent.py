@@ -6,7 +6,7 @@ Guides users through discovering web automation routines from CDP captures.
 
 Usage:
     # Basic usage (starts interactive session)
-    
+    bluebox-super-discovery --cdp-captures-dir ./cdp_captures
     
 
     # Run discovery immediately

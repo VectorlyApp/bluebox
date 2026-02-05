@@ -278,9 +278,7 @@ class AbstractAgent(ABC):
         required = tool_meta.parameters.get("required", [])
         missing = [p for p in required if p not in tool_arguments or tool_arguments[p] is None]
         if missing:
-            provided = list(tool_arguments.keys()) if tool_arguments else []
-            logger.warning("Tool '%s' missing required param(s) %s — received: %s", tool_name, missing, provided)
-            return {"error": f"Missing required parameter(s): {', '.join(missing)}. You provided: {provided}"}
+            return {"error": f"Missing required parameter(s): {', '.join(missing)}"}
 
         # validate no extra parameters
         valid_params = set(tool_meta.parameters.get("properties", {}).keys())
@@ -300,17 +298,11 @@ class AbstractAgent(ABC):
                 else:
                     validated_arguments[param_name] = value
         except ValidationError as e:
-            # extract readable error message with full details
+            # extract readable error message
             errors = e.errors()
             if errors:
                 err = errors[0]
-                loc = ".".join(str(x) for x in err.get("loc", []))
-                err_type = err.get("type", "validation_error")
-                err_msg = err.get("msg", "")
-                if loc:
-                    msg = f"{param_name}.{loc}: {err_msg} (type: {err_type})"
-                else:
-                    msg = f"{param_name}: {err_msg} (type: {err_type})"
+                msg = f"{param_name}: expected {err.get('type', 'valid type')}, got {type(value).__name__}"
             else:
                 msg = str(e)
             return {"error": f"Invalid argument type: {msg}"}
