@@ -50,37 +50,35 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         ## Your Role
 
-        You help users find where specific tokens, IDs, or values originated from by searching:
+        Trace where specific tokens, IDs, or values originated by searching:
         - **Network traffic**: HTTP requests/responses (headers, bodies, URLs)
         - **Browser storage**: Cookies, localStorage, sessionStorage, IndexedDB
         - **Window properties**: JavaScript window object properties
 
         ## Strategy
 
-        When tracing a value:
         1. Search across ALL data sources using `search_everywhere`
-        2. If found, examine the entries to understand the context
+        2. Examine entries to understand context
         3. Determine the ORIGINAL source (where it first appeared)
-        4. Trace how it propagates (e.g., response -> cookie -> request header)
+        4. Trace propagation (e.g., response -> cookie -> request header)
 
-        ## Available Tools
+        ## Tools
 
-        - **`search_everywhere`**: Search for a value across ALL data stores at once. Start here.
-        - **`search_in_network`**: Search network traffic response bodies for a value.
-        - **`search_in_storage`**: Search browser storage (cookies, localStorage, etc.) for a value.
-        - **`search_in_window_props`**: Search window object properties for a value.
-        - **`get_network_entry`**: Get full details of a network entry by request_id.
-        - **`get_storage_entry`**: Get full details of a storage entry by index.
-        - **`get_window_prop_changes`**: Get changes for a specific window property path.
-        - **`get_storage_by_key`**: Get storage entries by key name (to find what value is stored under a key).
-        - **`execute_python`**: Run custom Python code to query data flexibly. Pre-loaded: network_entries, storage_entries, window_prop_entries.
+        - `search_everywhere` — search ALL data stores at once (start here)
+        - `search_in_network` — search network response bodies
+        - `search_in_storage` — search cookies, localStorage, sessionStorage, IndexedDB
+        - `search_in_window_props` — search window object properties
+        - `get_network_entry` — full details of a network entry
+        - `get_storage_entry` — full details of a storage entry
+        - `get_window_prop_changes` — change history for a window property path
+        - `get_storage_by_key` — storage entries by key name
+        - `execute_python` — sandboxed Python with pre-loaded data
 
         ## Guidelines
 
-        - Always start with `search_everywhere` to get a complete picture
-        - Look at timestamps to determine the order of events
-        - Consider that values often flow: API response -> storage -> subsequent requests
-        - Be concise and direct when reporting findings
+        - Always start with `search_everywhere`
+        - Look at timestamps to determine order of events
+        - Values often flow: API response -> storage -> subsequent requests
     """).strip()
 
     AUTONOMOUS_SYSTEM_PROMPT: str = textwrap.dedent("""
@@ -88,14 +86,12 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         ## Your Mission
 
-        Given a specific token/value, find its ORIGINAL source and trace how it propagates
-        through the system (network -> storage -> subsequent usage).
-        Return structured output matching the orchestrator's expected schema.
+        Find the ORIGINAL source of a token/value and trace how it propagates.
 
         ## Process
 
-        1. **Search**: Use `search_everywhere` to find all occurrences of the value
-        2. **Analyze**: Examine entries to understand context and timestamps
+        1. **Search**: Use `search_everywhere` to find all occurrences
+        2. **Analyze**: Examine entries for context and timestamps
         3. **Trace**: Determine the flow (e.g., API response -> cookie -> request header)
         4. **Finalize**: Call the appropriate finalize tool with your findings
 
@@ -104,19 +100,6 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         - First occurrence (by timestamp) is often the original source
         - Network responses often set values that end up in storage
         - Storage values (cookies) are often sent in subsequent request headers
-        - Window properties may be set by scripts after network responses
-
-        ## When finalize tools are available
-
-        **If output schema is specified:**
-        - **finalize_with_output**: Submit your findings matching the expected output schema
-        - **finalize_with_failure**: Report that the task could not be completed
-
-        **If NO output schema is specified:**
-        - **finalize_result**: Submit your findings as a dictionary
-        - **finalize_failure**: Report that the task could not be completed
-
-        Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
     """).strip()
 
     ## Magic methods
@@ -212,34 +195,10 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         return "".join(context_parts)
 
     def _get_autonomous_system_prompt(self) -> str:
-        """Get system prompt for autonomous mode with urgency notices."""
-        # Replace base prompt with autonomous variant
+        """Get system prompt for autonomous mode with data store context."""
+        # Reuse _get_system_prompt() data context but swap in the autonomous base prompt
         base_prompt = self._get_system_prompt().replace(self.SYSTEM_PROMPT, self.AUTONOMOUS_SYSTEM_PROMPT)
-
-        # Include output schema if set by orchestrator
-        schema_section = self._get_output_schema_prompt_section()
-
-        # Use correct tool names based on output schema
-        finalize_success = "finalize_with_output" if self.has_output_schema else "finalize_result"
-
-        if self.can_finalize:
-            remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
-            if remaining <= 2:
-                notice = (
-                    f"\n\n## CRITICAL: Call {finalize_success} NOW!\n"
-                    f"Only {remaining} iterations remaining."
-                )
-            elif remaining <= 4:
-                notice = (
-                    f"\n\n## URGENT: Call {finalize_success} soon!\n"
-                    f"Only {remaining} iterations remaining."
-                )
-            else:
-                notice = f"\n\n## {finalize_success} is now available. Call it when ready."
-        else:
-            notice = f"\n\n## Continue exploring (iteration {self._autonomous_iteration})."
-
-        return base_prompt + schema_section + notice
+        return base_prompt + self._get_output_schema_prompt_section() + self._get_urgency_notice()
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         # Use correct tool names based on whether output schema is set
@@ -251,21 +210,9 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             f"analyze the results, and call {finalize_success} with your findings."
         )
 
-    def _check_autonomous_completion(self, tool_name: str) -> bool:
-        # Delegate to base class (handles generic finalize tools)
-        return super()._check_autonomous_completion(tool_name)
-
-    def _get_autonomous_result(self):
-        # Delegate to base class (returns wrapped result)
-        return super()._get_autonomous_result()
-
-    def _reset_autonomous_state(self) -> None:
-        # Call base class to reset generic state
-        super()._reset_autonomous_state()
-
     ## Tool handlers
 
-    @agent_tool()
+    @agent_tool
     @token_optimized
     def _search_everywhere(
         self,
@@ -553,7 +500,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "entries": [e.model_dump() for e in entries[:20]],
         }
 
-    @agent_tool()
+    @agent_tool
     def _execute_python(self, code: str) -> dict[str, Any]:
         """
         Execute Python code in a sandboxed environment to analyze data.
