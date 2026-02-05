@@ -324,7 +324,6 @@ class JSSpecialist(AbstractSpecialist):
             js_code: JavaScript code to validate.
         """
         result = validate_js(js_code)
-
         if result.errors:
             return {
                 "valid": False,
@@ -559,10 +558,13 @@ class JSSpecialist(AbstractSpecialist):
     @token_optimized
     def _search_js_files(self, terms: list[str], top_n: int = 10) -> dict[str, Any]:
         """
-        Search captured JS files by keywords. Returns ranked results by relevance. Use this to find JS files that reference specific tokens, variables, or API endpoints.
+        Search captured JS files by keywords.
+
+        Returns ranked results by relevance. Use this to find JS files that
+        reference specific tokens, variables, or API endpoints.
 
         Args:
-            terms: Search terms (case-insensitive). Files are ranked by how many terms match and total hits.
+            terms: Search terms (case-insensitive). Ranked by match count and hits.
             top_n: Max results to return (default 10).
         """
         if self._js_data_store is None:
@@ -590,7 +592,11 @@ class JSSpecialist(AbstractSpecialist):
         snippet_padding_chars: int = 80,
     ) -> dict[str, Any]:
         """
-        Search captured JS files by regex pattern. Returns matches with surrounding context snippets. WARNING: Regex searches can be expensive on large minified JS files. There is a 15-second timeout. Prefer search_js_files (keyword search) for simple lookups.
+        Search captured JS files by regex pattern.
+
+        Returns matches with surrounding context snippets. WARNING: Regex searches
+        can be expensive on large minified JS files. There is a 15-second timeout.
+        Prefer search_js_files (keyword search) for simple lookups.
 
         Args:
             pattern: Regex pattern to search for (case-insensitive).
@@ -626,11 +632,14 @@ class JSSpecialist(AbstractSpecialist):
     @token_optimized
     def _get_js_file_content(self, request_id: str, max_chars: int = 10_000) -> dict[str, Any]:
         """
-        Get the content of a specific JS file by request_id. Content is truncated for large files. Use search_js_files first to find relevant files.
+        Get the content of a specific JS file by request_id.
+
+        Content is truncated for large files. Use search_js_files first to find
+        relevant files.
 
         Args:
             request_id: The request_id from search_js_files or list_js_files results.
-            max_chars: Max characters to return (default 10000). Large JS files are truncated.
+            max_chars: Max characters to return (default 10000). Large files truncated.
         """
         if self._js_data_store is None:
             return {"error": "No JS data store available"}
@@ -652,7 +661,11 @@ class JSSpecialist(AbstractSpecialist):
     @agent_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
     def _list_js_files(self) -> dict[str, Any]:
-        """List all captured JS files with URLs and sizes. Use this to see what JS files are available before searching."""
+        """
+        List all captured JS files with URLs and sizes.
+
+        Use this to see what JS files are available before searching.
+        """
         if self._js_data_store is None:
             return {"error": "No JS data store available"}
 
@@ -676,13 +689,17 @@ class JSSpecialist(AbstractSpecialist):
         keep_open: bool = False,
     ) -> dict[str, Any]:
         """
-        Test JavaScript code against the live website. Navigates to the URL and executes your IIFE, returning the result and any console output. Use this to verify your code works before submitting. Set keep_open=true to keep the browser tab open after execution (useful for visual changes).
+        Test JavaScript code against the live website.
+
+        Navigates to the URL and executes your IIFE, returning the result and any
+        console output. Use this to verify your code works before submitting.
 
         Args:
             url: URL to navigate to first (or empty string to skip navigation).
             js_code: IIFE JavaScript code to execute.
             timeout_seconds: Max execution time in seconds (default 5.0).
-            keep_open: If true, keep the browser tab open after execution instead of closing it. Useful for visual changes. Default false.
+            keep_open: If true, keep the browser tab open after execution.
+                Useful for visual changes. Default false.
         """
         if not self._remote_debugging_address:
             return {"error": "No browser connection configured"}

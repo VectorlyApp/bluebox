@@ -357,10 +357,14 @@ class NetworkSpecialist(AbstractSpecialist):
     @token_optimized
     def _search_har_responses_by_terms(self, terms: list[str]) -> dict[str, Any]:
         """
-        Search RESPONSE bodies by a list of terms. Searches HTML/JSON response bodies (excludes JS, images, media) and returns top 10-20 entries ranked by relevance score. Pass 20-30 search terms for best results.
+        Search RESPONSE bodies by a list of terms.
+
+        Searches HTML/JSON response bodies (excludes JS, images, media) and returns
+        top 10-20 entries ranked by relevance score. Pass 20-30 search terms for best results.
 
         Args:
-            terms: List of 20-30 search terms to look for in response bodies. Include variations, related terms, and field names.
+            terms: List of 20-30 search terms to look for in response bodies.
+                Include variations, related terms, and field names.
         """
         if not terms:
             return {"error": "No search terms provided"}
@@ -383,7 +387,9 @@ class NetworkSpecialist(AbstractSpecialist):
     @token_optimized
     def _get_entry_detail(self, request_id: str) -> dict[str, Any]:
         """
-        Get full details of a specific HAR entry by request_id. Returns method, URL, headers, request body, and response body.
+        Get full details of a specific HAR entry by request_id.
+
+        Returns method, URL, headers, request body, and response body.
 
         Args:
             request_id: The request_id of the HAR entry to retrieve.
@@ -423,7 +429,10 @@ class NetworkSpecialist(AbstractSpecialist):
     @token_optimized
     def _get_response_body_schema(self, request_id: str) -> dict[str, Any]:
         """
-        Get the schema of a HAR entry's JSON response body. Shows structure with types at every level. Useful for understanding the shape of large JSON responses.
+        Get the schema of a HAR entry's JSON response body.
+
+        Shows structure with types at every level. Useful for understanding the
+        shape of large JSON responses.
 
         Args:
             request_id: The request_id of the HAR entry to get schema for.
@@ -443,7 +452,11 @@ class NetworkSpecialist(AbstractSpecialist):
     @agent_tool()
     @token_optimized
     def _get_unique_urls(self) -> dict[str, Any]:
-        """Get all unique URLs from the HAR file. Returns a sorted list of all unique URLs observed in the traffic."""
+        """
+        Get all unique URLs from the HAR file.
+
+        Returns a sorted list of all unique URLs observed in the traffic.
+        """
         url_counts = self._network_data_store.url_counts
         return {
             "total_unique_urls": len(url_counts),
@@ -453,10 +466,16 @@ class NetworkSpecialist(AbstractSpecialist):
     @agent_tool()
     def _execute_python(self, code: str) -> dict[str, Any]:
         """
-        Execute Python code in a sandboxed environment to analyze network entries. The variable `entries` is pre-loaded as a list of NetworkTransactionEvent dicts. Each entry has: request_id, url, method, status, mime_type, request_headers, response_headers, post_data, response_body. Use print() to output results. Example: for e in entries[:5]: print(e['url'])
+        Execute Python code in a sandboxed environment to analyze network entries.
+
+        The variable `entries` is pre-loaded as a list of NetworkTransactionEvent dicts.
+        Each entry has: request_id, url, method, status, mime_type, request_headers,
+        response_headers, post_data, response_body. Use print() to output results.
+        Example: for e in entries[:5]: print(e['url'])
 
         Args:
-            code: Python code to execute. `entries` is a list of network entry dicts. `json` module is available. Use print() for output. Note: imports are disabled for security.
+            code: Python code to execute. `entries` is a list of network entry dicts.
+                `json` module is available. Use print() for output. Imports are disabled.
         """
         entries = [e.model_dump() for e in self._network_data_store.entries]
         return execute_python_sandboxed(code, extra_globals={"entries": entries})
@@ -469,7 +488,10 @@ class NetworkSpecialist(AbstractSpecialist):
         search_in: list[str] | None = None,
     ) -> dict[str, Any]:
         """
-        Search the REQUEST side of HAR entries (URL, headers, body) for terms. Useful for finding where sensitive data or parameters are sent. Returns entries ranked by relevance.
+        Search the REQUEST side of HAR entries (URL, headers, body) for terms.
+
+        Useful for finding where sensitive data or parameters are sent.
+        Returns entries ranked by relevance.
 
         Args:
             terms: List of search terms to look for in requests.
@@ -515,7 +537,10 @@ class NetworkSpecialist(AbstractSpecialist):
             # Search body
             if "body" in search_in and entry.post_data:
                 import json as json_module
-                post_data_str = json_module.dumps(entry.post_data) if isinstance(entry.post_data, (dict, list)) else str(entry.post_data)
+                if isinstance(entry.post_data, (dict, list)):
+                    post_data_str = json_module.dumps(entry.post_data)
+                else:
+                    post_data_str = str(entry.post_data)
                 body_lower = post_data_str.lower()
                 for term in terms_lower:
                     count = body_lower.count(term)
@@ -555,7 +580,11 @@ class NetworkSpecialist(AbstractSpecialist):
         case_sensitive: bool = False,
     ) -> dict[str, Any]:
         """
-        Search response bodies for a specific value and return matches with context. Unlike search_har_responses_by_terms which ranks by relevance across many terms, this tool finds exact matches for a single value and shows surrounding context. Useful for finding where specific data (IDs, tokens, values) appears.
+        Search response bodies for a specific value and return matches with context.
+
+        Unlike search_har_responses_by_terms which ranks by relevance across many terms,
+        this tool finds exact matches for a single value and shows surrounding context.
+        Useful for finding where specific data (IDs, tokens, values) appears.
 
         Args:
             value: The exact value to search for in response bodies.
@@ -586,7 +615,12 @@ class NetworkSpecialist(AbstractSpecialist):
     @token_optimized
     def _finalize_result(self, endpoints: list[dict[str, Any]]) -> dict[str, Any]:
         """
-        Finalize the endpoint discovery with your findings. Call this when you have identified the API endpoint(s) needed for the user's task. You can specify multiple endpoints if the task requires a multi-step flow (e.g., authenticate -> search -> get details). NOTE: All request_ids must be valid IDs from the data store.
+        Finalize the endpoint discovery with your findings.
+
+        Call this when you have identified the API endpoint(s) needed for the user's task.
+        You can specify multiple endpoints if the task requires a multi-step flow
+        (e.g., authenticate -> search -> get details).
+        NOTE: All request_ids must be valid IDs from the data store.
 
         Args:
             endpoints: List of discovered endpoints. Order by execution sequence if multi-step.
@@ -622,7 +656,10 @@ class NetworkSpecialist(AbstractSpecialist):
                 valid_ids_sample = [e.request_id for e in self._network_data_store.entries[:10]]
                 return {
                     "error": f"endpoints[{i}].request_ids contains invalid IDs: {invalid_ids}",
-                    "hint": "These request_ids do not exist in the data store. Use get_entry_detail or search tools to find valid request_ids.",
+                    "hint": (
+                        "These request_ids do not exist in the data store. "
+                        "Use get_entry_detail or search tools to find valid request_ids."
+                    ),
                     "sample_valid_ids": valid_ids_sample,
                 }
 
@@ -651,10 +688,14 @@ class NetworkSpecialist(AbstractSpecialist):
         closest_matches: list[str] | None = None,
     ) -> dict[str, Any]:
         """
-        Signal that the endpoint discovery has failed. Call this ONLY when you have exhaustively searched and are confident that the required endpoint does NOT exist in the captured traffic. Provide a clear explanation of what was searched and why no match was found.
+        Signal that the endpoint discovery has failed.
+
+        Call this ONLY when you have exhaustively searched and are confident that
+        the required endpoint does NOT exist in the captured traffic. Provide a
+        clear explanation of what was searched and why no match was found.
 
         Args:
-            reason: Detailed explanation of why the endpoint could not be found. E.g., 'No API endpoints found that return train pricing data. The traffic only contains static HTML pages and image assets.'
+            reason: Detailed explanation of why the endpoint could not be found.
             searched_terms: List of key search terms that were tried.
             closest_matches: URLs of entries that came closest to matching (if any).
         """

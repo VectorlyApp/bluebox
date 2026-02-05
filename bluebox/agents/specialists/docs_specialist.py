@@ -375,11 +375,14 @@ class DocsSpecialist(AbstractSpecialist):
         case_sensitive: bool = False,
     ) -> dict[str, Any]:
         """
-        Search file contents for an exact query string (like Cmd+F). Returns LINE NUMBERS where matches are found. Use this to find specific terms, then use get_file_content to read around those lines.
+        Search file contents for an exact query string (like Cmd+F).
+
+        Returns LINE NUMBERS where matches are found. Use this to find specific terms,
+        then use get_file_content to read around those lines.
 
         Args:
             query: The exact string to search for.
-            file_type: Optional filter by file type: 'documentation' for docs, 'code' for source files.
+            file_type: Optional filter: 'documentation' for docs, 'code' for source files.
             case_sensitive: Whether the search should be case-sensitive. Defaults to false.
         """
         if not query:
@@ -416,11 +419,14 @@ class DocsSpecialist(AbstractSpecialist):
         end_line: int | None = None,
     ) -> dict[str, Any]:
         """
-        Get file content by path. Can read the full file or specific LINE RANGE. Use start_line/end_line to read around matches from search_content.
+        Get file content by path.
+
+        Can read the full file or specific LINE RANGE. Use start_line/end_line
+        to read around matches from search_content.
 
         Args:
             path: The file path (can be partial, will match).
-            start_line: Starting line number (1-indexed, inclusive). Omit to start from beginning.
+            start_line: Starting line number (1-indexed, inclusive). Omit for beginning.
             end_line: Ending line number (1-indexed, inclusive). Omit to read to end.
         """
         if not path:
@@ -515,10 +521,14 @@ class DocsSpecialist(AbstractSpecialist):
         summary: str,
     ) -> dict[str, Any]:
         """
-        Finalize the documentation search with your findings. Call this when you have found documentation that answers the user's question. Provide a list of relevant documents and a summary.
+        Finalize the documentation search with your findings.
+
+        Call this when you have found documentation that answers the user's question.
+        Provide a list of relevant documents and a summary.
 
         Args:
-            documents: List of relevant documents found. Each document should have: path, file_type, relevance_reason, key_content.
+            documents: List of relevant documents found. Each should have:
+                path, file_type, relevance_reason, key_content.
             summary: Comprehensive answer based on found documents.
         """
         if not documents:
@@ -584,7 +594,10 @@ class DocsSpecialist(AbstractSpecialist):
         closest_matches: list[str] | None = None,
     ) -> dict[str, Any]:
         """
-        Signal that the documentation search has failed. Call this ONLY when you have exhaustively searched and are confident that the information does NOT exist in the indexed files.
+        Signal that the documentation search has failed.
+
+        Call this ONLY when you have exhaustively searched and are confident
+        that the information does NOT exist in the indexed files.
 
         Args:
             reason: Explanation of why the information could not be found.

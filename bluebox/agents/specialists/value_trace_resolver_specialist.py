@@ -317,7 +317,10 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         case_sensitive: bool = False,
     ) -> dict[str, Any]:
         """
-        Search for a value across ALL data stores (network, storage, window properties). This is the best starting point when tracing where a value came from. Returns matches from each store with context about where the value was found.
+        Search for a value across ALL data stores (network, storage, window properties).
+
+        This is the best starting point when tracing where a value came from.
+        Returns matches from each store with context about where the value was found.
 
         Args:
             value: The token/value to search for.
@@ -382,7 +385,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         return results
 
-    @agent_tool()
+    @agent_tool(availability=lambda self: self._network_data_store is not None)
     @token_optimized
     def _search_in_network(
         self,
@@ -390,7 +393,9 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         case_sensitive: bool = False,
     ) -> dict[str, Any]:
         """
-        Search network traffic response bodies for a specific value. Returns matches with context showing where in the response the value appears.
+        Search network traffic response bodies for a specific value.
+
+        Returns matches with context showing where in the response the value appears.
 
         Args:
             value: The value to search for in response bodies.
@@ -412,7 +417,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "results": results[:20],
         }
 
-    @agent_tool()
+    @agent_tool(availability=lambda self: self._storage_data_store is not None)
     @token_optimized
     def _search_in_storage(
         self,
@@ -420,7 +425,9 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         case_sensitive: bool = False,
     ) -> dict[str, Any]:
         """
-        Search browser storage (cookies, localStorage, sessionStorage, IndexedDB) for a value. Returns matches showing which storage type and key contains the value.
+        Search browser storage (cookies, localStorage, sessionStorage, IndexedDB).
+
+        Returns matches showing which storage type and key contains the value.
 
         Args:
             value: The value to search for in storage.
@@ -442,7 +449,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "results": results[:20],
         }
 
-    @agent_tool()
+    @agent_tool(availability=lambda self: self._window_property_data_store is not None)
     @token_optimized
     def _search_in_window_props(
         self,
@@ -450,7 +457,9 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         case_sensitive: bool = False,
     ) -> dict[str, Any]:
         """
-        Search window object property values for a specific value. Returns matches showing which property path contains the value.
+        Search window object property values for a specific value.
+
+        Returns matches showing which property path contains the value.
 
         Args:
             value: The value to search for in window properties.
@@ -472,7 +481,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "results": results[:20],
         }
 
-    @agent_tool()
+    @agent_tool(availability=lambda self: self._network_data_store is not None)
     @token_optimized
     def _get_network_entry(self, request_id: str) -> dict[str, Any]:
         """
@@ -509,7 +518,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "response_content": response_content,
         }
 
-    @agent_tool()
+    @agent_tool(availability=lambda self: self._storage_data_store is not None)
     @token_optimized
     def _get_storage_entry(self, index: int) -> dict[str, Any]:
         """
@@ -530,7 +539,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "entry": entry.model_dump(),
         }
 
-    @agent_tool()
+    @agent_tool(availability=lambda self: self._window_property_data_store is not None)
     @token_optimized
     def _get_window_prop_changes(
         self,
@@ -538,11 +547,13 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         exact: bool = False,
     ) -> dict[str, Any]:
         """
-        Get all changes for a specific window property path. Returns the history of changes (added, changed, deleted) for that property.
+        Get all changes for a specific window property path.
+
+        Returns the history of changes (added, changed, deleted) for that property.
 
         Args:
             path: The property path to get changes for (e.g., 'dataLayer.0.userId').
-            exact: If true, match path exactly. If false, match paths containing the substring. Defaults to false.
+            exact: If true, match exactly. If false, match paths containing substring.
         """
         if not self._window_property_data_store:
             return {"error": "Window property data store not available"}
@@ -559,11 +570,15 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "changes": results[:20],
         }
 
-    @agent_tool()
+    @agent_tool(availability=lambda self: self._storage_data_store is not None)
     @token_optimized
     def _get_storage_by_key(self, key: str) -> dict[str, Any]:
         """
-        Get all storage entries for a specific key name. Use this when you want to find the VALUE stored under a given KEY (e.g., 'get the value of _cb_svref_expires'). Returns all events where this key was set, modified, or deleted.
+        Get all storage entries for a specific key name.
+
+        Use this when you want to find the VALUE stored under a given KEY
+        (e.g., 'get the value of _cb_svref_expires'). Returns all events
+        where this key was set, modified, or deleted.
 
         Args:
             key: The storage key name to look up.
@@ -585,10 +600,20 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
     @agent_tool()
     def _execute_python(self, code: str) -> dict[str, Any]:
         """
-        Execute Python code in a sandboxed environment to analyze data. Pre-loaded variables: `network_entries` (list of NetworkTransactionEvent dicts with request_id, url, method, status, request_headers, response_headers, post_data, response_body), `storage_entries` (list of StorageEvent dicts with type, origin, key, value, etc.), `window_prop_entries` (list of WindowPropertyEvent dicts with url, timestamp, changes). Use print() to output results. Example: for e in storage_entries: if e['key'] == 'token': print(e)
+        Execute Python code in a sandboxed environment to analyze data.
+
+        Pre-loaded variables:
+        - `network_entries`: list of NetworkTransactionEvent dicts (request_id, url,
+          method, status, request_headers, response_headers, post_data, response_body)
+        - `storage_entries`: list of StorageEvent dicts (type, origin, key, value, etc.)
+        - `window_prop_entries`: list of WindowPropertyEvent dicts (url, timestamp, changes)
+
+        Use print() to output results.
+        Example: for e in storage_entries: if e['key'] == 'token': print(e)
 
         Args:
-            code: Python code to execute. Variables available: network_entries, storage_entries, window_prop_entries. The `json` module is available. Use print() for output. Note: imports are disabled for security.
+            code: Python code to execute. The `json` module is available.
+                Use print() for output. Imports are disabled for security.
         """
         # Build extra globals with all available data stores
         extra_globals: dict[str, Any] = {}
@@ -726,7 +751,9 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         suggestions: list[str] | None = None,
     ) -> dict[str, Any]:
         """
-        Signal that the token origin tracing failed to find the value. Call this when you have searched thoroughly but cannot find the value.
+        Signal that the token origin tracing failed to find the value.
+
+        Call this when you have searched thoroughly but cannot find the value.
 
         Args:
             value_searched: The token/value that was searched for.
