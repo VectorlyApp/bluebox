@@ -144,6 +144,25 @@ class TestToolChoiceIntegration:
         call_kwargs = mock_openai.responses.create.call_args[1]
         assert call_kwargs.get("tool_choice") == {"type": "function", "name": "test_tool"}
 
+    def test_tool_choice_none_passed_to_api(self, client: OpenAIClient, mock_openai: MagicMock) -> None:
+        """Test that 'none' tool_choice is passed correctly to API."""
+        mock_response = MagicMock()
+        mock_response.id = "resp_123"
+        mock_response.output = []
+        mock_openai.responses.create.return_value = mock_response
+
+        client.register_tool(
+            name="test_tool",
+            description="A test tool",
+            parameters={"type": "object", "properties": {}},
+        )
+
+        client.call_sync(input="Hello", tool_choice="none")
+
+        # Verify tool_choice was passed as "none"
+        call_kwargs = mock_openai.responses.create.call_args[1]
+        assert call_kwargs.get("tool_choice") == "none"
+
 
 class TestToolChoiceNormalization:
     """Tests for tool_choice normalization."""
@@ -177,6 +196,11 @@ class TestToolChoiceNormalization:
         """Test that other tool names normalize correctly."""
         result = client._normalize_tool_choice("search_docs")
         assert result == {"type": "function", "name": "search_docs"}
+
+    def test_normalize_none(self, client: OpenAIClient) -> None:
+        """Test that 'none' normalizes to 'none'."""
+        result = client._normalize_tool_choice("none")
+        assert result == "none"
 
 
 class TestLLMChatResponseFields:

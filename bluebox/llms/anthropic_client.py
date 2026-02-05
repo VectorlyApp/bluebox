@@ -138,10 +138,11 @@ class AnthropicClient(AbstractLLMVendorClient):
         Maps:
         - "auto" → {"type": "auto"}
         - "required" → {"type": "any"}
+        - "none" → {"type": "none"}
         - Tool name string → {"type": "tool", "name": "tool_name"}
 
         Args:
-            tool_choice: String ("auto", "required", or tool name)
+            tool_choice: String ("auto", "required", "none", or tool name)
 
         Returns:
             Normalized tool_choice for Anthropic API
@@ -152,6 +153,8 @@ class AnthropicClient(AbstractLLMVendorClient):
             return {"type": "auto"}
         if tool_choice == "required":
             return {"type": "any"}
+        if tool_choice == "none":
+            return {"type": "none"}
         # Otherwise, treat as tool name
         return {"type": "tool", "name": tool_choice}
 

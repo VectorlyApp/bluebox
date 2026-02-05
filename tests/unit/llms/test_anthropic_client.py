@@ -551,6 +551,11 @@ class TestToolChoiceNormalization:
         result = client._normalize_tool_choice("search_docs")
         assert result == {"type": "tool", "name": "search_docs"}
 
+    def test_normalize_none(self, client: AnthropicClient) -> None:
+        """Test that 'none' normalizes to {'type': 'none'}."""
+        result = client._normalize_tool_choice("none")
+        assert result == {"type": "none"}
+
 
 class TestAnthropicClientMessageConversion:
     """Tests for message format conversion."""
@@ -719,3 +724,19 @@ class TestToolChoiceIntegration:
         # Verify tool_choice was normalized to tool dict
         call_kwargs = mock_anthropic.messages.create.call_args[1]
         assert call_kwargs.get("tool_choice") == {"type": "tool", "name": "test_tool"}
+
+    def test_tool_choice_none_passed_to_api(self, client: AnthropicClient, mock_anthropic: MagicMock) -> None:
+        """Test that 'none' tool_choice is normalized and passed correctly to API."""
+        mock_anthropic.messages.create.return_value = self._create_mock_response()
+
+        client.register_tool(
+            name="test_tool",
+            description="A test tool",
+            parameters={"type": "object", "properties": {}},
+        )
+
+        client.call_sync(input="Hello", tool_choice="none")
+
+        # Verify tool_choice was normalized to {"type": "none"}
+        call_kwargs = mock_anthropic.messages.create.call_args[1]
+        assert call_kwargs.get("tool_choice") == {"type": "none"}

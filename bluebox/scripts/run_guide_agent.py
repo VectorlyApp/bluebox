@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-scripts/run_guide_agent.py
+bluebox/scripts/run_guide_agent.py
 
 Interactive terminal interface for the Guide Agent.
 Guides users through creating web automation routines.
 
 Usage:
     # Basic usage (starts interactive session)
-    python scripts/run_guide_agent.py
+    bluebox-guide
 
     # With existing CDP captures
-    python scripts/run_guide_agent.py --cdp-captures-dir ./cdp_captures
+    bluebox-guide --cdp-captures-dir ./cdp_captures
 
     # Suppress logs for cleaner output
-    python scripts/run_guide_agent.py -q
+    bluebox-guide -q
 
     # With all options
-    python scripts/run_guide_agent.py \
+    bluebox-guide \
         --cdp-captures-dir ./cdp_captures \
         --output-dir ./guide_output \
         --model gpt-5.1 \
@@ -53,8 +53,8 @@ from openai import OpenAI
 from prompt_toolkit import prompt as pt_prompt
 from prompt_toolkit.formatted_text import HTML
 
-# Package root for code_paths (scripts/ is sibling to bluebox/)
-BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent / "bluebox"
+# Package root for code_paths (scripts/ is now inside bluebox/)
+BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
