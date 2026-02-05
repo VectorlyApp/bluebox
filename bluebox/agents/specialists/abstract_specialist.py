@@ -414,7 +414,10 @@ class AbstractSpecialist(AbstractAgent):
         initial_message = self._get_autonomous_initial_message(task)
         self._add_chat(ChatRole.USER, initial_message)
 
-        logger.info("Starting autonomous run for task: %s", task)
+        logger.info(
+            "Starting %s autonomous run for task: %s",
+            self.__class__.__name__, task,
+        )
 
         self._run_autonomous_loop()
 

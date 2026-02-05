@@ -1,0 +1,158 @@
+{
+  "name": "amtrak_train_search",
+  "description": "Search for trains between two stations on Amtrak using their backend APIs",
+  "operations": [
+    {
+      "type": "navigate",
+      "url": "https://www.amtrak.com/",
+      "sleep_after_navigation_seconds": 3.0
+    },
+    {
+      "type": "sleep",
+      "timeout_seconds": 2.0
+    },
+    {
+      "type": "fetch",
+      "endpoint": {
+        "url": "https://www.amtrak.com/services/MapDataService/AutoCompleterArcgis/getResponseList?searchTerm=\"{{origin}}\"",
+        "description": "Amtrak station/location autocomplete for origin. GET with query parameter searchTerm; returns JSON with autoCompleterResponse.autoCompleteList.",
+        "method": "GET",
+        "headers": {
+          "Accept": "application/json, text/plain, */*"
+        },
+        "body": {},
+        "credentials": "same-origin"
+      },
+      "session_storage_key": "amtrak_autocomplete_stations_origin"
+    },
+    {
+      "type": "fetch",
+      "endpoint": {
+        "url": "https://www.amtrak.com/services/MapDataService/AutoCompleterArcgis/getResponseList?searchTerm=\"{{destination}}\"",
+        "description": "Amtrak station/location autocomplete for destination. GET with query parameter searchTerm; returns JSON with autoCompleterResponse.autoCompleteList.",
+        "method": "GET",
+        "headers": {
+          "Accept": "application/json, text/plain, */*"
+        },
+        "body": {},
+        "credentials": "same-origin"
+      },
+      "session_storage_key": "amtrak_autocomplete_stations_destination"
+    },
+    {
+      "type": "sleep",
+      "timeout_seconds": 3.0
+    },
+    {
+      "type": "fetch",
+      "endpoint": {
+        "url": "https://www.amtrak.com/dotcom/journey-solution-option",
+        "description": "Search for one-way Amtrak tickets between origin and destination on a given date.",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Origin": "https://www.amtrak.com",
+          "Referer": "https://www.amtrak.com",
+          "Accept": "application/json, text/plain, */*",
+          "x-amtrak-trace-id": "{{sessionStorage:ibsession.sessionid}}"
+        },
+        "body": {
+          "journeyRequest": {
+            "fare": {
+              "pricingUnit": "DOLLARS"
+            },
+            "alternateDayOption": false,
+            "type": "OW",
+            "journeyLegRequests": [
+              {
+                "origin": {
+                  "code": "{{sessionStorage:amtrak_autocomplete_stations_origin.autoCompleterResponse.autoCompleteList.0.stationCode}}",
+                  "schedule": {
+                    "departureDateTime": "\"{{departureDate}}\"T00:00:00"
+                  }
+                },
+                "destination": {
+                  "code": "{{sessionStorage:amtrak_autocomplete_stations_destination.autoCompleterResponse.autoCompleteList.0.stationCode}}"
+                },
+                "passengers": [
+                  {
+                    "id": "P1",
+                    "type": "F",
+                    "initialType": "adult"
+                  }
+                ]
+              }
+            ],
+            "customer": {
+              "tierStatus": "MEMBER"
+            },
+            "isPassRider": false,
+            "isCorporateTraveller": false,
+            "tripTags": true,
+            "singleAdultFare": true,
+            "cascadesWSDOTFilter": false
+          },
+          "initialJourneyLegOnly": false,
+          "reservableAccomodationOptions": "ALL"
+        },
+        "credentials": "same-origin"
+      },
+      "session_storage_key": "amtrak_search_one_way"
+    },
+    {
+      "type": "return",
+      "session_storage_key": "amtrak_search_one_way"
+    }
+  ],
+  "incognito": true,
+  "parameters": [
+    {
+      "name": "origin",
+      "type": "string",
+      "required": true,
+      "description": "The origin city or station code",
+      "default": null,
+      "examples": [],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": null,
+      "enum_values": null,
+      "format": null,
+      "observed_value": null
+    },
+    {
+      "name": "destination",
+      "type": "string",
+      "required": true,
+      "description": "The destination city or station code",
+      "default": null,
+      "examples": [],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": null,
+      "enum_values": null,
+      "format": null,
+      "observed_value": null
+    },
+    {
+      "name": "departureDate",
+      "type": "string",
+      "required": true,
+      "description": "Departure date in YYYY-MM-DD format",
+      "default": null,
+      "examples": [],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": null,
+      "enum_values": null,
+      "format": null,
+      "observed_value": null
+    }
+  ]
+}
