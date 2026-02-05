@@ -286,7 +286,7 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         # Internal state
         self._orchestration_state = AgentOrchestrationState()
-        self._discovery_state = RoutineDiscoveryState()
+        self._discovery_state = RoutineDiscoveryState(phase=DiscoveryPhase.PLANNING)
         self._agent_instances: dict[str, AbstractSpecialist] = {}  # agent_id -> instance
 
         # Result tracking

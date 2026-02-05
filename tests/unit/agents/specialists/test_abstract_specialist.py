@@ -319,9 +319,11 @@ class TestCollectTools:
             "finalize_gated",
             "with_explicit_schema",
             "finalize",
-            # Generic finalize tools from AbstractSpecialist
+            # Generic finalize tools from AbstractSpecialist (both with and without output schema)
             "finalize_with_output",
             "finalize_with_failure",
+            "finalize_result",
+            "finalize_failure",
             # Documentation tools from AbstractAgent
             "search_docs",
             "get_doc_file",

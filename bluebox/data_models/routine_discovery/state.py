@@ -92,7 +92,7 @@ class RoutineDiscoveryState(BaseModel):
 
     # Progress tracking
     phase: DiscoveryPhase = Field(
-        default=DiscoveryPhase.PLANNING,
+        default=DiscoveryPhase.IDENTIFY_TRANSACTION,
         description="Current phase of discovery"
     )
 

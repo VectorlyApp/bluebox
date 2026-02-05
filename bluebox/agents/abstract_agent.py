@@ -61,7 +61,7 @@ class _ToolMeta:
 
 
 def agent_tool(
-    description: str | None = None,
+    description: str | Callable | None = None,
     parameters: dict[str, Any] | None = None,
     *,
     availability: bool | Callable[..., bool] = True,
@@ -71,6 +71,16 @@ def agent_tool(
 
     The tool name is derived from the method name by stripping leading
     underscores. For example, ``_get_dom_snapshot`` becomes ``get_dom_snapshot``.
+
+    Can be used with or without parentheses:
+        @agent_tool
+        def _my_tool(self, x: str) -> dict: ...
+
+        @agent_tool()
+        def _my_tool(self, x: str) -> dict: ...
+
+        @agent_tool(description="Custom description")
+        def _my_tool(self, x: str) -> dict: ...
 
     Args:
         description: Tool description for the LLM. If None, extracted from
@@ -84,16 +94,16 @@ def agent_tool(
               gated behind lifecycle state or dynamic conditions (e.g.
               ``availability=lambda self: self.can_finalize``).
     """
-    def decorator(method: Callable) -> Callable:
+    def decorator(method: Callable, desc: str | None = None) -> Callable:
         tool_name = method.__name__.lstrip("_")
 
         # auto-extract description from docstring if not provided
-        if description is None:
+        if desc is None:
             final_description = extract_description_from_docstring(docstring=method.__doc__)
             if not final_description:
                 raise ValueError(f"Tool {tool_name} has no description and no docstring")
         else:
-            final_description = description
+            final_description = desc
 
         # auto-generate parameters schema from method signature if not provided
         if parameters is None:
@@ -108,7 +118,13 @@ def agent_tool(
             availability=availability,
         )
         return method
-    return decorator
+
+    # Support @agent_tool without parentheses - description will be the function
+    if callable(description):
+        return decorator(description, desc=None)
+
+    # Support @agent_tool() or @agent_tool(description="...")
+    return lambda method: decorator(method, desc=description)
 
 
 class AbstractAgent(ABC):
