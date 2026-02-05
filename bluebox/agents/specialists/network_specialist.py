@@ -38,7 +38,7 @@ logger = get_logger(name=__name__)
 class DiscoveredEndpoint(BaseModel):
     """A single discovered API endpoint."""
     request_ids: list[str] = Field(
-        description="HAR entry request_ids for this endpoint"
+        description="Network entry request_ids for this endpoint"
     )
     url: str = Field(
         description="The API endpoint URL"
@@ -84,19 +84,19 @@ class DiscoveryFailureResult(BaseModel):
 
 class NetworkSpecialist(AbstractSpecialist):
     """
-    Network spy agent that helps analyze HAR (HTTP Archive) files.
+    Network specialist agent that helps analyze captured network traffic.
 
     The agent uses AbstractSpecialist as its base and provides tools to search
-    and analyze network traffic data.
+    and analyze network traffic data from JSONL captures.
     """
 
     SYSTEM_PROMPT: str = dedent("""
-        You are a network traffic analyst specializing in HAR (HTTP Archive) file analysis.
+        You are a network traffic analyst specializing in captured browser network data.
 
         ## Your Role
 
-        You help users find and analyze specific network requests in HAR files. Your main job is to:
-        - Find the HAR entry containing the data the user is looking for
+        You help users find and analyze specific network requests in captured traffic. Your main job is to:
+        - Find the network entry containing the data the user is looking for
         - Identify API endpoints and their purposes
         - Analyze request/response patterns
 
@@ -109,18 +109,18 @@ class NetworkSpecialist(AbstractSpecialist):
            - Include data field names: "price", "amount", "cost", "fare", "total"
            - Include domain-specific terms: "departure", "arrival", "origin", "destination"
 
-        2. Use the `search_har_responses_by_terms` tool with your terms
+        2. Use the `search_responses_by_terms` tool with your terms
 
         3. Analyze the top results - the entry with the highest score is most likely to contain the data
 
         ## Available Tools
 
-        - **`search_har_responses_by_terms`**: Search HAR entries by a list of terms. Returns top 10 entries ranked by relevance.
+        - **`search_responses_by_terms`**: Search network entries by a list of terms. Returns top 10 entries ranked by relevance.
           - Pass 20-30 search terms for best results
           - Only searches HTML/JSON response bodies (excludes JS, images, media)
           - Returns: id, url, unique_terms_found, total_hits, score
 
-        - **`get_entry_detail`**: Get full details of a specific HAR entry by ID.
+        - **`get_entry_detail`**: Get full details of a specific network entry by ID.
           - Use this after finding a relevant entry to see headers, request body, response body
 
         - **`get_response_body_schema`**: Get the schema of a JSON response body.
@@ -131,7 +131,7 @@ class NetworkSpecialist(AbstractSpecialist):
 
         - Be concise and direct in your responses
         - When you find a relevant entry, report its ID and URL
-        - Always use search_har_responses_by_terms first when looking for specific data
+        - Always use search_responses_by_terms first when looking for specific data
     """).strip()
 
     AUTONOMOUS_SYSTEM_PROMPT: str = dedent("""
@@ -144,7 +144,7 @@ class NetworkSpecialist(AbstractSpecialist):
 
         ## Process
 
-        1. **Search**: Use `search_har_responses_by_terms` with 20-30 relevant terms for the task
+        1. **Search**: Use `search_responses_by_terms` with 20-30 relevant terms for the task
         2. **Analyze**: Look at top results, examine their structure with `get_response_body_schema`
         3. **Verify**: Use `get_entry_detail` to confirm the endpoint has the right data
         4. **Finalize**: Once confident, call `finalize_result` with your findings
@@ -162,7 +162,7 @@ class NetworkSpecialist(AbstractSpecialist):
 
         ### finalize_result - Use when endpoint IS found
         Call it with a list of endpoints, each containing:
-        - request_ids: The HAR entry request_id(s) for this endpoint (MUST be valid IDs from the data store)
+        - request_ids: The network entry request_id(s) for this endpoint (MUST be valid IDs from the data store)
         - url: The API URL
         - endpoint_inputs: Brief description of inputs (e.g., "from_city, to_city, date as query params")
         - endpoint_outputs: Brief description of outputs (e.g., "JSON array of train options with prices")
@@ -192,11 +192,11 @@ class NetworkSpecialist(AbstractSpecialist):
         existing_chats: list[Chat] | None = None,
     ) -> None:
         """
-        Initialize the network spy agent.
+        Initialize the network specialist agent.
 
         Args:
             emit_message_callable: Callback function to emit messages to the host.
-            network_data_store: The NetworkDataLoader containing parsed HAR data.
+            network_data_store: NetworkDataLoader containing parsed network traffic data (NetworkTransactionEvent objects).
             persist_chat_callable: Optional callback to persist Chat objects.
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
@@ -231,10 +231,10 @@ class NetworkSpecialist(AbstractSpecialist):
     ## Abstract method implementations
 
     def _get_system_prompt(self) -> str:
-        """Get system prompt with HAR stats context, host stats, and likely API URLs."""
+        """Get system prompt with traffic stats context, host stats, and likely API URLs."""
         stats = self._network_data_store.stats
         stats_context = (
-            f"\n\n## HAR File Context\n"
+            f"\n\n## Network Traffic Context\n"
             f"- Total Requests: {stats.total_requests}\n"
             f"- Unique URLs: {stats.unique_urls}\n"
             f"- Unique Hosts: {stats.unique_hosts}\n"
@@ -248,7 +248,7 @@ class NetworkSpecialist(AbstractSpecialist):
                 f"\n\n## Likely Important API Endpoints\n"
                 f"The following URLs are likely important API endpoints:\n\n"
                 f"{urls_list}\n\n"
-                f"Use the `get_unique_urls` tool to see all other URLs in the HAR file."
+                f"Use the `get_unique_urls` tool to see all other URLs in the captured traffic."
             )
         else:
             urls_context = (
@@ -275,10 +275,10 @@ class NetworkSpecialist(AbstractSpecialist):
         return self.SYSTEM_PROMPT + stats_context + host_context + urls_context
 
     def _get_autonomous_system_prompt(self) -> str:
-        """Get system prompt for autonomous mode with HAR context."""
+        """Get system prompt for autonomous mode with traffic context."""
         stats = self._network_data_store.stats
         stats_context = (
-            f"\n\n## HAR File Context\n"
+            f"\n\n## Network Traffic Context\n"
             f"- Total Requests: {stats.total_requests}\n"
             f"- Unique URLs: {stats.unique_urls}\n"
             f"- Unique Hosts: {stats.unique_hosts}\n"
@@ -355,7 +355,7 @@ class NetworkSpecialist(AbstractSpecialist):
 
     @agent_tool()
     @token_optimized
-    def _search_har_responses_by_terms(self, terms: list[str]) -> dict[str, Any]:
+    def _search_responses_by_terms(self, terms: list[str]) -> dict[str, Any]:
         """
         Search RESPONSE bodies by a list of terms.
 
@@ -387,12 +387,12 @@ class NetworkSpecialist(AbstractSpecialist):
     @token_optimized
     def _get_entry_detail(self, request_id: str) -> dict[str, Any]:
         """
-        Get full details of a specific HAR entry by request_id.
+        Get full details of a specific network entry by request_id.
 
         Returns method, URL, headers, request body, and response body.
 
         Args:
-            request_id: The request_id of the HAR entry to retrieve.
+            request_id: The request_id of the network entry to retrieve.
         """
         entry = self._network_data_store.get_entry(request_id)
         if entry is None:
@@ -429,13 +429,13 @@ class NetworkSpecialist(AbstractSpecialist):
     @token_optimized
     def _get_response_body_schema(self, request_id: str) -> dict[str, Any]:
         """
-        Get the schema of a HAR entry's JSON response body.
+        Get the schema of a network entry's JSON response body.
 
         Shows structure with types at every level. Useful for understanding the
         shape of large JSON responses.
 
         Args:
-            request_id: The request_id of the HAR entry to get schema for.
+            request_id: The request_id of the network entry to get schema for.
         """
         key_structure = self._network_data_store.get_response_body_schema(request_id)
         if key_structure is None:
@@ -453,7 +453,7 @@ class NetworkSpecialist(AbstractSpecialist):
     @token_optimized
     def _get_unique_urls(self) -> dict[str, Any]:
         """
-        Get all unique URLs from the HAR file.
+        Get all unique URLs from the captured network traffic.
 
         Returns a sorted list of all unique URLs observed in the traffic.
         """
@@ -482,13 +482,13 @@ class NetworkSpecialist(AbstractSpecialist):
 
     @agent_tool()
     @token_optimized
-    def _search_har_by_request(
+    def _search_requests_by_terms(
         self,
         terms: list[str],
         search_in: list[str] | None = None,
     ) -> dict[str, Any]:
         """
-        Search the REQUEST side of HAR entries (URL, headers, body) for terms.
+        Search the REQUEST side of network entries (URL, headers, body) for terms.
 
         Useful for finding where sensitive data or parameters are sent.
         Returns entries ranked by relevance.
@@ -582,7 +582,7 @@ class NetworkSpecialist(AbstractSpecialist):
         """
         Search response bodies for a specific value and return matches with context.
 
-        Unlike search_har_responses_by_terms which ranks by relevance across many terms,
+        Unlike search_responses_by_terms which ranks by relevance across many terms,
         this tool finds exact matches for a single value and shows surrounding context.
         Useful for finding where specific data (IDs, tokens, values) appears.
 

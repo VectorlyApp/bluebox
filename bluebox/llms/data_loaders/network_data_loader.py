@@ -35,7 +35,7 @@ logger = get_logger(name=__name__)
 
 @dataclass
 class NetworkStats:
-    """Summary statistics for a HAR file."""
+    """Summary statistics for network traffic data."""
 
     total_requests: int = 0
     total_request_bytes: int = 0
@@ -102,10 +102,11 @@ class NetworkStats:
 
 class NetworkDataLoader(AbstractDataLoader[NetworkTransactionEvent, NetworkStats]):
     """
-    Data loader for HAR file analysis.
+    Data loader for network traffic analysis.
 
-    Parses HAR content and provides structured access to network traffic data
-    including entries, statistics, and search capabilities.
+    Parses JSONL files with NetworkTransactionEvent entries and provides
+    structured access to network traffic data including entries, statistics,
+    and search capabilities.
     """
 
     @staticmethod
