@@ -19,12 +19,13 @@ The agent inherits from AbstractAgent for LLM/chat/tool infrastructure.
 from __future__ import annotations
 
 from datetime import datetime
+from textwrap import dedent
 from typing import Any, Callable
 
 from pydantic import BaseModel
 
 from bluebox.agents.abstract_agent import AbstractAgent, agent_tool
-from bluebox.agents.specialists import AbstractSpecialist, AutonomousConfig
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, AutonomousConfig
 from bluebox.agents.specialists.js_specialist import JSSpecialist
 from bluebox.agents.specialists.trace_hound_agent import TraceHoundAgent
 from bluebox.data_models.llms.interaction import (
@@ -36,14 +37,8 @@ from bluebox.data_models.llms.interaction import (
     ErrorEmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
-from bluebox.data_models.orchestration import (
-    Task,
-    SubAgent,
-    TaskStatus,
-    AgentType,
-    SuperDiscoveryState,
-    SuperDiscoveryPhase,
-)
+from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus, AgentType
+from bluebox.data_models.orchestration.state import SuperDiscoveryState, SuperDiscoveryPhase
 from bluebox.data_models.routine.routine import Routine
 from bluebox.llms.infra.data_store import DiscoveryDataStore
 from bluebox.utils.logger import get_logger
@@ -63,50 +58,51 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     ## System prompts
 
-    SYSTEM_PROMPT: str = """You are a discovery orchestrator that coordinates specialist agents to build web automation routines.
+    SYSTEM_PROMPT: str = dedent("""\
+        You are a discovery orchestrator that coordinates specialist agents to build web automation routines.
 
-## Your Role
+        ## Your Role
 
-You analyze network traffic captures and delegate specific tasks to specialist agents:
-- **js_specialist**: Writes IIFE JavaScript for DOM manipulation and data extraction
-- **trace_hound**: Traces value origins across transactions, resolves dynamic tokens
+        You analyze network traffic captures and delegate specific tasks to specialist agents:
+        - **js_specialist**: Writes IIFE JavaScript for DOM manipulation and data extraction
+        - **trace_hound**: Traces value origins across transactions, resolves dynamic tokens
 
-NOTE: You have direct access to transaction data via list_transactions, get_transaction, and scan_for_value.
-Use these tools directly rather than delegating simple lookups to specialists.
+        NOTE: You have direct access to transaction data via list_transactions, get_transaction, and scan_for_value.
+        Use these tools directly rather than delegating simple lookups to specialists.
 
-## Workflow
+        ## Workflow
 
-### Phase 1: Planning
-1. Use `list_transactions` to see available network data
-2. Use `get_transaction` to examine promising endpoints
-3. Plan which specialists to deploy and what tasks to give them
+        ### Phase 1: Planning
+        1. Use `list_transactions` to see available network data
+        2. Use `get_transaction` to examine promising endpoints
+        3. Plan which specialists to deploy and what tasks to give them
 
-### Phase 2: Discovering
-1. Use `create_task` to delegate work to specialists
-2. Use `run_pending_tasks` to execute delegated tasks
-3. Use `get_task_result` to review completed work
-4. Iterate until you have all the information needed
+        ### Phase 2: Discovering
+        1. Use `create_task` to delegate work to specialists
+        2. Use `run_pending_tasks` to execute delegated tasks
+        3. Use `get_task_result` to review completed work
+        4. Iterate until you have all the information needed
 
-### Phase 3: Constructing
-1. Use `construct_routine` to build the routine from discoveries
-2. If validation fails, create more specialist tasks to fix issues
+        ### Phase 3: Constructing
+        1. Use `construct_routine` to build the routine from discoveries
+        2. If validation fails, create more specialist tasks to fix issues
 
-### Phase 4: Validating (if browser available)
-1. Use `execute_routine` to test the routine
-2. If execution fails, analyze errors and fix with specialists
+        ### Phase 4: Validating (if browser available)
+        1. Use `execute_routine` to test the routine
+        2. If execution fails, analyze errors and fix with specialists
 
-### Phase 5: Completion
-1. Use `done` when the routine is ready
-2. Use `fail` if discovery cannot be completed
+        ### Phase 5: Completion
+        1. Use `done` when the routine is ready
+        2. Use `fail` if discovery cannot be completed
 
-## Guidelines
+        ## Guidelines
 
-- Keep specialist tasks focused and specific
-- Don't give one specialist work better suited for another
-- Use trace_hound for token resolution, not js_specialist
-- Use js_specialist only when DOM manipulation is actually needed
-- Monitor task status and handle failures gracefully
-"""
+        - Keep specialist tasks focused and specific
+        - Don't give one specialist work better suited for another
+        - Use trace_hound for token resolution, not js_specialist
+        - Use js_specialist only when DOM manipulation is actually needed
+        - Monitor task status and handle failures gracefully
+    """)
 
     ## Magic methods
 
