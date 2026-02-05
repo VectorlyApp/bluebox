@@ -938,14 +938,18 @@ class SuperDiscoveryAgent(AbstractAgent):
             return {"error": "No network data store available"}
 
         entries = self._network_data_loader.entries
+        # Filter to likely-useful API entries (skip static assets)
+        static_extensions = ('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf')
+        api_entries = [e for e in entries if not any(e.url.split('?')[0].endswith(ext) for ext in static_extensions)]
         tx_summaries = [
             {"id": e.request_id, "method": e.method, "url": e.url[:100]}
-            for e in entries[:50]  # Limit to first 50 for readability
+            for e in api_entries
         ]
         return {
             "transactions": tx_summaries,
             "count": len(entries),
             "showing": len(tx_summaries),
+            "filtered_out": len(entries) - len(api_entries),
         }
 
     @agent_tool(
@@ -1052,7 +1056,7 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         # Search storage
         if self._storage_data_loader:
-            for event in self._storage_data_loader.events:
+            for event in self._storage_data_loader.entries:
                 if hasattr(event, 'value') and event.value and value in str(event.value):
                     results["found_in"].append({
                         "source_type": "storage",
@@ -1062,7 +1066,7 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         # Search window properties
         if self._window_property_data_loader:
-            for event in self._window_property_data_loader.events:
+            for event in self._window_property_data_loader.entries:
                 if hasattr(event, 'value') and event.value and value in str(event.value):
                     results["found_in"].append({
                         "source_type": "window_property",
@@ -1601,10 +1605,33 @@ class SuperDiscoveryAgent(AbstractAgent):
             "properties": {
                 "routine": {
                     "type": "object",
-                    "description": "The routine object with name, description, parameters, and operations"
-                }
+                    "description": "The routine to construct.",
+                    "properties": {
+                        "name": {"type": "string", "description": "Routine name"},
+                        "description": {"type": "string", "description": "What the routine does"},
+                        "parameters": {
+                            "type": "array",
+                            "description": "Input parameters. Each needs: name, type (string|number|boolean|date|enum), description, observed_value.",
+                            "items": {"type": "object"},
+                        },
+                        "operations": {
+                            "type": "array",
+                            "description": (
+                                "Ordered operations. Each needs a 'type' field: "
+                                "navigate|fetch|return|sleep|click|input_text|press|"
+                                "wait_for_url|scroll|get_cookies|download|return_html|js_evaluate. "
+                                "Key schemas — navigate: {type, url}. "
+                                "fetch: {type, endpoint: {url, method, headers?, body?}, session_storage_key}. "
+                                "return: {type, session_storage_key, tables?}. "
+                                "Use {{paramName}} placeholders in URLs/bodies for parameters."
+                            ),
+                            "items": {"type": "object"},
+                        },
+                    },
+                    "required": ["name", "description", "parameters", "operations"],
+                },
             },
-            "required": ["routine"]
+            "required": ["routine"],
         },
         availability=lambda self: (
             self._discovery_state.root_transaction is not None and
@@ -1622,16 +1649,17 @@ class SuperDiscoveryAgent(AbstractAgent):
         self._discovery_state.construction_attempts += 1
 
         try:
-            routine_obj = Routine(
-                name=routine.get("name", ""),
-                description=routine.get("description", ""),
-                parameters=routine.get("parameters", []),
-                operations=routine.get("operations", []),
-            )
+            routine_obj = Routine.model_validate(routine)
+        except Exception as e:
+            return {
+                "error": f"Invalid routine structure: {e}",
+                "message": "Failed to parse routine. Check schema in the docs and try again.",
+            }
 
-            # Validate routine structure and collect warnings
-            structure_warnings = routine_obj.get_structure_warnings()
+        # Validate routine structure and collect warnings
+        structure_warnings = routine_obj.get_structure_warnings()
 
+        try:
             self._discovery_state.production_routine = routine_obj
 
             # Auto-execute if browser connected

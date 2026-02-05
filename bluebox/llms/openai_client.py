@@ -120,11 +120,12 @@ class OpenAIClient(AbstractLLMVendorClient):
         if tool.get("type") == "function" and "function" in tool:
             # Convert from Chat Completions format to Responses API format
             func_def = tool["function"]
+            params = func_def.get("parameters")
             return {
                 "type": "function",
                 "name": func_def.get("name"),
                 "description": func_def.get("description"),
-                "parameters": func_def.get("parameters"),
+                "parameters": _clean_schema_for_openai(params) if params else params,
             }
         # Already in Responses API format (file_search, or already flat function)
         return tool
