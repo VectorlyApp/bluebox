@@ -1,12 +1,12 @@
 """
-bluebox/agents/specialists/network_spy_agent.py
+bluebox/agents/specialists/network_specialist.py
 
 # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
 Agent specialized in searching through network traffic data.
 
 Contains:
-- NetworkSpyAgent: Specialist for network traffic analysis
+- NetworkSpecialist: Specialist for network traffic analysis
 - EndpointDiscoveryResult: Result model for autonomous endpoint discovery
 - Uses: AbstractSpecialist base class for all agent plumbing
 """
@@ -81,7 +81,7 @@ class DiscoveryFailureResult(BaseModel):
     )
 
 
-class NetworkSpyAgent(AbstractSpecialist):
+class NetworkSpecialist(AbstractSpecialist):
     """
     Network spy agent that helps analyze HAR (HTTP Archive) files.
 
@@ -221,7 +221,7 @@ class NetworkSpyAgent(AbstractSpecialist):
             existing_chats=existing_chats,
         )
         logger.debug(
-            "NetworkSpyAgent initialized with model: %s, chat_thread_id: %s, entries: %d",
+            "NetworkSpecialist initialized with model: %s, chat_thread_id: %s, entries: %d",
             llm_model,
             self._thread.id,
             len(network_data_store.entries),

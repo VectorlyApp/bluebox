@@ -1,12 +1,12 @@
 """
-bluebox/agents/specialists/trace_hound_agent.py
+bluebox/agents/specialists/value_trace_resolver_specialist.py
 
 # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
 Agent specialized in tracing where tokens/values originated from.
 
 Contains:
-- TraceHoundAgent: Specialist for tracing values across network, storage, and window property data
+- ValueTraceResolverSpecialist: Specialist for tracing values across network, storage, and window property data
 - TokenOriginResult: Result model for autonomous token tracing
 - Uses: AbstractSpecialist base class for all agent plumbing
 """
@@ -86,7 +86,7 @@ class TokenOriginFailure(BaseModel):
     )
 
 
-class TraceHoundAgent(AbstractSpecialist):
+class ValueTraceResolverSpecialist(AbstractSpecialist):
     """
     Trace hound agent that traces where tokens/values originated from.
 
@@ -219,7 +219,7 @@ class TraceHoundAgent(AbstractSpecialist):
         )
 
         logger.debug(
-            "TraceHoundAgent initialized with model: %s, chat_thread_id: %s",
+            "ValueTraceResolverSpecialist initialized with model: %s, chat_thread_id: %s",
             llm_model,
             self._thread.id,
         )

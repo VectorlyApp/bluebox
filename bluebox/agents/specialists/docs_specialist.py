@@ -1,12 +1,12 @@
 """
-bluebox/agents/specialists/docs_digger_agent.py
+bluebox/agents/specialists/docs_specialist.py
 
 # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
 Agent specialized in searching through documentation and code files.
 
 Contains:
-- DocsDiggerAgent: Specialist for documentation/code analysis
+- DocsSpecialist: Specialist for documentation/code analysis
 - DocumentSearchResult: Result model for autonomous documentation discovery
 - Uses: AbstractSpecialist base class for all agent plumbing
 """
@@ -89,7 +89,7 @@ class DocumentSearchFailureResult(BaseModel):
     )
 
 
-class DocsDiggerAgent(AbstractSpecialist):
+class DocsSpecialist(AbstractSpecialist):
     """
     Documentation digger agent that helps analyze documentation and code files.
 
@@ -215,7 +215,7 @@ class DocsDiggerAgent(AbstractSpecialist):
         )
 
         logger.debug(
-            "DocsDiggerAgent initialized with model: %s, chat_thread_id: %s, files: %d",
+            "DocsSpecialist initialized with model: %s, chat_thread_id: %s, files: %d",
             llm_model,
             self._thread.id,
             len(documentation_data_store.entries),
