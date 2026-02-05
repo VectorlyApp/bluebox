@@ -344,8 +344,70 @@ class NetworkDataLoader(AbstractDataLoader[NetworkTransactionEvent, NetworkStats
         """
         return [entry.request_id for entry in self._entries if fnmatch.fnmatch(entry.url, pattern)]
 
-    # Alias for backwards compatibility
-    search_entries_by_terms = AbstractDataStore.search_by_terms
+    def search_entries_by_terms(
+        self,
+        terms: list[str],
+        top_n: int = 20,
+    ) -> list[dict[str, Any]]:
+        """
+        Search entries by a list of terms and rank by relevance.
+
+        For each entry, searches the response body for each term and computes:
+        - unique_terms_found: how many different terms were found
+        - total_hits: total number of term matches across all terms
+        - score: (total_hits / num_terms) * unique_terms_found
+
+        Args:
+            terms: List of search terms (case-insensitive).
+            top_n: Number of top results to return.
+
+        Returns:
+            List of dicts with keys: id, url, unique_terms_found, total_hits, score
+            Sorted by score descending, limited to top_n.
+        """
+        results: list[dict[str, Any]] = []
+        terms_lower = [t.lower() for t in terms]
+        num_terms = len(terms_lower)
+
+        if num_terms == 0:
+            return results
+
+        for entry in self._entries:
+            if not entry.response_body:
+                continue
+
+            content_lower = entry.response_body.lower()
+
+            # Count hits for each term
+            unique_terms_found = 0
+            total_hits = 0
+
+            for term in terms_lower:
+                count = content_lower.count(term)
+                if count > 0:
+                    unique_terms_found += 1
+                    total_hits += count
+
+            # Skip entries with no hits
+            if unique_terms_found == 0:
+                continue
+
+            # Calculate score: avg hits per term * unique terms
+            avg_hits = total_hits / num_terms
+            score = avg_hits * unique_terms_found
+
+            results.append({
+                "id": entry.request_id,
+                "url": entry.url,
+                "unique_terms_found": unique_terms_found,
+                "total_hits": total_hits,
+                "score": score,
+            })
+
+        # Sort by score descending
+        results.sort(key=lambda x: x["score"], reverse=True)
+
+        return results[:top_n]
 
     def get_host_stats(self, host_filter: str | None = None) -> list[dict[str, Any]]:
         """

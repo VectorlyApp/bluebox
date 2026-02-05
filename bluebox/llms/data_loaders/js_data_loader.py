@@ -9,6 +9,9 @@ by FileEventWriter) and provides JS-specific query methods.
 
 import fnmatch
 import json
+import threading
+
+import regex
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -137,13 +140,17 @@ class JSDataLoader(AbstractDataLoader[NetworkTransactionEvent, JSFileStats]):
 
     ## Public methods (JS-specific, in addition to inherited search methods)
 
-    def get_searchable_content(self, entry: NetworkTransactionEvent) -> str | None:
-        """Get the response body as searchable content."""
-        return entry.response_body
+    def search_by_terms(
+        self,
+        terms: list[str],
+        top_n: int = 20,
+    ) -> list[dict[str, Any]]:
+        """
+        Search JS file response bodies by terms, ranked by relevance.
 
-    def get_entry_url(self, entry: NetworkTransactionEvent) -> str | None:
-        """Get the URL from the entry."""
-        return entry.url
+        Args:
+            terms: List of search terms (case-insensitive).
+            top_n: Number of top results to return.
 
         Returns:
             List of dicts with keys: id, url, unique_terms_found, total_hits, score.
