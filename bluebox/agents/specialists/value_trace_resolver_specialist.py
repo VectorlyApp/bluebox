@@ -212,7 +212,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
     ## Tool handlers
 
-    @agent_tool
+    @agent_tool()
     @token_optimized
     def _search_everywhere(
         self,
@@ -500,7 +500,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "entries": [e.model_dump() for e in entries[:20]],
         }
 
-    @agent_tool
+    @agent_tool()
     def _execute_python(self, code: str) -> dict[str, Any]:
         """
         Execute Python code in a sandboxed environment to analyze data.

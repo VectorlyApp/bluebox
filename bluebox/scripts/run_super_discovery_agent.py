@@ -10,6 +10,7 @@ Usage:
         --network-jsonl ./cdp_captures/network/events.jsonl \
         --storage-jsonl ./cdp_captures/storage/events.jsonl \
         --window-props-jsonl ./cdp_captures/window_properties/events.jsonl \
+        --interaction-jsonl ./cdp_captures/interaction/events.jsonl \
         --remote-debugging-address http://127.0.0.1:9222
 
     bluebox-super-discovery --task "Search for flights" \
@@ -38,6 +39,7 @@ from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
 from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
+from bluebox.llms.data_loaders.interactions_data_loader import InteractionsDataLoader
 from bluebox.utils.exceptions import ApiKeyNotFoundError
 from bluebox.utils.logger import get_logger
 
@@ -62,6 +64,7 @@ def main() -> None:
     parser.add_argument("--storage-jsonl", type=str, default=None, help="Path to storage events JSONL file.")
     parser.add_argument("--window-props-jsonl", type=str, default=None, help="Path to window properties JSONL file.")
     parser.add_argument("--js-jsonl", type=str, default=None, help="Path to JavaScript events JSONL file.")
+    parser.add_argument("--interaction-jsonl", type=str, default=None, help="Path to interaction events JSONL file.")
 
     # Output and model options
     parser.add_argument("--output-dir", type=str, default="./routine_discovery_output", help="Output directory.")
@@ -95,6 +98,7 @@ def main() -> None:
     storage_jsonl = args.storage_jsonl
     window_props_jsonl = args.window_props_jsonl
     js_jsonl = args.js_jsonl
+    interaction_jsonl = args.interaction_jsonl
 
     if args.cdp_captures_dir:
         cdp_dir = Path(args.cdp_captures_dir)
@@ -114,7 +118,10 @@ def main() -> None:
             candidate = cdp_dir / "network" / "javascript_events.jsonl"
             if candidate.exists():
                 js_jsonl = str(candidate)
-
+        if not interaction_jsonl:
+            candidate = cdp_dir / "interaction" / "events.jsonl"
+            if candidate.exists():
+                interaction_jsonl = str(candidate)
     # Validate that we have at least network data
     if not network_jsonl:
         logger.error("No network data source provided. Use --network-jsonl or --cdp-captures-dir")
@@ -140,6 +147,11 @@ def main() -> None:
     if js_jsonl and Path(js_jsonl).exists():
         js_data_loader = JSDataLoader(js_jsonl)
         logger.info("JS data loaded: %d files", js_data_loader.stats.total_files)
+
+    interaction_data_loader: InteractionsDataLoader | None = None
+    if interaction_jsonl and Path(interaction_jsonl).exists():
+        interaction_data_loader = InteractionsDataLoader(interaction_jsonl)
+        logger.info("Interaction data loaded: %d events", interaction_data_loader.stats.total_events)
 
     # Initialize documentation data loader with defaults from run_docs_digger.py
     BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent

@@ -237,7 +237,7 @@ class NetworkSpecialist(AbstractSpecialist):
 
     ## Tool handlers
 
-    @agent_tool
+    @agent_tool()
     @token_optimized
     def _search_responses_by_terms(self, terms: list[str]) -> dict[str, Any]:
         """
@@ -267,7 +267,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "results": results,
         }
 
-    @agent_tool
+    @agent_tool()
     @token_optimized
     def _get_entry_detail(self, request_id: str) -> dict[str, Any]:
         """
@@ -309,7 +309,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "response_key_structure": key_structure,
         }
 
-    @agent_tool
+    @agent_tool()
     @token_optimized
     def _get_response_body_schema(self, request_id: str) -> dict[str, Any]:
         """
@@ -333,7 +333,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "key_structure": key_structure,
         }
 
-    @agent_tool
+    @agent_tool()
     @token_optimized
     def _get_unique_urls(self) -> dict[str, Any]:
         """
@@ -347,7 +347,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "url_counts": url_counts,
         }
 
-    @agent_tool
+    @agent_tool()
     def _execute_python(self, code: str) -> dict[str, Any]:
         """
         Execute Python code in a sandboxed environment to analyze network entries.
@@ -364,7 +364,7 @@ class NetworkSpecialist(AbstractSpecialist):
         entries = [e.model_dump() for e in self._network_data_store.entries]
         return execute_python_sandboxed(code, extra_globals={"entries": entries})
 
-    @agent_tool
+    @agent_tool()
     @token_optimized
     def _search_requests_by_terms(
         self,
@@ -456,7 +456,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "results": results[:20],  # Top 20
         }
 
-    @agent_tool
+    @agent_tool()
     @token_optimized
     def _search_response_bodies(
         self,
