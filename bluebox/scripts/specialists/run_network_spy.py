@@ -26,7 +26,7 @@ from bluebox.agents.specialists.network_spy_agent import (
     EndpointDiscoveryResult,
     DiscoveryFailureResult,
 )
-from bluebox.llms.infra.network_data_store import NetworkDataStore
+from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
 from bluebox.agents.terminal_agent_base import AbstractTerminalAgentChat
@@ -67,7 +67,7 @@ class TerminalNetworkSpyChat(AbstractTerminalAgentChat):
 
     def __init__(
         self,
-        network_store: NetworkDataStore,
+        network_store: NetworkDataLoader,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
         data_path: str = "",
     ) -> None:
@@ -314,7 +314,7 @@ def main() -> None:
 
     # Parse JSONL into data store
     try:
-        network_store = NetworkDataStore(jsonl_path)
+        network_store = NetworkDataLoader(jsonl_path)
     except ValueError as e:
         console.print(f"[bold red]Error parsing JSONL file: {e}[/bold red]")
         sys.exit(1)

@@ -30,9 +30,9 @@ from bluebox.agents.specialists.trace_hound_agent import (
     TokenOriginResult,
     TokenOriginFailure,
 )
-from bluebox.llms.infra.network_data_store import NetworkDataStore
-from bluebox.llms.infra.storage_data_store import StorageDataStore
-from bluebox.llms.infra.window_property_data_store import WindowPropertyDataStore
+from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
+from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
+from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
 from bluebox.agents.terminal_agent_base import AbstractTerminalAgentChat
@@ -73,9 +73,9 @@ class TerminalTraceHoundChat(AbstractTerminalAgentChat):
 
     def __init__(
         self,
-        network_store: NetworkDataStore | None = None,
-        storage_store: StorageDataStore | None = None,
-        window_store: WindowPropertyDataStore | None = None,
+        network_store: NetworkDataLoader | None = None,
+        storage_store: StorageDataLoader | None = None,
+        window_store: WindowPropertyDataLoader | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
     ) -> None:
         """Initialize the terminal chat interface."""
@@ -319,9 +319,9 @@ def main() -> None:
         sys.exit(1)
 
     # Load data stores
-    network_store: NetworkDataStore | None = None
-    storage_store: StorageDataStore | None = None
-    window_store: WindowPropertyDataStore | None = None
+    network_store: NetworkDataLoader | None = None
+    storage_store: StorageDataLoader | None = None
+    window_store: WindowPropertyDataLoader | None = None
 
     if args.network_jsonl:
         network_path = Path(args.network_jsonl)
@@ -330,7 +330,7 @@ def main() -> None:
             sys.exit(1)
         console.print(f"[dim]Loading network data: {network_path}[/dim]")
         try:
-            network_store = NetworkDataStore(str(network_path))
+            network_store = NetworkDataLoader(str(network_path))
         except ValueError as e:
             console.print(f"[bold red]Error parsing network JSONL: {e}[/bold red]")
             sys.exit(1)
@@ -342,7 +342,7 @@ def main() -> None:
             sys.exit(1)
         console.print(f"[dim]Loading storage data: {storage_path}[/dim]")
         try:
-            storage_store = StorageDataStore(str(storage_path))
+            storage_store = StorageDataLoader(str(storage_path))
         except ValueError as e:
             console.print(f"[bold red]Error parsing storage JSONL: {e}[/bold red]")
             sys.exit(1)
@@ -354,7 +354,7 @@ def main() -> None:
             sys.exit(1)
         console.print(f"[dim]Loading window properties data: {window_path}[/dim]")
         try:
-            window_store = WindowPropertyDataStore(str(window_path))
+            window_store = WindowPropertyDataLoader(str(window_path))
         except ValueError as e:
             console.print(f"[bold red]Error parsing window props JSONL: {e}[/bold red]")
             sys.exit(1)

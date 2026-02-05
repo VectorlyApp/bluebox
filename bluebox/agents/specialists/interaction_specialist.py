@@ -21,7 +21,7 @@ from bluebox.data_models.llms.interaction import (
     EmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
-from bluebox.llms.infra.interactions_data_store import InteractionsDataStore
+from bluebox.llms.data_loaders.interactions_data_loader import InteractionsDataLoader
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
@@ -160,7 +160,7 @@ class InteractionSpecialist(AbstractSpecialist):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
-        interaction_data_store: InteractionsDataStore,
+        interaction_data_store: InteractionsDataLoader,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,

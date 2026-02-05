@@ -1,7 +1,7 @@
 """
-bluebox/llms/infra/js_data_store.py
+bluebox/llms/data_loaders/js_data_loader.py
 
-Data store for JavaScript files captured during browser sessions.
+Data loader for JavaScript files captured during browser sessions.
 
 Parses the javascript_events.jsonl file (already filtered to JS MIME types
 by FileEventWriter) and provides JS-specific query methods.
@@ -19,6 +19,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from bluebox.data_models.cdp import NetworkTransactionEvent
+from bluebox.llms.data_loaders.abstract_data_loader import AbstractDataLoader
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -56,18 +57,18 @@ class JSFileStats:
         return f"{num_bytes:.1f} TB"
 
 
-class JSDataStore:
+class JSDataLoader(AbstractDataLoader[NetworkTransactionEvent, JSFileStats]):
     """
-    Data store for JavaScript files from browser captures.
+    Data loader for JavaScript files from browser captures.
 
-    Unlike NetworkDataStore (which excludes JS via _is_relevant_entry),
+    Unlike NetworkDataLoader (which excludes JS via _is_relevant_entry),
     this loads all entries from javascript_events.jsonl — a file that
     already contains only JS entries.
     """
 
     def __init__(self, jsonl_path: str) -> None:
         """
-        Initialize the JSDataStore from a JSONL file.
+        Initialize the JSDataLoader from a JSONL file.
 
         Args:
             jsonl_path: Path to JSONL file containing JS NetworkTransactionEvent entries.
@@ -98,9 +99,25 @@ class JSDataStore:
         self._compute_stats()
 
         logger.debug(
-            "JSDataStore initialized with %d JS files",
+            "JSDataLoader initialized with %d JS files",
             len(self._entries),
         )
+
+    ## Abstract method implementations
+
+    def get_entry_id(self, entry: NetworkTransactionEvent) -> str:
+        """Get unique identifier for a JS file entry (uses request_id)."""
+        return entry.request_id
+
+    def get_searchable_content(self, entry: NetworkTransactionEvent) -> str | None:
+        """Get searchable content from a JS file entry (response body)."""
+        return entry.response_body
+
+    def get_entry_url(self, entry: NetworkTransactionEvent) -> str | None:
+        """Get URL associated with a JS file entry."""
+        return entry.url
+
+    ## Private methods
 
     def _compute_stats(self) -> None:
         """Compute aggregate statistics."""
@@ -121,15 +138,7 @@ class JSDataStore:
             hosts=dict(hosts),
         )
 
-    @property
-    def entries(self) -> list[NetworkTransactionEvent]:
-        """Return all JS file entries."""
-        return self._entries
-
-    @property
-    def stats(self) -> JSFileStats:
-        """Return computed statistics."""
-        return self._stats
+    ## Public methods (JS-specific, in addition to inherited search methods)
 
     def search_by_terms(
         self,

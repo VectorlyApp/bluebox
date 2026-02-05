@@ -1,10 +1,10 @@
 """
-bluebox/llms/infra/network_data_store.py
+bluebox/llms/data_loaders/network_data_loader.py
 
-# NOTE: This data store is coming to production soon!
+# NOTE: This data loader is coming to production soon!
 # NOTE: This replaces the vectorstore for network traffic analysis.
 
-Data store for network traffic analysis.
+Data loader for network traffic analysis.
 
 Parses JSONL files with NetworkTransactionEvent entries and provides
 structured access to network traffic data.
@@ -26,9 +26,9 @@ from bluebox.constants.network import (
     SKIP_FILE_EXTENSIONS,
 )
 from bluebox.data_models.cdp import NetworkTransactionEvent
+from bluebox.llms.data_loaders.abstract_data_loader import AbstractDataLoader
 from bluebox.utils.data_utils import extract_object_schema, format_bytes, read_jsonl
 from bluebox.utils.logger import get_logger
-
 
 logger = get_logger(name=__name__)
 
@@ -100,9 +100,9 @@ class NetworkStats:
         return "\n".join(lines)
 
 
-class NetworkDataStore:
+class NetworkDataLoader(AbstractDataLoader[NetworkTransactionEvent, NetworkStats]):
     """
-    Data store for HAR file analysis.
+    Data loader for HAR file analysis.
 
     Parses HAR content and provides structured access to network traffic data
     including entries, statistics, and search capabilities.
@@ -137,7 +137,7 @@ class NetworkDataStore:
 
     def __init__(self, jsonl_path: str) -> None:
         """
-        Initialize the NetworkDataStore from a JSONL file.
+        Initialize the NetworkDataLoader from a JSONL file.
 
         Args:
             jsonl_path: Path to JSONL file containing NetworkTransactionEvent entries.
@@ -161,22 +161,25 @@ class NetworkDataStore:
                 continue
 
         self._compute_stats()
-
-        logger.info(
-            "NetworkDataStore initialized with %d entries (skipped %d non-relevant)",
+        logger.debug(
+            "NetworkDataLoader initialized with %d entries (skipped %d non-relevant)",
             len(self._entries),
             skipped,
         )
 
-    @property
-    def entries(self) -> list[NetworkTransactionEvent]:
-        """Return all network transaction events."""
-        return self._entries
+    ## Abstract method implementations
 
-    @property
-    def stats(self) -> NetworkStats:
-        """Return computed statistics."""
-        return self._stats
+    def get_entry_id(self, entry: NetworkTransactionEvent) -> str:
+        """Get unique identifier for a network entry (uses request_id)."""
+        return entry.request_id
+
+    def get_searchable_content(self, entry: NetworkTransactionEvent) -> str | None:
+        """Get searchable content from a network entry (response body)."""
+        return entry.response_body
+
+    def get_entry_url(self, entry: NetworkTransactionEvent) -> str | None:
+        """Get URL associated with a network entry."""
+        return entry.url
 
     @property
     def raw_data(self) -> dict[str, Any]:

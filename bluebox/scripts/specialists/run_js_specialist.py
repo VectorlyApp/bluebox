@@ -35,8 +35,8 @@ from bluebox.agents.specialists.js_specialist import (
 )
 from bluebox.data_models.dom import DOMSnapshotEvent
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
-from bluebox.llms.infra.js_data_store import JSDataStore
-from bluebox.llms.infra.network_data_store import NetworkDataStore
+from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
+from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
 from bluebox.agents.terminal_agent_base import AbstractTerminalAgentChat
 from bluebox.utils.logger import get_logger
@@ -75,8 +75,8 @@ class TerminalJSSpecialistChat(AbstractTerminalAgentChat):
     def __init__(
         self,
         dom_snapshots: list[DOMSnapshotEvent] | None = None,
-        js_data_store: JSDataStore | None = None,
-        network_data_store: NetworkDataStore | None = None,
+        js_data_store: JSDataLoader | None = None,
+        network_data_store: NetworkDataLoader | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
         remote_debugging_address: str | None = None,
     ) -> None:
@@ -266,7 +266,7 @@ def main() -> None:
         console.print(f"[dim]Loaded {len(dom_snapshots)} DOM snapshots from {dom_dir}[/dim]")
 
     # Load JS data store if provided
-    js_data_store: JSDataStore | None = None
+    js_data_store: JSDataLoader | None = None
     if args.javascript_events_jsonl_path:
         js_path = Path(args.javascript_events_jsonl_path)
         if not js_path.exists():
@@ -274,14 +274,14 @@ def main() -> None:
             sys.exit(1)
 
         try:
-            js_data_store = JSDataStore(str(js_path))
+            js_data_store = JSDataLoader(str(js_path))
             console.print(f"[dim]Loaded {js_data_store.stats.total_files} JS files from {js_path}[/dim]")
         except Exception as e:
             console.print(f"[bold red]Error loading JS data store: {e}[/bold red]")
             sys.exit(1)
 
     # Load network data store if provided
-    network_data_store: NetworkDataStore | None = None
+    network_data_store: NetworkDataLoader | None = None
     if args.network_events_jsonl_path:
         network_path = Path(args.network_events_jsonl_path)
         if not network_path.exists():
@@ -289,7 +289,7 @@ def main() -> None:
             sys.exit(1)
 
         try:
-            network_data_store = NetworkDataStore(str(network_path))
+            network_data_store = NetworkDataLoader(str(network_path))
             console.print(f"[dim]Loaded {network_data_store.stats.total_requests} network requests from {network_path}[/dim]")
         except Exception as e:
             console.print(f"[bold red]Error loading network data store: {e}[/bold red]")

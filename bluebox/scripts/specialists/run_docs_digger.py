@@ -31,7 +31,7 @@ from bluebox.agents.specialists.docs_digger_agent import (
     DocumentSearchResult,
     DocumentSearchFailureResult,
 )
-from bluebox.llms.infra.documentation_data_store import DocumentationDataStore
+from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
 from bluebox.utils.data_utils import format_bytes
@@ -90,7 +90,7 @@ class TerminalDocsDiggerChat(AbstractTerminalAgentChat):
 
     def __init__(
         self,
-        docs_store: DocumentationDataStore,
+        docs_store: DocumentationDataLoader,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
     ) -> None:
         """Initialize the terminal chat interface."""
@@ -378,7 +378,7 @@ def main() -> None:
 
     # Create documentation data store
     try:
-        docs_store = DocumentationDataStore(
+        docs_store = DocumentationDataLoader(
             documentation_paths=docs_paths,
             code_paths=code_paths,
         )

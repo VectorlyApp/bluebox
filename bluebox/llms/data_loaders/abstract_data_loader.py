@@ -1,5 +1,5 @@
 """
-bluebox/llms/infra/abstract_data_loaders.py
+bluebox/llms/data_loaders/abstract_data_loader.py
 
 Abstract base class for data loaders.
 

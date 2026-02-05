@@ -25,8 +25,8 @@ from bluebox.data_models.llms.interaction import (
     EmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
-from bluebox.llms.infra.documentation_data_store import (
-    DocumentationDataStore,
+from bluebox.llms.data_loaders.documentation_data_loader import (
+    DocumentationDataLoader,
     FileType,
 )
 from bluebox.utils.data_utils import format_bytes
@@ -174,7 +174,7 @@ class DocsDiggerAgent(AbstractSpecialist):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
-        documentation_data_store: DocumentationDataStore,
+        documentation_data_store: DocumentationDataLoader,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -188,7 +188,7 @@ class DocsDiggerAgent(AbstractSpecialist):
 
         Args:
             emit_message_callable: Callback function to emit messages to the host.
-            documentation_data_store: The DocumentationDataStore containing indexed files.
+            documentation_data_store: The DocumentationDataLoader containing indexed files.
             persist_chat_callable: Optional callback to persist Chat objects.
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.

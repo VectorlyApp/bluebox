@@ -27,8 +27,8 @@ from bluebox.data_models.llms.interaction import (
     EmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
-from bluebox.llms.infra.js_data_store import JSDataStore
-from bluebox.llms.infra.network_data_store import NetworkDataStore
+from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
+from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.utils.js_utils import generate_js_evaluate_wrapper_js, validate_js
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
@@ -184,8 +184,8 @@ class JSSpecialist(AbstractSpecialist):
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
         dom_snapshots: list[DOMSnapshotEvent] | None = None,
-        network_data_store: NetworkDataStore | None = None,
-        js_data_store: JSDataStore | None = None,
+        network_data_store: NetworkDataLoader | None = None,
+        js_data_store: JSDataLoader | None = None,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
