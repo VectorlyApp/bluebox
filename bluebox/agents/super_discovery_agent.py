@@ -176,15 +176,15 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         # Add current state
         status = self._state.get_queue_status()
-        prompt_parts.append(f"""
+        prompt_parts.append(dedent(f"""\
 
-## Current State
-- Phase: {status['phase']}
-- Pending tasks: {status['pending_tasks']}
-- In-progress tasks: {status['in_progress_tasks']}
-- Completed tasks: {status['completed_tasks']}
-- Failed tasks: {status['failed_tasks']}
-""")
+            ## Current State
+            - Phase: {status['phase']}
+            - Pending tasks: {status['pending_tasks']}
+            - In-progress tasks: {status['in_progress_tasks']}
+            - Completed tasks: {status['completed_tasks']}
+            - Failed tasks: {status['failed_tasks']}
+        """))
 
         if self._remote_debugging_address:
             prompt_parts.append("\n- Browser: Connected (validation available)")
