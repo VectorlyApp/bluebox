@@ -7,7 +7,6 @@ Agent specialized in searching through network traffic data.
 
 Contains:
 - NetworkSpecialist: Specialist for network traffic analysis
-- EndpointDiscoveryResult: Result model for autonomous endpoint discovery
 - Uses: AbstractSpecialist base class for all agent plumbing
 """
 
@@ -16,8 +15,6 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import Any, Callable
 from urllib.parse import urlparse, parse_qs
-
-from pydantic import BaseModel, Field
 
 from bluebox.agents.abstract_agent import agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
@@ -33,53 +30,6 @@ from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
-
-
-class DiscoveredEndpoint(BaseModel):
-    """A single discovered API endpoint."""
-    request_ids: list[str] = Field(
-        description="Network entry request_ids for this endpoint"
-    )
-    url: str = Field(
-        description="The API endpoint URL"
-    )
-    endpoint_inputs: str = Field(
-        description="Brief description of what the endpoint takes as input (parameters, body fields)"
-    )
-    endpoint_outputs: str = Field(
-        description="Brief description of what data the endpoint returns"
-    )
-
-
-class EndpointDiscoveryResult(BaseModel):
-    """
-    Result of autonomous endpoint discovery.
-
-    Contains one or more discovered endpoints needed to complete the user's task.
-    Multiple endpoints may be needed for multi-step flows (e.g., auth -> search -> details).
-    """
-    endpoints: list[DiscoveredEndpoint] = Field(
-        description="List of discovered endpoints needed for the task"
-    )
-
-
-class DiscoveryFailureResult(BaseModel):
-    """
-    Result when autonomous endpoint discovery fails.
-
-    Returned when the agent cannot find the appropriate endpoints after exhaustive search.
-    """
-    reason: str = Field(
-        description="Explanation of why the endpoint could not be found"
-    )
-    searched_terms: list[str] = Field(
-        default_factory=list,
-        description="List of search terms that were tried"
-    )
-    closest_matches: list[str] = Field(
-        default_factory=list,
-        description="URLs of entries that came closest to matching (if any)"
-    )
 
 
 class NetworkSpecialist(AbstractSpecialist):
@@ -140,14 +90,14 @@ class NetworkSpecialist(AbstractSpecialist):
         ## Your Mission
 
         Given a user task, find the API endpoint(s) that return the data needed for that task.
-        Some tasks require multiple endpoints (e.g., auth -> search -> details).
+        Return structured output matching the orchestrator's expected schema.
 
         ## Process
 
         1. **Search**: Use `search_responses_by_terms` with 20-30 relevant terms for the task
         2. **Analyze**: Look at top results, examine their structure with `get_response_body_schema`
         3. **Verify**: Use `get_entry_detail` to confirm the endpoint has the right data
-        4. **Finalize**: Once confident, call `finalize_result` with your findings
+        4. **Finalize**: Call `finalize_with_output` with your findings matching the expected schema
 
         ## Strategy
 
@@ -158,23 +108,12 @@ class NetworkSpecialist(AbstractSpecialist):
 
         ## When finalize tools are available
 
-        After sufficient exploration, the `finalize_result` and `finalize_failure` tools become available.
+        After sufficient exploration, `finalize_with_output` and `finalize_with_failure` become available.
 
-        ### finalize_result - Use when endpoint IS found
-        Call it with a list of endpoints, each containing:
-        - request_ids: The network entry request_id(s) for this endpoint (MUST be valid IDs from the data store)
-        - url: The API URL
-        - endpoint_inputs: Brief description of inputs (e.g., "from_city, to_city, date as query params")
-        - endpoint_outputs: Brief description of outputs (e.g., "JSON array of train options with prices")
+        - **finalize_with_output**: Submit your findings matching the expected output schema
+        - **finalize_with_failure**: Report that the task could not be completed
 
-        Order endpoints by execution sequence if they form a multi-step flow.
-        Be concise with inputs/outputs - just the key fields and types, not full schema.
-
-        ### finalize_failure - Use when endpoint is NOT found
-        If after exhaustive search you determine the required endpoint does NOT exist in the traffic:
-        - Call `finalize_failure` with a clear reason explaining what was searched and why no match was found
-        - Include the search terms you tried and any URLs that came close but didn't match
-        - Only use this after thoroughly searching - don't give up too early!
+        Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
     """).strip()
 
     ## Magic methods
@@ -206,10 +145,6 @@ class NetworkSpecialist(AbstractSpecialist):
             existing_chats: Existing Chat messages if loading from persistence.
         """
         self._network_data_store = network_data_store
-
-        # Autonomous result state
-        self._discovery_result: EndpointDiscoveryResult | None = None
-        self._discovery_failure: DiscoveryFailureResult | None = None
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -295,38 +230,35 @@ class NetworkSpecialist(AbstractSpecialist):
         else:
             urls_context = ""
 
+        # Include output schema if set by orchestrator
+        schema_section = self._get_output_schema_prompt_section()
+
         # Add finalize tool availability notice
         if self.can_finalize:
-            # Get urgency based on iteration count
             remaining_iterations = self._autonomous_config.max_iterations - self._autonomous_iteration
             if remaining_iterations <= 2:
                 finalize_notice = (
-                    f"\n\n## CRITICAL: YOU MUST CALL finalize_result NOW!\n"
-                    f"Only {remaining_iterations} iterations remaining. "
-                    f"You MUST call `finalize_result` with your best findings immediately. "
-                    f"Do NOT call any other tool - call finalize_result right now!"
+                    f"\n\n## CRITICAL: YOU MUST CALL finalize_with_output NOW!\n"
+                    f"Only {remaining_iterations} iterations remaining."
                 )
             elif remaining_iterations <= 4:
                 finalize_notice = (
-                    f"\n\n## URGENT: Call finalize_result soon!\n"
-                    f"Only {remaining_iterations} iterations remaining. "
-                    f"You should call `finalize_result` to complete the discovery. "
-                    f"If you have identified the endpoint, finalize now."
+                    f"\n\n## URGENT: Call finalize_with_output soon!\n"
+                    f"Only {remaining_iterations} iterations remaining."
                 )
             else:
                 finalize_notice = (
-                    "\n\n## IMPORTANT: finalize_result is now available!\n"
-                    "You can now call `finalize_result` to complete the discovery. "
-                    "Do this when you have confidently identified the main API endpoint."
+                    "\n\n## IMPORTANT: finalize_with_output is now available!\n"
+                    "Call it when you have identified the endpoint."
                 )
         else:
             finalize_notice = (
                 f"\n\n## Note: Continue exploring\n"
-                f"The `finalize_result` tool will become available after more exploration. "
+                f"Finalize tools will become available after more exploration. "
                 f"Currently on iteration {self._autonomous_iteration}."
             )
 
-        return self.AUTONOMOUS_SYSTEM_PROMPT + stats_context + urls_context + finalize_notice
+        return self.AUTONOMOUS_SYSTEM_PROMPT + stats_context + urls_context + schema_section + finalize_notice
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         return (
@@ -338,18 +270,16 @@ class NetworkSpecialist(AbstractSpecialist):
         )
 
     def _check_autonomous_completion(self, tool_name: str) -> bool:
-        if tool_name == "finalize_result" and self._discovery_result is not None:
-            return True
-        if tool_name == "finalize_failure" and self._discovery_failure is not None:
-            return True
-        return False
+        # Delegate to base class (handles generic finalize tools)
+        return super()._check_autonomous_completion(tool_name)
 
-    def _get_autonomous_result(self) -> BaseModel | None:
-        return self._discovery_result or self._discovery_failure
+    def _get_autonomous_result(self):
+        # Delegate to base class (returns wrapped result)
+        return super()._get_autonomous_result()
 
     def _reset_autonomous_state(self) -> None:
-        self._discovery_result = None
-        self._discovery_failure = None
+        # Call base class to reset generic state
+        super()._reset_autonomous_state()
 
     ## Tool handlers
 
@@ -609,114 +539,4 @@ class NetworkSpecialist(AbstractSpecialist):
             "case_sensitive": case_sensitive,
             "results_found": len(results),
             "results": results[:20],  # Top 20
-        }
-
-    @agent_tool(availability=lambda self: self.can_finalize)
-    @token_optimized
-    def _finalize_result(self, endpoints: list[dict[str, Any]]) -> dict[str, Any]:
-        """
-        Finalize the endpoint discovery with your findings.
-
-        Call this when you have identified the API endpoint(s) needed for the user's task.
-        You can specify multiple endpoints if the task requires a multi-step flow
-        (e.g., authenticate -> search -> get details).
-        NOTE: All request_ids must be valid IDs from the data store.
-
-        Args:
-            endpoints: List of discovered endpoints. Order by execution sequence if multi-step.
-        """
-        if not endpoints:
-            return {"error": "endpoints list is required and cannot be empty"}
-
-        # Validate and build endpoint objects
-        discovered_endpoints: list[DiscoveredEndpoint] = []
-        for i, ep in enumerate(endpoints):
-            request_ids = ep.get("request_ids", [])
-            url = ep.get("url", "")
-            endpoint_inputs = ep.get("endpoint_inputs", "")
-            endpoint_outputs = ep.get("endpoint_outputs", "")
-
-            if not request_ids:
-                return {"error": f"endpoints[{i}].request_ids is required"}
-            if not url:
-                return {"error": f"endpoints[{i}].url is required"}
-            if not endpoint_inputs:
-                return {"error": f"endpoints[{i}].endpoint_inputs is required"}
-            if not endpoint_outputs:
-                return {"error": f"endpoints[{i}].endpoint_outputs is required"}
-
-            # Validate that all request_ids actually exist in the data store
-            invalid_ids = []
-            for rid in request_ids:
-                if self._network_data_store.get_entry(rid) is None:
-                    invalid_ids.append(rid)
-
-            if invalid_ids:
-                # Get some valid request_ids to help the agent
-                valid_ids_sample = [e.request_id for e in self._network_data_store.entries[:10]]
-                return {
-                    "error": f"endpoints[{i}].request_ids contains invalid IDs: {invalid_ids}",
-                    "hint": (
-                        "These request_ids do not exist in the data store. "
-                        "Use get_entry_detail or search tools to find valid request_ids."
-                    ),
-                    "sample_valid_ids": valid_ids_sample,
-                }
-
-            discovered_endpoints.append(DiscoveredEndpoint(
-                request_ids=request_ids,
-                url=url,
-                endpoint_inputs=endpoint_inputs,
-                endpoint_outputs=endpoint_outputs,
-            ))
-
-        # Store the result
-        self._discovery_result = EndpointDiscoveryResult(endpoints=discovered_endpoints)
-
-        return {
-            "status": "success",
-            "message": f"Endpoint discovery finalized with {len(discovered_endpoints)} endpoint(s)",
-            "result": self._discovery_result.model_dump(),
-        }
-
-    @agent_tool(availability=lambda self: self.can_finalize)
-    @token_optimized
-    def _finalize_failure(
-        self,
-        reason: str,
-        searched_terms: list[str] | None = None,
-        closest_matches: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """
-        Signal that the endpoint discovery has failed.
-
-        Call this ONLY when you have exhaustively searched and are confident that
-        the required endpoint does NOT exist in the captured traffic. Provide a
-        clear explanation of what was searched and why no match was found.
-
-        Args:
-            reason: Detailed explanation of why the endpoint could not be found.
-            searched_terms: List of key search terms that were tried.
-            closest_matches: URLs of entries that came closest to matching (if any).
-        """
-        if not reason:
-            return {"error": "reason is required - explain why the endpoint could not be found"}
-
-        # Store the failure result
-        self._discovery_failure = DiscoveryFailureResult(
-            reason=reason,
-            searched_terms=searched_terms or [],
-            closest_matches=closest_matches or [],
-        )
-
-        logger.info("Endpoint discovery failed: %s", reason)
-        if searched_terms:
-            logger.info("  Searched terms: %s", searched_terms[:10])
-        if closest_matches:
-            logger.info("  Closest matches: %s", closest_matches[:5])
-
-        return {
-            "status": "failure",
-            "message": "Endpoint discovery marked as failed",
-            "result": self._discovery_failure.model_dump(),
         }

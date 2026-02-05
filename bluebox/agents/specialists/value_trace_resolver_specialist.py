@@ -7,7 +7,6 @@ Agent specialized in tracing where tokens/values originated from.
 
 Contains:
 - ValueTraceResolverSpecialist: Specialist for tracing values across network, storage, and window property data
-- TokenOriginResult: Result model for autonomous token tracing
 - Uses: AbstractSpecialist base class for all agent plumbing
 """
 
@@ -15,8 +14,6 @@ from __future__ import annotations
 
 import textwrap
 from typing import Any, Callable
-
-from pydantic import BaseModel, Field
 
 from bluebox.agents.abstract_agent import agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
@@ -35,56 +32,6 @@ from bluebox.utils.logger import get_logger
 
 
 logger = get_logger(name=__name__)
-
-
-class TokenOrigin(BaseModel):
-    """A single discovered origin for a token/value."""
-
-    source_type: str = Field(
-        description="Where the value was found: 'network', 'storage', or 'window_property'"
-    )
-    location: str = Field(
-        description="Specific location (URL for network, origin+key for storage, path for window props)"
-    )
-    context: str = Field(
-        description="Brief context about how the value appears (e.g., 'in response body', 'cookie value')"
-    )
-    entry_id: str | int = Field(
-        description="ID to retrieve the full entry (request_id for network, index for others)"
-    )
-
-
-class TokenOriginResult(BaseModel):
-    """Result of autonomous token origin tracing."""
-
-    value_searched: str = Field(
-        description="The token/value that was searched for"
-    )
-    origins: list[TokenOrigin] = Field(
-        description="List of discovered origins for the value"
-    )
-    likely_source: TokenOrigin | None = Field(
-        default=None,
-        description="The most likely original source of the value (earliest/most authoritative)"
-    )
-    explanation: str = Field(
-        description="Explanation of how the value flows through the system"
-    )
-
-
-class TokenOriginFailure(BaseModel):
-    """Result when token origin tracing fails to find the value."""
-
-    value_searched: str = Field(
-        description="The token/value that was searched for"
-    )
-    reason: str = Field(
-        description="Explanation of why the value could not be found"
-    )
-    suggestions: list[str] = Field(
-        default_factory=list,
-        description="Suggestions for alternative searches or next steps"
-    )
 
 
 class ValueTraceResolverSpecialist(AbstractSpecialist):
@@ -141,13 +88,14 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         Given a specific token/value, find its ORIGINAL source and trace how it propagates
         through the system (network -> storage -> subsequent usage).
+        Return structured output matching the orchestrator's expected schema.
 
         ## Process
 
         1. **Search**: Use `search_everywhere` to find all occurrences of the value
         2. **Analyze**: Examine entries to understand context and timestamps
         3. **Trace**: Determine the flow (e.g., API response -> cookie -> request header)
-        4. **Finalize**: Call `finalize_result` with your findings
+        4. **Finalize**: Call `finalize_with_output` with your findings matching the expected schema
 
         ## What to Look For
 
@@ -158,13 +106,12 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         ## When finalize tools are available
 
-        After sufficient exploration, call `finalize_result` with:
-        - The value searched
-        - All discovered origins (source_type, location, context, entry_id)
-        - The likely original source
-        - An explanation of the value flow
+        After sufficient exploration, `finalize_with_output` and `finalize_with_failure` become available.
 
-        If the value cannot be found anywhere, call `finalize_failure` with an explanation.
+        - **finalize_with_output**: Submit your findings matching the expected output schema
+        - **finalize_with_failure**: Report that the task could not be completed
+
+        Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
     """).strip()
 
     ## Magic methods
@@ -203,10 +150,6 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         self._network_data_store = network_data_store
         self._storage_data_store = storage_data_store
         self._window_property_data_store = window_property_data_store
-
-        # Autonomous result state
-        self._origin_result: TokenOriginResult | None = None
-        self._origin_failure: TokenOriginFailure | None = None
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -265,26 +208,27 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         # Replace base prompt with autonomous variant
         base_prompt = self._get_system_prompt().replace(self.SYSTEM_PROMPT, self.AUTONOMOUS_SYSTEM_PROMPT)
 
+        # Include output schema if set by orchestrator
+        schema_section = self._get_output_schema_prompt_section()
+
         if self.can_finalize:
             remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
             if remaining <= 2:
                 notice = (
-                    f"\n\n## CRITICAL: Call finalize_result NOW!\n"
-                    f"Only {remaining} iterations remaining. "
-                    f"You MUST call finalize_result with your findings immediately."
+                    f"\n\n## CRITICAL: Call finalize_with_output NOW!\n"
+                    f"Only {remaining} iterations remaining."
                 )
             elif remaining <= 4:
                 notice = (
-                    f"\n\n## URGENT: Call finalize_result soon!\n"
-                    f"Only {remaining} iterations remaining. "
-                    f"Call finalize_result when ready."
+                    f"\n\n## URGENT: Call finalize_with_output soon!\n"
+                    f"Only {remaining} iterations remaining."
                 )
             else:
-                notice = "\n\n## finalize_result is now available. Call it when ready."
+                notice = "\n\n## finalize_with_output is now available. Call it when ready."
         else:
             notice = f"\n\n## Continue exploring (iteration {self._autonomous_iteration})."
 
-        return base_prompt + notice
+        return base_prompt + schema_section + notice
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         return (
@@ -294,18 +238,16 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         )
 
     def _check_autonomous_completion(self, tool_name: str) -> bool:
-        if tool_name == "finalize_result" and self._origin_result is not None:
-            return True
-        if tool_name == "finalize_failure" and self._origin_failure is not None:
-            return True
-        return False
+        # Delegate to base class (handles generic finalize tools)
+        return super()._check_autonomous_completion(tool_name)
 
-    def _get_autonomous_result(self) -> BaseModel | None:
-        return self._origin_result or self._origin_failure
+    def _get_autonomous_result(self):
+        # Delegate to base class (returns wrapped result)
+        return super()._get_autonomous_result()
 
     def _reset_autonomous_state(self) -> None:
-        self._origin_result = None
-        self._origin_failure = None
+        # Call base class to reset generic state
+        super()._reset_autonomous_state()
 
     ## Tool handlers
 
@@ -640,155 +582,3 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             extra_globals["window_prop_entries"] = []
 
         return execute_python_sandboxed(code, extra_globals=extra_globals)
-
-    @agent_tool(
-        availability=lambda self: self.can_finalize,
-        parameters={
-            "type": "object",
-            "properties": {
-                "value_searched": {
-                    "type": "string",
-                    "description": "The token/value that was searched for.",
-                },
-                "origins": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "source_type": {
-                                "type": "string",
-                                "enum": ["network", "storage", "window_property"],
-                                "description": "Where the value was found.",
-                            },
-                            "location": {
-                                "type": "string",
-                                "description": "Specific location (URL, origin+key, or path).",
-                            },
-                            "context": {
-                                "type": "string",
-                                "description": "Brief context about how the value appears.",
-                            },
-                            "entry_id": {
-                                "type": "string",
-                                "description": "ID to retrieve the full entry.",
-                            },
-                        },
-                        "required": ["source_type", "location", "context", "entry_id"],
-                    },
-                    "description": "List of all discovered origins.",
-                },
-                "explanation": {
-                    "type": "string",
-                    "description": "Explanation of how the value flows through the system.",
-                },
-                "likely_source_index": {
-                    "type": "integer",
-                    "description": "Index in origins array of the most likely original source (or -1 if unclear).",
-                },
-            },
-            "required": ["value_searched", "origins", "explanation"],
-        }
-    )
-    @token_optimized
-    def _finalize_result(
-        self,
-        value_searched: str,
-        origins: list[dict[str, Any]],
-        explanation: str,
-        likely_source_index: int = -1,
-    ) -> dict[str, Any]:
-        """
-        Finalize the token origin tracing with your findings. Call this when you have traced where the value came from.
-
-        Args:
-            value_searched: The token/value that was searched for.
-            origins: List of all discovered origins. Each origin should have: source_type, location, context, entry_id.
-            explanation: Explanation of how the value flows through the system.
-            likely_source_index: Index in origins array of the most likely original source (or -1 if unclear).
-        """
-        if not value_searched:
-            return {"error": "value_searched is required"}
-        if not origins:
-            return {"error": "origins list is required and cannot be empty"}
-        if not explanation:
-            return {"error": "explanation is required"}
-
-        # Build origin objects
-        origin_objects: list[TokenOrigin] = []
-        for origin_data in origins:
-            origin_objects.append(TokenOrigin(
-                source_type=origin_data.get("source_type"),
-                location=origin_data.get("location"),
-                context=origin_data.get("context"),
-                entry_id=origin_data.get("entry_id"),
-            ))
-
-        likely_source = None
-        if 0 <= likely_source_index < len(origin_objects):
-            likely_source = origin_objects[likely_source_index]
-
-        self._origin_result = TokenOriginResult(
-            value_searched=value_searched,
-            origins=origin_objects,
-            likely_source=likely_source,
-            explanation=explanation,
-        )
-
-        logger.info("Token origin tracing completed: %d origin(s) found", len(origin_objects))
-
-        return {
-            "status": "success",
-            "message": f"Token origin tracing completed with {len(origin_objects)} origin(s)",
-            "result": self._origin_result.model_dump(),
-        }
-
-    @agent_tool(availability=lambda self: self.can_finalize)
-    @token_optimized
-    def _finalize_failure(
-        self,
-        value_searched: str,
-        reason: str,
-        suggestions: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """
-        Signal that the token origin tracing failed to find the value.
-
-        Call this when you have searched thoroughly but cannot find the value.
-
-        Args:
-            value_searched: The token/value that was searched for.
-            reason: Explanation of why the value could not be found.
-            suggestions: Suggestions for alternative searches.
-        """
-        # On early iterations, reject and suggest trying other methods
-        if self._autonomous_iteration <= 3:
-            return {
-                "error": "Too early to give up! You must try other methods first.",
-                "suggestions": [
-                    "Use `get_storage_by_key` to look up the value by key name",
-                    "Use `execute_python` to write custom queries across all data stores",
-                    "Try searching with different variations of the value",
-                    "Check if the value appears in network request/response bodies",
-                    "Look for related keys or paths that might contain the value",
-                ],
-                "iterations_remaining": self._autonomous_config.max_iterations - self._autonomous_iteration,
-            }
-
-        if not value_searched:
-            return {"error": "value_searched is required"}
-        if not reason:
-            return {"error": "reason is required"}
-
-        self._origin_failure = TokenOriginFailure(
-            value_searched=value_searched,
-            reason=reason,
-            suggestions=suggestions or [],
-        )
-
-        logger.info("Token origin tracing failed: %s", reason)
-
-        return {
-            "status": "failure",
-            "message": "Token origin tracing failed",
-            "result": self._origin_failure.model_dump(),
-        }

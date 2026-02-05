@@ -7,7 +7,6 @@ Agent specialized in searching through documentation and code files.
 
 Contains:
 - DocsSpecialist: Specialist for documentation/code analysis
-- DocumentSearchResult: Result model for autonomous documentation discovery
 - Uses: AbstractSpecialist base class for all agent plumbing
 """
 
@@ -15,8 +14,6 @@ from __future__ import annotations
 
 import textwrap
 from typing import Any, Callable
-
-from pydantic import BaseModel, Field
 
 from bluebox.agents.abstract_agent import agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
@@ -36,58 +33,6 @@ from bluebox.utils.logger import get_logger
 
 
 logger = get_logger(name=__name__)
-
-
-class DiscoveredDocument(BaseModel):
-    """A single discovered documentation or code file."""
-
-    path: str = Field(
-        description="Path to the file"
-    )
-    file_type: str = Field(
-        description="Type of file: 'documentation' or 'code'"
-    )
-    relevance_reason: str = Field(
-        description="Brief explanation of why this file is relevant to the task"
-    )
-    key_content: str = Field(
-        description="Key content or sections found in this file relevant to the task"
-    )
-
-
-class DocumentSearchResult(BaseModel):
-    """
-    Result of autonomous documentation search.
-
-    Contains one or more discovered documents relevant to the user's query.
-    """
-
-    documents: list[DiscoveredDocument] = Field(
-        description="List of discovered documents relevant to the query"
-    )
-    summary: str = Field(
-        description="Brief summary answering the user's question based on the found documents"
-    )
-
-
-class DocumentSearchFailureResult(BaseModel):
-    """
-    Result when autonomous documentation search fails.
-
-    Returned when the agent cannot find relevant documentation after exhaustive search.
-    """
-
-    reason: str = Field(
-        description="Explanation of why relevant documentation could not be found"
-    )
-    searched_terms: list[str] = Field(
-        default_factory=list,
-        description="List of search terms that were tried"
-    )
-    closest_matches: list[str] = Field(
-        default_factory=list,
-        description="Paths of files that came closest to matching (if any)"
-    )
 
 
 class DocsSpecialist(AbstractSpecialist):
@@ -139,7 +84,7 @@ class DocsSpecialist(AbstractSpecialist):
         ## Your Mission
 
         Given a user query, find the documentation and/or code files that best answer their question.
-        Provide a comprehensive summary based on the found documents.
+        Provide structured output matching the orchestrator's expected schema.
 
         ## Available Tools
 
@@ -155,19 +100,16 @@ class DocsSpecialist(AbstractSpecialist):
         1. **Look at the file index below** - identify promising files by title/summary
         2. **Search**: Use `search_content` to find specific terms
         3. **Read**: Use `get_file_content` to examine relevant sections
-        4. **Finalize**: Call `finalize_result` with your findings
+        4. **Finalize**: Call `finalize_with_output` with your findings matching the expected schema
 
         ## When finalize tools are available
 
-        After exploration, `finalize_result` and `finalize_failure` tools become available.
+        After exploration, `finalize_with_output` and `finalize_with_failure` tools become available.
 
-        ### finalize_result - Use when relevant documentation IS found
-        - documents: List of relevant files with paths, types, reasons, and key content
-        - summary: A comprehensive answer based on found documents
+        - **finalize_with_output**: Submit your findings matching the expected output schema
+        - **finalize_with_failure**: Report that the task could not be completed
 
-        ### finalize_failure - Use when documentation is NOT found
-        - Call only after thorough search
-        - Include what was searched and any close matches
+        Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
     """).strip()
 
     ## Magic methods
@@ -199,10 +141,6 @@ class DocsSpecialist(AbstractSpecialist):
             existing_chats: Existing Chat messages if loading from persistence.
         """
         self._documentation_data_store = documentation_data_store
-
-        # Autonomous result state
-        self._search_result: DocumentSearchResult | None = None
-        self._search_failure: DocumentSearchFailureResult | None = None
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -292,34 +230,35 @@ class DocsSpecialist(AbstractSpecialist):
         else:
             doc_context = ""
 
+        # Include output schema if set by orchestrator
+        schema_section = self._get_output_schema_prompt_section()
+
         # Add finalize tool availability notice
         if self.can_finalize:
             remaining_iterations = self._autonomous_config.max_iterations - self._autonomous_iteration
             if remaining_iterations <= 2:
                 finalize_notice = (
-                    f"\n\n## CRITICAL: YOU MUST CALL finalize_result NOW!\n"
-                    f"Only {remaining_iterations} iterations remaining. "
-                    f"You MUST call `finalize_result` with your best findings immediately."
+                    f"\n\n## CRITICAL: YOU MUST CALL finalize_with_output NOW!\n"
+                    f"Only {remaining_iterations} iterations remaining."
                 )
             elif remaining_iterations <= 4:
                 finalize_notice = (
-                    f"\n\n## URGENT: Call finalize_result soon!\n"
-                    f"Only {remaining_iterations} iterations remaining. "
-                    f"If you have found relevant documentation, finalize now."
+                    f"\n\n## URGENT: Call finalize_with_output soon!\n"
+                    f"Only {remaining_iterations} iterations remaining."
                 )
             else:
                 finalize_notice = (
-                    "\n\n## IMPORTANT: finalize_result is now available!\n"
-                    "You can now call `finalize_result` to complete the search."
+                    "\n\n## IMPORTANT: finalize_with_output is now available!\n"
+                    "Call it when you have your findings."
                 )
         else:
             finalize_notice = (
                 f"\n\n## Note: Continue exploring\n"
-                f"The `finalize_result` tool will become available after more exploration. "
+                f"Finalize tools will become available after more exploration. "
                 f"Currently on iteration {self._autonomous_iteration}."
             )
 
-        return self.AUTONOMOUS_SYSTEM_PROMPT + stats_context + doc_context + finalize_notice
+        return self.AUTONOMOUS_SYSTEM_PROMPT + stats_context + doc_context + schema_section + finalize_notice
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         return (
@@ -331,18 +270,16 @@ class DocsSpecialist(AbstractSpecialist):
         )
 
     def _check_autonomous_completion(self, tool_name: str) -> bool:
-        if tool_name == "finalize_result" and self._search_result is not None:
-            return True
-        if tool_name == "finalize_failure" and self._search_failure is not None:
-            return True
-        return False
+        # Delegate to base class (handles generic finalize tools)
+        return super()._check_autonomous_completion(tool_name)
 
-    def _get_autonomous_result(self) -> BaseModel | None:
-        return self._search_result or self._search_failure
+    def _get_autonomous_result(self):
+        # Delegate to base class (returns wrapped result)
+        return super()._get_autonomous_result()
 
     def _reset_autonomous_state(self) -> None:
-        self._search_result = None
-        self._search_failure = None
+        # Call base class to reset generic state
+        super()._reset_autonomous_state()
 
     ## Tool handlers
 
@@ -472,152 +409,4 @@ class DocsSpecialist(AbstractSpecialist):
             "summary": entry.summary,
             "total_lines": total_lines,
             "content": content,
-        }
-
-    @agent_tool(
-        availability=lambda self: self.can_finalize,
-        parameters={
-            "type": "object",
-            "properties": {
-                "documents": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "path": {
-                                "type": "string",
-                                "description": "Path to the file.",
-                            },
-                            "file_type": {
-                                "type": "string",
-                                "enum": ["documentation", "code"],
-                                "description": "Type of file.",
-                            },
-                            "relevance_reason": {
-                                "type": "string",
-                                "description": "Why this file is relevant.",
-                            },
-                            "key_content": {
-                                "type": "string",
-                                "description": "Key content from this file.",
-                            },
-                        },
-                        "required": ["path", "file_type", "relevance_reason", "key_content"],
-                    },
-                    "description": "List of relevant documents found.",
-                },
-                "summary": {
-                    "type": "string",
-                    "description": "Comprehensive answer based on found documents.",
-                },
-            },
-            "required": ["documents", "summary"],
-        }
-    )
-    @token_optimized
-    def _finalize_result(
-        self,
-        documents: list[dict[str, Any]],
-        summary: str,
-    ) -> dict[str, Any]:
-        """
-        Finalize the documentation search with your findings.
-
-        Call this when you have found documentation that answers the user's question.
-        Provide a list of relevant documents and a summary.
-
-        Args:
-            documents: List of relevant documents found. Each should have:
-                path, file_type, relevance_reason, key_content.
-            summary: Comprehensive answer based on found documents.
-        """
-        if not documents:
-            return {"error": "documents list is required and cannot be empty"}
-        if not summary:
-            return {"error": "summary is required"}
-
-        # Build document objects
-        discovered_docs: list[DiscoveredDocument] = []
-        for i, doc in enumerate(documents):
-            path = doc.get("path", "")
-            file_type = doc.get("file_type", "")
-            relevance_reason = doc.get("relevance_reason", "")
-            key_content = doc.get("key_content", "")
-
-            if not path:
-                return {"error": f"documents[{i}].path is required"}
-            if not file_type:
-                return {"error": f"documents[{i}].file_type is required"}
-            if not relevance_reason:
-                return {"error": f"documents[{i}].relevance_reason is required"}
-            if not key_content:
-                return {"error": f"documents[{i}].key_content is required"}
-
-            # Validate that the file exists in the data store
-            entry = self._documentation_data_store.get_file_by_path(path)
-            if entry is None:
-                return {
-                    "error": f"documents[{i}].path '{path}' not found in data store",
-                    "hint": "Check the file index in the system prompt for available files.",
-                }
-
-            discovered_docs.append(DiscoveredDocument(
-                path=path,
-                file_type=file_type,
-                relevance_reason=relevance_reason,
-                key_content=key_content,
-            ))
-
-        # Store the result
-        self._search_result = DocumentSearchResult(
-            documents=discovered_docs,
-            summary=summary,
-        )
-
-        logger.info(
-            "Finalized documentation search: %d document(s) found",
-            len(discovered_docs),
-        )
-
-        return {
-            "status": "success",
-            "message": f"Documentation search finalized with {len(discovered_docs)} document(s)",
-            "result": self._search_result.model_dump(),
-        }
-
-    @agent_tool(availability=lambda self: self.can_finalize)
-    @token_optimized
-    def _finalize_failure(
-        self,
-        reason: str,
-        searched_terms: list[str] | None = None,
-        closest_matches: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """
-        Signal that the documentation search has failed.
-
-        Call this ONLY when you have exhaustively searched and are confident
-        that the information does NOT exist in the indexed files.
-
-        Args:
-            reason: Explanation of why the information could not be found.
-            searched_terms: List of key search terms that were tried.
-            closest_matches: Paths of files that came closest to matching (if any).
-        """
-        if not reason:
-            return {"error": "reason is required"}
-
-        # Store the failure result
-        self._search_failure = DocumentSearchFailureResult(
-            reason=reason,
-            searched_terms=searched_terms or [],
-            closest_matches=closest_matches or [],
-        )
-
-        logger.info("Documentation search failed: %s", reason)
-
-        return {
-            "status": "failure",
-            "message": "Documentation search marked as failed",
-            "result": self._search_failure.model_dump(),
         }

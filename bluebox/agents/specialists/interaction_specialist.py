@@ -12,8 +12,6 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import Any, Callable
 
-from pydantic import BaseModel, Field
-
 from bluebox.agents.abstract_agent import agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
 from bluebox.data_models.llms.interaction import (
@@ -27,40 +25,6 @@ from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
-
-
-class DiscoveredParameter(BaseModel):
-    """A single discovered routine parameter."""
-    name: str = Field(description="snake_case parameter name")
-    type: str = Field(description="ParameterType value (string, date, integer, etc.)")
-    description: str = Field(description="Human-readable description of the parameter")
-    examples: list[str] = Field(
-        default_factory=list,
-        description="Example values observed in interactions",
-    )
-    source_element_css_path: str | None = Field(
-        default=None,
-        description="CSS path of the source element",
-    )
-    source_element_tag: str | None = Field(
-        default=None,
-        description="HTML tag of the source element",
-    )
-    source_element_name: str | None = Field(
-        default=None,
-        description="Name attribute of the source element",
-    )
-
-
-class ParameterDiscoveryResult(BaseModel):
-    """Successful parameter discovery result."""
-    parameters: list[DiscoveredParameter] = Field(description="List of discovered parameters")
-
-
-class ParameterDiscoveryFailureResult(BaseModel):
-    """Failure result when parameters cannot be discovered."""
-    reason: str = Field(description="Why parameters could not be discovered")
-    interaction_summary: str = Field(description="Summary of interactions that were analyzed")
 
 
 class InteractionSpecialist(AbstractSpecialist):
@@ -114,7 +78,7 @@ class InteractionSpecialist(AbstractSpecialist):
 
         ## Your Mission
 
-        Analyze the recorded UI interactions to identify all parameterizable inputs, then produce a list of discovered parameters.
+        Analyze the recorded UI interactions to identify all parameterizable inputs, then produce structured output matching the orchestrator's expected schema.
 
         ## Process
 
@@ -122,9 +86,9 @@ class InteractionSpecialist(AbstractSpecialist):
         2. **Focus on inputs**: Use `get_form_inputs` to find all form input events
         3. **Analyze elements**: Use `get_unique_elements` to see which elements were interacted with
         4. **Detail check**: Use `get_interaction_detail` for specific events needing closer inspection
-        5. **Finalize**: Call `finalize_result` with discovered parameters
+        5. **Finalize**: Call `finalize_with_output` with your findings matching the expected schema
 
-        ## Parameter Types
+        ## Parameter Types (for reference)
 
         - `string`: General text input
         - `date`: Date values (YYYY-MM-DD)
@@ -138,22 +102,14 @@ class InteractionSpecialist(AbstractSpecialist):
 
         ## CRITICAL: How to Finalize
 
-        When you have identified the parameters, you MUST call the `finalize_result` tool.
-        Do NOT output parameters as text — you MUST call the tool with structured data.
+        When you have completed your analysis, call `finalize_with_output(output={...})` with data matching the expected output schema provided in your system prompt.
 
-        The `finalize_result` tool expects a `parameters` array where each parameter has:
-        - `name` (string, required): snake_case name like `departure_date`
-        - `type` (string, required): One of the parameter types above
-        - `description` (string, required): What the parameter represents
-        - `examples` (array of strings, optional): Observed values
-        - `source_element_css_path` (string, optional): CSS path of the element
-        - `source_element_tag` (string, optional): HTML tag name
-        - `source_element_name` (string, optional): Name attribute
+        Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
 
         ## When finalize tools are available
 
-        - **finalize_result**: Submit discovered parameters (MUST call this, not output text)
-        - **finalize_failure**: Report that no parameters could be discovered
+        - **finalize_with_output**: Submit your findings matching the expected output schema
+        - **finalize_with_failure**: Report that the task could not be completed
     """)
 
     ## Magic methods
@@ -171,10 +127,6 @@ class InteractionSpecialist(AbstractSpecialist):
         existing_chats: list[Chat] | None = None,
     ) -> None:
         self._interaction_data_store = interaction_data_store
-
-        # autonomous result state
-        self._discovery_result: ParameterDiscoveryResult | None = None
-        self._discovery_failure: ParameterDiscoveryFailureResult | None = None
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -213,26 +165,26 @@ class InteractionSpecialist(AbstractSpecialist):
             f"- Unique Elements: {stats.unique_elements}\n"
         )
 
+        # Include output schema if set by orchestrator
+        schema_section = self._get_output_schema_prompt_section()
+
         # urgency notices
         if self.can_finalize:
             remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
             if remaining <= 2:
                 urgency = (
                     f"\n\n## CRITICAL: Only {remaining} iterations remaining!\n"
-                    f"You MUST call finalize_result or finalize_failure NOW!\n"
-                    f"Do NOT output text — call the tool with your parameters array."
+                    f"You MUST call finalize_with_output or finalize_with_failure NOW!"
                 )
             elif remaining <= 4:
                 urgency = (
                     f"\n\n## URGENT: Only {remaining} iterations remaining.\n"
-                    f"Call finalize_result with your discovered parameters now.\n"
-                    f"Do NOT output parameters as text — use the tool."
+                    f"Call finalize_with_output with your findings now."
                 )
             else:
                 urgency = (
                     "\n\n## Finalize tools are now available.\n"
-                    "Call finalize_result with your parameters array.\n"
-                    "Do NOT output parameters as text — you MUST call the tool."
+                    "Call finalize_with_output when ready."
                 )
         else:
             urgency = (
@@ -240,7 +192,7 @@ class InteractionSpecialist(AbstractSpecialist):
                 "Finalize tools will become available after more exploration."
             )
 
-        return self.AUTONOMOUS_SYSTEM_PROMPT + context + urgency
+        return self.AUTONOMOUS_SYSTEM_PROMPT + context + schema_section + urgency
 
     # _register_tools and _execute_tool are provided by the base class
     # via @agent_tool decorators below.
@@ -254,18 +206,16 @@ class InteractionSpecialist(AbstractSpecialist):
         )
 
     def _check_autonomous_completion(self, tool_name: str) -> bool:
-        if tool_name == "finalize_result" and self._discovery_result is not None:
-            return True
-        if tool_name == "finalize_failure" and self._discovery_failure is not None:
-            return True
-        return False
+        # Delegate to base class (handles generic finalize tools)
+        return super()._check_autonomous_completion(tool_name)
 
-    def _get_autonomous_result(self) -> BaseModel | None:
-        return self._discovery_result or self._discovery_failure
+    def _get_autonomous_result(self):
+        # Delegate to base class (returns wrapped result)
+        return super()._get_autonomous_result()
 
     def _reset_autonomous_state(self) -> None:
-        self._discovery_result = None
-        self._discovery_failure = None
+        # Call base class to reset generic state
+        super()._reset_autonomous_state()
 
     ## Tool handlers
 
@@ -399,51 +349,4 @@ class InteractionSpecialist(AbstractSpecialist):
         return {
             "total_unique_elements": len(elements),
             "elements": elements[:50],
-        }
-
-
-    @agent_tool(availability=lambda self: self.can_finalize)
-    @token_optimized
-    def _finalize_result(self, parameters: list[DiscoveredParameter]) -> dict[str, Any]:
-        """
-        Submit discovered parameters. Call when you have identified all parameterizable inputs.
-
-        Args:
-            parameters: List of discovered parameters.
-        """
-        self._discovery_result = ParameterDiscoveryResult(parameters=parameters)
-
-        # Use validated parameters from result (Pydantic converts dicts to DiscoveredParameter)
-        validated_params = self._discovery_result.parameters
-        logger.info("Parameter discovery completed: %d parameter(s)", len(validated_params))
-        for param in validated_params:
-            logger.info("  - %s (%s): %s", param.name, param.type, param.description)
-
-        return {
-            "status": "success",
-            "message": f"Discovered {len(parameters)} parameter(s)",
-            "result": self._discovery_result.model_dump(),
-        }
-
-
-    @agent_tool(availability=lambda self: self.can_finalize)
-    @token_optimized
-    def _finalize_failure(self, reason: str, interaction_summary: str) -> dict[str, Any]:
-        """
-        Report that no parameters could be discovered from the interactions.
-
-        Args:
-            reason: Why no parameters could be discovered.
-            interaction_summary: Summary of what interactions were analyzed.
-        """
-        self._discovery_failure = ParameterDiscoveryFailureResult(
-            reason=reason,
-            interaction_summary=interaction_summary,
-        )
-
-        logger.debug("Parameter discovery failed: %s", reason)
-        return {
-            "status": "failure",
-            "message": "Parameter discovery marked as failed",
-            "result": self._discovery_failure.model_dump(),
         }

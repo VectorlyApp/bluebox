@@ -18,13 +18,17 @@ Tools are defined declaratively via the @agent_tool decorator.
 
 from __future__ import annotations
 
+import json
 from abc import abstractmethod
 from enum import StrEnum
-from typing import Callable, ClassVar, NamedTuple
+from typing import Any, Callable, ClassVar, NamedTuple
 
+import jsonschema
 from pydantic import BaseModel
 
-from bluebox.agents.abstract_agent import AbstractAgent
+from bluebox.agents.abstract_agent import AbstractAgent, agent_tool
+from bluebox.data_models.orchestration.result import SpecialistResultWrapper
+from bluebox.utils.llm_utils import token_optimized
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatRole,
@@ -111,7 +115,6 @@ class AbstractSpecialist(AbstractAgent):
             Message string to seed the autonomous conversation.
         """
 
-    @abstractmethod
     def _check_autonomous_completion(self, tool_name: str) -> bool:
         """
         Check whether a tool call signals autonomous completion.
@@ -120,22 +123,35 @@ class AbstractSpecialist(AbstractAgent):
         Return True to stop the loop (e.g., finalize_result was called
         and self._autonomous_result is now set).
 
+        Default implementation checks for the generic finalize tools
+        (finalize_with_output, finalize_with_failure). Subclasses should
+        override this and call super() to also check for their own
+        specialist-specific finalize tools.
+
         Args:
             tool_name: Name of the tool that was just executed.
 
         Returns:
             True if the autonomous loop should stop.
         """
+        # Check for generic finalize tools
+        if tool_name in ("finalize_with_output", "finalize_with_failure"):
+            return self._wrapped_result is not None
+        return False
 
-    @abstractmethod
     def _get_autonomous_result(self) -> BaseModel | None:
         """
         Return the autonomous mode result after the loop completes.
+
+        Default implementation returns the wrapped result if set via the
+        generic finalize tools. Subclasses should override this and check
+        for _wrapped_result first, then fall back to their own result types.
 
         Returns:
             A Pydantic model with the specialist's result,
             or None if max iterations were reached without finalization.
         """
+        return self._wrapped_result
 
     ## Magic methods
 
@@ -168,6 +184,12 @@ class AbstractSpecialist(AbstractAgent):
         self._autonomous_iteration: int = 0
         self._autonomous_config: AutonomousConfig = AutonomousConfig()
 
+        # orchestrator-defined output schema (set via set_output_schema())
+        self._task_output_schema: dict[str, Any] | None = None
+        self._task_output_description: str | None = None
+        self._notes: list[str] = []
+        self._wrapped_result: SpecialistResultWrapper | None = None
+
         # call parent init
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -198,6 +220,139 @@ class AbstractSpecialist(AbstractAgent):
             self.run_mode == RunMode.AUTONOMOUS
             and self._autonomous_iteration >= self._autonomous_config.min_iterations
         )
+
+    @property
+    def has_output_schema(self) -> bool:
+        """Whether an output schema has been set by the orchestrator."""
+        return self._task_output_schema is not None
+
+    ## Output Schema Methods
+
+    def set_output_schema(
+        self,
+        schema: dict[str, Any],
+        description: str | None = None,
+    ) -> None:
+        """
+        Set the expected output schema for this task.
+
+        Called by the orchestrator before running the specialist to define
+        what structure the specialist should return.
+
+        Args:
+            schema: JSON Schema defining the expected output structure.
+            description: Human-readable description of what to return.
+        """
+        self._task_output_schema = schema
+        self._task_output_description = description
+
+    def add_note(self, note: str) -> None:
+        """
+        Add a note to the result wrapper.
+
+        Use this for notes, complaints, warnings, or errors encountered during execution.
+        These are passed back to the orchestrator along with the result.
+
+        Args:
+            note: The note/complaint/warning/error message.
+        """
+        self._notes.append(note)
+
+    def _get_output_schema_prompt_section(self) -> str:
+        """
+        Get the output schema section to include in autonomous system prompt.
+
+        Subclasses should call this and include it in their _get_autonomous_system_prompt().
+
+        Returns:
+            Formatted prompt section describing expected output, or empty string if no schema set.
+        """
+        if not self._task_output_schema:
+            return ""
+
+        parts = ["\n\n## Expected Output Schema\n"]
+
+        if self._task_output_description:
+            parts.append(f"**Description:** {self._task_output_description}\n\n")
+
+        parts.append("**Schema:**\n```json\n")
+        parts.append(json.dumps(self._task_output_schema, indent=2))
+        parts.append("\n```\n")
+
+        parts.append(
+            "\nWhen ready, call `finalize_with_output(output={...})` with data matching this schema. "
+            "Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors."
+        )
+
+        return "".join(parts)
+
+    ## Generic Finalize Tool (for orchestrator-defined schemas)
+
+    @agent_tool(availability=lambda self: self.can_finalize and self.has_output_schema)
+    @token_optimized
+    def _finalize_with_output(self, output: dict[str, Any]) -> dict[str, Any]:
+        """
+        Finalize with output matching the orchestrator's expected schema.
+
+        This tool is available when the orchestrator has defined an output schema
+        for the task. The output must match the schema or validation will fail.
+
+        Args:
+            output: Result data matching the expected output schema.
+        """
+        if not self._task_output_schema:
+            return {"error": "No output schema defined for this task"}
+
+        # Validate against schema
+        try:
+            jsonschema.validate(instance=output, schema=self._task_output_schema)
+        except jsonschema.ValidationError as e:
+            return {
+                "error": "Output does not match expected schema",
+                "validation_error": str(e.message),
+                "schema_path": list(e.absolute_schema_path),
+                "hint": "Fix the output structure and try again.",
+            }
+
+        # Store the wrapped result
+        self._wrapped_result = SpecialistResultWrapper(
+            output=output,
+            success=True,
+            notes=self._notes.copy(),
+            failure_reason=None,
+        )
+
+        logger.info("Specialist finalized with output matching schema")
+        return {
+            "status": "success",
+            "message": "Output validated and stored successfully",
+            "notes_count": len(self._notes),
+        }
+
+    @agent_tool(availability=lambda self: self.can_finalize and self.has_output_schema)
+    @token_optimized
+    def _finalize_with_failure(self, reason: str) -> dict[str, Any]:
+        """
+        Finalize with failure when the task cannot be completed.
+
+        Use this when you cannot produce the expected output after thorough analysis.
+
+        Args:
+            reason: Explanation of why the task could not be completed.
+        """
+        self._wrapped_result = SpecialistResultWrapper(
+            output=None,
+            success=False,
+            notes=self._notes.copy(),
+            failure_reason=reason,
+        )
+
+        logger.info("Specialist finalized with failure: %s", reason)
+        return {
+            "status": "failure",
+            "message": "Task marked as failed",
+            "reason": reason,
+        }
 
     ## Public API
 
@@ -250,7 +405,11 @@ class AbstractSpecialist(AbstractAgent):
         NOTE: Method is not abstract; it is intentionally a no-op by default. Not every specialist
         has extra autonomous state to reset; those that don't simply inherit this.
         """
-        pass
+        # Clear orchestrator-defined output schema state
+        self._task_output_schema = None
+        self._task_output_description = None
+        self._notes = []
+        self._wrapped_result = None
 
     def reset(self) -> None:
         """Reset the conversation to a fresh state."""

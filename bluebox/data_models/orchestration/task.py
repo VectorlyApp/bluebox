@@ -95,6 +95,16 @@ class Task(BaseModel):
         description="Additional context data for the specialist"
     )
 
+    # Output schema (orchestrator-defined)
+    output_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="JSON Schema defining the expected output structure from the specialist"
+    )
+    output_description: str | None = Field(
+        default=None,
+        description="Human-readable description of what output the specialist should return"
+    )
+
 
 class SubAgent(BaseModel):
     """

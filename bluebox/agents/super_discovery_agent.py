@@ -523,6 +523,13 @@ class SuperDiscoveryAgent(AbstractAgent):
         try:
             agent = self._get_or_create_agent(task)
 
+            # Set output schema if provided by orchestrator
+            if task.output_schema:
+                agent.set_output_schema(
+                    schema=task.output_schema,
+                    description=task.output_description,
+                )
+
             # Calculate remaining loops
             remaining_loops = task.max_loops - task.loops_used
             if remaining_loops <= 0:
@@ -578,6 +585,8 @@ class SuperDiscoveryAgent(AbstractAgent):
         self,
         agent_type: str,
         prompt: str,
+        output_schema: dict[str, Any] | None = None,
+        output_description: str | None = None,
         agent_id: str | None = None,
         max_loops: int = 5,
     ) -> dict[str, Any]:
@@ -585,8 +594,12 @@ class SuperDiscoveryAgent(AbstractAgent):
         Create a new task for a specialist subagent.
 
         Args:
-            agent_type: Type of specialist (js_specialist, trace_hound).
+            agent_type: Type of specialist (js_specialist, trace_hound, network_spy, docs_digger).
             prompt: Task instructions for the specialist.
+            output_schema: JSON Schema defining the expected output structure (dict).
+                The specialist will return data matching this schema. Example:
+                {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}
+            output_description: Human-readable description of what output the specialist should return.
             agent_id: Optional ID of existing agent to reuse (preserves context).
             max_loops: Maximum LLM iterations for this task (default 5).
         """
@@ -605,17 +618,23 @@ class SuperDiscoveryAgent(AbstractAgent):
             agent_id=agent_id,
             prompt=prompt,
             max_loops=max_loops,
+            output_schema=output_schema,
+            output_description=output_description,
         )
 
         self._state.add_task(task)
         self._state.phase = SuperDiscoveryPhase.DISCOVERING
 
-        return {
+        result: dict[str, Any] = {
             "success": True,
             "task_id": task.id,
             "agent_type": agent_type,
-            "message": f"Task created. Use run_pending_tasks to execute.",
+            "message": "Task created. Use run_pending_tasks to execute.",
         }
+        if output_schema:
+            result["output_schema_set"] = True
+
+        return result
 
     @agent_tool()
     def _list_tasks(self) -> dict[str, Any]:

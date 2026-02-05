@@ -319,6 +319,9 @@ class TestCollectTools:
             "finalize_gated",
             "with_explicit_schema",
             "finalize",
+            # Generic finalize tools from AbstractSpecialist
+            "finalize_with_output",
+            "finalize_with_failure",
         }
         assert tool_names == expected
 
