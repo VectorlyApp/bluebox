@@ -1,7 +1,7 @@
 """
 bluebox/utils/exceptions.py
 
-Custom exceptions for bluebox-sdk.
+Custom exceptions for bluebox.
 
 Contains:
 - ApiKeyNotFoundError: Missing API key

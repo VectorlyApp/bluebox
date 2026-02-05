@@ -75,7 +75,7 @@ jobs:
           # Install with --no-deps
           uv pip install dist/*.whl --no-deps
           
-          # Count packages after install (should be exactly 1 more: bluebox-sdk)
+          # Count packages after install (should be exactly 1 more: bluebox-lib)
           AFTER_COUNT=$(pip list --format=freeze | wc -l)
           INSTALLED=$((AFTER_COUNT - BEFORE_COUNT))
 

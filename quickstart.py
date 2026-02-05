@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Quickstart: Full workflow for bluebox-sdk using the Python SDK.
+Quickstart: Full workflow for bluebox using the Python library.
 This script guides you through: Monitor → Discover → Execute
 
 Usage:
