@@ -42,11 +42,11 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus, SpecialistAgentType
 from bluebox.data_models.orchestration.state import SuperDiscoveryState, SuperDiscoveryPhase
 from bluebox.data_models.routine.routine import Routine
-from bluebox.llms.infra.documentation_data_store import DocumentationDataStore
-from bluebox.llms.infra.js_data_store import JSDataStore
-from bluebox.llms.infra.network_data_store import NetworkDataStore
-from bluebox.llms.infra.storage_data_store import StorageDataStore
-from bluebox.llms.infra.window_property_data_store import WindowPropertyDataStore
+from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
+from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
+from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
+from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
+from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -259,12 +259,12 @@ class SuperDiscoveryAgent(AbstractAgent):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
-        network_data_store: NetworkDataStore,
+        network_data_loader: NetworkDataLoader,
         task: str,
-        storage_data_store: StorageDataStore | None = None,
-        window_property_data_store: WindowPropertyDataStore | None = None,
-        js_data_store: JSDataStore | None = None,
-        documentation_data_store: DocumentationDataStore | None = None,
+        storage_data_loader: StorageDataLoader | None = None,
+        window_property_data_loader: WindowPropertyDataLoader | None = None,
+        js_data_loader: JSDataLoader | None = None,
+        documentation_data_loader: DocumentationDataLoader | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
         subagent_llm_model: LLMModel | None = None,
         max_iterations: int = 50,
@@ -280,12 +280,12 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         Args:
             emit_message_callable: Callback to emit messages to the host.
-            network_data_store: NetworkDataStore with network traffic data.
+            network_data_loader: NetworkDataLoader with network traffic data.
             task: The discovery task description.
-            storage_data_store: Optional StorageDataStore for browser storage.
-            window_property_data_store: Optional WindowPropertyDataStore for window properties.
-            js_data_store: Optional JSDataStore for JavaScript files.
-            documentation_data_store: Optional DocumentationDataStore for docs and code files.
+            storage_data_loader: Optional StorageDataLoader for browser storage.
+            window_property_data_loader: Optional WindowPropertyDataLoader for window properties.
+            js_data_loader: Optional JSDataLoader for JavaScript files.
+            documentation_data_loader: Optional DocumentationDataLoader for docs and code files.
             llm_model: LLM model for the orchestrator.
             subagent_llm_model: LLM model for subagents (defaults to orchestrator's model).
             max_iterations: Maximum iterations for the main loop.
@@ -296,11 +296,11 @@ class SuperDiscoveryAgent(AbstractAgent):
             chat_thread: Existing ChatThread to continue, or None for new.
             existing_chats: Existing Chat messages if loading from persistence.
         """
-        self._network_data_store = network_data_store
-        self._storage_data_store = storage_data_store
-        self._window_property_data_store = window_property_data_store
-        self._js_data_store = js_data_store
-        self._documentation_data_store = documentation_data_store
+        self._network_data_loader = network_data_loader
+        self._storage_data_loader = storage_data_loader
+        self._window_property_data_loader = window_property_data_loader
+        self._js_data_loader = js_data_loader
+        self._documentation_data_loader = documentation_data_loader
         self._task = task
         self._subagent_llm_model = subagent_llm_model or llm_model
         self._max_iterations = max_iterations
@@ -332,19 +332,19 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         # Add data store summaries
         data_store_info = []
-        if self._network_data_store:
-            stats = self._network_data_store.stats
+        if self._network_data_loader:
+            stats = self._network_data_loader.stats
             data_store_info.append(f"Network: {stats.total_requests} transactions")
-        if self._storage_data_store:
-            stats = self._storage_data_store.stats
+        if self._storage_data_loader:
+            stats = self._storage_data_loader.stats
             data_store_info.append(f"Storage: {stats.total_events} events")
-        if self._window_property_data_store:
-            stats = self._window_property_data_store.stats
+        if self._window_property_data_loader:
+            stats = self._window_property_data_loader.stats
             data_store_info.append(f"Window: {stats.total_events} events")
-        if self._js_data_store:
+        if self._js_data_loader:
             data_store_info.append("JS files: available")
-        if self._documentation_data_store:
-            stats = self._documentation_data_store.stats
+        if self._documentation_data_loader:
+            stats = self._documentation_data_loader.stats
             data_store_info.append(f"Documentation: {stats.total_docs} docs, {stats.total_code} code files")
 
         if data_store_info:
@@ -479,13 +479,13 @@ class SuperDiscoveryAgent(AbstractAgent):
             return TraceHoundAgent(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
-                network_data_store=self._network_data_store,
-                storage_data_store=self._storage_data_store,
-                window_property_data_store=self._window_property_data_store,
+                network_data_loader=self._network_data_loader,
+                storage_data_loader=self._storage_data_loader,
+                window_property_data_loader=self._window_property_data_loader,
             )
 
         elif agent_type == SpecialistAgentType.NETWORK_SPY:
-            if not self._network_data_store:
+            if not self._network_data_loader:
                 raise ValueError(
                     "network_spy specialist requires network_data_store, "
                     "but it was not provided to SuperDiscoveryAgent"
@@ -493,11 +493,11 @@ class SuperDiscoveryAgent(AbstractAgent):
             return NetworkSpyAgent(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
-                network_data_store=self._network_data_store,
+                network_data_loader=self._network_data_loader,
             )
 
         elif agent_type == SpecialistAgentType.DOCS_DIGGER:
-            if not self._documentation_data_store:
+            if not self._documentation_data_loader:
                 raise ValueError(
                     "DocsDiggerAgent requires documentation_data_store. "
                     "Ensure SuperDiscoveryAgent was initialized with documentation_data_store."
@@ -505,7 +505,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             return DocsDiggerAgent(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
-                documentation_data_store=self._documentation_data_store,
+                documentation_data_loader=self._documentation_data_loader,
             )
 
         else:
@@ -694,10 +694,10 @@ class SuperDiscoveryAgent(AbstractAgent):
     @agent_tool()
     def _list_transactions(self) -> dict[str, Any]:
         """List all available transaction IDs from the network captures."""
-        if not self._network_data_store:
+        if not self._network_data_loader:
             return {"error": "No network data store available"}
 
-        entries = self._network_data_store.entries
+        entries = self._network_data_loader.entries
         tx_summaries = [
             {"id": e.request_id, "method": e.method, "url": e.url[:100]}
             for e in entries[:50]  # Limit to first 50 for readability
@@ -716,13 +716,13 @@ class SuperDiscoveryAgent(AbstractAgent):
         Args:
             transaction_id: The ID of the transaction to retrieve.
         """
-        if not self._network_data_store:
+        if not self._network_data_loader:
             return {"error": "No network data store available"}
 
-        entry = self._network_data_store.get_entry(transaction_id)
+        entry = self._network_data_loader.get_entry(transaction_id)
         if not entry:
             # Show some available IDs as hints
-            available = [e.request_id for e in self._network_data_store.entries[:10]]
+            available = [e.request_id for e in self._network_data_loader.entries[:10]]
             return {"error": f"Transaction {transaction_id} not found. Sample IDs: {available}"}
 
         return {
@@ -752,10 +752,10 @@ class SuperDiscoveryAgent(AbstractAgent):
             query: String to search for (e.g., "Parameter schema", "fetch operation").
             file_type: Optional filter - "documentation" or "code".
         """
-        if not self._documentation_data_store:
+        if not self._documentation_data_loader:
             return {"error": "No documentation data store available"}
 
-        from bluebox.llms.infra.documentation_data_store import FileType
+        from bluebox.llms.data_loaders.documentation_data_loader import FileType
 
         file_type_enum = None
         if file_type:
@@ -764,7 +764,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             except ValueError:
                 return {"error": f"Invalid file_type. Use 'documentation' or 'code'"}
 
-        results = self._documentation_data_store.search_content_with_lines(
+        results = self._documentation_data_loader.search_content_with_lines(
             query=query,
             file_type=file_type_enum,
             case_sensitive=False,
@@ -792,10 +792,10 @@ class SuperDiscoveryAgent(AbstractAgent):
             start_line: Optional starting line (1-indexed, inclusive).
             end_line: Optional ending line (1-indexed, inclusive).
         """
-        if not self._documentation_data_store:
+        if not self._documentation_data_loader:
             return {"error": "No documentation data store available"}
 
-        result = self._documentation_data_store.get_file_lines(
+        result = self._documentation_data_loader.get_file_lines(
             path=path,
             start_line=start_line,
             end_line=end_line,

@@ -86,7 +86,7 @@ def agent_tool(
 
         # auto-extract description from docstring if not provided
         if description is None:
-            final_description = extract_description_from_docstring(method.__doc__)
+            final_description = extract_description_from_docstring(docstring=method.__doc__)
             if not final_description:
                 raise ValueError(f"Tool {tool_name} has no description and no docstring")
         else:
