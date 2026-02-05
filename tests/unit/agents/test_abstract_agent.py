@@ -1,0 +1,1174 @@
+"""
+tests/unit/agents/test_abstract_agent.py
+
+Comprehensive unit tests for AbstractAgent base class.
+
+Covers:
+  - Initialization and default state
+  - Chat management (_add_chat, get_chats, _build_messages_for_llm)
+  - Tool infrastructure (_collect_tools, _sync_tools, _execute_tool)
+  - Tool execution helpers (_auto_execute_tool, _process_tool_calls)
+  - Documentation tools and prompt section
+  - _call_llm system prompt injection
+  - reset()
+  - process_new_message()
+  - Response chaining (_previous_response_id)
+"""
+
+import json
+import textwrap
+from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock, call, patch
+
+import pytest
+
+from bluebox.agents.abstract_agent import AbstractAgent, agent_tool, _ToolMeta
+from bluebox.data_models.llms.interaction import (
+    Chat,
+    ChatRole,
+    ChatThread,
+    LLMChatResponse,
+    LLMToolCall,
+    ChatResponseEmittedMessage,
+    ErrorEmittedMessage,
+    ToolInvocationResultEmittedMessage,
+)
+from bluebox.data_models.llms.vendors import OpenAIModel
+from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
+
+
+# =============================================================================
+# Concrete subclass for testing
+# =============================================================================
+
+
+class ConcreteAgent(AbstractAgent):
+    """Minimal concrete AbstractAgent for testing."""
+
+    def _get_system_prompt(self) -> str:
+        return "You are a test agent."
+
+    @agent_tool()
+    def _echo(self, message: str) -> dict[str, Any]:
+        """
+        Echo the message back.
+
+        Args:
+            message: The message to echo.
+        """
+        return {"echoed": message}
+
+    @agent_tool()
+    def _add_numbers(self, a: int, b: int) -> dict[str, Any]:
+        """
+        Add two numbers.
+
+        Args:
+            a: First number.
+            b: Second number.
+        """
+        return {"sum": a + b}
+
+    @agent_tool(availability=False)
+    def _disabled_tool(self) -> dict[str, Any]:
+        """A permanently disabled tool."""
+        return {"should": "never run"}
+
+    @agent_tool(availability=lambda self: getattr(self, "_feature_flag", False))
+    def _gated_tool(self) -> dict[str, Any]:
+        """A tool gated by a feature flag."""
+        return {"gated": True}
+
+    @agent_tool()
+    def _no_params(self) -> dict[str, Any]:
+        """A tool with no parameters."""
+        return {"status": "ok"}
+
+    @agent_tool()
+    def _optional_params(self, required: str, opt: int = 5) -> dict[str, Any]:
+        """
+        Tool with mixed required and optional params.
+
+        Args:
+            required: A required string.
+            opt: An optional integer.
+        """
+        return {"required": required, "opt": opt}
+
+    @agent_tool()
+    def _raises_error(self) -> dict[str, Any]:
+        """A tool that raises an exception."""
+        raise RuntimeError("intentional test error")
+
+
+@pytest.fixture
+def mock_emit() -> MagicMock:
+    return MagicMock()
+
+
+@pytest.fixture
+def agent(mock_emit: MagicMock) -> ConcreteAgent:
+    """Agent without documentation data loader."""
+    return ConcreteAgent(emit_message_callable=mock_emit)
+
+
+@pytest.fixture
+def agent_with_docs(mock_emit: MagicMock, tmp_path: Path) -> ConcreteAgent:
+    """Agent with a documentation data loader containing real files."""
+    # Create some test documentation files
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "guide.md").write_text(
+        "# User Guide\n\n> A guide for users.\n\nThis guide covers setup and usage.\n\n"
+        "## Installation\n\nRun `pip install bluebox`.\n\n"
+        "## Configuration\n\nSet your API key in `.env`.\n"
+    )
+    (docs_dir / "api.md").write_text(
+        "# API Reference\n\n> API docs for developers.\n\n"
+        "## Endpoints\n\n### GET /health\n\nReturns health status.\n\n"
+        "### POST /search\n\nSearch for routines.\n"
+    )
+
+    # Create some test code files
+    code_dir = tmp_path / "code"
+    code_dir.mkdir()
+    (code_dir / "main.py").write_text(
+        '"""Main module for the application."""\n\n'
+        "def hello() -> str:\n"
+        '    return "Hello, World!"\n\n'
+        "def search(query: str) -> list[str]:\n"
+        '    """Search for items matching query."""\n'
+        "    return []\n"
+    )
+
+    loader = DocumentationDataLoader(
+        documentation_paths=[str(docs_dir)],
+        code_paths=[str(code_dir)],
+    )
+    return ConcreteAgent(
+        emit_message_callable=mock_emit,
+        documentation_data_loader=loader,
+    )
+
+
+# =============================================================================
+# Initialization
+# =============================================================================
+
+
+class TestInitialization:
+    """Tests for AbstractAgent.__init__."""
+
+    def test_default_state(self, agent: ConcreteAgent) -> None:
+        """Agent initializes with expected default state."""
+        assert agent._previous_response_id is None
+        assert agent._response_id_to_chat_index == {}
+        assert agent.llm_model == OpenAIModel.GPT_5_1
+        assert agent._documentation_data_loader is None
+        assert isinstance(agent._thread, ChatThread)
+        assert agent._chats == {}
+
+    def test_empty_chat_list_initially(self, agent: ConcreteAgent) -> None:
+        assert agent.get_chats() == []
+
+    def test_thread_id_is_string(self, agent: ConcreteAgent) -> None:
+        assert isinstance(agent.chat_thread_id, str)
+        assert len(agent.chat_thread_id) > 0
+
+    def test_existing_chats_loaded(self, mock_emit: MagicMock) -> None:
+        """Existing chats are indexed on init."""
+        thread = ChatThread()
+        chat = Chat(chat_thread_id=thread.id, role=ChatRole.USER, content="hello")
+        thread.chat_ids.append(chat.id)
+
+        agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            chat_thread=thread,
+            existing_chats=[chat],
+        )
+        chats = agent.get_chats()
+        assert len(chats) == 1
+        assert chats[0].content == "hello"
+
+    def test_persist_thread_called_on_new_thread(self, mock_emit: MagicMock) -> None:
+        """persist_chat_thread_callable is called when creating a new thread."""
+        mock_persist = MagicMock(side_effect=lambda t: t)
+        ConcreteAgent(
+            emit_message_callable=mock_emit,
+            persist_chat_thread_callable=mock_persist,
+        )
+        assert mock_persist.call_count == 1
+
+    def test_persist_thread_not_called_with_existing_thread(self, mock_emit: MagicMock) -> None:
+        """persist_chat_thread_callable is NOT called when thread is provided."""
+        mock_persist = MagicMock(side_effect=lambda t: t)
+        ConcreteAgent(
+            emit_message_callable=mock_emit,
+            persist_chat_thread_callable=mock_persist,
+            chat_thread=ChatThread(),
+        )
+        assert mock_persist.call_count == 0
+
+    def test_documentation_data_loader_stored(self, agent_with_docs: ConcreteAgent) -> None:
+        assert agent_with_docs._documentation_data_loader is not None
+
+
+# =============================================================================
+# Chat management
+# =============================================================================
+
+
+class TestChatManagement:
+    """Tests for _add_chat, get_chats, get_thread."""
+
+    def test_add_chat_creates_chat(self, agent: ConcreteAgent) -> None:
+        chat = agent._add_chat(ChatRole.USER, "hello")
+        assert chat.role == ChatRole.USER
+        assert chat.content == "hello"
+        assert chat.chat_thread_id == agent.chat_thread_id
+
+    def test_add_chat_updates_thread(self, agent: ConcreteAgent) -> None:
+        chat = agent._add_chat(ChatRole.USER, "hello")
+        assert chat.id in agent._thread.chat_ids
+
+    def test_get_chats_returns_ordered(self, agent: ConcreteAgent) -> None:
+        agent._add_chat(ChatRole.USER, "first")
+        agent._add_chat(ChatRole.ASSISTANT, "second")
+        agent._add_chat(ChatRole.USER, "third")
+
+        chats = agent.get_chats()
+        assert len(chats) == 3
+        assert [c.content for c in chats] == ["first", "second", "third"]
+
+    def test_add_chat_with_tool_call_id(self, agent: ConcreteAgent) -> None:
+        chat = agent._add_chat(ChatRole.TOOL, "result", tool_call_id="call_123")
+        assert chat.tool_call_id == "call_123"
+
+    def test_add_chat_with_tool_calls(self, agent: ConcreteAgent) -> None:
+        tool_calls = [LLMToolCall(tool_name="echo", tool_arguments={"message": "hi"}, call_id="c1")]
+        chat = agent._add_chat(ChatRole.ASSISTANT, "thinking...", tool_calls=tool_calls)
+        assert len(chat.tool_calls) == 1
+        assert chat.tool_calls[0].tool_name == "echo"
+
+    def test_persist_chat_called(self, mock_emit: MagicMock) -> None:
+        mock_persist = MagicMock(side_effect=lambda c: c)
+        agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            persist_chat_callable=mock_persist,
+        )
+        agent._add_chat(ChatRole.USER, "test")
+        mock_persist.assert_called_once()
+
+    def test_response_id_tracking(self, agent: ConcreteAgent) -> None:
+        """Assistant messages with response_id are tracked for response chaining."""
+        agent._add_chat(
+            ChatRole.ASSISTANT, "reply",
+            llm_provider_response_id="resp_123",
+        )
+        assert "resp_123" in agent._response_id_to_chat_index
+
+    def test_non_assistant_response_id_not_tracked(self, agent: ConcreteAgent) -> None:
+        """Only ASSISTANT messages have response_id tracked."""
+        agent._add_chat(
+            ChatRole.USER, "hello",
+            llm_provider_response_id="resp_456",
+        )
+        assert "resp_456" not in agent._response_id_to_chat_index
+
+    def test_get_thread_returns_thread(self, agent: ConcreteAgent) -> None:
+        thread = agent.get_thread()
+        assert isinstance(thread, ChatThread)
+        assert thread.id == agent.chat_thread_id
+
+
+# =============================================================================
+# _build_messages_for_llm
+# =============================================================================
+
+
+class TestBuildMessagesForLLM:
+    """Tests for _build_messages_for_llm."""
+
+    def test_empty_when_no_chats(self, agent: ConcreteAgent) -> None:
+        assert agent._build_messages_for_llm() == []
+
+    def test_includes_all_chats(self, agent: ConcreteAgent) -> None:
+        agent._add_chat(ChatRole.USER, "hello")
+        agent._add_chat(ChatRole.ASSISTANT, "hi there")
+
+        messages = agent._build_messages_for_llm()
+        assert len(messages) == 2
+        assert messages[0]["role"] == "user"
+        assert messages[0]["content"] == "hello"
+        assert messages[1]["role"] == "assistant"
+
+    def test_includes_tool_call_id(self, agent: ConcreteAgent) -> None:
+        agent._add_chat(ChatRole.TOOL, "result", tool_call_id="call_abc")
+        messages = agent._build_messages_for_llm()
+        assert messages[0]["tool_call_id"] == "call_abc"
+
+    def test_includes_tool_calls(self, agent: ConcreteAgent) -> None:
+        tool_calls = [LLMToolCall(tool_name="echo", tool_arguments={"message": "x"}, call_id="c1")]
+        agent._add_chat(ChatRole.ASSISTANT, "", tool_calls=tool_calls)
+
+        messages = agent._build_messages_for_llm()
+        assert "tool_calls" in messages[0]
+        assert messages[0]["tool_calls"][0]["name"] == "echo"
+
+    def test_response_chaining_truncates_old_messages(self, agent: ConcreteAgent) -> None:
+        """When _previous_response_id is set, only messages after that response are included."""
+        agent._add_chat(ChatRole.USER, "first")
+        agent._add_chat(ChatRole.ASSISTANT, "first reply", llm_provider_response_id="resp_1")
+
+        # Set the response id (simulates LLM response chaining)
+        agent._previous_response_id = "resp_1"
+
+        agent._add_chat(ChatRole.USER, "second")
+        agent._add_chat(ChatRole.ASSISTANT, "second reply", llm_provider_response_id="resp_2")
+
+        messages = agent._build_messages_for_llm()
+        # Only chats after resp_1's index should be included
+        contents = [m["content"] for m in messages]
+        assert "first" not in contents
+        assert "first reply" not in contents
+        assert "second" in contents
+
+    def test_tool_call_id_auto_generated_when_missing(self, agent: ConcreteAgent) -> None:
+        """Tool calls without call_id get auto-generated IDs."""
+        tool_calls = [LLMToolCall(tool_name="echo", tool_arguments={"message": "x"})]
+        agent._add_chat(ChatRole.ASSISTANT, "", tool_calls=tool_calls)
+
+        messages = agent._build_messages_for_llm()
+        call_id = messages[0]["tool_calls"][0]["call_id"]
+        assert call_id.startswith("call_0_")
+
+
+# =============================================================================
+# _collect_tools
+# =============================================================================
+
+
+class TestCollectTools:
+    """Tests for _collect_tools classmethod."""
+
+    def test_finds_all_decorated_methods(self) -> None:
+        tools = ConcreteAgent._collect_tools()
+        tool_names = {meta.name for meta, _ in tools}
+
+        expected = {
+            "echo", "add_numbers", "disabled_tool", "gated_tool",
+            "no_params", "optional_params", "raises_error",
+            # Documentation tools from AbstractAgent
+            "search_docs", "get_doc_file", "search_docs_by_terms", "search_docs_by_regex",
+        }
+        assert tool_names == expected
+
+    def test_result_is_cached_tuple(self) -> None:
+        ConcreteAgent._collect_tools.cache_clear()
+        tools1 = ConcreteAgent._collect_tools()
+        tools2 = ConcreteAgent._collect_tools()
+        assert tools1 is tools2
+        assert isinstance(tools1, tuple)
+
+    def test_subclass_has_separate_cache(self) -> None:
+        """A subclass with additional tools has its own cache entry."""
+
+        class ExtendedAgent(ConcreteAgent):
+            @agent_tool()
+            def _extra(self) -> dict[str, Any]:
+                """An extra tool."""
+                return {}
+
+        parent_names = {m.name for m, _ in ConcreteAgent._collect_tools()}
+        child_names = {m.name for m, _ in ExtendedAgent._collect_tools()}
+        assert "extra" not in parent_names
+        assert "extra" in child_names
+
+
+# =============================================================================
+# _sync_tools
+# =============================================================================
+
+
+class TestSyncTools:
+    """Tests for _sync_tools."""
+
+    def test_registers_available_tools(self, agent: ConcreteAgent) -> None:
+        agent._sync_tools()
+        assert "echo" in agent._registered_tool_names
+        assert "add_numbers" in agent._registered_tool_names
+        assert "no_params" in agent._registered_tool_names
+
+    def test_skips_unavailable_tools(self, agent: ConcreteAgent) -> None:
+        agent._sync_tools()
+        assert "disabled_tool" not in agent._registered_tool_names
+
+    def test_callable_availability_false(self, agent: ConcreteAgent) -> None:
+        """Gated tool not registered when feature flag is off."""
+        agent._feature_flag = False
+        agent._sync_tools()
+        assert "gated_tool" not in agent._registered_tool_names
+
+    def test_callable_availability_true(self, agent: ConcreteAgent) -> None:
+        """Gated tool registered when feature flag is on."""
+        agent._feature_flag = True
+        agent._sync_tools()
+        assert "gated_tool" in agent._registered_tool_names
+
+    def test_docs_tools_not_registered_without_loader(self, agent: ConcreteAgent) -> None:
+        """Documentation tools are not registered when no loader is provided."""
+        agent._sync_tools()
+        assert "search_docs" not in agent._registered_tool_names
+        assert "get_doc_file" not in agent._registered_tool_names
+        assert "search_docs_by_terms" not in agent._registered_tool_names
+        assert "search_docs_by_regex" not in agent._registered_tool_names
+
+    def test_docs_tools_registered_with_loader(self, agent_with_docs: ConcreteAgent) -> None:
+        """Documentation tools are registered when loader is provided."""
+        agent_with_docs._sync_tools()
+        assert "search_docs" in agent_with_docs._registered_tool_names
+        assert "get_doc_file" in agent_with_docs._registered_tool_names
+        assert "search_docs_by_terms" in agent_with_docs._registered_tool_names
+        assert "search_docs_by_regex" in agent_with_docs._registered_tool_names
+
+    def test_sync_clears_and_re_registers(self, agent: ConcreteAgent) -> None:
+        """Calling _sync_tools multiple times doesn't duplicate registrations."""
+        agent._sync_tools()
+        count1 = len(agent._registered_tool_names)
+        agent._sync_tools()
+        count2 = len(agent._registered_tool_names)
+        assert count1 == count2
+
+
+# =============================================================================
+# _execute_tool
+# =============================================================================
+
+
+class TestExecuteTool:
+    """Tests for _execute_tool."""
+
+    # --- Success cases ---
+
+    def test_execute_with_required_param(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("echo", {"message": "hi"})
+        assert result == {"echoed": "hi"}
+
+    def test_execute_with_multiple_params(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("add_numbers", {"a": 3, "b": 7})
+        assert result == {"sum": 10}
+
+    def test_execute_no_params(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("no_params", {})
+        assert result == {"status": "ok"}
+
+    def test_execute_with_optional_param_omitted(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("optional_params", {"required": "hello"})
+        assert result == {"required": "hello", "opt": 5}
+
+    def test_execute_with_optional_param_provided(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("optional_params", {"required": "hello", "opt": 99})
+        assert result == {"required": "hello", "opt": 99}
+
+    # --- Error cases ---
+
+    def test_unknown_tool(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("nonexistent", {})
+        assert "error" in result
+        assert "Unknown tool" in result["error"]
+
+    def test_unavailable_tool(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("disabled_tool", {})
+        assert "error" in result
+        assert "not currently available" in result["error"]
+
+    def test_missing_required_param(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("echo", {})
+        assert "error" in result
+        assert "Missing required parameter" in result["error"]
+        assert "message" in result["error"]
+
+    def test_extra_param(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("no_params", {"bogus": 42})
+        assert "error" in result
+        assert "Unknown parameter" in result["error"]
+
+    def test_wrong_type(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("add_numbers", {"a": "not_int", "b": 2})
+        assert "error" in result
+        assert "Invalid argument type" in result["error"]
+
+
+# =============================================================================
+# _auto_execute_tool
+# =============================================================================
+
+
+class TestAutoExecuteTool:
+    """Tests for _auto_execute_tool."""
+
+    def test_success_returns_json(self, agent: ConcreteAgent) -> None:
+        result_str = agent._auto_execute_tool("echo", {"message": "hi"})
+        result = json.loads(result_str)
+        assert result == {"echoed": "hi"}
+
+    def test_success_emits_message(self, agent: ConcreteAgent, mock_emit: MagicMock) -> None:
+        agent._auto_execute_tool("echo", {"message": "hi"})
+        # Find the ToolInvocationResultEmittedMessage among emitted messages
+        tool_msgs = [
+            c for c in mock_emit.call_args_list
+            if isinstance(c[0][0], ToolInvocationResultEmittedMessage)
+        ]
+        assert len(tool_msgs) == 1
+        assert tool_msgs[0][0][0].tool_result == {"echoed": "hi"}
+
+    def test_exception_returns_error_json(self, agent: ConcreteAgent) -> None:
+        result_str = agent._auto_execute_tool("raises_error", {})
+        result = json.loads(result_str)
+        assert "error" in result
+        assert "intentional test error" in result["error"]
+
+    def test_exception_emits_failed_message(self, agent: ConcreteAgent, mock_emit: MagicMock) -> None:
+        agent._auto_execute_tool("raises_error", {})
+        tool_msgs = [
+            c for c in mock_emit.call_args_list
+            if isinstance(c[0][0], ToolInvocationResultEmittedMessage)
+        ]
+        assert len(tool_msgs) == 1
+        assert "error" in tool_msgs[0][0][0].tool_result
+
+
+# =============================================================================
+# _process_tool_calls
+# =============================================================================
+
+
+class TestProcessToolCalls:
+    """Tests for _process_tool_calls."""
+
+    def test_single_tool_call(self, agent: ConcreteAgent) -> None:
+        """Single tool call is executed and added to chat history."""
+        tool_call = LLMToolCall(tool_name="echo", tool_arguments={"message": "hi"}, call_id="c1")
+        agent._process_tool_calls([tool_call])
+
+        chats = agent.get_chats()
+        assert len(chats) == 1
+        assert chats[0].role == ChatRole.TOOL
+        assert chats[0].tool_call_id == "c1"
+        assert '"echoed"' in chats[0].content
+
+    def test_multiple_tool_calls_parallel(self, agent: ConcreteAgent) -> None:
+        """Multiple tool calls execute in parallel and results are in original order."""
+        calls = [
+            LLMToolCall(tool_name="echo", tool_arguments={"message": "first"}, call_id="c1"),
+            LLMToolCall(tool_name="echo", tool_arguments={"message": "second"}, call_id="c2"),
+            LLMToolCall(tool_name="add_numbers", tool_arguments={"a": 1, "b": 2}, call_id="c3"),
+        ]
+        agent._process_tool_calls(calls)
+
+        chats = agent.get_chats()
+        assert len(chats) == 3
+        # Results are added in original call order
+        assert chats[0].tool_call_id == "c1"
+        assert chats[1].tool_call_id == "c2"
+        assert chats[2].tool_call_id == "c3"
+
+
+# =============================================================================
+# reset()
+# =============================================================================
+
+
+class TestReset:
+    """Tests for reset()."""
+
+    def test_clears_chats(self, agent: ConcreteAgent) -> None:
+        agent._add_chat(ChatRole.USER, "hello")
+        assert len(agent.get_chats()) == 1
+        agent.reset()
+        assert len(agent.get_chats()) == 0
+
+    def test_creates_new_thread(self, agent: ConcreteAgent) -> None:
+        old_id = agent.chat_thread_id
+        agent.reset()
+        assert agent.chat_thread_id != old_id
+
+    def test_clears_response_id(self, agent: ConcreteAgent) -> None:
+        agent._previous_response_id = "resp_old"
+        agent.reset()
+        assert agent._previous_response_id is None
+
+    def test_clears_response_id_index(self, agent: ConcreteAgent) -> None:
+        agent._response_id_to_chat_index["resp_old"] = 0
+        agent.reset()
+        assert agent._response_id_to_chat_index == {}
+
+    def test_syncs_tools_after_reset(self, agent: ConcreteAgent) -> None:
+        """Tools are re-synced after reset."""
+        agent.reset()
+        assert "echo" in agent._registered_tool_names
+
+    def test_persist_thread_called_on_reset(self, mock_emit: MagicMock) -> None:
+        mock_persist = MagicMock(side_effect=lambda t: t)
+        agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            persist_chat_thread_callable=mock_persist,
+        )
+        mock_persist.reset_mock()
+        agent.reset()
+        assert mock_persist.call_count == 1
+
+
+# =============================================================================
+# Documentation tools (functional tests with real DocumentationDataLoader)
+# =============================================================================
+
+
+class TestDocumentationTools:
+    """Tests for the documentation tools on AbstractAgent.
+
+    Note: doc tools use @token_optimized, so _execute_tool returns a compact string
+    (not a dict) when the handler itself is invoked. Pre-dispatch validation errors
+    (unavailability, missing params) still return dicts.
+    """
+
+    # --- search_docs ---
+
+    def test_search_docs_finds_matches(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("search_docs", {"query": "Installation"})
+        assert isinstance(result, str)
+        assert "files_with_matches" in result
+        assert "guide.md" in result or "Installation" in result
+
+    def test_search_docs_no_matches(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("search_docs", {"query": "xyznonexistent123"})
+        assert isinstance(result, str)
+        assert "No matches found" in result
+
+    def test_search_docs_empty_query(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("search_docs", {"query": ""})
+        assert isinstance(result, str)
+        assert "error" in result
+
+    def test_search_docs_case_insensitive(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("search_docs", {"query": "installation"})
+        assert isinstance(result, str)
+        assert "files_with_matches" in result
+
+    def test_search_docs_case_sensitive(self, agent_with_docs: ConcreteAgent) -> None:
+        result_upper = agent_with_docs._execute_tool(
+            "search_docs", {"query": "Installation", "case_sensitive": True},
+        )
+        assert "files_with_matches" in result_upper
+
+    def test_search_docs_filter_by_file_type(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool(
+            "search_docs", {"query": "def", "file_type": "code"},
+        )
+        assert isinstance(result, str)
+        # Should match the code file
+        assert "main.py" in result or "files_with_matches" in result
+
+    # --- get_doc_file ---
+
+    def test_get_doc_file_full_content(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("get_doc_file", {"path": "guide.md"})
+        assert isinstance(result, str)
+        assert "User Guide" in result
+        assert "total_lines" in result
+
+    def test_get_doc_file_line_range(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool(
+            "get_doc_file", {"path": "guide.md", "start_line": 1, "end_line": 3},
+        )
+        assert isinstance(result, str)
+        assert "lines_shown: 1-3" in result
+
+    def test_get_doc_file_not_found(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("get_doc_file", {"path": "nonexistent.md"})
+        assert isinstance(result, str)
+        assert "not found" in result
+
+    def test_get_doc_file_empty_path(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("get_doc_file", {"path": ""})
+        assert isinstance(result, str)
+        assert "error" in result
+
+    def test_get_doc_file_code_file(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("get_doc_file", {"path": "main.py"})
+        assert isinstance(result, str)
+        assert "def hello" in result
+
+    # --- search_docs_by_terms ---
+
+    def test_search_by_terms_finds_results(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool(
+            "search_docs_by_terms", {"terms": ["installation", "API"]},
+        )
+        assert isinstance(result, str)
+        assert "results_count" in result
+        # At least one result
+        assert "results_count: 0" not in result
+
+    def test_search_by_terms_empty_list(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("search_docs_by_terms", {"terms": []})
+        assert isinstance(result, str)
+        assert "error" in result
+
+    def test_search_by_terms_no_matches(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool(
+            "search_docs_by_terms", {"terms": ["xyznonexistent123"]},
+        )
+        assert isinstance(result, str)
+        assert "results_count: 0" in result
+
+    def test_search_by_terms_with_top_n(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool(
+            "search_docs_by_terms", {"terms": ["guide", "API"], "top_n": 1},
+        )
+        assert isinstance(result, str)
+
+    # --- search_docs_by_regex ---
+
+    def test_search_by_regex_finds_matches(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool(
+            "search_docs_by_regex", {"pattern": r"def \w+\("},
+        )
+        assert isinstance(result, str)
+        assert "error: None" in result or "error: null" in result.lower() or "timed_out" in result
+        assert "main.py" in result or "match" in result.lower()
+
+    def test_search_by_regex_empty_pattern(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("search_docs_by_regex", {"pattern": ""})
+        assert isinstance(result, str)
+        assert "error" in result
+
+    def test_search_by_regex_invalid_pattern(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("search_docs_by_regex", {"pattern": "[invalid"})
+        assert isinstance(result, str)
+        assert "Invalid regex" in result
+
+    def test_search_by_regex_no_matches(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool(
+            "search_docs_by_regex", {"pattern": "XYZNONEXISTENT123"},
+        )
+        assert isinstance(result, str)
+        assert "timed_out" in result  # still returns the result structure
+
+    # --- unavailability without loader ---
+
+    def test_docs_tools_unavailable_without_loader(self, agent: ConcreteAgent) -> None:
+        """All docs tools return error dict when executed without a loader (pre-dispatch)."""
+        for tool_name in ["search_docs", "get_doc_file", "search_docs_by_terms", "search_docs_by_regex"]:
+            result = agent._execute_tool(tool_name, {"query": "test"})
+            assert isinstance(result, dict)
+            assert "error" in result
+            assert "not currently available" in result["error"]
+
+
+# =============================================================================
+# _get_documentation_prompt_section
+# =============================================================================
+
+
+class TestDocumentationPromptSection:
+    """Tests for _get_documentation_prompt_section."""
+
+    def test_empty_without_loader(self, agent: ConcreteAgent) -> None:
+        assert agent._get_documentation_prompt_section() == ""
+
+    def test_contains_stats(self, agent_with_docs: ConcreteAgent) -> None:
+        section = agent_with_docs._get_documentation_prompt_section()
+        assert "Documentation Tools" in section
+        assert "indexed files" in section
+
+    def test_contains_doc_file_names(self, agent_with_docs: ConcreteAgent) -> None:
+        section = agent_with_docs._get_documentation_prompt_section()
+        assert "guide.md" in section
+        assert "api.md" in section
+
+    def test_contains_code_file_names(self, agent_with_docs: ConcreteAgent) -> None:
+        section = agent_with_docs._get_documentation_prompt_section()
+        assert "main.py" in section
+
+    def test_contains_doc_titles(self, agent_with_docs: ConcreteAgent) -> None:
+        section = agent_with_docs._get_documentation_prompt_section()
+        assert "User Guide" in section
+        assert "API Reference" in section
+
+    def test_truncates_long_titles(self, mock_emit: MagicMock, tmp_path: Path) -> None:
+        """Long titles are truncated to 80 chars + '...'."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        long_title = "A" * 100
+        (docs_dir / "long.md").write_text(f"# {long_title}\n\nSome content.\n")
+
+        loader = DocumentationDataLoader(documentation_paths=[str(docs_dir)])
+        agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            documentation_data_loader=loader,
+        )
+        section = agent._get_documentation_prompt_section()
+        # The title should be truncated at 80 chars + "..."
+        assert "A" * 80 + "..." in section
+        assert "A" * 100 not in section
+
+
+# =============================================================================
+# _call_llm - system prompt injection
+# =============================================================================
+
+
+class TestCallLLM:
+    """Tests for _call_llm system prompt injection."""
+
+    def test_no_docs_section_without_loader(self, agent: ConcreteAgent) -> None:
+        """System prompt is unmodified when no documentation loader is present."""
+        mock_response = LLMChatResponse(content="hello", response_id="r1")
+        agent.llm_client.call_sync = MagicMock(return_value=mock_response)
+
+        agent._call_llm([], "base prompt")
+
+        call_args = agent.llm_client.call_sync.call_args
+        assert call_args.kwargs["system_prompt"] == "base prompt"
+
+    def test_docs_section_appended_with_loader(self, agent_with_docs: ConcreteAgent) -> None:
+        """System prompt has documentation section appended when loader is present."""
+        mock_response = LLMChatResponse(content="hello", response_id="r1")
+        agent_with_docs.llm_client.call_sync = MagicMock(return_value=mock_response)
+
+        agent_with_docs._call_llm([], "base prompt")
+
+        call_args = agent_with_docs.llm_client.call_sync.call_args
+        system_prompt = call_args.kwargs["system_prompt"]
+        assert system_prompt.startswith("base prompt")
+        assert "Documentation Tools" in system_prompt
+        assert "guide.md" in system_prompt
+
+    def test_streaming_also_gets_docs_section(self, agent_with_docs: ConcreteAgent) -> None:
+        """Streaming path also appends documentation section."""
+        agent_with_docs._stream_chunk_callable = MagicMock()
+        mock_response = LLMChatResponse(content="hello", response_id="r1")
+
+        # Mock call_stream_sync to yield chunks then response
+        def fake_stream(*args, **kwargs):
+            yield "chunk1"
+            yield mock_response
+        agent_with_docs.llm_client.call_stream_sync = MagicMock(side_effect=fake_stream)
+
+        agent_with_docs._call_llm([], "base prompt")
+
+        call_args = agent_with_docs.llm_client.call_stream_sync.call_args
+        system_prompt = call_args.kwargs["system_prompt"]
+        assert "Documentation Tools" in system_prompt
+
+
+# =============================================================================
+# _process_streaming_response
+# =============================================================================
+
+
+class TestStreamingResponse:
+    """Tests for _process_streaming_response."""
+
+    def test_streams_chunks_to_callback(self, agent: ConcreteAgent) -> None:
+        chunk_callback = MagicMock()
+        agent._stream_chunk_callable = chunk_callback
+
+        mock_response = LLMChatResponse(content="final", response_id="r1")
+
+        def fake_stream(*args, **kwargs):
+            yield "chunk1"
+            yield "chunk2"
+            yield mock_response
+        agent.llm_client.call_stream_sync = MagicMock(side_effect=fake_stream)
+
+        response = agent._process_streaming_response([], "prompt")
+
+        assert chunk_callback.call_count == 2
+        chunk_callback.assert_any_call("chunk1")
+        chunk_callback.assert_any_call("chunk2")
+        assert response.content == "final"
+
+    def test_raises_on_no_response(self, agent: ConcreteAgent) -> None:
+        agent._stream_chunk_callable = MagicMock()
+
+        def fake_stream(*args, **kwargs):
+            yield "chunk_only"
+        agent.llm_client.call_stream_sync = MagicMock(side_effect=fake_stream)
+
+        with pytest.raises(ValueError, match="No final response"):
+            agent._process_streaming_response([], "prompt")
+
+
+# =============================================================================
+# process_new_message
+# =============================================================================
+
+
+class TestProcessNewMessage:
+    """Tests for process_new_message."""
+
+    def test_adds_user_chat(self, agent: ConcreteAgent) -> None:
+        """process_new_message adds the user chat to history."""
+        mock_response = LLMChatResponse(content="reply")
+        agent.llm_client.call_sync = MagicMock(return_value=mock_response)
+
+        agent.process_new_message("hello")
+
+        chats = agent.get_chats()
+        assert chats[0].role == ChatRole.USER
+        assert chats[0].content == "hello"
+
+    def test_default_role_is_user(self, agent: ConcreteAgent) -> None:
+        mock_response = LLMChatResponse(content="reply")
+        agent.llm_client.call_sync = MagicMock(return_value=mock_response)
+
+        agent.process_new_message("hello")
+        assert agent.get_chats()[0].role == ChatRole.USER
+
+    def test_custom_role(self, agent: ConcreteAgent) -> None:
+        mock_response = LLMChatResponse(content="reply")
+        agent.llm_client.call_sync = MagicMock(return_value=mock_response)
+
+        agent.process_new_message("system info", role=ChatRole.SYSTEM)
+        assert agent.get_chats()[0].role == ChatRole.SYSTEM
+
+    def test_emits_response(self, agent: ConcreteAgent, mock_emit: MagicMock) -> None:
+        mock_response = LLMChatResponse(content="reply", response_id="r1")
+        agent.llm_client.call_sync = MagicMock(return_value=mock_response)
+
+        agent.process_new_message("hello")
+
+        # Find emitted ChatResponseEmittedMessage
+        chat_msgs = [
+            c for c in mock_emit.call_args_list
+            if isinstance(c[0][0], ChatResponseEmittedMessage)
+        ]
+        assert len(chat_msgs) == 1
+        assert chat_msgs[0][0][0].content == "reply"
+
+
+# =============================================================================
+# _run_agent_loop
+# =============================================================================
+
+
+class TestRunAgentLoop:
+    """Tests for _run_agent_loop."""
+
+    def test_stops_when_no_tool_calls(self, agent: ConcreteAgent) -> None:
+        """Loop stops after LLM returns content without tool calls."""
+        mock_response = LLMChatResponse(content="done", response_id="r1")
+        agent.llm_client.call_sync = MagicMock(return_value=mock_response)
+
+        agent._add_chat(ChatRole.USER, "hello")
+        agent._run_agent_loop()
+
+        # Only one LLM call should be made
+        assert agent.llm_client.call_sync.call_count == 1
+
+    def test_executes_tool_calls_and_loops(self, agent: ConcreteAgent) -> None:
+        """Loop executes tool calls and re-calls LLM."""
+        # First call: LLM requests a tool call
+        tool_call = LLMToolCall(tool_name="echo", tool_arguments={"message": "hi"}, call_id="c1")
+        response_with_tool = LLMChatResponse(content="let me call echo", tool_calls=[tool_call], response_id="r1")
+        # Second call: LLM is done
+        response_final = LLMChatResponse(content="all done", response_id="r2")
+
+        agent.llm_client.call_sync = MagicMock(side_effect=[response_with_tool, response_final])
+
+        agent._add_chat(ChatRole.USER, "hello")
+        agent._run_agent_loop()
+
+        assert agent.llm_client.call_sync.call_count == 2
+        chats = agent.get_chats()
+        # Should have: USER, ASSISTANT (tool call), TOOL (result), ASSISTANT (final)
+        roles = [c.role for c in chats]
+        assert ChatRole.TOOL in roles
+
+    def test_emits_error_on_exception(self, agent: ConcreteAgent, mock_emit: MagicMock) -> None:
+        """Loop emits ErrorEmittedMessage on LLM exception."""
+        agent.llm_client.call_sync = MagicMock(side_effect=RuntimeError("LLM down"))
+
+        agent._add_chat(ChatRole.USER, "hello")
+        agent._run_agent_loop()
+
+        error_msgs = [
+            c for c in mock_emit.call_args_list
+            if isinstance(c[0][0], ErrorEmittedMessage)
+        ]
+        assert len(error_msgs) == 1
+        assert "LLM down" in error_msgs[0][0][0].error
+
+    def test_max_iterations_cap(self, agent: ConcreteAgent) -> None:
+        """Loop stops after 10 iterations even if tool calls continue."""
+        # Every call returns a tool call (infinite loop scenario)
+        tool_call = LLMToolCall(tool_name="no_params", tool_arguments={}, call_id="c1")
+        response = LLMChatResponse(content="", tool_calls=[tool_call], response_id="r1")
+        agent.llm_client.call_sync = MagicMock(return_value=response)
+
+        agent._add_chat(ChatRole.USER, "hello")
+        agent._run_agent_loop()
+
+        assert agent.llm_client.call_sync.call_count == 10
+
+    def test_response_id_tracked(self, agent: ConcreteAgent) -> None:
+        """_previous_response_id is updated after each LLM call."""
+        mock_response = LLMChatResponse(content="reply", response_id="resp_abc")
+        agent.llm_client.call_sync = MagicMock(return_value=mock_response)
+
+        agent._add_chat(ChatRole.USER, "hello")
+        agent._run_agent_loop()
+
+        assert agent._previous_response_id == "resp_abc"
+
+
+# =============================================================================
+# _emit_message
+# =============================================================================
+
+
+class TestEmitMessage:
+    """Tests for _emit_message."""
+
+    def test_calls_callback(self, agent: ConcreteAgent, mock_emit: MagicMock) -> None:
+        msg = ErrorEmittedMessage(error="test")
+        agent._emit_message(msg)
+        mock_emit.assert_called_once_with(msg)
+
+
+# =============================================================================
+# @agent_tool decorator (tested via AbstractAgent directly)
+# =============================================================================
+
+
+class TestAgentToolDecorator:
+    """Tests for the @agent_tool decorator."""
+
+    def test_tool_name_strips_underscores(self) -> None:
+        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
+        assert "echo" in tools  # _echo -> echo
+
+    def test_description_from_docstring(self) -> None:
+        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
+        assert "Echo the message back" in tools["echo"].description
+
+    def test_auto_generated_schema(self) -> None:
+        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
+        schema = tools["echo"].parameters
+        assert schema["type"] == "object"
+        assert "message" in schema["properties"]
+        assert schema["required"] == ["message"]
+
+    def test_optional_params_schema(self) -> None:
+        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
+        schema = tools["optional_params"].parameters
+        assert schema["required"] == ["required"]
+        assert "opt" in schema["properties"]
+        assert "opt" not in schema["required"]
+
+    def test_availability_default_true(self) -> None:
+        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
+        assert tools["echo"].availability is True
+
+    def test_availability_false(self) -> None:
+        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
+        assert tools["disabled_tool"].availability is False
+
+    def test_availability_callable(self) -> None:
+        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
+        assert callable(tools["gated_tool"].availability)
+
+    def test_raises_without_description_or_docstring(self) -> None:
+        with pytest.raises(ValueError, match="no description and no docstring"):
+            @agent_tool()
+            def _bare(self) -> dict[str, Any]:
+                pass
+
+
+# =============================================================================
+# _ToolMeta
+# =============================================================================
+
+
+class TestToolMeta:
+    """Tests for _ToolMeta dataclass."""
+
+    def test_frozen(self) -> None:
+        meta = _ToolMeta(
+            name="t", description="d",
+            parameters={"type": "object", "properties": {}, "required": []},
+            availability=True,
+        )
+        with pytest.raises(AttributeError):
+            meta.name = "changed"  # type: ignore[misc]
+
+    def test_stores_fields(self) -> None:
+        params = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
+        meta = _ToolMeta(name="my_tool", description="desc", parameters=params, availability=True)
+        assert meta.name == "my_tool"
+        assert meta.description == "desc"
+        assert meta.parameters == params
+        assert meta.availability is True
+
+
+# =============================================================================
+# Integration: full round-trip with docs
+# =============================================================================
+
+
+class TestIntegration:
+    """Integration tests exercising multiple components together."""
+
+    def test_process_message_with_tool_call_round_trip(
+        self, agent: ConcreteAgent, mock_emit: MagicMock,
+    ) -> None:
+        """Full round-trip: user message -> LLM tool call -> tool execution -> LLM final."""
+        tool_call = LLMToolCall(tool_name="echo", tool_arguments={"message": "round trip"}, call_id="c1")
+        response1 = LLMChatResponse(content="", tool_calls=[tool_call], response_id="r1")
+        response2 = LLMChatResponse(content="Echo result: round trip", response_id="r2")
+
+        agent.llm_client.call_sync = MagicMock(side_effect=[response1, response2])
+        agent.process_new_message("please echo round trip")
+
+        chats = agent.get_chats()
+        roles = [c.role for c in chats]
+        assert roles == [ChatRole.USER, ChatRole.ASSISTANT, ChatRole.TOOL, ChatRole.ASSISTANT]
+        assert chats[-1].content == "Echo result: round trip"
+
+        # Verify the response was emitted
+        chat_msgs = [
+            c for c in mock_emit.call_args_list
+            if isinstance(c[0][0], ChatResponseEmittedMessage)
+        ]
+        assert any("Echo result" in m[0][0].content for m in chat_msgs)
+
+    def test_docs_tools_functional_with_search_then_read(
+        self, agent_with_docs: ConcreteAgent,
+    ) -> None:
+        """Search for content, then read the file — mimics typical docs workflow."""
+        # Search for something — @token_optimized returns toon-encoded string
+        search_result = agent_with_docs._execute_tool("search_docs", {"query": "pip install"})
+        assert isinstance(search_result, str)
+        assert "files_with_matches" in search_result
+
+        # Read the file that contains "pip install" — also returns toon-encoded string
+        read_result = agent_with_docs._execute_tool("get_doc_file", {"path": "guide.md"})
+        assert isinstance(read_result, str)
+        assert "pip install" in read_result
+
+    def test_reset_preserves_documentation_data_loader(
+        self, agent_with_docs: ConcreteAgent,
+    ) -> None:
+        """Reset clears chat state but preserves the documentation data loader."""
+        assert agent_with_docs._documentation_data_loader is not None
+        agent_with_docs._add_chat(ChatRole.USER, "hello")
+
+        agent_with_docs.reset()
+
+        assert agent_with_docs._documentation_data_loader is not None
+        assert len(agent_with_docs.get_chats()) == 0
+        # Docs tools still registered
+        assert "search_docs" in agent_with_docs._registered_tool_names
