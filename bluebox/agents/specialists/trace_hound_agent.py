@@ -157,11 +157,37 @@ class TraceHoundAgent(AbstractSpecialist):
 
         ## When finalize tools are available
 
-        After sufficient exploration, call `finalize_result` with:
-        - The value searched
-        - All discovered origins (source_type, location, context, entry_id)
-        - The likely original source
-        - An explanation of the value flow
+        After sufficient exploration, call `finalize_result` with ALL required parameters:
+
+        **CRITICAL: You MUST provide ALL parameters - do NOT call with missing arguments!**
+
+        **CORRECT USAGE EXAMPLE:**
+        ```
+        finalize_result(
+            value_searched="x-trace-id",
+            origins=[
+                {
+                    "source_type": "network_response",
+                    "location": "response headers",
+                    "context": "x-trace-id: abc123",
+                    "entry_id": "req_abc123"
+                }
+            ],
+            explanation="The x-trace-id originates from the search API response headers and is used in subsequent requests",
+            likely_source_index=0
+        )
+        ```
+
+        **WRONG - DO NOT DO THIS:**
+        ```
+        finalize_result()  # ❌ WRONG - Missing all required parameters!
+        ```
+
+        Required parameters:
+        - value_searched: The token/value that was searched for (string)
+        - origins: List of all discovered origins (list of dicts with keys: source_type, location, context, entry_id)
+        - explanation: Explanation of how the value flows through the system (string)
+        - likely_source_index: Index in origins array of the most likely original source (int, or -1 if unclear)
 
         If the value cannot be found anywhere, call `finalize_failure` with an explanation.
     """).strip()

@@ -108,28 +108,28 @@ def main() -> None:
         logger.error("No network data source provided. Use --network-jsonl or --cdp-captures-dir")
         raise ValueError("Network data is required for routine discovery")
 
-    # Load data stores
-    logger.info("Loading data stores...")
+    # Load data loaders
+    logger.info("Loading data loaders...")
 
-    network_data_store = NetworkDataStore(network_jsonl)
-    logger.info("Network data loaded: %d transactions", network_data_store.stats.total_requests)
+    network_data_loader = NetworkDataLoader(network_jsonl)
+    logger.info("Network data loaded: %d transactions", network_data_loader.stats.total_requests)
 
-    storage_data_store: StorageDataStore | None = None
+    storage_data_loader: StorageDataLoader | None = None
     if storage_jsonl and Path(storage_jsonl).exists():
-        storage_data_store = StorageDataStore(storage_jsonl)
-        logger.info("Storage data loaded: %d events", storage_data_store.stats.total_events)
+        storage_data_loader = StorageDataLoader(storage_jsonl)
+        logger.info("Storage data loaded: %d events", storage_data_loader.stats.total_events)
 
-    window_property_data_store: WindowPropertyDataStore | None = None
+    window_property_data_loader: WindowPropertyDataLoader | None = None
     if window_props_jsonl and Path(window_props_jsonl).exists():
-        window_property_data_store = WindowPropertyDataStore(window_props_jsonl)
-        logger.info("Window property data loaded: %d events", window_property_data_store.stats.total_events)
+        window_property_data_loader = WindowPropertyDataLoader(window_props_jsonl)
+        logger.info("Window property data loaded: %d events", window_property_data_loader.stats.total_events)
 
-    js_data_store: JSDataStore | None = None
+    js_data_loader: JSDataLoader | None = None
     if js_jsonl and Path(js_jsonl).exists():
-        js_data_store = JSDataStore(js_jsonl)
-        logger.info("JS data loaded: %d files", js_data_store.stats.total_files)
+        js_data_loader = JSDataLoader(js_jsonl)
+        logger.info("JS data loaded: %d files", js_data_loader.stats.total_files)
 
-    # Initialize documentation data store with defaults from run_docs_digger.py
+    # Initialize documentation data loader with defaults from run_docs_digger.py
     BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
     DEFAULT_DOCS_DIR = str(BLUEBOX_PACKAGE_ROOT / "agent_docs")
     DEFAULT_CODE_PATHS = [
@@ -142,13 +142,13 @@ def main() -> None:
         "!" + str(BLUEBOX_PACKAGE_ROOT / "**" / "__init__.py"),
     ]
 
-    documentation_data_store = DocumentationDataStore(
+    documentation_data_loader = DocumentationDataLoader(
         documentation_paths=[DEFAULT_DOCS_DIR],
         code_paths=DEFAULT_CODE_PATHS,
     )
     logger.info("Documentation data loaded: %d docs, %d code files",
-                documentation_data_store.stats.total_docs,
-                documentation_data_store.stats.total_code)
+                documentation_data_loader.stats.total_docs,
+                documentation_data_loader.stats.total_code)
 
     # Message history storage
     message_history: list[dict] = []
@@ -171,10 +171,22 @@ def main() -> None:
         elif isinstance(message, ToolInvocationResultEmittedMessage):
             tool_name = message.tool_invocation.tool_name
             status = message.tool_invocation.status.value
-            logger.info("🔧 %s [%s]", tool_name, status)
+            tool_result = message.tool_result
+
+            # Log result preview (truncate if too long)
+            if isinstance(tool_result, str):
+                result_preview = tool_result[:300] + "..." if len(tool_result) > 300 else tool_result
+            elif isinstance(tool_result, dict):
+                result_preview = str(tool_result)[:300] + "..." if len(str(tool_result)) > 300 else str(tool_result)
+            else:
+                result_preview = str(tool_result)
+
+            logger.info("🔧 %s [%s] - %s", tool_name, status, result_preview)
+
             message_dict["tool_name"] = tool_name
             message_dict["status"] = status
-            message_dict["result"] = message.tool_invocation.result if hasattr(message.tool_invocation, "result") else None
+            message_dict["tool_arguments"] = message.tool_invocation.tool_arguments
+            message_dict["result"] = tool_result
 
         message_history.append(message_dict)
 
@@ -188,12 +200,12 @@ def main() -> None:
 
     agent = SuperDiscoveryAgent(
         emit_message_callable=handle_message,
-        network_data_store=network_data_store,
+        network_data_loader=network_data_loader,
         task=args.task,
-        storage_data_store=storage_data_store,
-        window_property_data_store=window_property_data_store,
-        js_data_store=js_data_store,
-        documentation_data_store=documentation_data_store,
+        storage_data_loader=storage_data_loader,
+        window_property_data_loader=window_property_data_loader,
+        js_data_loader=js_data_loader,
+        documentation_data_loader=documentation_data_loader,
         llm_model=llm_model,
         subagent_llm_model=subagent_model,
         max_iterations=args.max_iterations,

@@ -163,50 +163,65 @@ class SuperDiscoveryAgent(AbstractAgent):
         ## CRITICAL: You MUST Delegate
 
         You are an ORCHESTRATOR, NOT a data analyst. Your job:
-        1. Get overview of data (list_transactions, get_transaction - max 2-3 calls)
-        2. IMMEDIATELY delegate detailed analysis to specialists
-        3. Use specialist results to construct routines
+        1. SKIP list_transactions/get_transaction - delegate to network_spy instead
+        2. ALWAYS start with network_spy to get API overview
+        3. THEN use trace_hound for dynamic value tracing
+        4. Use specialist results to construct routines
 
         DO NOT:
+        - Call trace_hound before network_spy (YOU MUST START WITH NETWORK_SPY)
         - Analyze data yourself and conclude "insufficient data"
         - Try to trace tokens or find values yourself
         - Spend more than 2-3 tools looking at raw data
         - Give up without delegating to specialists
 
         ALWAYS delegate to specialists for ANY analysis beyond basic overview.
+        NETWORK_SPY MUST BE YOUR FIRST SPECIALIST TASK - NO EXCEPTIONS!
 
         ## Workflow
 
-        ### Phase 1: Planning (OPTIONAL - Can skip entirely!)
-        You can optionally call `list_transactions` to see total count, but that's it!
-        DO NOT call `get_transaction` - that's network_spy's job!
+        ### Phase 1: Planning (SKIP THIS - GO TO PHASE 2!)
+        ❌ DO NOT call list_transactions or get_transaction
+        ❌ DO NOT try to analyze data yourself
+        ✅ GO DIRECTLY TO PHASE 2 and create network_spy task
 
-        Better approach: Skip Phase 1 and go straight to Phase 2!
+        Better approach: Skip Phase 1 entirely and go straight to Phase 2!
 
         ### Phase 2: Discovering (START HERE - Must delegate!)
         Create specialist tasks for ALL analysis:
 
-        **Typical task delegation:**
+        **MANDATORY ORDER - You MUST follow this sequence:**
+
+        **STEP 1 - ALWAYS START WITH network_spy (REQUIRED FIRST):**
         ```
         Task 1: create_task(
             agent_type="network_spy",
-            prompt="Find the main API endpoint that returns [DATA USER WANTS]. Show URL, method, and response structure."
+            prompt="Find all API endpoints related to [USER'S TASK]. Show URLs, methods, and response structures."
         )
+        ```
+        ⚠️ CRITICAL: You MUST create network_spy task FIRST to get overview of API traffic!
+        DO NOT skip to trace_hound without running network_spy first!
 
+        **STEP 2 - Then run tasks and review network_spy results:**
+        ```
+        run_pending_tasks()
+        get_task_result(task_id="...")  # Review network_spy findings
+        ```
+
+        **STEP 3 - ONLY AFTER reviewing network_spy, create trace_hound tasks:**
+        ```
         Task 2: create_task(
             agent_type="trace_hound",
-            prompt="Find where the x-trace-id header comes from. Trace its origin and show how to extract it."
-        )
-
-        Task 3 (if needed): create_task(
-            agent_type="trace_hound",
-            prompt="Identify all dynamic values needed for the main API call and trace their origins."
+            prompt="For the [SPECIFIC API from network_spy], identify all dynamic values and trace their origins."
         )
         ```
 
-        Then:
-        - `run_pending_tasks` - Execute all specialists
-        - `get_task_result` - Review each result
+        **STEP 4 - Execute remaining tasks:**
+        ```
+        run_pending_tasks()
+        ```
+
+        - Review each specialist result with `get_task_result`
         - Create MORE tasks if specialists found issues or gaps
 
         ### Phase 3: Constructing
@@ -217,30 +232,45 @@ class SuperDiscoveryAgent(AbstractAgent):
            - Missing values? → Create trace_hound task to find them
            - Wrong endpoint? → Create network_spy task to verify
 
-        ### Phase 4: Validating (if browser connected)
-        1. `execute_routine` - Test the routine
-        2. If execution fails:
-           - Placeholder resolution failed? → trace_hound to verify value paths
-           - Wrong API? → network_spy to double-check endpoint
-           - Need DOM extraction? → js_specialist for browser code
+        ### Phase 4: Validating (AUTOMATIC)
+        ⚠️ CRITICAL: construct_routine AUTOMATICALLY executes the routine and returns results!
+
+        After calling `construct_routine`, review the execution feedback in the result:
+
+        **If execution_success = True:**
+        - The routine works! Call `done` to complete discovery
+
+        **If execution_success = False:**
+        - Review execution_error and failed_placeholders
+        - Fix issues:
+          * Placeholder resolution failed? → Use trace_hound to verify value paths
+          * Wrong API? → Use network_spy to double-check endpoint
+          * Need DOM extraction? → Use js_specialist for browser code
+        - Call `construct_routine` AGAIN with fixes (it will auto-execute again)
+        - Repeat until execution_success = True
+
+        **YOU CANNOT CALL `done` UNTIL construct_routine RETURNS execution_success=True!**
 
         ### Phase 5: Completion
-        1. `done` - When routine works
+        1. `done` - ONLY after successful execution validation
         2. `fail` - ONLY after specialists confirm data is truly insufficient (rare!)
 
         ## Example: Good Delegation Pattern
 
         User task: "Build routine to search for trains on Amtrak"
 
-        ✓ CORRECT approach (Immediate delegation):
+        ✓ CORRECT approach (Immediate delegation with automatic validation):
         1. create_task(network_spy, "Find the Amtrak API endpoint that returns train schedules and pricing")
         2. create_task(trace_hound, "Identify any auth tokens, session IDs, or dynamic values needed for the search API")
         3. run_pending_tasks
         4. get_task_result for each task
-        5. If gaps found, create more specialist tasks
-        6. construct_routine from specialist findings
-        7. execute_routine (if browser available)
-        8. done
+        5. record_identified_endpoint, record_extracted_variable, record_resolved_variable (track discoveries)
+        6. If gaps found, create more specialist tasks
+        7. get_discovery_context (see all discoveries)
+        8. construct_routine from specialist findings (THIS AUTOMATICALLY EXECUTES THE ROUTINE!)
+        9. Review execution results in construct_routine response:
+           - If execution_success=True: call done
+           - If execution_success=False: fix issues, call construct_routine again (repeats until success)
 
         ✗ WRONG approach (Manual inspection):
         1. list_transactions
@@ -553,8 +583,9 @@ class SuperDiscoveryAgent(AbstractAgent):
                             )
                     elif phase == DiscoveryPhase.VALIDATING:
                         guidance = (
-                            "Phase: VALIDATING. Call execute_routine to test the routine. "
-                            "If it fails, fix issues and reconstruct."
+                            "Phase: VALIDATING. Review the construct_routine execution results. "
+                            "If execution_success=True, call done. If execution_success=False, "
+                            "fix the issues and call construct_routine again."
                         )
                     else:
                         guidance = f"Phase: {phase.value}. Use tools to make progress."
@@ -612,9 +643,9 @@ class SuperDiscoveryAgent(AbstractAgent):
             return TraceHoundAgent(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
-                network_data_loader=self._network_data_loader,
-                storage_data_loader=self._storage_data_loader,
-                window_property_data_loader=self._window_property_data_loader,
+                network_data_store=self._network_data_loader,
+                storage_data_store=self._storage_data_loader,
+                window_property_data_store=self._window_property_data_loader,
             )
 
         elif agent_type == SpecialistAgentType.NETWORK_SPY:
@@ -626,7 +657,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             return NetworkSpyAgent(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
-                network_data_loader=self._network_data_loader,
+                network_data_store=self._network_data_loader,
             )
 
         elif agent_type == SpecialistAgentType.DOCS_DIGGER:
@@ -638,7 +669,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             return DocsDiggerAgent(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
-                documentation_data_loader=self._documentation_data_loader,
+                documentation_data_store=self._documentation_data_loader,
             )
 
         else:
@@ -1557,33 +1588,81 @@ class SuperDiscoveryAgent(AbstractAgent):
             )
 
             self._discovery_state.production_routine = routine
+            self._discovery_state.phase = DiscoveryPhase.VALIDATING
 
-            # Move to validation if browser available, otherwise complete
-            if self._remote_debugging_address:
-                self._discovery_state.phase = DiscoveryPhase.VALIDATING
-                result = {
-                    "success": True,
-                    "routine_name": routine.name,
-                    "operations_count": len(routine.operations),
-                    "parameters_count": len(routine.parameters),
-                    "next_step": "Use execute_routine to validate",
+            # AUTOMATICALLY execute the routine and return results
+            if not self._remote_debugging_address:
+                return {
+                    "success": False,
+                    "error": "Cannot construct routine without browser connection for validation. "
+                            "Provide --remote-debugging-address to enable routine execution and validation."
                 }
-                if warnings:
-                    result["warnings"] = warnings
+
+            # Execute routine automatically with observed parameter values
+            from bluebox.llms.tools.execute_routine_tool import execute_routine
+
+            test_params = {}
+            for param in routine.parameters:
+                if param.observed_value:
+                    test_params[param.name] = param.observed_value
+
+            exec_result = execute_routine(
+                routine=routine.model_dump(),
+                parameters=test_params,
+                remote_debugging_address=self._remote_debugging_address,
+                timeout=60,
+                close_tab_when_done=True,
+            )
+
+            # Build result with execution feedback
+            result = {
+                "success": True,
+                "routine_constructed": True,
+                "routine_name": routine.name,
+                "operations_count": len(routine.operations),
+                "parameters_count": len(routine.parameters),
+            }
+
+            if warnings:
+                result["warnings"] = warnings
+
+            # Add execution results
+            if not exec_result.get("success"):
+                result["execution_success"] = False
+                result["execution_error"] = exec_result.get("error", "Unknown error")
+                result["message"] = (
+                    "Routine constructed and executed, but execution FAILED. "
+                    "Review the error, fix issues, and call construct_routine again. "
+                    "DO NOT call done until execution succeeds."
+                )
                 return result
-            else:
-                self._discovery_state.phase = DiscoveryPhase.COMPLETE
-                self._final_routine = routine
-                result = {
-                    "success": True,
-                    "routine_name": routine.name,
-                    "operations_count": len(routine.operations),
-                    "parameters_count": len(routine.parameters),
-                    "message": "Routine constructed (no browser for validation)",
-                }
-                if warnings:
-                    result["warnings"] = warnings
+
+            routine_exec_result = exec_result.get("result")
+            if not routine_exec_result or not routine_exec_result.ok:
+                failed_placeholders = []
+                if routine_exec_result and routine_exec_result.placeholder_resolution:
+                    failed_placeholders = [
+                        k for k, v in routine_exec_result.placeholder_resolution.items() if v is None
+                    ]
+
+                result["execution_success"] = False
+                result["execution_error"] = routine_exec_result.error if routine_exec_result else "Execution failed"
+                result["failed_placeholders"] = failed_placeholders
+                result["message"] = (
+                    "Routine constructed and executed, but execution FAILED. "
+                    "Review the error and failed placeholders, fix issues, and call construct_routine again. "
+                    "DO NOT call done until execution succeeds."
+                )
                 return result
+
+            # Execution SUCCESS!
+            result["execution_success"] = True
+            result["execution_data_preview"] = str(routine_exec_result.data)[:500] if routine_exec_result.data else None
+            result["message"] = (
+                "Routine constructed and executed SUCCESSFULLY! "
+                "The routine works correctly. You can now call done to complete discovery."
+            )
+            return result
 
         except Exception as e:
             error_msg = str(e)
@@ -1665,20 +1744,20 @@ class SuperDiscoveryAgent(AbstractAgent):
                 "attempt": self._discovery_state.validation_attempts,
             }
 
-        # Success!
-        self._discovery_state.phase = DiscoveryPhase.COMPLETE
-        self._final_routine = self._discovery_state.production_routine
+        # Success! Mark validation as succeeded
+        self._validation_succeeded = True
         return {
             "success": True,
-            "message": "Routine validated successfully",
+            "message": "Routine validated successfully! You can now call done to complete discovery.",
             "data_preview": str(exec_result.data)[:500] if exec_result.data else None,
+            "next_step": "Call done to mark discovery as complete"
         }
 
     ## Tools - Completion
 
     @agent_tool()
     def _done(self) -> dict[str, Any]:
-        """Mark discovery as complete. Call this when the routine is ready."""
+        """Mark discovery as complete. Call this ONLY after construct_routine shows execution_success=True."""
         if not self._discovery_state.production_routine:
             return {"error": "No routine constructed. Use construct_routine first."}
 
@@ -1686,7 +1765,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         self._final_routine = self._discovery_state.production_routine
         return {
             "success": True,
-            "message": "Discovery completed",
+            "message": "Discovery completed with validated routine",
             "routine_name": self._final_routine.name,
         }
 

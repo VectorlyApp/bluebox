@@ -160,11 +160,31 @@ class NetworkSpyAgent(AbstractSpecialist):
         After sufficient exploration, the `finalize_result` and `finalize_failure` tools become available.
 
         ### finalize_result - Use when endpoint IS found
-        Call it with a list of endpoints, each containing:
-        - request_ids: The HAR entry request_id(s) for this endpoint (MUST be valid IDs from the data store)
-        - url: The API URL
-        - endpoint_inputs: Brief description of inputs (e.g., "from_city, to_city, date as query params")
-        - endpoint_outputs: Brief description of outputs (e.g., "JSON array of train options with prices")
+
+        **CRITICAL: You MUST provide the `endpoints` parameter - do NOT call finalize_result() with no arguments!**
+
+        **CORRECT USAGE EXAMPLE:**
+        ```
+        finalize_result(endpoints=[
+            {
+                "request_ids": ["abc123", "def456"],
+                "url": "https://api.example.com/search",
+                "endpoint_inputs": "query params: origin, destination, date",
+                "endpoint_outputs": "JSON array of results with id, name, price fields"
+            }
+        ])
+        ```
+
+        **WRONG - DO NOT DO THIS:**
+        ```
+        finalize_result()  # ❌ WRONG - Missing endpoints parameter!
+        ```
+
+        Each endpoint dict must contain:
+        - request_ids: List of HAR entry request_id(s) for this endpoint (MUST be valid IDs from get_entry_detail)
+        - url: The API URL (string)
+        - endpoint_inputs: Brief description of inputs (string, e.g., "query params: origin, destination, date")
+        - endpoint_outputs: Brief description of outputs (string, e.g., "JSON array of results with id, name, price fields")
 
         Order endpoints by execution sequence if they form a multi-step flow.
         Be concise with inputs/outputs - just the key fields and types, not full schema.
@@ -588,10 +608,10 @@ class NetworkSpyAgent(AbstractSpecialist):
         Finalize the endpoint discovery with your findings. Call this when you have identified the API endpoint(s) needed for the user's task. You can specify multiple endpoints if the task requires a multi-step flow (e.g., authenticate -> search -> get details). NOTE: All request_ids must be valid IDs from the data store.
 
         Args:
-            endpoints: List of discovered endpoints. Order by execution sequence if multi-step.
+            endpoints: List of discovered endpoints. Order by execution sequence if multi-step. Each endpoint must be a dict with keys: request_ids (list of str), url (str), endpoint_inputs (str), endpoint_outputs (str). Example: [{"request_ids": ["abc123"], "url": "https://api.example.com/search", "endpoint_inputs": "query params: q, limit", "endpoint_outputs": "JSON array with results"}]
         """
         if not endpoints:
-            return {"error": "endpoints list is required and cannot be empty"}
+            return {"error": "endpoints list is required and cannot be empty. Call finalize_result with a list of endpoints."}
 
         # Validate and build endpoint objects
         discovered_endpoints: list[DiscoveredEndpoint] = []
@@ -602,13 +622,13 @@ class NetworkSpyAgent(AbstractSpecialist):
             endpoint_outputs = ep.get("endpoint_outputs", "")
 
             if not request_ids:
-                return {"error": f"endpoints[{i}].request_ids is required"}
+                return {"error": f"endpoints[{i}].request_ids is required. Call finalize_result with a list of endpoints."}
             if not url:
-                return {"error": f"endpoints[{i}].url is required"}
+                return {"error": f"endpoints[{i}].url is required. Call finalize_result with a list of endpoints."}
             if not endpoint_inputs:
-                return {"error": f"endpoints[{i}].endpoint_inputs is required"}
+                return {"error": f"endpoints[{i}].endpoint_inputs is required. Call finalize_result with a list of endpoints."}
             if not endpoint_outputs:
-                return {"error": f"endpoints[{i}].endpoint_outputs is required"}
+                return {"error": f"endpoints[{i}].endpoint_outputs is required. Call finalize_result with a list of endpoints."}
 
             # Validate that all request_ids actually exist in the data store
             invalid_ids = []
@@ -637,7 +657,7 @@ class NetworkSpyAgent(AbstractSpecialist):
 
         return {
             "status": "success",
-            "message": f"Endpoint discovery finalized with {len(discovered_endpoints)} endpoint(s)",
+            "message": f"Endpoint discovery finalized with {len(discovered_endpoints)} endpoint(s).",
             "result": self._discovery_result.model_dump(),
         }
 
