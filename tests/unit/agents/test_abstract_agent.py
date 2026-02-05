@@ -56,7 +56,7 @@ class ConcreteAgent(AbstractAgent):
     def _get_system_prompt(self) -> str:
         return "You are a test agent."
 
-    @agent_tool()
+    @agent_tool
     def _echo(self, message: str) -> dict[str, Any]:
         """
         Echo the message back.
@@ -66,7 +66,7 @@ class ConcreteAgent(AbstractAgent):
         """
         return {"echoed": message}
 
-    @agent_tool()
+    @agent_tool
     def _add_numbers(self, a: int, b: int) -> dict[str, Any]:
         """
         Add two numbers.
@@ -87,12 +87,12 @@ class ConcreteAgent(AbstractAgent):
         """A tool gated by a feature flag."""
         return {"gated": True}
 
-    @agent_tool()
+    @agent_tool
     def _no_params(self) -> dict[str, Any]:
         """A tool with no parameters."""
         return {"status": "ok"}
 
-    @agent_tool()
+    @agent_tool
     def _optional_params(self, required: str, opt: int = 5) -> dict[str, Any]:
         """
         Tool with mixed required and optional params.
@@ -103,12 +103,12 @@ class ConcreteAgent(AbstractAgent):
         """
         return {"required": required, "opt": opt}
 
-    @agent_tool()
+    @agent_tool
     def _raises_error(self) -> dict[str, Any]:
         """A tool that raises an exception."""
         raise RuntimeError("intentional test error")
 
-    @agent_tool()
+    @agent_tool
     def _search(self, params: SearchParams) -> dict[str, Any]:
         """
         Search with structured params.
@@ -398,7 +398,7 @@ class TestCollectTools:
         """A subclass with additional tools has its own cache entry."""
 
         class ExtendedAgent(ConcreteAgent):
-            @agent_tool()
+            @agent_tool
             def _extra(self) -> dict[str, Any]:
                 """An extra tool."""
                 return {}
@@ -1135,14 +1135,14 @@ class TestAgentToolDecorator:
         assert self._get_tool("echo").name == "echo"  # _echo -> echo
 
     def test_multiple_leading_underscores_stripped(self) -> None:
-        @agent_tool()
+        @agent_tool
         def __double_prefix(self, x: str) -> dict[str, Any]:
             """Double underscore tool."""
             return {}
         assert __double_prefix._tool_meta.name == "double_prefix"
 
     def test_no_underscore_prefix_unchanged(self) -> None:
-        @agent_tool()
+        @agent_tool
         def plain_name(self, x: str) -> dict[str, Any]:
             """No underscore prefix."""
             return {}
@@ -1160,7 +1160,7 @@ class TestAgentToolDecorator:
         assert meta.description == "Echo the message back."
 
     def test_multi_paragraph_description_joined(self) -> None:
-        @agent_tool()
+        @agent_tool
         def _multi_para(self) -> dict[str, Any]:
             """First paragraph here.
 
@@ -1176,7 +1176,7 @@ class TestAgentToolDecorator:
 
     def test_multiple_blank_lines_between_paragraphs(self) -> None:
         """Multiple consecutive blank lines should collapse, not produce extra spaces."""
-        @agent_tool()
+        @agent_tool
         def _gappy(self) -> dict[str, Any]:
             """Line one.
 
@@ -1195,7 +1195,7 @@ class TestAgentToolDecorator:
 
     def test_blank_lines_before_args_section(self) -> None:
         """Blank lines right before Args: should not leak empty content."""
-        @agent_tool()
+        @agent_tool
         def _blanks_before_args(self) -> dict[str, Any]:
             """Do the thing.
 
@@ -1208,7 +1208,7 @@ class TestAgentToolDecorator:
         assert _blanks_before_args._tool_meta.description == "Do the thing."
 
     def test_three_paragraphs_with_mixed_blank_lines(self) -> None:
-        @agent_tool()
+        @agent_tool
         def _three_para(self) -> dict[str, Any]:
             """First paragraph.
 
@@ -1233,7 +1233,7 @@ class TestAgentToolDecorator:
         assert meta.description == "Add two numbers."
 
     def test_returns_section_excluded_from_description(self) -> None:
-        @agent_tool()
+        @agent_tool
         def _with_returns(self, x: str) -> dict[str, Any]:
             """Do something useful.
 
@@ -1245,7 +1245,7 @@ class TestAgentToolDecorator:
         assert "Returns" not in _with_returns._tool_meta.description
 
     def test_raises_section_excluded_from_description(self) -> None:
-        @agent_tool()
+        @agent_tool
         def _with_raises(self) -> dict[str, Any]:
             """Do something risky.
 
@@ -1256,7 +1256,7 @@ class TestAgentToolDecorator:
         assert _with_raises._tool_meta.description == "Do something risky."
 
     def test_example_section_excluded_from_description(self) -> None:
-        @agent_tool()
+        @agent_tool
         def _with_example(self) -> dict[str, Any]:
             """Compute a value.
 
@@ -1268,7 +1268,7 @@ class TestAgentToolDecorator:
 
     def test_description_whitespace_collapsed(self) -> None:
         """Extra whitespace from indentation should be collapsed to single spaces."""
-        @agent_tool()
+        @agent_tool
         def _spaced(self) -> dict[str, Any]:
             """
             Has    extra   whitespace   here.
@@ -1297,13 +1297,13 @@ class TestAgentToolDecorator:
 
     def test_raises_without_description_or_docstring(self) -> None:
         with pytest.raises(ValueError, match="no description and no docstring"):
-            @agent_tool()
+            @agent_tool
             def _bare(self) -> dict[str, Any]:
                 pass
 
     def test_raises_with_empty_docstring(self) -> None:
         with pytest.raises(ValueError, match="no description and no docstring"):
-            @agent_tool()
+            @agent_tool
             def _empty_doc(self) -> dict[str, Any]:
                 ""
                 pass
@@ -1352,7 +1352,7 @@ class TestAgentToolDecorator:
         assert schema["properties"]["b"]["type"] == "integer"
 
     def test_bool_param_type(self) -> None:
-        @agent_tool()
+        @agent_tool
         def _bool_tool(self, flag: bool) -> dict[str, Any]:
             """Tool with bool param.
 
@@ -1364,7 +1364,7 @@ class TestAgentToolDecorator:
         assert schema["properties"]["flag"]["type"] == "boolean"
 
     def test_float_param_type(self) -> None:
-        @agent_tool()
+        @agent_tool
         def _float_tool(self, value: float) -> dict[str, Any]:
             """Tool with float param.
 
@@ -1376,7 +1376,7 @@ class TestAgentToolDecorator:
         assert schema["properties"]["value"]["type"] == "number"
 
     def test_list_param_type(self) -> None:
-        @agent_tool()
+        @agent_tool
         def _list_tool(self, items: list[str]) -> dict[str, Any]:
             """Tool with list param.
 
@@ -1389,7 +1389,7 @@ class TestAgentToolDecorator:
         assert schema["properties"]["items"]["items"]["type"] == "string"
 
     def test_dict_param_type(self) -> None:
-        @agent_tool()
+        @agent_tool
         def _dict_tool(self, data: dict[str, int]) -> dict[str, Any]:
             """Tool with dict param.
 
@@ -1402,7 +1402,7 @@ class TestAgentToolDecorator:
         assert schema["properties"]["data"]["additionalProperties"]["type"] == "integer"
 
     def test_nullable_param_type(self) -> None:
-        @agent_tool()
+        @agent_tool
         def _nullable_tool(self, value: str | None) -> dict[str, Any]:
             """Tool with nullable param.
 
@@ -1439,7 +1439,7 @@ class TestAgentToolDecorator:
 
     def test_param_description_with_parenthetical_type(self) -> None:
         """Docstring format 'param (type): desc' should extract cleanly."""
-        @agent_tool()
+        @agent_tool
         def _paren_type(self, query: str) -> dict[str, Any]:
             """Search tool.
 
@@ -1509,7 +1509,7 @@ class TestAgentToolDecorator:
 
     def test_complex_mixed_signature(self) -> None:
         """Tool with diverse param types: all types and required/optional are correct."""
-        @agent_tool()
+        @agent_tool
         def _complex(
             self,
             name: str,
@@ -1609,7 +1609,7 @@ class TestAgentToolDecorator:
         from pydantic import TypeAdapter
         from bluebox.data_models.routine.routine import Routine
 
-        @agent_tool()
+        @agent_tool
         def _update_routine(self, routine: Routine, dry_run: bool = False) -> dict[str, Any]:
             """Update an existing routine definition.
 

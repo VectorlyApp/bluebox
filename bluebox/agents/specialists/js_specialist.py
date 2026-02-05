@@ -84,56 +84,37 @@ class JSSpecialist(AbstractSpecialist):
     SYSTEM_PROMPT: str = dedent("""\
         You are a JavaScript expert specializing in browser DOM manipulation.
 
-        ## Your Capabilities
-
-        1. **Write IIFE JavaScript**: Write JavaScript code for browser execution in routines.
-        2. **Inspect DOM**: Analyze page structure via DOM snapshots to inform your code.
-
         ## Tools
 
-        - **get_dom_snapshot**: Get DOM snapshot (latest by default)
-        - **validate_js_code**: Dry-run validation of JS code
-        - **submit_js_code**: Submit final validated JS code
-        - **execute_js_in_browser**: Test your JavaScript code against the live website. Navigates to the URL and executes your IIFE, returning the result and any console output. Use this selectively — it's most valuable when your code depends on live page state (e.g. reading cookies, sessionStorage, or dynamically rendered DOM). Simple, deterministic code can go straight to submit.
+        - `get_dom_snapshot` — DOM snapshot (latest by default)
+        - `validate_js_code` — dry-run validation
+        - `submit_js_code` — submit final validated code
+        - `execute_js_in_browser` — test against live site (use selectively; best for live-state-dependent code like cookies/storage/dynamic DOM)
 
         ## Guidelines
 
-        - Use `validate_js_code` before `submit_js_code` to catch errors early
-        - Keep code concise and focused on the specific task
-        - Use DOM APIs (querySelector, getElementById, etc.) for element interaction
-        - Use sessionStorage for passing data between operations
+        - Validate before submitting
+        - Keep code concise and focused
         - Use `get_dom_snapshot` to understand page structure before writing code
     """)
 
     _NETWORK_TRAFFIC_PROMPT_SECTION: str = dedent("""
         ## Network Traffic Data
 
-        You have access to captured network traffic from the browser session:
-        - **search_network_traffic**: Search/filter captured HTTP requests by method, host, path, status code, content type, or response body text. Returns abbreviated results (no bodies).
-        - **get_network_entry**: Get full details of a specific request by its request_id, including headers and response body.
-
-        Use these to understand API endpoints, response formats, and data available on the page.
+        - `search_network_traffic` — filter captured HTTP requests by method, host, path, status, content type, or body text
+        - `get_network_entry` — full details of a request by ID (headers + body)
     """)
 
     _JS_FILES_PROMPT_SECTION: str = dedent("""
         ## JavaScript Files (Use Sparingly)
 
-        You have access to captured JavaScript files from the browser session. These are the actual
-        JS bundles served by the web app — often large and minified.
+        Captured JS bundles from the web app (often large/minified). Most DOM tasks don't need these.
+        Useful for: finding hardcoded API endpoints, understanding client-side auth, checking token references.
 
-        **IMPORTANT**: Use these tools when the task specifically requires understanding the
-        web app's JavaScript implementation. For example:
-        - "Does this site's JS reference a specific token or variable name?"
-        - "How does the client-side code handle authentication?"
-        - "What API endpoints are hardcoded in the JavaScript?"
-
-        For most DOM manipulation tasks, you likely do NOT need to inspect the site's JS files.
-
-        Tools:
-        - **search_js_files**: Search JS file contents by keywords. Returns ranked results by relevance. Use this for simple lookups.
-        - **search_js_files_regex**: Search by regex pattern with context snippets. Expensive — has a 15s timeout. Use for complex patterns.
-        - **get_js_file_content**: Get the content of a specific JS file (truncated for large files).
-        - **list_js_files**: List all captured JS files with URLs and sizes.
+        - `search_js_files` — keyword search (fast)
+        - `search_js_files_regex` — regex search with context (15s timeout, use sparingly)
+        - `get_js_file_content` — file content by request_id
+        - `list_js_files` — list all captured JS files
     """)
 
     AUTONOMOUS_SYSTEM_PROMPT: str = dedent("""\
@@ -142,22 +123,14 @@ class JSSpecialist(AbstractSpecialist):
         ## Your Mission
 
         Given a task, write IIFE JavaScript code that accomplishes it in the browser context.
-        Return structured output matching the orchestrator's expected schema.
 
         ## Process
 
-        1. **Understand**: Analyze the task and determine what DOM manipulation is needed
-        2. **Check DOM**: Use `get_dom_snapshot` to understand the current page structure
-        3. **Write**: Write the JavaScript code, validate it
-        4. **Finalize**: Call `finalize_with_output` with your code and details matching the expected schema
-
-        ## When finalize tools are available
-
-        - **finalize_with_output**: Submit your findings matching the expected output schema
-        - **finalize_with_failure**: Report that the task could not be completed
-        - **execute_js_in_browser**: Test your code against the live website. Most useful when code depends on live page state (cookies, storage, dynamic DOM). Simple, deterministic code can skip this.
-
-        Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
+        1. **Understand**: Analyze the task requirements
+        2. **Check DOM**: Use `get_dom_snapshot` to understand page structure
+        3. **Write**: Write and validate the JavaScript code
+        4. **Test** (optional): Use `execute_js_in_browser` if code depends on live page state
+        5. **Finalize**: Call the appropriate finalize tool with your code
     """)
 
     ## Magic methods
@@ -241,58 +214,24 @@ class JSSpecialist(AbstractSpecialist):
         if self._js_data_store is not None:
             context_parts.append(self._JS_FILES_PROMPT_SECTION)
 
-        # Include output schema if set by orchestrator
-        schema_section = self._get_output_schema_prompt_section()
-        if schema_section:
-            context_parts.append(schema_section)
-
-        # Urgency notices
-        if self.can_finalize:
-            remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
-            if remaining <= 2:
-                context_parts.append(
-                    f"\n\n## CRITICAL: Only {remaining} iterations remaining!\n"
-                    f"You MUST call finalize_with_output or finalize_with_failure NOW!"
-                )
-            elif remaining <= 4:
-                context_parts.append(
-                    f"\n\n## URGENT: Only {remaining} iterations remaining.\n"
-                    f"Finalize your output soon."
-                )
-            else:
-                context_parts.append(
-                    "\n\n## Finalize tools are now available.\n"
-                    "Call finalize_with_output when ready."
-                )
-        else:
-            context_parts.append(
-                f"\n\n## Continue exploring (iteration {self._autonomous_iteration}).\n"
-                "Finalize tools will become available after more exploration."
-            )
+        context_parts.append(self._get_output_schema_prompt_section())
+        context_parts.append(self._get_urgency_notice())
 
         return "".join(context_parts)
 
-    # _register_tools and _execute_tool are provided by the base class
-    # via @agent_tool decorators below.
-
     def _get_autonomous_initial_message(self, task: str) -> str:
+        # Use correct tool names based on whether output schema is set
+        if self.has_output_schema:
+            finalize_success = "finalize_with_output"
+        else:
+            finalize_success = "finalize_result"
+
         return (
             f"TASK: {task}\n\n"
-            "Write IIFE JavaScript code to accomplish this task in the browser. "
-            "Research the available JS files and DOM structure if needed, then validate and submit your code."
+            f"Write IIFE JavaScript code to accomplish this task in the browser. "
+            f"Research the available JS files and DOM structure if needed, then validate "
+            f"and call {finalize_success} with your code."
         )
-
-    def _check_autonomous_completion(self, tool_name: str) -> bool:
-        # Delegate to base class (handles generic finalize tools)
-        return super()._check_autonomous_completion(tool_name)
-
-    def _get_autonomous_result(self):
-        # Delegate to base class (returns wrapped result)
-        return super()._get_autonomous_result()
-
-    def _reset_autonomous_state(self) -> None:
-        # Call base class to reset generic state
-        super()._reset_autonomous_state()
 
     ## Tools
 

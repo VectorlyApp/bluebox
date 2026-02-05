@@ -83,12 +83,65 @@ class AbstractSpecialist(AbstractAgent):
     ## Class-level tracking of all specialist subclasses
     _subclasses: ClassVar[list[type[AbstractSpecialist]]] = []
 
+    ## Magic methods
+
+    def __init__(
+        self,
+        emit_message_callable: Callable[[EmittedMessage], None],
+        persist_chat_callable: Callable[[Chat], Chat] | None = None,
+        persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
+        stream_chunk_callable: Callable[[str], None] | None = None,
+        llm_model: LLMModel = OpenAIModel.GPT_5_1,
+        run_mode: RunMode = RunMode.CONVERSATIONAL,
+        chat_thread: ChatThread | None = None,
+        existing_chats: list[Chat] | None = None,
+        documentation_data_loader: DocumentationDataLoader | None = None,
+    ) -> None:
+        """
+        Initialize the specialist.
+
+        Args:
+            emit_message_callable: Callback to emit messages to the host.
+            persist_chat_callable: Optional callback to persist Chat objects.
+            persist_chat_thread_callable: Optional callback to persist ChatThread.
+            stream_chunk_callable: Optional callback for streaming text chunks.
+            llm_model: The LLM model to use.
+            run_mode: How the specialist will be run (conversational or autonomous).
+            chat_thread: Existing ChatThread to continue, or None for new.
+            existing_chats: Existing Chat messages if loading from persistence.
+            documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
+        """
+        # lifecycle state (must be set before parent __init__, which calls _sync_tools)
+        self.run_mode: RunMode = run_mode
+        self._autonomous_iteration: int = 0
+        self._autonomous_config: AutonomousConfig = AutonomousConfig()
+
+        # orchestrator-defined output schema (set via set_output_schema())
+        self._task_output_schema: dict[str, Any] | None = None
+        self._task_output_description: str | None = None
+        self._notes: list[str] = []
+        self._wrapped_result: SpecialistResultWrapper | None = None
+
+        # call parent init
+        super().__init__(
+            emit_message_callable=emit_message_callable,
+            persist_chat_callable=persist_chat_callable,
+            persist_chat_thread_callable=persist_chat_thread_callable,
+            stream_chunk_callable=stream_chunk_callable,
+            llm_model=llm_model,
+            chat_thread=chat_thread,
+            existing_chats=existing_chats,
+            documentation_data_loader=documentation_data_loader,
+        )
+
     def __init_subclass__(cls: type[AbstractSpecialist], **kwargs: NamedTuple) -> None:
         """Register subclass when it's defined."""
         super().__init_subclass__(**kwargs)
         # Only register concrete specialists (not intermediate ABCs)
         if not cls.__name__.startswith("Abstract"):
             cls._subclasses.append(cls)
+
+    ## Class methods
 
     @classmethod
     def get_all_subclasses(cls) -> list[type[AbstractSpecialist]]:
@@ -147,10 +200,12 @@ class AbstractSpecialist(AbstractAgent):
         Return True to stop the loop (e.g., finalize_result was called
         and self._autonomous_result is now set).
 
-        Default implementation checks for the generic finalize tools
-        (finalize_with_output, finalize_with_failure). Subclasses should
-        override this and call super() to also check for their own
-        specialist-specific finalize tools.
+        Default implementation checks for the generic finalize tools:
+        - finalize_with_output, finalize_with_failure (with output schema)
+        - finalize_result, finalize_failure (without output schema)
+
+        Subclasses should override this and call super() to also check
+        for their own specialist-specific finalize tools.
 
         Args:
             tool_name: Name of the tool that was just executed.
@@ -158,8 +213,14 @@ class AbstractSpecialist(AbstractAgent):
         Returns:
             True if the autonomous loop should stop.
         """
-        # Check for generic finalize tools
-        if tool_name in ("finalize_with_output", "finalize_with_failure"):
+        # Check for generic finalize tools (both with-schema and without-schema variants)
+        finalize_tools = (
+            "finalize_with_output",
+            "finalize_with_failure",
+            "finalize_result",
+            "finalize_failure",
+        )
+        if tool_name in finalize_tools:
             return self._wrapped_result is not None
         return False
 
@@ -176,57 +237,6 @@ class AbstractSpecialist(AbstractAgent):
             or None if max iterations were reached without finalization.
         """
         return self._wrapped_result
-
-    ## Magic methods
-
-    def __init__(
-        self,
-        emit_message_callable: Callable[[EmittedMessage], None],
-        persist_chat_callable: Callable[[Chat], Chat] | None = None,
-        persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
-        stream_chunk_callable: Callable[[str], None] | None = None,
-        llm_model: LLMModel = OpenAIModel.GPT_5_1,
-        run_mode: RunMode = RunMode.CONVERSATIONAL,
-        chat_thread: ChatThread | None = None,
-        existing_chats: list[Chat] | None = None,
-        documentation_data_loader: DocumentationDataLoader | None = None,
-    ) -> None:
-        """
-        Initialize the specialist.
-
-        Args:
-            emit_message_callable: Callback to emit messages to the host.
-            persist_chat_callable: Optional callback to persist Chat objects.
-            persist_chat_thread_callable: Optional callback to persist ChatThread.
-            stream_chunk_callable: Optional callback for streaming text chunks.
-            llm_model: The LLM model to use.
-            run_mode: How the specialist will be run (conversational or autonomous).
-            chat_thread: Existing ChatThread to continue, or None for new.
-            existing_chats: Existing Chat messages if loading from persistence.
-            documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
-        """
-        # lifecycle state (must be set before parent __init__, which calls _sync_tools)
-        self.run_mode: RunMode = run_mode
-        self._autonomous_iteration: int = 0
-        self._autonomous_config: AutonomousConfig = AutonomousConfig()
-
-        # orchestrator-defined output schema (set via set_output_schema())
-        self._task_output_schema: dict[str, Any] | None = None
-        self._task_output_description: str | None = None
-        self._notes: list[str] = []
-        self._wrapped_result: SpecialistResultWrapper | None = None
-
-        # call parent init
-        super().__init__(
-            emit_message_callable=emit_message_callable,
-            persist_chat_callable=persist_chat_callable,
-            persist_chat_thread_callable=persist_chat_thread_callable,
-            stream_chunk_callable=stream_chunk_callable,
-            llm_model=llm_model,
-            chat_thread=chat_thread,
-            existing_chats=existing_chats,
-            documentation_data_loader=documentation_data_loader,
-        )
 
     ## Properties
 
@@ -313,6 +323,24 @@ class AbstractSpecialist(AbstractAgent):
 
         return "".join(parts)
 
+    def _get_urgency_notice(self) -> str:
+        """
+        Iteration-aware urgency notice for autonomous system prompts.
+
+        Appended to autonomous prompts to nudge the LLM toward finalizing.
+        Replaces the per-specialist urgency logic that was previously duplicated.
+        """
+        finalize_tool = "finalize_with_output" if self.has_output_schema else "finalize_result"
+
+        if self.can_finalize:
+            remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
+            if remaining <= 2:
+                return f"\n\n## URGENT: Only {remaining} iteration(s) left — call `{finalize_tool}` NOW."
+            if remaining <= 4:
+                return f"\n\n## Finalize soon — {remaining} iterations remaining."
+            return f"\n\n## `{finalize_tool}` is now available."
+        return f"\n\n## Continue exploring (iteration {self._autonomous_iteration})."
+
     ## Generic Finalize Tool (for orchestrator-defined schemas)
 
     @agent_tool(availability=lambda self: self.can_finalize and self.has_output_schema)
@@ -381,12 +409,66 @@ class AbstractSpecialist(AbstractAgent):
             "reason": reason,
         }
 
+    ## Generic Finalize Tools (for tasks without output schema)
+
+    @agent_tool(availability=lambda self: self.can_finalize and not self.has_output_schema)
+    @token_optimized
+    def _finalize_result(self, output: dict[str, Any]) -> dict[str, Any]:
+        """
+        Finalize and return the result of your analysis.
+
+        Use this to submit your findings when you have completed the task.
+        The output should contain all relevant information discovered.
+
+        Args:
+            output: Dictionary containing your findings and analysis results.
+        """
+        self._wrapped_result = SpecialistResultWrapper(
+            output=output,
+            success=True,
+            notes=self._notes.copy(),
+        )
+
+        logger.info("Specialist finalized with result (no schema)")
+        return {
+            "status": "success",
+            "message": "Result submitted successfully",
+            "notes_count": len(self._notes),
+        }
+
+    @agent_tool(availability=lambda self: self.can_finalize and not self.has_output_schema)
+    @token_optimized
+    def _finalize_failure(self, reason: str) -> dict[str, Any]:
+        """
+        Finalize with failure when the task cannot be completed.
+
+        Use this when you cannot produce results after thorough analysis.
+
+        Args:
+            reason: Explanation of why the task could not be completed.
+        """
+        self._wrapped_result = SpecialistResultWrapper(
+            output=None,
+            success=False,
+            notes=self._notes.copy(),
+            failure_reason=reason,
+        )
+
+        logger.info("Specialist finalized with failure (no schema): %s", reason)
+        return {
+            "status": "failure",
+            "message": "Task marked as failed",
+            "reason": reason,
+        }
+
     ## Public API
 
     def run_autonomous(
         self,
         task: str,
         config: AutonomousConfig | None = None,
+        output_schema: dict[str, Any] | None = None,
+        output_description: str | None = None,
     ) -> BaseModel | None:
         """
         Run the specialist autonomously to completion.
@@ -399,6 +481,8 @@ class AbstractSpecialist(AbstractAgent):
         Args:
             task: User task description.
             config: Autonomous run configuration (iterations limits). Uses defaults if None.
+            output_schema: JSON Schema defining expected output structure.
+            output_description: Human-readable description of expected output.
 
         Returns:
             Specialist-specific result model, or None if max iterations reached.
@@ -409,6 +493,10 @@ class AbstractSpecialist(AbstractAgent):
 
         # Subclass should reset its own result fields in _reset_autonomous_state()
         self._reset_autonomous_state()
+
+        # Set output schema AFTER reset (so it doesn't get cleared)
+        if output_schema:
+            self.set_output_schema(output_schema, output_description)
 
         # Seed the conversation
         initial_message = self._get_autonomous_initial_message(task)
@@ -462,7 +550,13 @@ class AbstractSpecialist(AbstractAgent):
 
             messages = self._build_messages_for_llm()
             try:
-                response = self._call_llm(messages, self._get_autonomous_system_prompt())
+                # Use tool_choice="required" to force the LLM to always call a tool
+                # This prevents the loop from exiting due to text-only responses
+                response = self._call_llm(
+                    messages,
+                    self._get_autonomous_system_prompt(),
+                    tool_choice="required",
+                )
 
                 if response.response_id:
                     self._previous_response_id = response.response_id
@@ -484,7 +578,8 @@ class AbstractSpecialist(AbstractAgent):
                         )
 
                 if not response.tool_calls:
-                    logger.warning("Autonomous loop: no tool calls in iteration %d", self._autonomous_iteration)
+                    # This shouldn't happen with tool_choice="required", but handle it just in case
+                    logger.warning("Autonomous loop: no tool calls in iteration %d (unexpected with tool_choice=required)", self._autonomous_iteration)
                     return
 
                 # Process tool calls and check for completion

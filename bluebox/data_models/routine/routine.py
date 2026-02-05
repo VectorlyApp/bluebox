@@ -12,6 +12,7 @@ Contains:
 
 import ast
 import json
+import re
 import time
 
 from pydantic import BaseModel, Field, model_validator
@@ -22,6 +23,7 @@ from bluebox.data_models.routine.operation import (
     RoutineFetchOperation,
     RoutineNavigateOperation,
     RoutineOperationUnion,
+    RoutineReturnOperation,
 )
 from bluebox.data_models.routine.parameter import (
     Parameter,
@@ -185,6 +187,126 @@ class Routine(BaseModel):
 
         # Return comma-separated unique base URLs (sorted for consistency)
         return ','.join(sorted(base_urls))
+
+    def get_structure_warnings(self) -> list[str]:
+        """
+        Validate routine structure and return warnings (not errors).
+
+        Checks common structural issues that might indicate problems:
+        - Operation count (expects navigate, fetch, return at minimum)
+        - First operation should be navigate
+        - Last operation should be return
+        - Second-to-last should be fetch
+        - All parameters should be used
+        - Placeholder prefixes should be valid
+        - Session storage keys should be used consistently
+
+        Returns:
+            List of warning messages for potential issues.
+        """
+        warnings: list[str] = []
+        operations = [op.model_dump() for op in self.operations]
+
+        # 1. Operation count check
+        if len(operations) < 3:
+            warnings.append(
+                f"Routine has {len(operations)} operations, expected at least 3 (navigate, fetch, return)"
+            )
+
+        if not operations:
+            return warnings  # Can't check further without operations
+
+        # 2. First operation should be navigate
+        first_op_type = operations[0].get("type")
+        if first_op_type != "navigate":
+            warnings.append(f"First operation is '{first_op_type}', expected 'navigate'")
+
+        # 3. Last operation should be return
+        last_op_type = operations[-1].get("type")
+        if last_op_type != "return":
+            warnings.append(f"Last operation is '{last_op_type}', expected 'return'")
+
+        # 4. Second-to-last should be fetch
+        if len(operations) >= 2:
+            second_last_type = operations[-2].get("type")
+            if second_last_type != "fetch":
+                warnings.append(f"Second-to-last operation is '{second_last_type}', expected 'fetch'")
+
+        # 5. Extract all placeholders from operations
+        all_placeholders = self._extract_placeholder_names(operations)
+
+        # 6. Check that every parameter is used
+        defined_params = {p.name for p in self.parameters}
+        unused_params = defined_params - all_placeholders
+        for param_name in unused_params:
+            warnings.append(f"Parameter '{param_name}' is defined but not used in operations")
+
+        # 7. Check placeholder prefixes (for non-parameter placeholders)
+        valid_prefixes = {"sessionStorage", "cookie", "localStorage", "uuid", "epoch_milliseconds", "meta", "windowProperty"}
+        remaining_placeholders = all_placeholders - defined_params
+        for placeholder in remaining_placeholders:
+            prefix = placeholder.split(":")[0]
+            if prefix not in valid_prefixes:
+                warnings.append(
+                    f"Placeholder '{placeholder}' has invalid prefix '{prefix}'. "
+                    f"Valid prefixes: {sorted(valid_prefixes)}"
+                )
+
+        # 8. Collect session storage keys from placeholders
+        used_session_keys: set[str] = set()
+        for placeholder in all_placeholders:
+            if placeholder.startswith("sessionStorage:"):
+                # Extract key name (before any dot path)
+                key_path = placeholder.split(":", 1)[1]
+                key_name = key_path.split(".")[0]
+                used_session_keys.add(key_name)
+
+        # Include return operation's key
+        if self.operations and isinstance(self.operations[-1], RoutineReturnOperation):
+            return_key = self.operations[-1].session_storage_key
+            if return_key:
+                used_session_keys.add(return_key)
+
+        # 9. Collect all fetch session storage keys
+        all_fetch_keys: set[str] = set()
+        for op in self.operations:
+            if isinstance(op, RoutineFetchOperation):
+                if op.session_storage_key:
+                    all_fetch_keys.add(op.session_storage_key)
+
+        # 10. Check for unused fetch keys
+        unused_fetch_keys = all_fetch_keys - used_session_keys
+        for key in unused_fetch_keys:
+            warnings.append(f"Fetch session_storage_key '{key}' is set but never used")
+
+        # 11. Last fetch key should match return key
+        if len(self.operations) >= 2:
+            last_op = self.operations[-1]
+            second_last_op = self.operations[-2]
+            if isinstance(last_op, RoutineReturnOperation) and isinstance(second_last_op, RoutineFetchOperation):
+                return_key = last_op.session_storage_key
+                fetch_key = second_last_op.session_storage_key
+                if return_key and fetch_key and return_key != fetch_key:
+                    warnings.append(
+                        f"Last fetch session_storage_key '{fetch_key}' does not match "
+                        f"return session_storage_key '{return_key}'"
+                    )
+
+        return warnings
+
+    def _extract_placeholder_names(self, data: list | dict | str) -> set[str]:
+        """
+        Extract all {{...}} placeholder names from routine data.
+
+        Args:
+            data: Dict, list, or string containing routine data.
+
+        Returns:
+            Set of placeholder names (without the {{ }} wrapper).
+        """
+        json_str = json.dumps(data) if not isinstance(data, str) else data
+        matches = re.findall(r'\{\{(.*?)\}\}', json_str)
+        return set(matches)
 
     def execute(
         self,

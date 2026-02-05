@@ -59,7 +59,7 @@ class ConcreteSpecialist(AbstractSpecialist):
 
     # --- Tools with various signatures and availability ---
 
-    @agent_tool()
+    @agent_tool
     def _always_available(self, message: str) -> dict[str, Any]:
         """
         A tool that is always available.
@@ -69,12 +69,12 @@ class ConcreteSpecialist(AbstractSpecialist):
         """
         return {"echoed": message}
 
-    @agent_tool()
+    @agent_tool
     def _no_params(self) -> dict[str, Any]:
         """A tool with no parameters."""
         return {"status": "ok"}
 
-    @agent_tool()
+    @agent_tool
     def _with_optional_params(
         self,
         required_arg: str,
@@ -95,7 +95,7 @@ class ConcreteSpecialist(AbstractSpecialist):
             "nullable": nullable_arg,
         }
 
-    @agent_tool()
+    @agent_tool
     def _with_list_param(self, items: list[str], count: int) -> dict[str, Any]:
         """
         A tool that accepts a list parameter.
@@ -260,7 +260,7 @@ class TestAgentToolDecorator:
     def test_raises_error_without_description_or_docstring(self) -> None:
         """Decorator raises ValueError if no description and no docstring."""
         with pytest.raises(ValueError, match="no description and no docstring"):
-            @agent_tool()
+            @agent_tool
             def _no_docs(self) -> dict[str, Any]:
                 pass  # no docstring!
 
@@ -319,9 +319,11 @@ class TestCollectTools:
             "finalize_gated",
             "with_explicit_schema",
             "finalize",
-            # Generic finalize tools from AbstractSpecialist
+            # Generic finalize tools from AbstractSpecialist (both with and without output schema)
             "finalize_with_output",
             "finalize_with_failure",
+            "finalize_result",
+            "finalize_failure",
             # Documentation tools from AbstractAgent
             "search_docs",
             "get_doc_file",
@@ -352,7 +354,7 @@ class TestCollectTools:
         """Different subclasses have independent tool caches."""
 
         class AnotherSpecialist(ConcreteSpecialist):
-            @agent_tool()
+            @agent_tool
             def _extra_tool(self) -> dict[str, Any]:
                 """An extra tool only in this subclass."""
                 return {}

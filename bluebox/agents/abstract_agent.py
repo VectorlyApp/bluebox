@@ -61,7 +61,7 @@ class _ToolMeta:
 
 
 def agent_tool(
-    description: str | None = None,
+    description: str | Callable | None = None,
     parameters: dict[str, Any] | None = None,
     *,
     availability: bool | Callable[..., bool] = True,
@@ -71,6 +71,16 @@ def agent_tool(
 
     The tool name is derived from the method name by stripping leading
     underscores. For example, ``_get_dom_snapshot`` becomes ``get_dom_snapshot``.
+
+    Can be used with or without parentheses:
+        @agent_tool
+        def _my_tool(self, x: str) -> dict: ...
+
+        @agent_tool()
+        def _my_tool(self, x: str) -> dict: ...
+
+        @agent_tool(description="Custom description")
+        def _my_tool(self, x: str) -> dict: ...
 
     Args:
         description: Tool description for the LLM. If None, extracted from
@@ -84,16 +94,16 @@ def agent_tool(
               gated behind lifecycle state or dynamic conditions (e.g.
               ``availability=lambda self: self.can_finalize``).
     """
-    def decorator(method: Callable) -> Callable:
+    def decorator(method: Callable, desc: str | None = None) -> Callable:
         tool_name = method.__name__.lstrip("_")
 
         # auto-extract description from docstring if not provided
-        if description is None:
+        if desc is None:
             final_description = extract_description_from_docstring(docstring=method.__doc__)
             if not final_description:
                 raise ValueError(f"Tool {tool_name} has no description and no docstring")
         else:
-            final_description = description
+            final_description = desc
 
         # auto-generate parameters schema from method signature if not provided
         if parameters is None:
@@ -108,7 +118,13 @@ def agent_tool(
             availability=availability,
         )
         return method
-    return decorator
+
+    # Support @agent_tool without parentheses - description will be the function
+    if callable(description):
+        return decorator(description, desc=None)
+
+    # Support @agent_tool() or @agent_tool(description="...")
+    return lambda method: decorator(method, desc=description)
 
 
 class AbstractAgent(ABC):
@@ -559,8 +575,23 @@ class AbstractAgent(ABC):
 
     ## LLMs and streaming
 
-    def _call_llm(self, messages: list[dict[str, Any]], system_prompt: str) -> LLMChatResponse:
-        """Call the LLM, using streaming if a chunk callback is configured."""
+    def _call_llm(
+        self,
+        messages: list[dict[str, Any]],
+        system_prompt: str,
+        tool_choice: str | None = None,
+    ) -> LLMChatResponse:
+        """
+        Call the LLM, using streaming if a chunk callback is configured.
+
+        Args:
+            messages: List of message dicts for the LLM.
+            system_prompt: System prompt for the LLM.
+            tool_choice: Tool choice mode. Can be:
+                - None or "auto": Let the model decide (default)
+                - "required": Force the model to use at least one tool
+                - Tool name string: Force the model to use a specific tool
+        """
         self._sync_tools()  # ensure tool availability reflects current state
 
         # Append documentation context (injected here so subclasses can't accidentally omit it)
@@ -569,18 +600,20 @@ class AbstractAgent(ABC):
             system_prompt = system_prompt + docs_section
 
         if self._stream_chunk_callable:
-            return self._process_streaming_response(messages, system_prompt)
+            return self._process_streaming_response(messages, system_prompt, tool_choice)
 
         return self.llm_client.call_sync(
             messages=messages,
             system_prompt=system_prompt,
             previous_response_id=self._previous_response_id,
+            tool_choice=tool_choice,
         )
 
     def _process_streaming_response(
         self,
         messages: list[dict[str, Any]],
         system_prompt: str,
+        tool_choice: str | None = None,
     ) -> LLMChatResponse:
         """Process LLM response with streaming, calling chunk callback for each chunk."""
         response: LLMChatResponse | None = None
@@ -589,6 +622,7 @@ class AbstractAgent(ABC):
             messages=messages,
             system_prompt=system_prompt,
             previous_response_id=self._previous_response_id,
+            tool_choice=tool_choice,
         ):
             if isinstance(item, str):
                 if self._stream_chunk_callable:
