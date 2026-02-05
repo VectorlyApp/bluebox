@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ConfigDict
 
-from bluebox.data_models.orchestration.task import Task, SubAgent
+from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus
 
 
 class AgentOrchestrationState(BaseModel):
@@ -45,23 +45,23 @@ class AgentOrchestrationState(BaseModel):
 
     def get_pending_tasks(self) -> list[Task]:
         """Get all pending tasks."""
-        return [t for t in self.tasks.values() if t.status == "pending"]
+        return [t for t in self.tasks.values() if t.status == TaskStatus.PENDING]
 
     def get_in_progress_tasks(self) -> list[Task]:
         """Get all in-progress tasks."""
-        return [t for t in self.tasks.values() if t.status == "in_progress"]
+        return [t for t in self.tasks.values() if t.status == TaskStatus.IN_PROGRESS]
 
     def get_paused_tasks(self) -> list[Task]:
         """Get all paused tasks (hit max_loops, can resume)."""
-        return [t for t in self.tasks.values() if t.status == "paused"]
+        return [t for t in self.tasks.values() if t.status == TaskStatus.PAUSED]
 
     def get_completed_tasks(self) -> list[Task]:
         """Get all completed tasks."""
-        return [t for t in self.tasks.values() if t.status == "completed"]
+        return [t for t in self.tasks.values() if t.status == TaskStatus.COMPLETED]
 
     def get_failed_tasks(self) -> list[Task]:
         """Get all failed tasks."""
-        return [t for t in self.tasks.values() if t.status == "failed"]
+        return [t for t in self.tasks.values() if t.status == TaskStatus.FAILED]
 
     def get_queue_status(self) -> dict[str, Any]:
         """Get a summary of task status for system prompt."""
