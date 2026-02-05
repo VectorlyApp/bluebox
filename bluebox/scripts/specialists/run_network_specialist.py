@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-bluebox/scripts/specialists/run_network_spy.py
+bluebox/scripts/specialists/run_network_specialist.py
 
 # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
-Interactive CLI for the Network Spy agent.
+Interactive CLI for the NetworkSpecialist.
 
 Usage:
-    bluebox-network-spy --jsonl-path ./cdp_captures/network/events.jsonl
-    bluebox-network-spy --jsonl-path ./cdp_captures/network/events.jsonl --model gpt-5.1
+    bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl
+    bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl --model gpt-5.1
 """
 
 import argparse
@@ -21,8 +21,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from bluebox.agents.specialists.network_spy_agent import (
-    NetworkSpyAgent,
+from bluebox.agents.specialists.network_specialist import (
+    NetworkSpecialist,
     EndpointDiscoveryResult,
     DiscoveryFailureResult,
 )
@@ -77,9 +77,9 @@ class TerminalNetworkSpyChat(AbstractTerminalAgentChat):
         self.data_path = data_path
         super().__init__(console=console, agent_color="cyan")
 
-    def _create_agent(self) -> NetworkSpyAgent:
+    def _create_agent(self) -> NetworkSpecialist:
         """Create the Network Spy agent instance."""
-        return NetworkSpyAgent(
+        return NetworkSpecialist(
             emit_message_callable=self._handle_message,
             network_data_store=self.network_store,
             stream_chunk_callable=self._handle_stream_chunk,

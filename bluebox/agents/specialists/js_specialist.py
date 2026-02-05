@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import time
 from textwrap import dedent
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-from pydantic import BaseModel, Field
-
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode, specialist_tool
+from bluebox.agents.abstract_agent import agent_tool
+from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
 from bluebox.cdp.connection import (
     cdp_new_tab,
     create_cdp_helpers,
@@ -33,30 +32,10 @@ from bluebox.utils.js_utils import generate_js_evaluate_wrapper_js, validate_js
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
+if TYPE_CHECKING:
+    from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
+
 logger = get_logger(name=__name__)
-
-
-class JSCodeResult(BaseModel):
-    """Successful JS code submission result."""
-    js_code: str = Field(description="IIFE-wrapped JavaScript code")
-    session_storage_key: str | None = Field(
-        default=None,
-        description="Key for sessionStorage result",
-    )
-    timeout_seconds: float = Field(
-        default=5.0,
-        description="Max execution time",
-    )
-    description: str = Field(description="What the code does")
-
-
-class JSCodeFailureResult(BaseModel):
-    """Failure result when JS code cannot be produced."""
-    reason: str = Field(description="Why code could not be produced")
-    attempted_approaches: list[str] = Field(
-        default_factory=list,
-        description="Approaches that were tried",
-    )
 
 
 class JSSpecialist(AbstractSpecialist):
@@ -163,19 +142,22 @@ class JSSpecialist(AbstractSpecialist):
         ## Your Mission
 
         Given a task, write IIFE JavaScript code that accomplishes it in the browser context.
+        Return structured output matching the orchestrator's expected schema.
 
         ## Process
 
         1. **Understand**: Analyze the task and determine what DOM manipulation is needed
         2. **Check DOM**: Use `get_dom_snapshot` to understand the current page structure
-        3. **Write**: Write the JavaScript code, validate it, then submit
-        4. **Finalize**: Call `submit_js_code` with your validated code
+        3. **Write**: Write the JavaScript code, validate it
+        4. **Finalize**: Call `finalize_with_output` with your code and details matching the expected schema
 
         ## When finalize tools are available
 
-        - **submit_js_code**: Submit your final validated JavaScript code
-        - **finalize_failure**: Report that the task cannot be accomplished with JS
+        - **finalize_with_output**: Submit your findings matching the expected output schema
+        - **finalize_with_failure**: Report that the task could not be completed
         - **execute_js_in_browser**: Test your code against the live website. Most useful when code depends on live page state (cookies, storage, dynamic DOM). Simple, deterministic code can skip this.
+
+        Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
     """)
 
     ## Magic methods
@@ -194,15 +176,12 @@ class JSSpecialist(AbstractSpecialist):
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         remote_debugging_address: str | None = None,
+        documentation_data_loader: DocumentationDataLoader | None = None,
     ) -> None:
         self._dom_snapshots = dom_snapshots or []
         self._remote_debugging_address = remote_debugging_address
         self._network_data_store = network_data_store
         self._js_data_store = js_data_store
-
-        # autonomous result state
-        self._js_result: JSCodeResult | None = None
-        self._js_failure: JSCodeFailureResult | None = None
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -213,6 +192,7 @@ class JSSpecialist(AbstractSpecialist):
             run_mode=run_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
+            documentation_data_loader=documentation_data_loader,
         )
         logger.debug(
             "JSSpecialist initialized: dom_snapshots=%d, network_data_store=%s, js_data_store=%s, browser=%s",
@@ -261,23 +241,28 @@ class JSSpecialist(AbstractSpecialist):
         if self._js_data_store is not None:
             context_parts.append(self._JS_FILES_PROMPT_SECTION)
 
+        # Include output schema if set by orchestrator
+        schema_section = self._get_output_schema_prompt_section()
+        if schema_section:
+            context_parts.append(schema_section)
+
         # Urgency notices
         if self.can_finalize:
             remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
             if remaining <= 2:
                 context_parts.append(
                     f"\n\n## CRITICAL: Only {remaining} iterations remaining!\n"
-                    f"You MUST call submit_js_code or finalize_failure NOW!"
+                    f"You MUST call finalize_with_output or finalize_with_failure NOW!"
                 )
             elif remaining <= 4:
                 context_parts.append(
                     f"\n\n## URGENT: Only {remaining} iterations remaining.\n"
-                    f"Finalize your code soon."
+                    f"Finalize your output soon."
                 )
             else:
                 context_parts.append(
                     "\n\n## Finalize tools are now available.\n"
-                    "Call submit_js_code when your code is ready."
+                    "Call finalize_with_output when ready."
                 )
         else:
             context_parts.append(
@@ -288,7 +273,7 @@ class JSSpecialist(AbstractSpecialist):
         return "".join(context_parts)
 
     # _register_tools and _execute_tool are provided by the base class
-    # via @specialist_tool decorators below.
+    # via @agent_tool decorators below.
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         return (
@@ -298,22 +283,20 @@ class JSSpecialist(AbstractSpecialist):
         )
 
     def _check_autonomous_completion(self, tool_name: str) -> bool:
-        if tool_name == "submit_js_code" and self._js_result is not None:
-            return True
-        if tool_name == "finalize_failure" and self._js_failure is not None:
-            return True
-        return False
+        # Delegate to base class (handles generic finalize tools)
+        return super()._check_autonomous_completion(tool_name)
 
-    def _get_autonomous_result(self) -> BaseModel | None:
-        return self._js_result or self._js_failure
+    def _get_autonomous_result(self):
+        # Delegate to base class (returns wrapped result)
+        return super()._get_autonomous_result()
 
     def _reset_autonomous_state(self) -> None:
-        self._js_result = None
-        self._js_failure = None
+        # Call base class to reset generic state
+        super()._reset_autonomous_state()
 
     ## Tools
 
-    @specialist_tool()
+    @agent_tool()
     @token_optimized
     def _validate_js_code(self, js_code: str) -> dict[str, Any]:
         """
@@ -323,7 +306,6 @@ class JSSpecialist(AbstractSpecialist):
             js_code: JavaScript code to validate.
         """
         result = validate_js(js_code)
-
         if result.errors:
             return {
                 "valid": False,
@@ -342,7 +324,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: bool(self._dom_snapshots))
+    @agent_tool(availability=lambda self: bool(self._dom_snapshots))
     @token_optimized
     def _get_dom_snapshot(self, index: int = -1) -> dict[str, Any]:
         """
@@ -379,78 +361,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self.can_finalize)
-    @token_optimized
-    def _submit_js_code(
-        self,
-        js_code: str,
-        description: str,
-        session_storage_key: str | None = None,
-        timeout_seconds: float = 5.0,
-    ) -> dict[str, Any]:
-        """
-        Submit validated JavaScript code as the final result. The code must be IIFE-wrapped and pass all validation checks.
-
-        Args:
-            js_code: IIFE-wrapped JavaScript code.
-            description: Brief description of what the code does.
-            session_storage_key: Optional sessionStorage key to store the result.
-            timeout_seconds: Max execution time in seconds (default 5.0).
-        """
-        # Validate the code
-        result = validate_js(js_code)
-        if result.errors:
-            return {
-                "error": "Validation failed",
-                "errors": result.errors,
-                "warnings": result.warnings,
-            }
-
-        # Store result
-        self._js_result = JSCodeResult(
-            js_code=js_code,
-            session_storage_key=session_storage_key,
-            timeout_seconds=timeout_seconds,
-            description=description,
-        )
-
-        logger.debug("JS code submitted: %s", description)
-        return {
-            "status": "success",
-            "message": "JavaScript code submitted successfully",
-            "result": self._js_result.model_dump(),
-        }
-
-
-    @specialist_tool(availability=lambda self: self.can_finalize)
-    @token_optimized
-    def _finalize_failure(
-        self,
-        reason: str,
-        attempted_approaches: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """
-        Report that the JavaScript task cannot be accomplished.
-
-        Args:
-            reason: Why the task cannot be accomplished with JavaScript.
-            attempted_approaches: List of approaches that were tried.
-        """
-        self._js_failure = JSCodeFailureResult(
-            reason=reason,
-            attempted_approaches=attempted_approaches or [],
-        )
-
-        logger.info("JS specialist failed: %s", reason)
-
-        return {
-            "status": "failure",
-            "message": "JavaScript task marked as failed",
-            "result": self._js_failure.model_dump(),
-        }
-
-
-    @specialist_tool(availability=lambda self: self._network_data_store is not None)
+    @agent_tool(availability=lambda self: self._network_data_store is not None)
     @token_optimized
     def _search_network_traffic(
         self,
@@ -507,7 +418,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self._network_data_store is not None)
+    @agent_tool(availability=lambda self: self._network_data_store is not None)
     @token_optimized
     def _get_network_entry(
         self,
@@ -554,14 +465,17 @@ class JSSpecialist(AbstractSpecialist):
         return result
 
 
-    @specialist_tool(availability=lambda self: self._js_data_store is not None)
+    @agent_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
     def _search_js_files(self, terms: list[str], top_n: int = 10) -> dict[str, Any]:
         """
-        Search captured JS files by keywords. Returns ranked results by relevance. Use this to find JS files that reference specific tokens, variables, or API endpoints.
+        Search captured JS files by keywords.
+
+        Returns ranked results by relevance. Use this to find JS files that
+        reference specific tokens, variables, or API endpoints.
 
         Args:
-            terms: Search terms (case-insensitive). Files are ranked by how many terms match and total hits.
+            terms: Search terms (case-insensitive). Ranked by match count and hits.
             top_n: Max results to return (default 10).
         """
         if self._js_data_store is None:
@@ -579,7 +493,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self._js_data_store is not None)
+    @agent_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
     def _search_js_files_regex(
         self,
@@ -589,7 +503,11 @@ class JSSpecialist(AbstractSpecialist):
         snippet_padding_chars: int = 80,
     ) -> dict[str, Any]:
         """
-        Search captured JS files by regex pattern. Returns matches with surrounding context snippets. WARNING: Regex searches can be expensive on large minified JS files. There is a 15-second timeout. Prefer search_js_files (keyword search) for simple lookups.
+        Search captured JS files by regex pattern.
+
+        Returns matches with surrounding context snippets. WARNING: Regex searches
+        can be expensive on large minified JS files. There is a 15-second timeout.
+        Prefer search_js_files (keyword search) for simple lookups.
 
         Args:
             pattern: Regex pattern to search for (case-insensitive).
@@ -621,15 +539,18 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self._js_data_store is not None)
+    @agent_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
     def _get_js_file_content(self, request_id: str, max_chars: int = 10_000) -> dict[str, Any]:
         """
-        Get the content of a specific JS file by request_id. Content is truncated for large files. Use search_js_files first to find relevant files.
+        Get the content of a specific JS file by request_id.
+
+        Content is truncated for large files. Use search_js_files first to find
+        relevant files.
 
         Args:
             request_id: The request_id from search_js_files or list_js_files results.
-            max_chars: Max characters to return (default 10000). Large JS files are truncated.
+            max_chars: Max characters to return (default 10000). Large files truncated.
         """
         if self._js_data_store is None:
             return {"error": "No JS data store available"}
@@ -648,10 +569,14 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: self._js_data_store is not None)
+    @agent_tool(availability=lambda self: self._js_data_store is not None)
     @token_optimized
     def _list_js_files(self) -> dict[str, Any]:
-        """List all captured JS files with URLs and sizes. Use this to see what JS files are available before searching."""
+        """
+        List all captured JS files with URLs and sizes.
+
+        Use this to see what JS files are available before searching.
+        """
         if self._js_data_store is None:
             return {"error": "No JS data store available"}
 
@@ -665,7 +590,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @specialist_tool(availability=lambda self: bool(self._remote_debugging_address))
+    @agent_tool(availability=lambda self: bool(self._remote_debugging_address))
     @token_optimized
     def _execute_js_in_browser(
         self,
@@ -675,13 +600,17 @@ class JSSpecialist(AbstractSpecialist):
         keep_open: bool = False,
     ) -> dict[str, Any]:
         """
-        Test JavaScript code against the live website. Navigates to the URL and executes your IIFE, returning the result and any console output. Use this to verify your code works before submitting. Set keep_open=true to keep the browser tab open after execution (useful for visual changes).
+        Test JavaScript code against the live website.
+
+        Navigates to the URL and executes your IIFE, returning the result and any
+        console output. Use this to verify your code works before submitting.
 
         Args:
             url: URL to navigate to first (or empty string to skip navigation).
             js_code: IIFE JavaScript code to execute.
             timeout_seconds: Max execution time in seconds (default 5.0).
-            keep_open: If true, keep the browser tab open after execution instead of closing it. Useful for visual changes. Default false.
+            keep_open: If true, keep the browser tab open after execution.
+                Useful for visual changes. Default false.
         """
         if not self._remote_debugging_address:
             return {"error": "No browser connection configured"}

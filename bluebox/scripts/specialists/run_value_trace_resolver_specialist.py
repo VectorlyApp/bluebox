@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-bluebox/scripts/specialists/run_trace_hound.py
+bluebox/scripts/specialists/run_value_trace_resolver_specialist.py
 
 # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
-Interactive CLI for the Trace Hound agent - traces where tokens/values originated from.
+Interactive CLI for the ValueTraceResolverSpecialist - traces where tokens/values originated from.
 
 Usage:
-    bluebox-trace-hound --network-jsonl ./cdp_captures/network/events.jsonl
-    bluebox-trace-hound --storage-jsonl ./cdp_captures/storage/events.jsonl
-    bluebox-trace-hound \
+    bluebox-value-trace-resolver --network-jsonl ./cdp_captures/network/events.jsonl
+    bluebox-value-trace-resolver --storage-jsonl ./cdp_captures/storage/events.jsonl
+    bluebox-value-trace-resolver \
         --network-jsonl ./cdp_captures/network/events.jsonl \
         --storage-jsonl ./cdp_captures/storage/events.jsonl \
         --window-props-jsonl ./cdp_captures/window_properties/events.jsonl
@@ -25,8 +25,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from bluebox.agents.specialists.trace_hound_agent import (
-    TraceHoundAgent,
+from bluebox.agents.specialists.value_trace_resolver_specialist import (
+    ValueTraceResolverSpecialist,
     TokenOriginResult,
     TokenOriginFailure,
 )
@@ -85,9 +85,9 @@ class TerminalTraceHoundChat(AbstractTerminalAgentChat):
         self.llm_model = llm_model
         super().__init__(console=console, agent_color="magenta")
 
-    def _create_agent(self) -> TraceHoundAgent:
+    def _create_agent(self) -> ValueTraceResolverSpecialist:
         """Create the Trace Hound agent instance."""
-        return TraceHoundAgent(
+        return ValueTraceResolverSpecialist(
             emit_message_callable=self._handle_message,
             network_data_store=self.network_store,
             storage_data_store=self.storage_store,

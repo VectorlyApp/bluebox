@@ -46,24 +46,18 @@ class TaskStatus(StrEnum):
     FAILED = "failed"             # Failed with an error
 
 
-class SpecialistAgentType(StrEnum):
-    """Types of specialist agents available for task delegation."""
-    JS_SPECIALIST = "js_specialist"
-    NETWORK_SPY = "network_spy"
-    TRACE_HOUND = "trace_hound"
-    INTERACTION_SPECIALIST = "interaction_specialist"
-    DOCS_DIGGER = "docs_digger"
-
-
 class Task(BaseModel):
     """
     A unit of work delegated to a specialist subagent.
 
     Tasks track the full lifecycle from creation through completion,
     including pause/resume support for long-running operations.
+
+    Note: agent_type values must match AbstractSpecialist.AGENT_TYPE on specialist classes.
+    Use AbstractSpecialist.get_all_agent_types() for runtime discovery of valid types.
     """
     id: str = Field(default_factory=generate_short_id)
-    agent_type: SpecialistAgentType = Field(description="Type of specialist to handle this task")
+    agent_type: str = Field(description="Type of specialist to handle this task (e.g., 'network_spy', 'trace_hound')")
     agent_id: str | None = Field(
         default=None,
         description="ID of the subagent to use. None means create new instance."
@@ -94,6 +88,16 @@ class Task(BaseModel):
         description="Additional context data for the specialist"
     )
 
+    # Output schema (orchestrator-defined)
+    output_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="JSON Schema defining the expected output structure from the specialist"
+    )
+    output_description: str | None = Field(
+        default=None,
+        description="Human-readable description of what output the specialist should return"
+    )
+
 
 class SubAgent(BaseModel):
     """
@@ -103,7 +107,7 @@ class SubAgent(BaseModel):
     and learned context to persist.
     """
     id: str = Field(default_factory=generate_short_id)
-    type: SpecialistAgentType = Field(description="The type of specialist this agent is")
+    type: str = Field(description="The type of specialist this agent is (e.g., 'network_spy')")
     llm_model: str = Field(description="The LLM model used by this agent")
     task_ids: list[str] = Field(
         default_factory=list,

@@ -41,8 +41,11 @@ from bluebox.data_models.llms.interaction import (
     ToolInvocationStatus,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
+from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader, FileType
 from bluebox.llms.llm_client import LLMClient
 from bluebox.llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
+from bluebox.utils.data_utils import format_bytes
+from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -143,6 +146,7 @@ class AbstractAgent(ABC):
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
+        documentation_data_loader: DocumentationDataLoader | None = None,
     ) -> None:
         """
         Initialize the agent.
@@ -155,11 +159,13 @@ class AbstractAgent(ABC):
             llm_model: The LLM model to use.
             chat_thread: Existing ChatThread to continue, or None for new.
             existing_chats: Existing Chat messages if loading from persistence.
+            documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
         """
         self._emit_message_callable = emit_message_callable
         self._persist_chat_callable = persist_chat_callable
         self._persist_chat_thread_callable = persist_chat_thread_callable
         self._stream_chunk_callable = stream_chunk_callable
+        self._documentation_data_loader = documentation_data_loader
         self._previous_response_id: str | None = None
         self._response_id_to_chat_index: dict[str, int] = {}
 
@@ -280,13 +286,17 @@ class AbstractAgent(ABC):
         if extra:
             return {"error": f"Unknown parameter(s) for '{tool_name}': {', '.join(sorted(extra))}"}
 
-        # validate types using the handler's type hints
+        # validate and coerce types using the handler's type hints
+        # (e.g. a dict from the LLM becomes a Pydantic model instance)
+        validated_arguments: dict[str, Any] = {}
         try:
             hints = get_type_hints(obj=handler)
             for param_name, value in tool_arguments.items():
                 if param_name in hints and value is not None:
                     expected_type = hints[param_name]
-                    TypeAdapter(expected_type).validate_python(value)
+                    validated_arguments[param_name] = TypeAdapter(expected_type).validate_python(value)
+                else:
+                    validated_arguments[param_name] = value
         except ValidationError as e:
             # extract readable error message
             errors = e.errors()
@@ -299,7 +309,7 @@ class AbstractAgent(ABC):
 
         logger.debug("Executing tool %s with arguments: %s", tool_name, tool_arguments)
         # handler is unbound (from cls, not self) so pass self explicitly
-        return handler(self, **tool_arguments)
+        return handler(self, **validated_arguments)
 
     @classmethod
     @functools.lru_cache
@@ -318,11 +328,245 @@ class AbstractAgent(ABC):
                 results.append((tool_meta, method))
         return tuple(results)
 
+    ## Documentation tools & prompt section
+
+    def _get_documentation_prompt_section(self) -> str:
+        """
+        Build a light system prompt addendum describing available documentation tools and file index.
+
+        Appended automatically to system prompts when a documentation_data_loader is present.
+        Cannot be overridden by subclasses since it's injected in _call_llm.
+        """
+        if not self._documentation_data_loader:
+            return ""
+
+        stats = self._documentation_data_loader.stats
+        lines = [
+            "\n\n## Documentation Tools",
+            f"You have {stats.total_files} indexed files ({stats.total_docs} docs, {stats.total_code} code, {format_bytes(stats.total_bytes)}).",
+            "Use `search_docs`, `get_doc_file`, `search_docs_by_terms`, or `search_docs_by_regex` to query them.",
+        ]
+
+        doc_index = self._documentation_data_loader.get_documentation_index()
+        if doc_index:
+            lines.append("\nDoc files:")
+            for doc in doc_index:
+                title = doc.get("title", "")
+                if title:
+                    if len(title) > 80:
+                        title = title[:80] + "..."
+                    lines.append(f"- `{doc['filename']}`: {title}")
+                else:
+                    lines.append(f"- `{doc['filename']}`")
+
+        code_index = self._documentation_data_loader.get_code_index()
+        if code_index:
+            lines.append("\nCode files:")
+            for code in code_index:
+                docstring = code.get("docstring", "")
+                if docstring:
+                    if len(docstring) > 80:
+                        docstring = docstring[:80] + "..."
+                    lines.append(f"- `{code['filename']}`: {docstring}")
+                else:
+                    lines.append(f"- `{code['filename']}`")
+
+        return "\n".join(lines)
+
+    @agent_tool(
+        availability=lambda self: self._documentation_data_loader is not None,
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The exact string to search for.",
+                },
+                "file_type": {
+                    "type": "string",
+                    "enum": ["documentation", "code"],
+                    "description": "Optional filter by file type.",
+                },
+                "case_sensitive": {
+                    "type": "boolean",
+                    "description": "Whether the search should be case-sensitive. Defaults to false.",
+                },
+            },
+            "required": ["query"],
+        },
+    )
+    @token_optimized
+    def _search_docs(
+        self,
+        query: str,
+        file_type: str | None = None,
+        case_sensitive: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Search documentation/code file contents for an exact query string (like Cmd+F).
+
+        Returns line numbers where matches are found. Use get_doc_file to read around those lines.
+
+        Args:
+            query: The exact string to search for.
+            file_type: Optional filter: 'documentation' for docs, 'code' for source files.
+            case_sensitive: Whether the search should be case-sensitive. Defaults to false.
+        """
+        if not query:
+            return {"error": "query is required"}
+
+        file_type_enum = FileType(file_type) if file_type else None
+
+        results = self._documentation_data_loader.search_content_with_lines(
+            query=query,
+            file_type=file_type_enum,
+            case_sensitive=case_sensitive,
+            max_matches_per_file=10,
+        )
+
+        if not results:
+            return {"message": f"No matches found for '{query}'", "case_sensitive": case_sensitive}
+
+        return {
+            "query": query,
+            "case_sensitive": case_sensitive,
+            "files_with_matches": len(results),
+            "results": results[:20],
+        }
+
+    @agent_tool(availability=lambda self: self._documentation_data_loader is not None)
+    @token_optimized
+    def _get_doc_file(
+        self,
+        path: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+    ) -> dict[str, Any]:
+        """
+        Read documentation/code file content by path.
+
+        Supports optional line range. Use start_line/end_line to read around matches from search_docs.
+
+        Args:
+            path: The file path (can be partial, will match).
+            start_line: Starting line number (1-indexed, inclusive). Omit for beginning.
+            end_line: Ending line number (1-indexed, inclusive). Omit to read to end.
+        """
+        if not path:
+            return {"error": "path is required"}
+
+        if start_line is not None or end_line is not None:
+            result = self._documentation_data_loader.get_file_lines(
+                path=path, start_line=start_line, end_line=end_line,
+            )
+            if result is None:
+                return {"error": f"File '{path}' not found"}
+
+            content, total_lines = result
+            return {
+                "path": path,
+                "lines_shown": f"{start_line or 1}-{end_line or total_lines}",
+                "total_lines": total_lines,
+                "content": content,
+            }
+
+        entry = self._documentation_data_loader.get_file_by_path(path)
+        if entry is None:
+            return {"error": f"File '{path}' not found"}
+
+        content = entry.content
+        total_lines = content.count("\n") + 1
+
+        if len(content) > 10000:
+            content = content[:10000] + f"\n... (truncated, {len(entry.content)} total chars)"
+
+        return {
+            "path": str(entry.path),
+            "file_type": entry.file_type,
+            "title": entry.title,
+            "summary": entry.summary,
+            "total_lines": total_lines,
+            "content": content,
+        }
+
+    @agent_tool(
+        availability=lambda self: self._documentation_data_loader is not None,
+        parameters={
+            "type": "object",
+            "properties": {
+                "terms": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of search terms (case-insensitive).",
+                },
+                "top_n": {
+                    "type": "integer",
+                    "description": "Number of top results to return. Defaults to 20.",
+                },
+            },
+            "required": ["terms"],
+        },
+    )
+    @token_optimized
+    def _search_docs_by_terms(self, terms: list[str], top_n: int = 20) -> dict[str, Any]:
+        """
+        Search documentation files by multiple terms with relevance scoring.
+
+        Ranks files by how many terms match and total hit count. Good for broad topic searches.
+
+        Args:
+            terms: List of search terms (case-insensitive).
+            top_n: Number of top results to return. Defaults to 20.
+        """
+        if not terms:
+            return {"error": "terms list is required"}
+
+        results = self._documentation_data_loader.search_by_terms(terms=terms, top_n=top_n)
+        return {"terms": terms, "results_count": len(results), "results": results}
+
+    @agent_tool(
+        availability=lambda self: self._documentation_data_loader is not None,
+        parameters={
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Regex pattern to search for.",
+                },
+                "top_n": {
+                    "type": "integer",
+                    "description": "Max entries to return. Defaults to 20.",
+                },
+            },
+            "required": ["pattern"],
+        },
+    )
+    @token_optimized
+    def _search_docs_by_regex(self, pattern: str, top_n: int = 20) -> dict[str, Any]:
+        """
+        Search documentation files by regex pattern with timeout protection.
+
+        Returns matching snippets with context. Useful for pattern-based searches.
+
+        Args:
+            pattern: Regex pattern to search for.
+            top_n: Max entries to return. Defaults to 20.
+        """
+        if not pattern:
+            return {"error": "pattern is required"}
+
+        return self._documentation_data_loader.search_by_regex(pattern=pattern, top_n=top_n)
+
     ## LLMs and streaming
 
     def _call_llm(self, messages: list[dict[str, Any]], system_prompt: str) -> LLMChatResponse:
         """Call the LLM, using streaming if a chunk callback is configured."""
         self._sync_tools()  # ensure tool availability reflects current state
+
+        # Append documentation context (injected here so subclasses can't accidentally omit it)
+        docs_section = self._get_documentation_prompt_section()
+        if docs_section:
+            system_prompt = system_prompt + docs_section
 
         if self._stream_chunk_callable:
             return self._process_streaming_response(messages, system_prompt)
