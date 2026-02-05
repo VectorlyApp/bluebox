@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bluebox-lib"
-version = "1.3.1"
+version = "1.3.2"
 description = "Library for reverse engineering web apps"
 readme = "README.md"
 requires-python = ">=3.12.3,<3.13"
