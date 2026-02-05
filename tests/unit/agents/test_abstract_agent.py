@@ -16,10 +16,9 @@ Covers:
 """
 
 import json
-import textwrap
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -1045,47 +1044,442 @@ class TestEmitMessage:
 
 
 class TestAgentToolDecorator:
-    """Tests for the @agent_tool decorator."""
+    """Comprehensive tests for the @agent_tool decorator.
 
-    def test_tool_name_strips_underscores(self) -> None:
-        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
-        assert "echo" in tools  # _echo -> echo
+    Verifies that docstrings are extracted fully and correctly, parameter schemas
+    are auto-generated with the right types/descriptions/required fields, explicit
+    overrides work, and availability is wired through to _ToolMeta.
+    """
 
-    def test_description_from_docstring(self) -> None:
-        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
-        assert "Echo the message back" in tools["echo"].description
+    # ---- helpers ----
 
-    def test_auto_generated_schema(self) -> None:
-        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
-        schema = tools["echo"].parameters
-        assert schema["type"] == "object"
-        assert "message" in schema["properties"]
-        assert schema["required"] == ["message"]
+    @staticmethod
+    def _get_tool(name: str) -> _ToolMeta:
+        """Look up a tool by name from ConcreteAgent._collect_tools()."""
+        for meta, _ in ConcreteAgent._collect_tools():
+            if meta.name == name:
+                return meta
+        raise KeyError(f"Tool {name!r} not found in ConcreteAgent")
 
-    def test_optional_params_schema(self) -> None:
-        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
-        schema = tools["optional_params"].parameters
-        assert schema["required"] == ["required"]
-        assert "opt" in schema["properties"]
-        assert "opt" not in schema["required"]
+    # ---- tool name derivation ----
 
-    def test_availability_default_true(self) -> None:
-        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
-        assert tools["echo"].availability is True
+    def test_single_leading_underscore_stripped(self) -> None:
+        assert self._get_tool("echo").name == "echo"  # _echo -> echo
 
-    def test_availability_false(self) -> None:
-        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
-        assert tools["disabled_tool"].availability is False
+    def test_multiple_leading_underscores_stripped(self) -> None:
+        @agent_tool()
+        def __double_prefix(self, x: str) -> dict[str, Any]:
+            """Double underscore tool."""
+            return {}
+        assert __double_prefix._tool_meta.name == "double_prefix"
 
-    def test_availability_callable(self) -> None:
-        tools = {meta.name: meta for meta, _ in ConcreteAgent._collect_tools()}
-        assert callable(tools["gated_tool"].availability)
+    def test_no_underscore_prefix_unchanged(self) -> None:
+        @agent_tool()
+        def plain_name(self, x: str) -> dict[str, Any]:
+            """No underscore prefix."""
+            return {}
+        assert plain_name._tool_meta.name == "plain_name"
+
+    # ---- description extraction from docstrings ----
+
+    def test_single_line_docstring_extracted_exactly(self) -> None:
+        meta = self._get_tool("no_params")
+        assert meta.description == "A tool with no parameters."
+
+    def test_multiline_description_before_args_extracted_in_full(self) -> None:
+        """The full text before Args: should be in the description, nothing more."""
+        meta = self._get_tool("echo")
+        assert meta.description == "Echo the message back."
+
+    def test_multi_paragraph_description_joined(self) -> None:
+        @agent_tool()
+        def _multi_para(self) -> dict[str, Any]:
+            """First paragraph here.
+
+            Second paragraph with more detail.
+
+            Args:
+                (none)
+            """
+            return {}
+        assert _multi_para._tool_meta.description == (
+            "First paragraph here. Second paragraph with more detail."
+        )
+
+    def test_multiple_blank_lines_between_paragraphs(self) -> None:
+        """Multiple consecutive blank lines should collapse, not produce extra spaces."""
+        @agent_tool()
+        def _gappy(self) -> dict[str, Any]:
+            """Line one.
+
+
+
+            Line two after many blanks.
+
+
+            Args:
+                (none)
+            """
+            return {}
+        desc = _gappy._tool_meta.description
+        assert desc == "Line one. Line two after many blanks."
+        assert "  " not in desc  # no double-spaces
+
+    def test_blank_lines_before_args_section(self) -> None:
+        """Blank lines right before Args: should not leak empty content."""
+        @agent_tool()
+        def _blanks_before_args(self) -> dict[str, Any]:
+            """Do the thing.
+
+
+
+            Args:
+                x: Something.
+            """
+            return {}
+        assert _blanks_before_args._tool_meta.description == "Do the thing."
+
+    def test_three_paragraphs_with_mixed_blank_lines(self) -> None:
+        @agent_tool()
+        def _three_para(self) -> dict[str, Any]:
+            """First paragraph.
+
+            Second paragraph.
+
+
+            Third paragraph.
+
+            Args:
+                (none)
+            """
+            return {}
+        assert _three_para._tool_meta.description == (
+            "First paragraph. Second paragraph. Third paragraph."
+        )
+
+    def test_args_section_excluded_from_description(self) -> None:
+        """Args block must not leak into the description."""
+        meta = self._get_tool("add_numbers")
+        assert "Args:" not in meta.description
+        assert "First number" not in meta.description
+        assert meta.description == "Add two numbers."
+
+    def test_returns_section_excluded_from_description(self) -> None:
+        @agent_tool()
+        def _with_returns(self, x: str) -> dict[str, Any]:
+            """Do something useful.
+
+            Returns:
+                A dict of results.
+            """
+            return {}
+        assert _with_returns._tool_meta.description == "Do something useful."
+        assert "Returns" not in _with_returns._tool_meta.description
+
+    def test_raises_section_excluded_from_description(self) -> None:
+        @agent_tool()
+        def _with_raises(self) -> dict[str, Any]:
+            """Do something risky.
+
+            Raises:
+                ValueError: If things go wrong.
+            """
+            return {}
+        assert _with_raises._tool_meta.description == "Do something risky."
+
+    def test_example_section_excluded_from_description(self) -> None:
+        @agent_tool()
+        def _with_example(self) -> dict[str, Any]:
+            """Compute a value.
+
+            Example:
+                _with_example()
+            """
+            return {}
+        assert _with_example._tool_meta.description == "Compute a value."
+
+    def test_description_whitespace_collapsed(self) -> None:
+        """Extra whitespace from indentation should be collapsed to single spaces."""
+        @agent_tool()
+        def _spaced(self) -> dict[str, Any]:
+            """
+            Has    extra   whitespace   here.
+            """
+            return {}
+        assert "  " not in _spaced._tool_meta.description
+        assert _spaced._tool_meta.description == "Has extra whitespace here."
+
+    # ---- explicit description override ----
+
+    def test_explicit_description_overrides_docstring(self) -> None:
+        @agent_tool(description="Custom override description.")
+        def _overridden(self) -> dict[str, Any]:
+            """This docstring should be ignored."""
+            return {}
+        assert _overridden._tool_meta.description == "Custom override description."
+        assert "ignored" not in _overridden._tool_meta.description
+
+    def test_explicit_description_works_without_docstring(self) -> None:
+        @agent_tool(description="No docstring needed.")
+        def _no_doc(self) -> dict[str, Any]:
+            return {}
+        assert _no_doc._tool_meta.description == "No docstring needed."
+
+    # ---- error: no description at all ----
 
     def test_raises_without_description_or_docstring(self) -> None:
         with pytest.raises(ValueError, match="no description and no docstring"):
             @agent_tool()
             def _bare(self) -> dict[str, Any]:
                 pass
+
+    def test_raises_with_empty_docstring(self) -> None:
+        with pytest.raises(ValueError, match="no description and no docstring"):
+            @agent_tool()
+            def _empty_doc(self) -> dict[str, Any]:
+                ""
+                pass
+
+    # ---- parameter schema: structure ----
+
+    def test_schema_top_level_structure(self) -> None:
+        schema = self._get_tool("echo").parameters
+        assert schema["type"] == "object"
+        assert "properties" in schema
+        assert "required" in schema
+
+    def test_self_excluded_from_schema(self) -> None:
+        schema = self._get_tool("echo").parameters
+        assert "self" not in schema["properties"]
+
+    def test_no_params_tool_has_empty_schema(self) -> None:
+        schema = self._get_tool("no_params").parameters
+        assert schema["properties"] == {}
+        assert schema["required"] == []
+
+    # ---- parameter schema: required vs optional ----
+
+    def test_all_params_required_when_no_defaults(self) -> None:
+        schema = self._get_tool("add_numbers").parameters
+        assert sorted(schema["required"]) == ["a", "b"]
+
+    def test_param_with_default_not_required(self) -> None:
+        schema = self._get_tool("optional_params").parameters
+        assert "required" in schema["required"]
+        assert "opt" not in schema["required"]
+
+    def test_single_required_param(self) -> None:
+        schema = self._get_tool("echo").parameters
+        assert schema["required"] == ["message"]
+
+    # ---- parameter schema: types ----
+
+    def test_string_param_type(self) -> None:
+        schema = self._get_tool("echo").parameters
+        assert schema["properties"]["message"]["type"] == "string"
+
+    def test_int_param_type(self) -> None:
+        schema = self._get_tool("add_numbers").parameters
+        assert schema["properties"]["a"]["type"] == "integer"
+        assert schema["properties"]["b"]["type"] == "integer"
+
+    def test_bool_param_type(self) -> None:
+        @agent_tool()
+        def _bool_tool(self, flag: bool) -> dict[str, Any]:
+            """Tool with bool param.
+
+            Args:
+                flag: A boolean flag.
+            """
+            return {}
+        schema = _bool_tool._tool_meta.parameters
+        assert schema["properties"]["flag"]["type"] == "boolean"
+
+    def test_float_param_type(self) -> None:
+        @agent_tool()
+        def _float_tool(self, value: float) -> dict[str, Any]:
+            """Tool with float param.
+
+            Args:
+                value: A float value.
+            """
+            return {}
+        schema = _float_tool._tool_meta.parameters
+        assert schema["properties"]["value"]["type"] == "number"
+
+    def test_list_param_type(self) -> None:
+        @agent_tool()
+        def _list_tool(self, items: list[str]) -> dict[str, Any]:
+            """Tool with list param.
+
+            Args:
+                items: List of strings.
+            """
+            return {}
+        schema = _list_tool._tool_meta.parameters
+        assert schema["properties"]["items"]["type"] == "array"
+        assert schema["properties"]["items"]["items"]["type"] == "string"
+
+    def test_dict_param_type(self) -> None:
+        @agent_tool()
+        def _dict_tool(self, data: dict[str, int]) -> dict[str, Any]:
+            """Tool with dict param.
+
+            Args:
+                data: A mapping of names to counts.
+            """
+            return {}
+        schema = _dict_tool._tool_meta.parameters
+        assert schema["properties"]["data"]["type"] == "object"
+        assert schema["properties"]["data"]["additionalProperties"]["type"] == "integer"
+
+    def test_nullable_param_type(self) -> None:
+        @agent_tool()
+        def _nullable_tool(self, value: str | None) -> dict[str, Any]:
+            """Tool with nullable param.
+
+            Args:
+                value: A nullable string.
+            """
+            return {}
+        schema = _nullable_tool._tool_meta.parameters
+        # pydantic represents str | None as anyOf
+        assert "anyOf" in schema["properties"]["value"]
+
+    # ---- parameter schema: descriptions from docstring Args ----
+
+    def test_param_description_extracted_from_docstring(self) -> None:
+        """Each param's description from the Args section should appear in the schema."""
+        schema = self._get_tool("echo").parameters
+        assert schema["properties"]["message"].get("description") == "The message to echo."
+
+    def test_multiple_param_descriptions_extracted(self) -> None:
+        schema = self._get_tool("add_numbers").parameters
+        assert schema["properties"]["a"].get("description") == "First number."
+        assert schema["properties"]["b"].get("description") == "Second number."
+
+    def test_optional_param_description_extracted(self) -> None:
+        schema = self._get_tool("optional_params").parameters
+        assert schema["properties"]["required"].get("description") == "A required string."
+        assert schema["properties"]["opt"].get("description") == "An optional integer."
+
+    def test_no_param_description_when_args_section_missing(self) -> None:
+        """Tool with no Args section should still have schema, just no descriptions."""
+        schema = self._get_tool("no_params").parameters
+        # No properties, so nothing to check descriptions on — just verify no crash
+        assert schema["properties"] == {}
+
+    def test_param_description_with_parenthetical_type(self) -> None:
+        """Docstring format 'param (type): desc' should extract cleanly."""
+        @agent_tool()
+        def _paren_type(self, query: str) -> dict[str, Any]:
+            """Search tool.
+
+            Args:
+                query (str): The search query to use.
+            """
+            return {}
+        schema = _paren_type._tool_meta.parameters
+        assert schema["properties"]["query"].get("description") == "The search query to use."
+
+    # ---- explicit parameters override ----
+
+    def test_explicit_parameters_overrides_auto_generation(self) -> None:
+        custom_schema = {
+            "type": "object",
+            "properties": {"custom_field": {"type": "string"}},
+            "required": ["custom_field"],
+        }
+
+        @agent_tool(parameters=custom_schema)
+        def _custom_schema(self, ignored: int) -> dict[str, Any]:
+            """Tool with custom schema.
+
+            Args:
+                ignored: This type hint should be ignored.
+            """
+            return {}
+        assert _custom_schema._tool_meta.parameters == custom_schema
+        # The actual type hint (int) is NOT used
+        assert "ignored" not in _custom_schema._tool_meta.parameters["properties"]
+
+    # ---- availability ----
+
+    def test_availability_default_true(self) -> None:
+        assert self._get_tool("echo").availability is True
+
+    def test_availability_false(self) -> None:
+        assert self._get_tool("disabled_tool").availability is False
+
+    def test_availability_callable_stored(self) -> None:
+        assert callable(self._get_tool("gated_tool").availability)
+
+    def test_availability_callable_evaluates_dynamically(self) -> None:
+        """The callable should evaluate against the instance, not be fixed at decoration time."""
+        avail_fn = self._get_tool("gated_tool").availability
+
+        class FakeAgent:
+            _feature_flag = False
+
+        fake = FakeAgent()
+        assert avail_fn(fake) is False
+        fake._feature_flag = True
+        assert avail_fn(fake) is True
+
+    # ---- _tool_meta is attached to the method ----
+
+    def test_tool_meta_attached_to_method(self) -> None:
+        assert hasattr(ConcreteAgent._echo, "_tool_meta")
+        assert isinstance(ConcreteAgent._echo._tool_meta, _ToolMeta)
+
+    def test_tool_meta_is_frozen(self) -> None:
+        meta = ConcreteAgent._echo._tool_meta
+        with pytest.raises(AttributeError):
+            meta.name = "tampered"  # type: ignore[misc]
+
+    # ---- mixed types in a single tool ----
+
+    def test_complex_mixed_signature(self) -> None:
+        """Tool with diverse param types: all types and required/optional are correct."""
+        @agent_tool()
+        def _complex(
+            self,
+            name: str,
+            count: int,
+            tags: list[str],
+            verbose: bool = False,
+            limit: int | None = None,
+        ) -> dict[str, Any]:
+            """Complex tool.
+
+            Args:
+                name: The resource name.
+                count: How many to fetch.
+                tags: Tags to filter by.
+                verbose: Enable verbose output.
+                limit: Max results (optional).
+            """
+            return {}
+
+        meta = _complex._tool_meta
+        schema = meta.parameters
+
+        # required: name, count, tags (no defaults)
+        assert sorted(schema["required"]) == ["count", "name", "tags"]
+
+        # types
+        assert schema["properties"]["name"]["type"] == "string"
+        assert schema["properties"]["count"]["type"] == "integer"
+        assert schema["properties"]["tags"]["type"] == "array"
+        assert schema["properties"]["verbose"]["type"] == "boolean"
+        assert "anyOf" in schema["properties"]["limit"]  # int | None
+
+        # descriptions
+        assert schema["properties"]["name"]["description"] == "The resource name."
+        assert schema["properties"]["count"]["description"] == "How many to fetch."
+        assert schema["properties"]["tags"]["description"] == "Tags to filter by."
+        assert schema["properties"]["verbose"]["description"] == "Enable verbose output."
+        assert schema["properties"]["limit"]["description"] == "Max results (optional)."
 
 
 # =============================================================================
