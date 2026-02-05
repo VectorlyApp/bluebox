@@ -1672,14 +1672,14 @@ class SuperDiscoveryAgent(AbstractAgent):
         self._discovery_state.construction_attempts += 1
 
         # Validate routine structure and collect warnings
-        structure_warnings = self._validate_routine_structure(parameters, operations)
+        structure_warnings = self._validate_routine_structure(routine.parameters, routine.operations)
 
         try:
             routine = Routine(
-                name=name,
-                description=description,
-                parameters=parameters,
-                operations=operations,
+                name=routine.name,
+                description=routine.description,
+                parameters=routine.parameters,
+                operations=routine.operations,
             )
 
             self._discovery_state.production_routine = routine
