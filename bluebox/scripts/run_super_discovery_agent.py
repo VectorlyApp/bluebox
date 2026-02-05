@@ -4,7 +4,12 @@ bluebox/scripts/run_super_discovery_agent.py
 Run the SuperDiscoveryAgent orchestrator for routine discovery.
 
 Usage:
-    bluebox-super-discovery --task "Search for flights" --cdp-captures-dir ./cdp_captures
+    bluebox-super-discovery --task "Search for trains" --cdp-captures-dir ./cdp_captures
+
+    bluebox-super-discovery --task "Search for trains from one station to another" \
+        --network-jsonl ./cdp_captures/network/events.jsonl \
+        --storage-jsonl ./cdp_captures/storage/events.jsonl
+
     bluebox-super-discovery --task "Search for flights" \
         --network-jsonl ./cdp_captures/network/events.jsonl \
         --storage-jsonl ./cdp_captures/storage/events.jsonl

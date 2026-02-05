@@ -66,29 +66,40 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         ## Your Role
 
-        You analyze network traffic captures and delegate specific tasks to specialist agents:
+        You coordinate specialist agents to analyze network traffic and build routines:
+        - **trace_hound**: Traces value origins across transactions, resolves dynamic tokens, finds where
+          values come from (API responses, cookies, localStorage, etc.)
         - **js_specialist**: Writes IIFE JavaScript for DOM manipulation and data extraction
-        - **trace_hound**: Traces value origins across transactions, resolves dynamic tokens
 
-        NOTE: You have direct access to transaction data via list_transactions, get_transaction, and scan_for_value.
-        Use these tools directly rather than delegating simple lookups to specialists.
+        ## IMPORTANT: You MUST Delegate to Specialists
+
+        You are an ORCHESTRATOR, not a data analyst. Your job is to:
+        1. Get an overview of available data (list_transactions, get_transaction)
+        2. DELEGATE detailed analysis to specialists
+        3. Use specialist results to construct routines
+
+        DO NOT try to analyze data yourself and conclude "insufficient data" — that's the specialists' job.
+        If you're unsure whether data contains what you need, delegate to trace_hound to investigate.
 
         ## Workflow
 
         ### Phase 1: Planning
         1. Use `list_transactions` to see available network data
-        2. Use `get_transaction` to examine promising endpoints
-        3. Plan which specialists to deploy and what tasks to give them
+        2. Use `get_transaction` to examine a few key endpoints
+        3. Identify what specialists need to investigate
 
-        ### Phase 2: Discovering
-        1. Use `create_task` to delegate work to specialists
+        ### Phase 2: Discovering (REQUIRED)
+        You MUST create specialist tasks before constructing a routine:
+        1. Use `create_task` to delegate investigation to specialists
+           - Use trace_hound to find token origins, trace value flows, resolve dynamic data
+           - Use js_specialist only when you need browser-side JavaScript code
         2. Use `run_pending_tasks` to execute delegated tasks
         3. Use `get_task_result` to review completed work
-        4. Iterate until you have all the information needed
+        4. Create additional tasks if needed based on findings
 
         ### Phase 3: Constructing
-        1. Use `construct_routine` to build the routine from discoveries
-        2. If validation fails, create more specialist tasks to fix issues
+        1. Use `construct_routine` to build the routine from specialist discoveries
+        2. If construction fails, create more specialist tasks to fix issues
 
         ### Phase 4: Validating (if browser available)
         1. Use `execute_routine` to test the routine
@@ -96,15 +107,15 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         ### Phase 5: Completion
         1. Use `done` when the routine is ready
-        2. Use `fail` if discovery cannot be completed
+        2. Use `fail` ONLY if specialists have investigated and confirmed the data is insufficient
 
         ## Guidelines
 
+        - ALWAYS delegate to specialists before concluding anything about the data
+        - trace_hound is your primary investigator — use it to trace tokens, find value origins
+        - js_specialist is for writing JavaScript code, not for data analysis
         - Keep specialist tasks focused and specific
-        - Don't give one specialist work better suited for another
-        - Use trace_hound for token resolution, not js_specialist
-        - Use js_specialist only when DOM manipulation is actually needed
-        - Monitor task status and handle failures gracefully
+        - Never call `fail` without first delegating investigation to specialists
     """)
 
     ## Magic methods
@@ -552,39 +563,6 @@ class SuperDiscoveryAgent(AbstractAgent):
             "post_data": entry.post_data,
             "response_headers": entry.response_headers,
             "response_body": entry.response_body[:5000] if entry.response_body else None,  # Truncate large bodies
-        }
-
-    @agent_tool()
-    def _scan_for_value(self, value: str) -> dict[str, Any]:
-        """
-        Scan storage, window properties, and network responses for a value.
-
-        Use this to trace where a token/value originated from.
-
-        Args:
-            value: The value to search for.
-        """
-        storage_sources: list[dict[str, Any]] = []
-        window_sources: list[dict[str, Any]] = []
-        network_sources: list[dict[str, Any]] = []
-
-        # Search storage events
-        if self._storage_data_store:
-            storage_sources = self._storage_data_store.search_values(value)[:5]
-
-        # Search window properties
-        if self._window_property_data_store:
-            window_sources = self._window_property_data_store.search_values(value)[:5]
-
-        # Search network response bodies
-        if self._network_data_store:
-            network_sources = self._network_data_store.search_response_bodies(value)[:5]
-
-        return {
-            "storage_sources": storage_sources,
-            "window_property_sources": window_sources,
-            "network_sources": network_sources,
-            "found_count": len(storage_sources) + len(window_sources) + len(network_sources),
         }
 
     ## Tools - Routine Construction
