@@ -232,23 +232,23 @@ This substitutes parameter values and injects `auth_token` from cookies. The JSO
 # Option 1: Using uv (recommended - handles Python version automatically)
 uv venv bluebox-env
 source bluebox-env/bin/activate  # On Windows: bluebox-env\Scripts\activate
-uv pip install bluebox-sdk
+uv pip install bluebox-lib
 
 # Option 2: Using python3 (if Python 3.12+ is your default)
 python3 -m venv bluebox-env
 source bluebox-env/bin/activate  # On Windows: bluebox-env\Scripts\activate
-pip install bluebox-sdk
+pip install bluebox-lib
 
 # Option 3: Using pyenv (if you need a specific Python version)
 pyenv install 3.12.3  # if not already installed
 pyenv local 3.12.3
 python -m venv bluebox-env
 source bluebox-env/bin/activate  # On Windows: bluebox-env\Scripts\activate
-pip install bluebox-sdk
+pip install bluebox-lib
 
 # Troubleshooting: If pip is not found, recreate the venv or use:
 python -m ensurepip --upgrade  # Install pip in the venv
-pip install bluebox-sdk
+pip install bluebox-lib
 ```
 
 ### From Source (Development)
@@ -278,8 +278,8 @@ uv pip install -e .
 The fastest way to get started is using the quickstart script, which automates the entire workflow:
 
 ```bash
-# Make sure bluebox-sdk is installed
-pip install bluebox-sdk 
+# Make sure bluebox-lib is installed
+pip install bluebox-lib 
 # Or install from the latest code
 # pip install "git+https://github.com/VectorlyApp/bluebox.git"
 

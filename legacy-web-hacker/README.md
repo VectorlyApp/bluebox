@@ -6,7 +6,7 @@
 
 ```bash
 pip uninstall web-hacker
-pip install bluebox-sdk
+pip install bluebox-lib
 ```
 
 Then update your imports:
