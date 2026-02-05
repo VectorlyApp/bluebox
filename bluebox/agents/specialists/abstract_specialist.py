@@ -413,18 +413,18 @@ class AbstractSpecialist(AbstractAgent):
 
     @agent_tool(availability=lambda self: self.can_finalize and not self.has_output_schema)
     @token_optimized
-    def _finalize_result(self, result: dict[str, Any]) -> dict[str, Any]:
+    def _finalize_result(self, output: dict[str, Any]) -> dict[str, Any]:
         """
         Finalize and return the result of your analysis.
 
         Use this to submit your findings when you have completed the task.
-        The result should contain all relevant information discovered.
+        The output should contain all relevant information discovered.
 
         Args:
-            result: Dictionary containing your findings and analysis results.
+            output: Dictionary containing your findings and analysis results.
         """
         self._wrapped_result = SpecialistResultWrapper(
-            output=result,
+            output=output,
             success=True,
             notes=self._notes.copy(),
         )

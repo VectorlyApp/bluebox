@@ -934,14 +934,18 @@ class SuperDiscoveryAgent(AbstractAgent):
             return {"error": "No network data store available"}
 
         entries = self._network_data_loader.entries
+        # Filter to likely-useful API entries (skip static assets)
+        static_extensions = ('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf')
+        api_entries = [e for e in entries if not any(e.url.split('?')[0].endswith(ext) for ext in static_extensions)]
         tx_summaries = [
             {"id": e.request_id, "method": e.method, "url": e.url[:100]}
-            for e in entries[:50]  # Limit to first 50 for readability
+            for e in api_entries
         ]
         return {
             "transactions": tx_summaries,
             "count": len(entries),
             "showing": len(tx_summaries),
+            "filtered_out": len(entries) - len(api_entries),
         }
 
     @agent_tool(
@@ -1048,7 +1052,7 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         # Search storage
         if self._storage_data_loader:
-            for event in self._storage_data_loader.events:
+            for event in self._storage_data_loader.entries:
                 if hasattr(event, 'value') and event.value and value in str(event.value):
                     results["found_in"].append({
                         "source_type": "storage",
@@ -1058,7 +1062,7 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         # Search window properties
         if self._window_property_data_loader:
-            for event in self._window_property_data_loader.events:
+            for event in self._window_property_data_loader.entries:
                 if hasattr(event, 'value') and event.value and value in str(event.value):
                     results["found_in"].append({
                         "source_type": "window_property",

@@ -278,7 +278,9 @@ class AbstractAgent(ABC):
         required = tool_meta.parameters.get("required", [])
         missing = [p for p in required if p not in tool_arguments or tool_arguments[p] is None]
         if missing:
-            return {"error": f"Missing required parameter(s): {', '.join(missing)}"}
+            provided = list(tool_arguments.keys()) if tool_arguments else []
+            logger.warning("Tool '%s' missing required param(s) %s — received: %s", tool_name, missing, provided)
+            return {"error": f"Missing required parameter(s): {', '.join(missing)}. You provided: {provided}"}
 
         # validate no extra parameters
         valid_params = set(tool_meta.parameters.get("properties", {}).keys())
