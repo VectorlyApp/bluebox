@@ -19,7 +19,6 @@ The agent inherits from AbstractAgent for LLM/chat/tool infrastructure.
 from __future__ import annotations
 
 import json
-import re
 from datetime import datetime
 from textwrap import dedent
 from typing import Any, Callable
@@ -128,7 +127,8 @@ class SuperDiscoveryAgent(AbstractAgent):
            - IMPORTANT: If value is found in BOTH storage AND a prior transaction,
              use source_type='transaction' as the primary source. Session storage may
              be empty in a fresh session - prefer network sources for reliability.
-        5. Continue until queue is empty
+        5. Use `mark_transaction_processed` when done with a transaction (all variables extracted/resolved)
+        6. Continue until queue is empty
 
         ### Phase 3: Construct and Finalize Routine
         1. Use `get_discovery_context` to see all processed data
@@ -356,7 +356,11 @@ class SuperDiscoveryAgent(AbstractAgent):
             # Run agent loop iteration
             messages = self._build_messages_for_llm()
             try:
-                response = self._call_llm(messages, self._get_system_prompt())
+                response = self._call_llm(
+                    messages,
+                    self._get_system_prompt(),
+                    tool_choice="required",
+                )
 
                 if response.response_id:
                     self._previous_response_id = response.response_id
@@ -1440,10 +1444,70 @@ class SuperDiscoveryAgent(AbstractAgent):
         return result
 
     @agent_tool(
-        description="Get complete discovery context including all processed transactions, variables, and resolution paths.",
-        parameters={"type": "object", "properties": {}, "required": []},
-        availability=True,
+        description="Mark a transaction as fully processed (all variables extracted and resolved). Removes from queue.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "transaction_id": {
+                    "type": "string",
+                    "description": "The transaction ID to mark as processed"
+                }
+            },
+            "required": ["transaction_id"]
+        },
+        availability=lambda self: self._discovery_state.root_transaction is not None,
     )
+    def _mark_transaction_processed(self, transaction_id: str) -> dict[str, Any]:
+        """
+        Mark a transaction as fully processed.
+
+        Call this when you've extracted all variables and resolved all dynamic tokens
+        for a transaction. This removes it from the queue and adds it to processed list.
+
+        Args:
+            transaction_id: The transaction ID to mark as processed.
+        """
+        # Check if transaction exists in our data
+        if transaction_id not in self._discovery_state.transaction_data:
+            return {"error": f"Transaction {transaction_id} not found in discovery data"}
+
+        # Check for unresolved dynamic tokens
+        tx_data = self._discovery_state.transaction_data[transaction_id]
+        unresolved = []
+        if tx_data.get("extracted_variables"):
+            resolved_names = {
+                rv.variable.name
+                for rv in tx_data.get("resolved_variables", [])
+            }
+            for var in tx_data["extracted_variables"].variables:
+                if var.requires_dynamic_resolution and var.name not in resolved_names:
+                    unresolved.append(var.name)
+
+        if unresolved:
+            return {
+                "error": f"Cannot mark as processed - unresolved dynamic tokens: {unresolved}",
+                "hint": "Use scan_for_value and record_resolved_variable for each token first"
+            }
+
+        # Remove from queue if present
+        if transaction_id in self._discovery_state.transaction_queue:
+            self._discovery_state.transaction_queue.remove(transaction_id)
+
+        # Mark as processed
+        self._discovery_state.mark_transaction_complete(transaction_id)
+
+        # Get next transaction in queue
+        queue_status = self._discovery_state.get_queue_status()
+
+        return {
+            "success": True,
+            "transaction_id": transaction_id,
+            "message": f"Transaction {transaction_id} marked as processed",
+            "remaining_queue": queue_status["pending"],
+            "processed_count": queue_status["processed_count"],
+        }
+
+    @agent_tool()
     def _get_discovery_context(self) -> dict[str, Any]:
         """Get complete discovery context for routine construction."""
         context: dict[str, Any] = {
@@ -1528,151 +1592,23 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         return context
 
-    ## Routine Validation Helpers
-
-    def _extract_placeholders(self, data: Any) -> set[str]:
-        """
-        Extract all {{...}} placeholders from routine data.
-
-        Args:
-            data: Dict, list, or string containing routine data.
-
-        Returns:
-            Set of placeholder names (without the {{ }} wrapper).
-        """
-        json_str = json.dumps(data) if not isinstance(data, str) else data
-        matches = re.findall(r'\{\{(.*?)\}\}', json_str)
-        return set(matches)
-
-    def _validate_routine_structure(
-        self,
-        parameters: list[dict[str, Any]],
-        operations: list[dict[str, Any]],
-    ) -> list[str]:
-        """
-        Validate routine structure and return warnings (not errors).
-
-        Checks the same things as DevRoutine.validate() but returns warnings
-        instead of failing, allowing the agent to see potential issues.
-
-        Args:
-            parameters: List of parameter definitions.
-            operations: List of operation definitions.
-
-        Returns:
-            List of warning messages for potential issues.
-        """
-        warnings = []
-
-        # 1. Operation count check
-        if len(operations) < 3:
-            warnings.append(
-                f"Routine has {len(operations)} operations, expected at least 3 (navigate, fetch, return)"
-            )
-
-        if not operations:
-            return warnings  # Can't check further without operations
-
-        # 2. First operation should be navigate
-        first_op_type = operations[0].get("type")
-        if first_op_type != "navigate":
-            warnings.append(f"First operation is '{first_op_type}', expected 'navigate'")
-
-        # 3. Last operation should be return
-        last_op_type = operations[-1].get("type")
-        if last_op_type != "return":
-            warnings.append(f"Last operation is '{last_op_type}', expected 'return'")
-
-        # 4. Second-to-last should be fetch
-        if len(operations) >= 2:
-            second_last_type = operations[-2].get("type")
-            if second_last_type != "fetch":
-                warnings.append(f"Second-to-last operation is '{second_last_type}', expected 'fetch'")
-
-        # 5. Extract all placeholders from operations
-        all_placeholders = self._extract_placeholders(operations)
-
-        # 6. Check that every parameter is used
-        defined_params = {p.get("name") for p in parameters if p.get("name")}
-        unused_params = defined_params - all_placeholders
-        for param_name in unused_params:
-            warnings.append(f"Parameter '{param_name}' is defined but not used in operations")
-
-        # 7. Check placeholder prefixes (for non-parameter placeholders)
-        valid_prefixes = {"sessionStorage", "cookie", "localStorage", "uuid", "epoch_milliseconds", "meta", "windowProperty"}
-        remaining_placeholders = all_placeholders - defined_params
-        for placeholder in remaining_placeholders:
-            prefix = placeholder.split(":")[0]
-            if prefix not in valid_prefixes:
-                warnings.append(
-                    f"Placeholder '{placeholder}' has invalid prefix '{prefix}'. "
-                    f"Valid prefixes: {sorted(valid_prefixes)}"
-                )
-
-        # 8. Collect session storage keys from placeholders
-        used_session_keys = set()
-        for placeholder in all_placeholders:
-            if placeholder.startswith("sessionStorage:"):
-                # Extract key name (before any dot path)
-                key_path = placeholder.split(":", 1)[1]
-                key_name = key_path.split(".")[0]
-                used_session_keys.add(key_name)
-
-        # Include return operation's key
-        if operations and operations[-1].get("type") == "return":
-            return_key = operations[-1].get("session_storage_key")
-            if return_key:
-                used_session_keys.add(return_key)
-
-        # 9. Collect all fetch session storage keys
-        all_fetch_keys = set()
-        for op in operations:
-            if op.get("type") == "fetch":
-                fetch_key = op.get("session_storage_key")
-                if fetch_key:
-                    all_fetch_keys.add(fetch_key)
-
-        # 10. Check for unused fetch keys
-        unused_fetch_keys = all_fetch_keys - used_session_keys
-        for key in unused_fetch_keys:
-            warnings.append(f"Fetch session_storage_key '{key}' is set but never used")
-
-        # 11. Last fetch key should match return key
-        if len(operations) >= 2:
-            last_op = operations[-1]
-            second_last_op = operations[-2]
-            if last_op.get("type") == "return" and second_last_op.get("type") == "fetch":
-                return_key = last_op.get("session_storage_key")
-                fetch_key = second_last_op.get("session_storage_key")
-                if return_key and fetch_key and return_key != fetch_key:
-                    warnings.append(
-                        f"Last fetch session_storage_key '{fetch_key}' does not match "
-                        f"return session_storage_key '{return_key}'"
-                    )
-
-        return warnings
-
     ## Tools - Routine Construction
 
     @agent_tool(
-        description="Construct a routine from discovered data. Auto-executes if browser connected.",
-        parameters={"type": "object", "properties": {}, "required": []},
         availability=lambda self: (
-            self._discovery_state.root_transaction is not None
+            self._discovery_state.root_transaction is not None and
+            not self._discovery_state.transaction_queue
         ),
     )
     def _construct_routine(self, routine: Routine) -> dict[str, Any]:
         """
-        Construct a routine from discovered data.
+        Construct a routine from discovered data. Auto-executes if browser connected.
 
         Args:
             routine: The routine to construct.
         """
         self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
         self._discovery_state.construction_attempts += 1
-
-        # Validate routine structure and collect warnings
-        structure_warnings = self._validate_routine_structure(routine.parameters, routine.operations)
 
         try:
             routine = Routine(
@@ -1681,6 +1617,9 @@ class SuperDiscoveryAgent(AbstractAgent):
                 parameters=routine.parameters,
                 operations=routine.operations,
             )
+
+            # Validate routine structure and collect warnings
+            structure_warnings = routine.get_structure_warnings()
 
             self._discovery_state.production_routine = routine
 
@@ -1739,15 +1678,12 @@ class SuperDiscoveryAgent(AbstractAgent):
         except Exception as e:
             return {
                 "error": str(e),
-                "warnings": structure_warnings,
                 "message": "Failed to construct routine. Check schema in the docs and try again.",
             }
 
     ## Tools - Completion
 
     @agent_tool(
-        description="Mark discovery as complete. Call when routine is ready.",
-        parameters={"type": "object", "properties": {}, "required": []},
         availability=lambda self: (
             self._discovery_state.construction_attempts >= 1
         ),
@@ -1766,17 +1702,6 @@ class SuperDiscoveryAgent(AbstractAgent):
         }
 
     @agent_tool(
-        description="Mark discovery as failed.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "reason": {
-                    "type": "string",
-                    "description": "Why discovery could not be completed"
-                }
-            },
-            "required": ["reason"]
-        },
         availability=lambda self: (
             self._discovery_state.root_transaction is None
             or self._discovery_state.construction_attempts >= 5
