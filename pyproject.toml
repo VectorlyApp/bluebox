@@ -36,12 +36,10 @@ classifiers = [
 ]
 dependencies = [
     "beautifulsoup4>=4.14.2",
-    "claude-agent-sdk>=0.1.0",
     "ipykernel>=6.29.5",
     "jmespath>=1.0.1,<2",
     "anthropic>=0.77.1",
     "openai>=2.6.1",
-    "openai-agents>=0.1.0",
     "prompt_toolkit>=3.0.0",
     "pydantic>=2.11.4",
     "pylint>=3.0.0",
