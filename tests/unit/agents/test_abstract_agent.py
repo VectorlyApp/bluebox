@@ -1597,6 +1597,64 @@ class TestAgentToolDecorator:
         param_schema = meta.parameters["properties"]["params"]
         assert param_schema.get("description") == "The search parameters."
 
+    # ---- real-world Routine model: full _ToolMeta snapshot ----
+
+    def test_routine_param_tool_meta_matches_expected(self) -> None:
+        """End-to-end: @agent_tool on a fn with Routine param produces the exact expected _ToolMeta.
+
+        This test defines a standalone function taking a Routine, verifies that the
+        decorator wires docstring, type hints, and Args descriptions into _ToolMeta
+        correctly — and that the Routine schema matches what Pydantic generates.
+        """
+        from pydantic import TypeAdapter
+        from bluebox.data_models.routine.routine import Routine
+
+        @agent_tool()
+        def _update_routine(self, routine: Routine, dry_run: bool = False) -> dict[str, Any]:
+            """Update an existing routine definition.
+
+            Validates the routine and optionally persists it.
+
+            Args:
+                routine: The full routine object to update.
+                dry_run: If True, validate only without saving.
+            """
+            return {}
+
+        meta = _update_routine._tool_meta
+
+        # --- name: leading underscore stripped ---
+        assert meta.name == "update_routine"
+
+        # --- description: full text before Args, joined ---
+        assert meta.description == (
+            "Update an existing routine definition. "
+            "Validates the routine and optionally persists it."
+        )
+
+        # --- availability: default True ---
+        assert meta.availability is True
+
+        # --- parameters schema: build expected and compare ---
+        # The routine param schema should match what Pydantic generates
+        routine_schema = TypeAdapter(Routine).json_schema()
+        routine_schema.pop("title", None)
+        routine_schema["description"] = "The full routine object to update."
+
+        expected_parameters = {
+            "type": "object",
+            "properties": {
+                "routine": routine_schema,
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If True, validate only without saving.",
+                },
+            },
+            "required": ["routine"],
+        }
+
+        assert meta.parameters == expected_parameters
+
 
 # =============================================================================
 # _ToolMeta
