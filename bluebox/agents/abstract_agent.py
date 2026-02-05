@@ -559,8 +559,23 @@ class AbstractAgent(ABC):
 
     ## LLMs and streaming
 
-    def _call_llm(self, messages: list[dict[str, Any]], system_prompt: str) -> LLMChatResponse:
-        """Call the LLM, using streaming if a chunk callback is configured."""
+    def _call_llm(
+        self,
+        messages: list[dict[str, Any]],
+        system_prompt: str,
+        tool_choice: str | None = None,
+    ) -> LLMChatResponse:
+        """
+        Call the LLM, using streaming if a chunk callback is configured.
+
+        Args:
+            messages: List of message dicts for the LLM.
+            system_prompt: System prompt for the LLM.
+            tool_choice: Tool choice mode. Can be:
+                - None or "auto": Let the model decide (default)
+                - "required": Force the model to use at least one tool
+                - Tool name string: Force the model to use a specific tool
+        """
         self._sync_tools()  # ensure tool availability reflects current state
 
         # Append documentation context (injected here so subclasses can't accidentally omit it)
@@ -569,18 +584,20 @@ class AbstractAgent(ABC):
             system_prompt = system_prompt + docs_section
 
         if self._stream_chunk_callable:
-            return self._process_streaming_response(messages, system_prompt)
+            return self._process_streaming_response(messages, system_prompt, tool_choice)
 
         return self.llm_client.call_sync(
             messages=messages,
             system_prompt=system_prompt,
             previous_response_id=self._previous_response_id,
+            tool_choice=tool_choice,
         )
 
     def _process_streaming_response(
         self,
         messages: list[dict[str, Any]],
         system_prompt: str,
+        tool_choice: str | None = None,
     ) -> LLMChatResponse:
         """Process LLM response with streaming, calling chunk callback for each chunk."""
         response: LLMChatResponse | None = None
@@ -589,6 +606,7 @@ class AbstractAgent(ABC):
             messages=messages,
             system_prompt=system_prompt,
             previous_response_id=self._previous_response_id,
+            tool_choice=tool_choice,
         ):
             if isinstance(item, str):
                 if self._stream_chunk_callable:

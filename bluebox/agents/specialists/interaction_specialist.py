@@ -89,7 +89,7 @@ class InteractionSpecialist(AbstractSpecialist):
         2. **Focus on inputs**: Use `get_form_inputs` to find all form input events
         3. **Analyze elements**: Use `get_unique_elements` to see which elements were interacted with
         4. **Detail check**: Use `get_interaction_detail` for specific events needing closer inspection
-        5. **Finalize**: Call `finalize_with_output` with your findings matching the expected schema
+        5. **Finalize**: Call the appropriate finalize tool with your findings
 
         ## Parameter Types (for reference)
 
@@ -105,14 +105,19 @@ class InteractionSpecialist(AbstractSpecialist):
 
         ## CRITICAL: How to Finalize
 
-        When you have completed your analysis, call `finalize_with_output(output={...})` with data matching the expected output schema provided in your system prompt.
+        When you have completed your analysis, call the appropriate finalize tool.
 
         Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
 
         ## When finalize tools are available
 
+        **If output schema is specified:**
         - **finalize_with_output**: Submit your findings matching the expected output schema
         - **finalize_with_failure**: Report that the task could not be completed
+
+        **If NO output schema is specified:**
+        - **finalize_result**: Submit your findings as a dictionary
+        - **finalize_failure**: Report that the task could not be completed
     """)
 
     ## Magic methods
@@ -173,23 +178,26 @@ class InteractionSpecialist(AbstractSpecialist):
         # Include output schema if set by orchestrator
         schema_section = self._get_output_schema_prompt_section()
 
-        # urgency notices
+        # urgency notices - use correct tool names based on output schema
+        finalize_success = "finalize_with_output" if self.has_output_schema else "finalize_result"
+        finalize_fail = "finalize_with_failure" if self.has_output_schema else "finalize_failure"
+
         if self.can_finalize:
             remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
             if remaining <= 2:
                 urgency = (
                     f"\n\n## CRITICAL: Only {remaining} iterations remaining!\n"
-                    f"You MUST call finalize_with_output or finalize_with_failure NOW!"
+                    f"You MUST call {finalize_success} or {finalize_fail} NOW!"
                 )
             elif remaining <= 4:
                 urgency = (
                     f"\n\n## URGENT: Only {remaining} iterations remaining.\n"
-                    f"Call finalize_with_output with your findings now."
+                    f"Call {finalize_success} with your findings now."
                 )
             else:
                 urgency = (
-                    "\n\n## Finalize tools are now available.\n"
-                    "Call finalize_with_output when ready."
+                    f"\n\n## Finalize tools are now available.\n"
+                    f"Call {finalize_success} when ready."
                 )
         else:
             urgency = (
@@ -203,11 +211,14 @@ class InteractionSpecialist(AbstractSpecialist):
     # via @agent_tool decorators below.
 
     def _get_autonomous_initial_message(self, task: str) -> str:
+        # Use correct tool names based on whether output schema is set
+        finalize_success = "finalize_with_output" if self.has_output_schema else "finalize_result"
+
         return (
             f"TASK: {task}\n\n"
-            "Analyze the recorded UI interactions to discover all parameterizable inputs. "
-            "Focus on form inputs, typed values, dropdown selections, and date pickers. "
-            "When confident, use finalize_result to report your findings."
+            f"Analyze the recorded UI interactions to discover all parameterizable inputs. "
+            f"Focus on form inputs, typed values, dropdown selections, and date pickers. "
+            f"When confident, use {finalize_success} to report your findings."
         )
 
     def _check_autonomous_completion(self, tool_name: str) -> bool:

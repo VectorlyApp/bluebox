@@ -97,7 +97,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         1. **Search**: Use `search_everywhere` to find all occurrences of the value
         2. **Analyze**: Examine entries to understand context and timestamps
         3. **Trace**: Determine the flow (e.g., API response -> cookie -> request header)
-        4. **Finalize**: Call `finalize_with_output` with your findings matching the expected schema
+        4. **Finalize**: Call the appropriate finalize tool with your findings
 
         ## What to Look For
 
@@ -108,10 +108,13 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         ## When finalize tools are available
 
-        After sufficient exploration, `finalize_with_output` and `finalize_with_failure` become available.
-
+        **If output schema is specified:**
         - **finalize_with_output**: Submit your findings matching the expected output schema
         - **finalize_with_failure**: Report that the task could not be completed
+
+        **If NO output schema is specified:**
+        - **finalize_result**: Submit your findings as a dictionary
+        - **finalize_failure**: Report that the task could not be completed
 
         Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
     """).strip()
@@ -216,30 +219,36 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         # Include output schema if set by orchestrator
         schema_section = self._get_output_schema_prompt_section()
 
+        # Use correct tool names based on output schema
+        finalize_success = "finalize_with_output" if self.has_output_schema else "finalize_result"
+
         if self.can_finalize:
             remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
             if remaining <= 2:
                 notice = (
-                    f"\n\n## CRITICAL: Call finalize_with_output NOW!\n"
+                    f"\n\n## CRITICAL: Call {finalize_success} NOW!\n"
                     f"Only {remaining} iterations remaining."
                 )
             elif remaining <= 4:
                 notice = (
-                    f"\n\n## URGENT: Call finalize_with_output soon!\n"
+                    f"\n\n## URGENT: Call {finalize_success} soon!\n"
                     f"Only {remaining} iterations remaining."
                 )
             else:
-                notice = "\n\n## finalize_with_output is now available. Call it when ready."
+                notice = f"\n\n## {finalize_success} is now available. Call it when ready."
         else:
             notice = f"\n\n## Continue exploring (iteration {self._autonomous_iteration})."
 
         return base_prompt + schema_section + notice
 
     def _get_autonomous_initial_message(self, task: str) -> str:
+        # Use correct tool names based on whether output schema is set
+        finalize_success = "finalize_with_output" if self.has_output_schema else "finalize_result"
+
         return (
             f"TRACE VALUE: {task}\n\n"
-            "Find where this value originated from. Search across all data stores, "
-            "analyze the results, and call finalize_result with your findings."
+            f"Find where this value originated from. Search across all data stores, "
+            f"analyze the results, and call {finalize_success} with your findings."
         )
 
     def _check_autonomous_completion(self, tool_name: str) -> bool:

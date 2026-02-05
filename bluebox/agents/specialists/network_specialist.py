@@ -111,10 +111,15 @@ class NetworkSpecialist(AbstractSpecialist):
 
         ## When finalize tools are available
 
-        After sufficient exploration, `finalize_with_output` and `finalize_with_failure` become available.
+        After sufficient exploration, finalize tools become available:
 
+        **If output schema is specified:**
         - **finalize_with_output**: Submit your findings matching the expected output schema
         - **finalize_with_failure**: Report that the task could not be completed
+
+        **If NO output schema is specified:**
+        - **finalize_result**: Submit your findings as a dictionary
+        - **finalize_failure**: Report that the task could not be completed
 
         Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
     """).strip()
@@ -240,21 +245,24 @@ class NetworkSpecialist(AbstractSpecialist):
         schema_section = self._get_output_schema_prompt_section()
 
         # Add finalize tool availability notice
+        # Use correct tool name based on whether output schema is set
+        finalize_tool = "finalize_with_output" if self.has_output_schema else "finalize_result"
+
         if self.can_finalize:
             remaining_iterations = self._autonomous_config.max_iterations - self._autonomous_iteration
             if remaining_iterations <= 2:
                 finalize_notice = (
-                    f"\n\n## CRITICAL: YOU MUST CALL finalize_with_output NOW!\n"
+                    f"\n\n## CRITICAL: YOU MUST CALL {finalize_tool} NOW!\n"
                     f"Only {remaining_iterations} iterations remaining."
                 )
             elif remaining_iterations <= 4:
                 finalize_notice = (
-                    f"\n\n## URGENT: Call finalize_with_output soon!\n"
+                    f"\n\n## URGENT: Call {finalize_tool} soon!\n"
                     f"Only {remaining_iterations} iterations remaining."
                 )
             else:
                 finalize_notice = (
-                    "\n\n## IMPORTANT: finalize_with_output is now available!\n"
+                    f"\n\n## IMPORTANT: {finalize_tool} is now available!\n"
                     "Call it when you have identified the endpoint."
                 )
         else:
@@ -267,12 +275,20 @@ class NetworkSpecialist(AbstractSpecialist):
         return self.AUTONOMOUS_SYSTEM_PROMPT + stats_context + urls_context + schema_section + finalize_notice
 
     def _get_autonomous_initial_message(self, task: str) -> str:
+        # Use correct tool names based on whether output schema is set
+        if self.has_output_schema:
+            finalize_success = "finalize_with_output"
+            finalize_fail = "finalize_with_failure"
+        else:
+            finalize_success = "finalize_result"
+            finalize_fail = "finalize_failure"
+
         return (
             f"TASK: {task}\n\n"
-            "Find the main API endpoint that returns the data needed for this task. "
-            "Search, analyze, and when confident, use finalize_result to report your findings. "
-            "If after thorough search you determine the endpoint does not exist in the traffic, "
-            "use finalize_failure to report why."
+            f"Find the main API endpoint that returns the data needed for this task. "
+            f"Search, analyze, and when confident, use {finalize_success} to report your findings. "
+            f"If after thorough search you determine the endpoint does not exist in the traffic, "
+            f"use {finalize_fail} to report why."
         )
 
     def _check_autonomous_completion(self, tool_name: str) -> bool:

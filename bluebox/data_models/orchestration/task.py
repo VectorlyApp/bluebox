@@ -46,6 +46,14 @@ class TaskStatus(StrEnum):
     FAILED = "failed"             # Failed with an error
 
 
+class SpecialistAgentType(StrEnum):
+    """Types of specialist agents available for task delegation."""
+    JS_SPECIALIST = "js_specialist"
+    NETWORK_SPECIALIST = "network_specialist"
+    VALUE_TRACE_RESOLVER = "value_trace_resolver"
+    INTERACTION_SPECIALIST = "interaction_specialist"
+
+
 class Task(BaseModel):
     """
     A unit of work delegated to a specialist subagent.
@@ -57,7 +65,7 @@ class Task(BaseModel):
     Use AbstractSpecialist.get_all_agent_types() for runtime discovery of valid types.
     """
     id: str = Field(default_factory=generate_short_id)
-    agent_type: str = Field(description="Type of specialist to handle this task (e.g., 'network_spy', 'trace_hound')")
+    agent_type: SpecialistAgentType = Field(description="Type of specialist to handle this task")
     agent_id: str | None = Field(
         default=None,
         description="ID of the subagent to use. None means create new instance."
@@ -107,7 +115,7 @@ class SubAgent(BaseModel):
     and learned context to persist.
     """
     id: str = Field(default_factory=generate_short_id)
-    type: str = Field(description="The type of specialist this agent is (e.g., 'network_spy')")
+    type: SpecialistAgentType = Field(description="The type of specialist this agent is")
     llm_model: str = Field(description="The LLM model used by this agent")
     task_ids: list[str] = Field(
         default_factory=list,

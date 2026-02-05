@@ -149,12 +149,18 @@ class JSSpecialist(AbstractSpecialist):
         1. **Understand**: Analyze the task and determine what DOM manipulation is needed
         2. **Check DOM**: Use `get_dom_snapshot` to understand the current page structure
         3. **Write**: Write the JavaScript code, validate it
-        4. **Finalize**: Call `finalize_with_output` with your code and details matching the expected schema
+        4. **Finalize**: Call the appropriate finalize tool with your findings
 
         ## When finalize tools are available
 
+        **If output schema is specified:**
         - **finalize_with_output**: Submit your findings matching the expected output schema
         - **finalize_with_failure**: Report that the task could not be completed
+
+        **If NO output schema is specified:**
+        - **finalize_result**: Submit your findings as a dictionary
+        - **finalize_failure**: Report that the task could not be completed
+
         - **execute_js_in_browser**: Test your code against the live website. Most useful when code depends on live page state (cookies, storage, dynamic DOM). Simple, deterministic code can skip this.
 
         Use `add_note()` before finalizing to record any notes, complaints, warnings, or errors.
@@ -246,13 +252,16 @@ class JSSpecialist(AbstractSpecialist):
         if schema_section:
             context_parts.append(schema_section)
 
-        # Urgency notices
+        # Urgency notices - use correct tool names based on output schema
+        finalize_success = "finalize_with_output" if self.has_output_schema else "finalize_result"
+        finalize_fail = "finalize_with_failure" if self.has_output_schema else "finalize_failure"
+
         if self.can_finalize:
             remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
             if remaining <= 2:
                 context_parts.append(
                     f"\n\n## CRITICAL: Only {remaining} iterations remaining!\n"
-                    f"You MUST call finalize_with_output or finalize_with_failure NOW!"
+                    f"You MUST call {finalize_success} or {finalize_fail} NOW!"
                 )
             elif remaining <= 4:
                 context_parts.append(
@@ -261,8 +270,8 @@ class JSSpecialist(AbstractSpecialist):
                 )
             else:
                 context_parts.append(
-                    "\n\n## Finalize tools are now available.\n"
-                    "Call finalize_with_output when ready."
+                    f"\n\n## Finalize tools are now available.\n"
+                    f"Call {finalize_success} when ready."
                 )
         else:
             context_parts.append(
@@ -276,10 +285,17 @@ class JSSpecialist(AbstractSpecialist):
     # via @agent_tool decorators below.
 
     def _get_autonomous_initial_message(self, task: str) -> str:
+        # Use correct tool names based on whether output schema is set
+        if self.has_output_schema:
+            finalize_success = "finalize_with_output"
+        else:
+            finalize_success = "finalize_result"
+
         return (
             f"TASK: {task}\n\n"
-            "Write IIFE JavaScript code to accomplish this task in the browser. "
-            "Research the available JS files and DOM structure if needed, then validate and submit your code."
+            f"Write IIFE JavaScript code to accomplish this task in the browser. "
+            f"Research the available JS files and DOM structure if needed, then validate "
+            f"and call {finalize_success} with your code."
         )
 
     def _check_autonomous_completion(self, tool_name: str) -> bool:

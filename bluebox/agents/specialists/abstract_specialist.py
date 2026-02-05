@@ -147,10 +147,12 @@ class AbstractSpecialist(AbstractAgent):
         Return True to stop the loop (e.g., finalize_result was called
         and self._autonomous_result is now set).
 
-        Default implementation checks for the generic finalize tools
-        (finalize_with_output, finalize_with_failure). Subclasses should
-        override this and call super() to also check for their own
-        specialist-specific finalize tools.
+        Default implementation checks for the generic finalize tools:
+        - finalize_with_output, finalize_with_failure (with output schema)
+        - finalize_result, finalize_failure (without output schema)
+
+        Subclasses should override this and call super() to also check
+        for their own specialist-specific finalize tools.
 
         Args:
             tool_name: Name of the tool that was just executed.
@@ -158,8 +160,14 @@ class AbstractSpecialist(AbstractAgent):
         Returns:
             True if the autonomous loop should stop.
         """
-        # Check for generic finalize tools
-        if tool_name in ("finalize_with_output", "finalize_with_failure"):
+        # Check for generic finalize tools (both with-schema and without-schema variants)
+        finalize_tools = (
+            "finalize_with_output",
+            "finalize_with_failure",
+            "finalize_result",
+            "finalize_failure",
+        )
+        if tool_name in finalize_tools:
             return self._wrapped_result is not None
         return False
 
@@ -381,12 +389,66 @@ class AbstractSpecialist(AbstractAgent):
             "reason": reason,
         }
 
+    ## Generic Finalize Tools (for tasks without output schema)
+
+    @agent_tool(availability=lambda self: self.can_finalize and not self.has_output_schema)
+    @token_optimized
+    def _finalize_result(self, result: dict[str, Any]) -> dict[str, Any]:
+        """
+        Finalize and return the result of your analysis.
+
+        Use this to submit your findings when you have completed the task.
+        The result should contain all relevant information discovered.
+
+        Args:
+            result: Dictionary containing your findings and analysis results.
+        """
+        self._wrapped_result = SpecialistResultWrapper(
+            output=result,
+            success=True,
+            notes=self._notes.copy(),
+        )
+
+        logger.info("Specialist finalized with result (no schema)")
+        return {
+            "status": "success",
+            "message": "Result submitted successfully",
+            "notes_count": len(self._notes),
+        }
+
+    @agent_tool(availability=lambda self: self.can_finalize and not self.has_output_schema)
+    @token_optimized
+    def _finalize_failure(self, reason: str) -> dict[str, Any]:
+        """
+        Finalize with failure when the task cannot be completed.
+
+        Use this when you cannot produce results after thorough analysis.
+
+        Args:
+            reason: Explanation of why the task could not be completed.
+        """
+        self._wrapped_result = SpecialistResultWrapper(
+            output=None,
+            success=False,
+            notes=self._notes.copy(),
+            failure_reason=reason,
+        )
+
+        logger.info("Specialist finalized with failure (no schema): %s", reason)
+        return {
+            "status": "failure",
+            "message": "Task marked as failed",
+            "reason": reason,
+        }
+
     ## Public API
 
     def run_autonomous(
         self,
         task: str,
         config: AutonomousConfig | None = None,
+        output_schema: dict[str, Any] | None = None,
+        output_description: str | None = None,
     ) -> BaseModel | None:
         """
         Run the specialist autonomously to completion.
@@ -399,6 +461,8 @@ class AbstractSpecialist(AbstractAgent):
         Args:
             task: User task description.
             config: Autonomous run configuration (iterations limits). Uses defaults if None.
+            output_schema: JSON Schema defining expected output structure.
+            output_description: Human-readable description of expected output.
 
         Returns:
             Specialist-specific result model, or None if max iterations reached.
@@ -409,6 +473,10 @@ class AbstractSpecialist(AbstractAgent):
 
         # Subclass should reset its own result fields in _reset_autonomous_state()
         self._reset_autonomous_state()
+
+        # Set output schema AFTER reset (so it doesn't get cleared)
+        if output_schema:
+            self.set_output_schema(output_schema, output_description)
 
         # Seed the conversation
         initial_message = self._get_autonomous_initial_message(task)
@@ -459,7 +527,13 @@ class AbstractSpecialist(AbstractAgent):
 
             messages = self._build_messages_for_llm()
             try:
-                response = self._call_llm(messages, self._get_autonomous_system_prompt())
+                # Use tool_choice="required" to force the LLM to always call a tool
+                # This prevents the loop from exiting due to text-only responses
+                response = self._call_llm(
+                    messages,
+                    self._get_autonomous_system_prompt(),
+                    tool_choice="required",
+                )
 
                 if response.response_id:
                     self._previous_response_id = response.response_id
@@ -481,7 +555,8 @@ class AbstractSpecialist(AbstractAgent):
                         )
 
                 if not response.tool_calls:
-                    logger.warning("Autonomous loop: no tool calls in iteration %d", self._autonomous_iteration)
+                    # This shouldn't happen with tool_choice="required", but handle it just in case
+                    logger.warning("Autonomous loop: no tool calls in iteration %d (unexpected with tool_choice=required)", self._autonomous_iteration)
                     return
 
                 # Process tool calls and check for completion
