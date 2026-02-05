@@ -843,7 +843,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         agent_type: str,
         prompt: str,
         agent_id: str | None = None,
-        max_loops: int = 5,
+        max_loops: int = 15,
     ) -> dict[str, Any]:
         """
         Create a new task for a specialist subagent.
@@ -852,7 +852,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             agent_type: Type of specialist (js_specialist, trace_hound).
             prompt: Task instructions for the specialist.
             agent_id: Optional ID of existing agent to reuse (preserves context).
-            max_loops: Maximum LLM iterations for this task (default 5).
+            max_loops: Maximum LLM iterations for this task (default 15).
         """
         try:
             parsed_type = SpecialistAgentType(agent_type)
@@ -1500,49 +1500,44 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     ## Tools - Routine Construction
 
-    @agent_tool()
+    @agent_tool(description="""Construct and auto-execute a routine. Pass complete routine dict.
+
+EXAMPLE:
+construct_routine(routine={
+    "name": "get_standings",
+    "description": "Get league standings",
+    "parameters": [
+        {"name": "competition_id", "description": "Competition ID", "type": "string", "required": True},
+        {"name": "season_id", "description": "Season ID", "type": "string", "required": True}
+    ],
+    "operations": [
+        {
+            "type": "fetch",
+            "endpoint": {
+                "description": "Get standings",
+                "url": "https://api.example.com/competitions/\\"{{competition_id}}\\"/seasons/\\"{{season_id}}\\"/standings",
+                "method": "GET",
+                "headers": {"Accept": "application/json"},
+                "body": None,
+                "credentials": "omit"
+            },
+            "session_storage_key": "standings"
+        },
+        {"type": "return", "session_storage_key": "standings"}
+    ]
+})
+
+CRITICAL PLACEHOLDER FORMAT:
+❌ WRONG: /seasons/{{season_id}}/standings
+❌ WRONG: /seasons/'{{season_id}}'/standings
+✅ RIGHT: /seasons/\\"{{season_id}}\\"/standings
+
+The backslash-quote \\"{{param}}\\" is MANDATORY! Parameter names must match exactly.""")
     def _construct_routine(
         self,
-        name: str,
-        description: str,
-        parameters: list[dict[str, Any]],
-        operations: list[dict[str, Any]],
+        routine: dict[str, Any],
     ) -> dict[str, Any]:
-        """
-        Construct a routine from specialist discoveries.
 
-        SCHEMA:
-        parameters = [
-            {
-                "name": str,          // Parameter name (valid identifier)
-                "description": str,   // What this parameter is for
-                "type": str,          // "string"|"integer"|"number"|"boolean"|"date"|"datetime"|"email"|"url"|"enum"
-                "required": bool      // Default: true
-            }
-        ]
-
-        operations = [
-            {"type": "navigate", "url": str},
-            {"type": "sleep", "timeout_seconds": float},
-            {"type": "fetch", "endpoint": Endpoint, "session_storage_key": str},
-            {"type": "return", "session_storage_key": str},
-            {"type": "click", "selector": str},
-            {"type": "input_text", "selector": str, "text": str}
-        ]
-
-        Endpoint (for fetch operations):
-        {
-            "description": str,
-            "url": str,                    // With placeholders: \"{{param}}\"
-            "method": str,                 // "GET"|"POST"|"PUT"|"DELETE"
-            "headers": dict,
-            "body": dict,
-            "credentials": str             // "same-origin"|"include"|"omit"
-        }
-
-        CRITICAL: String params MUST use escape-quoted format: \"{{param}}\" not {{param}}
-
-        """
         self._discovery_state.construction_attempts += 1
         self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
 
@@ -1666,18 +1661,38 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         except Exception as e:
             error_msg = str(e)
-            help_text = "Review the construct_routine tool documentation for schema and examples. "
+
+            # Build helpful error message with documentation suggestions
+            help_text = (
+                "Construction failed. To fix this:\n\n"
+                "1. Search documentation for examples:\n"
+                "   - search_documentation(query='Routine schema')\n"
+                "   - search_documentation(query='Operation types')\n"
+                "   - search_documentation(query='Parameter definition')\n"
+                "   - search_documentation(query='Placeholder format')\n\n"
+                "2. Look for example routines:\n"
+                "   - search_documentation(query='example_routines')\n"
+                "   - search_documentation(query='fetch operation example')\n\n"
+            )
+
+            # Add specific error-based hints
+            if "operation" in error_msg.lower():
+                help_text += "3. Your error is related to OPERATIONS. Search: search_documentation(query='operations schema')\n"
+            elif "parameter" in error_msg.lower():
+                help_text += "3. Your error is related to PARAMETERS. Search: search_documentation(query='parameters schema')\n"
+            elif "placeholder" in error_msg.lower():
+                help_text += "3. Your error is related to PLACEHOLDERS. Search: search_documentation(query='placeholder resolution')\n"
 
             # Provide state-aware help
             if self._discovery_state.all_resolved_variables:
                 help_text += (
-                    f"You have {len(self._discovery_state.all_resolved_variables)} resolved variables available. "
-                    f"Call get_discovery_context to see all discovered data and use it to build the routine."
+                    f"\n4. You have {len(self._discovery_state.all_resolved_variables)} resolved variables available. "
+                    f"Call get_discovery_context to see all discovered data."
                 )
             elif self._discovery_state.root_transaction:
                 help_text += (
-                    "You have a root transaction recorded but no resolved variables. "
-                    "Consider using trace_hound to resolve dynamic tokens before constructing."
+                    "\n4. You have a root transaction but no resolved variables. "
+                    "Use trace_hound to resolve dynamic tokens before constructing."
                 )
 
             return {

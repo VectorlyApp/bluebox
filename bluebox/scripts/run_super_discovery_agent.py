@@ -9,7 +9,8 @@ Usage:
     bluebox-super-discovery --task "get the live standings of a premier league football season" \
         --network-jsonl ./cdp_captures/network/events.jsonl \
         --storage-jsonl ./cdp_captures/storage/events.jsonl \
-        --window-props-jsonl ./cdp_captures/window_properties/events.jsonl
+        --window-props-jsonl ./cdp_captures/window_properties/events.jsonl \
+        --remote-debugging-address http://127.0.0.1:9222
 
     bluebox-super-discovery --task "Search for flights" \
         --network-jsonl ./cdp_captures/network/events.jsonl \
@@ -186,6 +187,7 @@ def main() -> None:
             message_dict["tool_name"] = tool_name
             message_dict["status"] = status
             message_dict["tool_arguments"] = message.tool_invocation.tool_arguments
+            message_dict["parameters"] = message.tool_invocation.tool_arguments
             message_dict["result"] = tool_result
 
         message_history.append(message_dict)
