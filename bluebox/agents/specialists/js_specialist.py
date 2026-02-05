@@ -235,7 +235,7 @@ class JSSpecialist(AbstractSpecialist):
 
     ## Tools
 
-    @agent_tool()
+    @agent_tool
     @token_optimized
     def _validate_js_code(self, js_code: str) -> dict[str, Any]:
         """

@@ -166,7 +166,7 @@ class InteractionSpecialist(AbstractSpecialist):
 
     ## Tool handlers
 
-    @agent_tool()
+    @agent_tool
     @token_optimized
     def _get_interaction_summary(self) -> dict[str, Any]:
         """Get summary statistics of all recorded interactions."""
@@ -179,7 +179,7 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool()
+    @agent_tool
     @token_optimized
     def _search_interactions_by_type(self, types: list[str]) -> dict[str, Any]:
         """
@@ -214,7 +214,7 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool()
+    @agent_tool
     @token_optimized
     def _search_interactions_by_element(
         self,
@@ -261,7 +261,7 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool()
+    @agent_tool
     @token_optimized
     def _get_interaction_detail(self, index: int) -> dict[str, Any]:
         """
@@ -277,7 +277,7 @@ class InteractionSpecialist(AbstractSpecialist):
         return detail
 
 
-    @agent_tool()
+    @agent_tool
     @token_optimized
     def _get_form_inputs(self) -> dict[str, Any]:
         """Get all input/change events with their values and element info."""
@@ -288,7 +288,7 @@ class InteractionSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool()
+    @agent_tool
     @token_optimized
     def _get_unique_elements(self) -> dict[str, Any]:
         """Get deduplicated elements with interaction counts and types."""
