@@ -19,7 +19,9 @@ Usage:
 
 import json
 import os
+import shutil
 from argparse import ArgumentParser
+from datetime import datetime
 from pathlib import Path
 
 from bluebox.agents.super_discovery_agent import SuperDiscoveryAgent
@@ -77,7 +79,16 @@ def main() -> None:
     logger.info("Starting SuperDiscovery for task:\n%s", args.task)
     logger.info("-" * 100)
 
+    # Wipe output directory if it exists for a clean start
+    if os.path.exists(args.output_dir):
+        logger.info("Removing existing output directory: %s", args.output_dir)
+        shutil.rmtree(args.output_dir)
+
     os.makedirs(args.output_dir, exist_ok=True)
+
+    # Create state directory for snapshots
+    state_dir = os.path.join(args.output_dir, "state")
+    os.makedirs(state_dir, exist_ok=True)
 
     # Resolve JSONL paths - explicit paths take precedence over cdp-captures-dir
     network_jsonl = args.network_jsonl
@@ -157,6 +168,19 @@ def main() -> None:
 
     # Message handler
     def handle_message(message: EmittedMessage) -> None:
+        # Capture state snapshot
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        state_snapshot = {
+            "timestamp": timestamp,
+            "discovery_state": agent._discovery_state.model_dump(mode='json') if hasattr(agent, '_discovery_state') else None,
+            "orchestration_state": agent._orchestration_state.model_dump(mode='json') if hasattr(agent, '_orchestration_state') else None,
+        }
+
+        # Save state snapshot
+        state_snapshot_path = os.path.join(state_dir, f"dtm_state_snapshot_{timestamp}.json")
+        with open(state_snapshot_path, mode="w", encoding="utf-8") as f:
+            json.dump(state_snapshot, f, ensure_ascii=False, indent=2)
+
         # Store message in history
         message_dict = {
             "type": message.__class__.__name__,
@@ -215,6 +239,7 @@ def main() -> None:
     )
     logger.info("SuperDiscoveryAgent initialized.")
     logger.info("📝 Message history will be saved to: %s", message_history_path)
+    logger.info("📊 State snapshots will be saved to: %s", state_dir)
 
     if args.remote_debugging_address:
         logger.info("Validation enabled via: %s", args.remote_debugging_address)

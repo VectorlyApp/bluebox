@@ -77,291 +77,118 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     ## System prompts
 
+    PLACEHOLDER_INSTRUCTIONS: str = (
+        "PLACEHOLDER SYNTAX:\n"
+        "- PARAMS: {{param_name}} (NO prefix, name matches parameter definition)\n"
+        "- SOURCES (use dot paths): {{cookie:name}}, {{sessionStorage:path.to.value}}, "
+        "{{localStorage:key}}, {{windowProperty:obj.key}}\n\n"
+        "JSON VALUE RULES (TWO sets of quotes needed for strings!):\n"
+        '- String: "key": \\"{{x}}\\"  (OUTER quotes = JSON string, INNER \\" = escaped quotes)\n'
+        '- Number/bool/null: "key": "{{x}}"  (only outer quotes, they get stripped)\n'
+        '- Inside larger string: "prefix\\"{{x}}\\"suffix"  (escaped quotes wrap placeholder)\n\n'
+        "EXAMPLES:\n"
+        '1. String param:     "name": \\"{{username}}\\"           -> "name": "john"\n'
+        '2. Number param:     "count": "{{limit}}"                -> "count": 50\n'
+        '3. Bool param:       "active": "{{is_active}}"           -> "active": true\n'
+        '4. String in string: "msg_\\"{{id}}\\""                  -> "msg_abc"\n'
+        '5. Number in string: "page\\"{{num}}\\""                 -> "page5"\n'
+        '6. URL with param:   "/api/\\"{{user_id}}\\"/data"       -> "/api/123/data"\n'
+        '7. Session storage:  "token": \\"{{sessionStorage:auth.access_token}}\\"\n'
+        '8. Cookie:           "sid": \\"{{cookie:session_id}}\\"\n'
+        "IMPORTANT: YOU MUST ENSURE THAT EACH PLACEHOLDER IS SURROUNDED BY QUOTES OR ESCAPED QUOTES!"
+    )
+
     SYSTEM_PROMPT: str = dedent("""\
-        You are a discovery orchestrator that coordinates specialist agents to build web automation routines.
+        You are an expert at analyzing network traffic and building web automation routines.
+        You coordinate specialist agents to help you discover and construct routines.
 
-        ## Your Specialist Team
-
-        You have 4 specialist agents. Each has specific expertise and tools:
-
-        ### 1. trace_hound - Value Origin Detective
-        **What it does:**
-        - Traces where values come from (API responses, cookies, localStorage, windowProperty)
-        - Resolves dynamic tokens and session IDs (finds auth tokens, trace IDs, session keys)
-        - Follows value flows across multiple transactions
-        - Identifies what data needs to be extracted and stored
-
-        **When to use:**
-        - Finding where a token/value originates (e.g., "Where does x-trace-id come from?")
-        - Resolving dynamic values needed for API calls (auth tokens, session IDs)
-        - Understanding data dependencies between API calls
-        - Extracting values from previous responses to use in later requests
-
-        **How to prompt:**
-        ✓ GOOD: "Find where the x-amtrak-trace-id header value comes from and how to extract it"
-        ✓ GOOD: "Trace the origin of the stationCode parameter - which API returns this?"
-        ✗ BAD: "Analyze all the data" (too vague)
-        ✗ BAD: "Find the train search endpoint" (use network_spy for this)
-
-        ### 2. network_spy - Endpoint Discovery Expert
-        **What it does:**
-        - Searches network traffic by keywords to find relevant API endpoints
-        - Analyzes request/response patterns
-        - Identifies which endpoints return specific data
-        - Examines API structure (URLs, methods, headers, request/response bodies)
-
-        **When to use:**
-        - Finding which API endpoint returns specific data (e.g., "Which endpoint returns train prices?")
-        - Discovering the main API for a task
-        - Understanding API request/response structure
-        - Locating where specific data appears in responses
-
-        **How to prompt:**
-        ✓ GOOD: "Find the API endpoint that returns train pricing and schedule data"
-        ✓ GOOD: "Which endpoint handles the search request? Show me its structure"
-        ✗ BAD: "Find where the token comes from" (use trace_hound for this)
-        ✗ BAD: "Write code to extract data" (use js_specialist for this)
-
-        ### 3. js_specialist - Browser JavaScript Expert
-        **What it does:**
-        - Writes IIFE JavaScript for DOM manipulation
-        - Creates code for data extraction from page elements
-        - Generates browser-side interaction code (clicks, form fills)
-        - Only use when routine needs browser-side JavaScript execution
-
-        **When to use:**
-        - Need to extract data from DOM that's not in network responses
-        - Need to interact with page elements (click, type, scroll)
-        - Need custom JavaScript evaluation in the browser
-        - Building js_evaluate operations
-
-        **How to prompt:**
-        ✓ GOOD: "Write JavaScript to extract train departure times from the results table"
-        ✓ GOOD: "Generate code to click the 'Search' button by selector"
-        ✗ BAD: "Find the search API" (use network_spy)
-        ✗ BAD: "Analyze network traffic" (use trace_hound or network_spy)
-
-        ### 4. docs_digger - Schema & Documentation Expert
-        **What it does:**
-        - Searches documentation files for schemas and examples
-        - Finds routine examples and patterns
-        - Looks up parameter/operation definitions
-        - Synthesizes information from multiple doc sources
-
-        **When to use:**
-        - Need to understand routine/parameter/operation schemas
-        - Looking for example routines to follow patterns
-        - Unsure about operation structure or fields
-        - Need to see how others solved similar problems
-
-        **How to prompt:**
-        ✓ GOOD: "Find example routines that use fetch operations with POST requests"
-        ✓ GOOD: "Look up the schema for Parameter objects - what fields are required?"
-        ✗ BAD: "Find the API endpoint" (use network_spy)
-        ✗ BAD: "Trace this token" (use trace_hound)
-
-        ## CRITICAL: You MUST Delegate
-
-        You are an ORCHESTRATOR, NOT a data analyst. Your job:
-        1. SKIP list_transactions/get_transaction - delegate to network_spy instead
-        2. ALWAYS start with network_spy to get API overview
-        3. THEN use trace_hound for dynamic value tracing
-        4. Use specialist results to construct routines
-
-        DO NOT:
-        - Call trace_hound before network_spy (YOU MUST START WITH NETWORK_SPY)
-        - Analyze data yourself and conclude "insufficient data"
-        - Try to trace tokens or find values yourself
-        - Spend more than 2-3 tools looking at raw data
-        - Give up without delegating to specialists
-
-        ALWAYS delegate to specialists for ANY analysis beyond basic overview.
-        NETWORK_SPY MUST BE YOUR FIRST SPECIALIST TASK - NO EXCEPTIONS!
+        ## Your Task
+        Analyze captured browser network data to create a reusable routine that accomplishes the user's task.
 
         ## Workflow
+        Follow these phases in order:
 
-        ### Phase 1: Planning (SKIP THIS - GO TO PHASE 2!)
-        ❌ DO NOT call list_transactions or get_transaction
-        ❌ DO NOT try to analyze data yourself
-        ✅ GO DIRECTLY TO PHASE 2 and create network_spy task
+        ### Phase 1: Identify Transaction
+        1. Use `list_transactions` to see available transactions
+        2. Use `get_transaction` to examine promising candidates
+        3. Use `record_identified_endpoint` when you find the transaction that accomplishes the user's task
 
-        Better approach: Skip Phase 1 entirely and go straight to Phase 2!
+        ### Phase 2: Process Transactions (BFS Queue)
+        For each transaction in the queue:
+        1. Use `get_transaction` to see full details
+        2. Use `record_extracted_variable` to log variables found in the request:
+           - PARAMETER: User input (search_query, item_id) - things the user explicitly provides
+           - DYNAMIC_TOKEN: Auth/session values (CSRF, JWT, session_id) - require resolution
+           - STATIC_VALUE: Constants (app version, User-Agent) - can be hardcoded
+        3. For each DYNAMIC_TOKEN, use `scan_for_value` to find its source
+        4. Use `record_resolved_variable` to record where each token comes from
+           - If source is another transaction, it will be auto-added to the queue
+           - IMPORTANT: If value is found in BOTH storage AND a prior transaction,
+             use source_type='transaction' as the primary source. Session storage may
+             be empty in a fresh session - prefer network sources for reliability.
+        5. Continue until queue is empty
 
-        ### Phase 2: Discovering (START HERE - Must delegate!)
-        Create specialist tasks for ALL analysis:
+        ### Phase 3: Construct and Finalize Routine
+        1. Use `get_discovery_context` to see all processed data
+        2. Use `construct_routine` to build the routine from all processed data
+           - For each parameter, specify `observed_value` from the extracted variable's observed_value
+           - Example: parameter name "origin" with observed_value "LAX" (from extracted variable's observed_value)
+           - Observed values are embedded in the routine for immediate testing
+        3. construct_routine AUTOMATICALLY executes the routine and returns results
+        4. Review execution results:
+           - If execution_success=True: call `done`
+           - If execution_success=False: fix issues and call construct_routine again
 
-        **MANDATORY ORDER - You MUST follow this sequence:**
+        ## Variable Classification Rules
 
-        **STEP 1 - ALWAYS START WITH network_spy (REQUIRED FIRST):**
-        ```
-        Task 1: create_task(
-            agent_type="network_spy",
-            prompt="Find all API endpoints related to [USER'S TASK]. Show URLs, methods, and response structures."
-        )
-        ```
-        ⚠️ CRITICAL: You MUST create network_spy task FIRST to get overview of API traffic!
-        DO NOT skip to trace_hound without running network_spy first!
+        **PARAMETER** (requires_dynamic_resolution=false):
+        - Values the user explicitly provides as input
+        - Examples: search_query, item_id, page_number, username
+        - Rule: If the user wouldn't directly provide this value, it's NOT a parameter
 
-        **STEP 2 - Then run tasks and review network_spy results:**
-        ```
-        run_pending_tasks()
-        get_task_result(task_id="...")  # Review network_spy findings
-        ```
+        **DYNAMIC_TOKEN** (requires_dynamic_resolution=true):
+        - Auth/session values that change per session
+        - Examples: CSRF tokens, JWTs, session_id, visitorData, auth headers
+        - Also: trace IDs, request IDs, correlation IDs
+        - Rule: If it looks like a generated ID or security token, it's a DYNAMIC_TOKEN
 
-        **STEP 3 - ONLY AFTER reviewing network_spy, create trace_hound tasks:**
-        ```
-        Task 2: create_task(
-            agent_type="trace_hound",
-            prompt="For the [SPECIFIC API from network_spy], identify all dynamic values and trace their origins."
-        )
-        ```
+        **STATIC_VALUE** (requires_dynamic_resolution=false):
+        - Constants that don't change between sessions
+        - Examples: App version, User-Agent, clientName, timeZone, language codes
+        - Rule: If you can hardcode it and it will work across sessions, it's STATIC
 
-        **STEP 4 - Execute remaining tasks:**
-        ```
-        run_pending_tasks()
-        ```
+        ## Specialist Agents (Optional - Use When Needed)
 
-        - Review each specialist result with `get_task_result`
-        - Create MORE tasks if specialists found issues or gaps
+        You have 4 specialist agents available. Delegate to them when you need help:
 
-        ### Phase 3: Constructing
-        Use specialist results to build the routine:
-        1. `construct_routine` with parameters and operations based on specialist findings
-        2. If construction fails, check error message:
-           - Schema issues? → Create docs_digger task to look up examples
-           - Missing values? → Create trace_hound task to find them
-           - Wrong endpoint? → Create network_spy task to verify
+        ### 1. network_spy - Endpoint Discovery Expert
+        - Searches network traffic by keywords to find relevant API endpoints
+        - Use when you need help finding which endpoint does what
 
-        ### Phase 4: Validating (AUTOMATIC)
-        ⚠️ CRITICAL: construct_routine AUTOMATICALLY executes the routine and returns results!
+        ### 2. trace_hound - Value Origin Detective
+        - Traces where values come from across transactions
+        - Use when scan_for_value isn't enough or you need deep analysis
 
-        After calling `construct_routine`, review the execution feedback in the result:
+        ### 3. js_specialist - Browser JavaScript Expert
+        - Writes IIFE JavaScript for DOM manipulation and extraction
+        - Use when routine needs browser-side JavaScript execution
 
-        **If execution_success = True:**
-        - The routine works! Call `done` to complete discovery
+        ### 4. docs_digger - Schema & Documentation Expert
+        - Searches documentation for schemas and examples
+        - Use when you need to understand routine structure or see examples
 
-        **If execution_success = False:**
-        - Review execution_error and failed_placeholders
-        - Fix issues:
-          * Placeholder resolution failed? → Use trace_hound to verify value paths
-          * Wrong API? → Use network_spy to double-check endpoint
-          * Need DOM extraction? → Use js_specialist for browser code
-        - Call `construct_routine` AGAIN with fixes (it will auto-execute again)
-        - Repeat until execution_success = True
+        To delegate: create_task(agent_type="network_spy", prompt="..."), then run_pending_tasks()
 
-        **YOU CANNOT CALL `done` UNTIL construct_routine RETURNS execution_success=True!**
+        ## Important Notes
+        - Focus on the user's INTENT, not literal wording
+        - Keep parameters MINIMAL - only what the user MUST provide
+        - If only one value was observed and it could be hardcoded, hardcode it
+        - Credentials for fetch operations: same-origin > include > omit
+        - PREFER NETWORK SOURCES: When a value appears in both session storage AND a prior
+          transaction response, use source_type='transaction' as the PRIMARY source, not storage.
+          Session storage may be empty in a fresh session, so the routine must fetch via network.
 
-        ### Phase 5: Completion
-        1. `done` - ONLY after successful execution validation
-        2. `fail` - ONLY after specialists confirm data is truly insufficient (rare!)
-
-        ## Example: Good Delegation Pattern
-
-        User task: "Build routine to search for trains on Amtrak"
-
-        ✓ CORRECT approach (Immediate delegation with automatic validation):
-        1. create_task(network_spy, "Find the Amtrak API endpoint that returns train schedules and pricing")
-        2. create_task(trace_hound, "Identify any auth tokens, session IDs, or dynamic values needed for the search API")
-        3. run_pending_tasks
-        4. get_task_result for each task
-        5. record_identified_endpoint, record_extracted_variable, record_resolved_variable (track discoveries)
-        6. If gaps found, create more specialist tasks
-        7. get_discovery_context (see all discoveries)
-        8. construct_routine from specialist findings (THIS AUTOMATICALLY EXECUTES THE ROUTINE!)
-        9. Review execution results in construct_routine response:
-           - If execution_success=True: call done
-           - If execution_success=False: fix issues, call construct_routine again (repeats until success)
-
-        ✗ WRONG approach (Manual inspection):
-        1. list_transactions
-        2. get_transaction (examining endpoints yourself)
-        3. get_transaction again (still looking...)
-        4. Try to analyze the data yourself
-        5. Conclude "insufficient data" (NEVER delegated to specialists!)
-        6. Call fail (premature - specialists never ran!)
-
-        ✓ ALTERNATIVE (If you really want overview):
-        1. list_transactions (just to see count - optional)
-        2. create_task(network_spy, ...) - IMMEDIATELY delegate
-        3. create_task(trace_hound, ...)
-        4. run_pending_tasks
-        5. ... continue from specialist results
-
-        ## Key Rules
-
-        - NEVER use get_transaction - that's network_spy's job!
-        - list_transactions is optional (just shows count)
-        - Create specialist tasks IMMEDIATELY
-        - ALWAYS delegate before concluding anything
-        - Run multiple specialists in parallel when possible
-        - Never call `fail` without specialist confirmation
-
-        ## Discovery State Tracking (IMPORTANT!)
-
-        You have tools to systematically track discoveries. USE THEM to build structured knowledge:
-
-        ### After network_spy finds endpoints:
-        1. Call `record_identified_endpoint` with the main transaction from network_spy results
-           - Use the request_id from endpoints[].request_ids
-           - This sets the root_transaction and adds it to the processing queue
-        2. For each parameter/token you identify in the endpoint:
-           - Call `record_extracted_variable` with:
-             - transaction_id: The request_id
-             - name: Variable name (e.g., "origin_city", "x-trace-id")
-             - type: "parameter" (user input), "dynamic_token" (auth/session), or "static_value" (constant)
-             - observed_value: The actual value from the capture
-             - requires_dynamic_resolution: true for tokens that need runtime resolution
-           - This builds your extracted variables database
-
-        ### After trace_hound traces token origins:
-        1. For each origin found in trace_hound results:
-           - Call `record_resolved_variable` with:
-             - variable_name: The token name you're resolving
-             - transaction_id: The transaction that uses this token
-             - source_type: "storage", "window_property", or "transaction"
-             - Plus the appropriate source dict (storage_source, window_property_source, or transaction_source)
-           - If source is a transaction, it's AUTO-ADDED to your queue for processing
-           - This tracks dependencies automatically
-
-        ### Before constructing the routine:
-        1. Call `get_discovery_context` to see everything you've learned:
-           - Root transaction info
-           - All processed transactions with their variables
-           - All parameters (categorized by type)
-           - All dynamic tokens with their sources
-           - All static values
-           - Transaction execution order (for building operations)
-        2. Use this context to construct complete parameters and operations
-        3. Call `construct_routine` with the full routine structure
-
-        ### Benefits of State Tracking:
-        - **No lost information** - Everything specialists find is preserved
-        - **Automatic dependencies** - Transaction queue builds itself
-        - **Better error recovery** - Can see exactly what's been discovered
-        - **Complete context** - All data available for routine construction
-        - **Clear progress** - Can track what's done and what's pending
-
-        ### Example Workflow with State Tracking:
-        ```
-        1. create_task(network_spy, "Find train search API")
-        2. run_pending_tasks
-        3. get_task_result(network_spy task)
-        4. record_identified_endpoint(request_id from network_spy)
-        5. record_extracted_variable("origin", "parameter", "LAX", ...)
-        6. record_extracted_variable("x-trace-id", "dynamic_token", "abc123", ...)
-        7. create_task(trace_hound, "Find origin of x-trace-id")
-        8. run_pending_tasks
-        9. get_task_result(trace_hound task)
-        10. record_resolved_variable("x-trace-id", "transaction", {...})
-        11. get_discovery_context  # See everything discovered
-        12. construct_routine(parameters from context, operations from context)
-        13. execute_routine (if browser available)
-        14. done
-        ```
-
-        CRITICAL: Use these state tracking tools! They prevent lost information and enable
-        systematic discovery. Every network_spy endpoint should be recorded. Every trace_hound
-        finding should be recorded. Get discovery context before constructing routine.
+        {placeholder_instructions}
     """)
 
     ## Magic methods
@@ -439,7 +266,9 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     def _get_system_prompt(self) -> str:
         """Build the complete system prompt with current state."""
-        prompt_parts = [self.SYSTEM_PROMPT]
+        prompt_parts = [self.SYSTEM_PROMPT.format(
+            placeholder_instructions=self.PLACEHOLDER_INSTRUCTIONS
+        )]
 
         # Add data store summaries
         data_store_info = []
@@ -837,7 +666,34 @@ class SuperDiscoveryAgent(AbstractAgent):
         SpecialistAgentType.NETWORK_SPY,
     }
 
-    @agent_tool()
+    @agent_tool(
+        description="Create a new task for a specialist subagent (network_spy, trace_hound, js_specialist, docs_digger).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "agent_type": {
+                    "type": "string",
+                    "enum": ["network_spy", "trace_hound", "js_specialist", "docs_digger"],
+                    "description": "Type of specialist agent"
+                },
+                "prompt": {
+                    "type": "string",
+                    "description": "Task instructions for the specialist"
+                },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Optional ID of existing agent to reuse"
+                },
+                "max_loops": {
+                    "type": "integer",
+                    "default": 15,
+                    "description": "Maximum LLM iterations for this task"
+                }
+            },
+            "required": ["agent_type", "prompt"]
+        },
+        availability=True,
+    )
     def _create_task(
         self,
         agent_type: str,
@@ -849,7 +705,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         Create a new task for a specialist subagent.
 
         Args:
-            agent_type: Type of specialist (js_specialist, trace_hound).
+            agent_type: Type of specialist (js_specialist, trace_hound, network_spy, docs_digger).
             prompt: Task instructions for the specialist.
             agent_id: Optional ID of existing agent to reuse (preserves context).
             max_loops: Maximum LLM iterations for this task (default 15).
@@ -881,7 +737,11 @@ class SuperDiscoveryAgent(AbstractAgent):
             "message": f"Task created. Use run_pending_tasks to execute.",
         }
 
-    @agent_tool()
+    @agent_tool(
+        description="List all tasks and their current status.",
+        parameters={"type": "object", "properties": {}, "required": []},
+        availability=True,
+    )
     def _list_tasks(self) -> dict[str, Any]:
         """List all tasks and their current status."""
         tasks_summary = []
@@ -904,7 +764,20 @@ class SuperDiscoveryAgent(AbstractAgent):
             "tasks": tasks_summary,
         }
 
-    @agent_tool()
+    @agent_tool(
+        description="Get the result of a completed task.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "string",
+                    "description": "The ID of the task to get results for"
+                }
+            },
+            "required": ["task_id"]
+        },
+        availability=True,
+    )
     def _get_task_result(self, task_id: str) -> dict[str, Any]:
         """
         Get the result of a completed task.
@@ -924,7 +797,11 @@ class SuperDiscoveryAgent(AbstractAgent):
             "loops_used": task.loops_used,
         }
 
-    @agent_tool()
+    @agent_tool(
+        description="Execute all pending tasks and return their results.",
+        parameters={"type": "object", "properties": {}, "required": []},
+        availability=True,
+    )
     def _run_pending_tasks(self) -> dict[str, Any]:
         """Execute all pending tasks and return their results."""
         pending = self._orchestration_state.get_pending_tasks()
@@ -1009,7 +886,33 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     ## Tools - State Population
 
-    @agent_tool()
+    @agent_tool(
+        description="Record the main transaction identified (root transaction for routine).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "request_id": {
+                    "type": "string",
+                    "description": "The transaction ID (HAR entry ID)"
+                },
+                "url": {
+                    "type": "string",
+                    "description": "The URL of the endpoint"
+                },
+                "method": {
+                    "type": "string",
+                    "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+                    "description": "HTTP method"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "What this transaction does"
+                }
+            },
+            "required": ["request_id", "url", "method", "description"]
+        },
+        availability=lambda self: self._network_data_loader is not None,
+    )
     def _record_identified_endpoint(
         self,
         request_id: str,
@@ -1082,7 +985,42 @@ class SuperDiscoveryAgent(AbstractAgent):
             "message": f"Recorded root transaction: {url}"
         }
 
-    @agent_tool()
+    @agent_tool(
+        description="Record a variable discovered from analyzing a transaction (parameter, dynamic_token, or static_value).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "transaction_id": {
+                    "type": "string",
+                    "description": "The transaction this variable belongs to"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Variable name (e.g., 'origin_city', 'x-trace-id')"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": ["parameter", "dynamic_token", "static_value"],
+                    "description": "Variable type"
+                },
+                "observed_value": {
+                    "type": "string",
+                    "description": "The actual value seen in the capture"
+                },
+                "requires_dynamic_resolution": {
+                    "type": "boolean",
+                    "description": "True if value must be resolved at runtime"
+                },
+                "values_to_scan_for": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of values to search for"
+                }
+            },
+            "required": ["transaction_id", "name", "type", "observed_value", "requires_dynamic_resolution"]
+        },
+        availability=True,
+    )
     def _record_extracted_variable(
         self,
         transaction_id: str,
@@ -1150,7 +1088,55 @@ class SuperDiscoveryAgent(AbstractAgent):
             "message": f"Recorded variable '{name}' for transaction {transaction_id}"
         }
 
-    @agent_tool()
+    @agent_tool(
+        description="Record how to resolve a dynamic token (storage, window_property, or transaction source). Auto-adds dependency transactions.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "variable_name": {
+                    "type": "string",
+                    "description": "Name of the variable being resolved"
+                },
+                "transaction_id": {
+                    "type": "string",
+                    "description": "The transaction this variable belongs to"
+                },
+                "source_type": {
+                    "type": "string",
+                    "enum": ["storage", "window_property", "transaction"],
+                    "description": "Where the value comes from"
+                },
+                "storage_source": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["cookie", "localStorage", "sessionStorage"]
+                        },
+                        "dot_path": {"type": "string"}
+                    },
+                    "description": "For storage source"
+                },
+                "window_property_source": {
+                    "type": "object",
+                    "properties": {
+                        "dot_path": {"type": "string"}
+                    },
+                    "description": "For window source"
+                },
+                "transaction_source": {
+                    "type": "object",
+                    "properties": {
+                        "transaction_id": {"type": "string"},
+                        "dot_path": {"type": "string"}
+                    },
+                    "description": "For transaction source"
+                }
+            },
+            "required": ["variable_name", "transaction_id", "source_type"]
+        },
+        availability=True,
+    )
     def _record_resolved_variable(
         self,
         variable_name: str,
@@ -1269,7 +1255,11 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         return result
 
-    @agent_tool()
+    @agent_tool(
+        description="Get formatted summary of everything discovered so far (transactions, variables, resolution info). Use before constructing routine.",
+        parameters={"type": "object", "properties": {}, "required": []},
+        availability=True,
+    )
     def _get_discovery_context(self) -> dict[str, Any]:
         """
         Get formatted summary of everything discovered so far.
@@ -1377,24 +1367,34 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     ## Tools - Data Store Access
 
-    @agent_tool()
+    @agent_tool(
+        description="List all available transaction IDs.",
+        parameters={"type": "object", "properties": {}, "required": []},
+        availability=lambda self: self._network_data_loader is not None,
+    )
     def _list_transactions(self) -> dict[str, Any]:
-        """List all available transaction IDs from the network captures."""
-        if not self._network_data_loader:
-            return {"error": "No network data store available"}
-
+        """List all available transaction IDs."""
         entries = self._network_data_loader.entries
-        tx_summaries = [
-            {"id": e.request_id, "method": e.method, "url": e.url[:100]}
-            for e in entries[:50]  # Limit to first 50 for readability
-        ]
+        tx_ids = [e.request_id for e in entries]
         return {
-            "transactions": tx_summaries,
-            "count": len(entries),
-            "showing": len(tx_summaries),
+            "transaction_ids": tx_ids,
+            "count": len(tx_ids),
         }
 
-    @agent_tool()
+    @agent_tool(
+        description="Get full details of a transaction.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "transaction_id": {
+                    "type": "string",
+                    "description": "The ID of the transaction to retrieve"
+                }
+            },
+            "required": ["transaction_id"]
+        },
+        availability=lambda self: self._network_data_loader is not None,
+    )
     def _get_transaction(self, transaction_id: str) -> dict[str, Any]:
         """
         Get full details of a transaction.
@@ -1402,27 +1402,198 @@ class SuperDiscoveryAgent(AbstractAgent):
         Args:
             transaction_id: The ID of the transaction to retrieve.
         """
-        if not self._network_data_loader:
-            return {"error": "No network data store available"}
-
         entry = self._network_data_loader.get_entry(transaction_id)
         if not entry:
             # Show some available IDs as hints
             available = [e.request_id for e in self._network_data_loader.entries[:10]]
-            return {"error": f"Transaction {transaction_id} not found. Sample IDs: {available}"}
+            return {"error": f"Transaction {transaction_id} not found. Available: {available}..."}
 
         return {
             "transaction_id": transaction_id,
-            "method": entry.method,
-            "url": entry.url,
-            "status": entry.status,
-            "request_headers": entry.request_headers,
-            "post_data": entry.post_data,
-            "response_headers": entry.response_headers,
-            "response_body": entry.response_body[:5000] if entry.response_body else None,  # Truncate large bodies
+            "request": {
+                "method": entry.method,
+                "url": entry.url,
+                "headers": entry.request_headers,
+                "body": entry.post_data,
+            },
+            "response": {
+                "status": entry.status,
+                "headers": entry.response_headers,
+                "body": entry.response_body[:5000] if entry.response_body else None,  # Truncate large bodies
+            },
         }
 
-    @agent_tool()
+    @agent_tool(
+        description="Scan storage, window properties, and transactions for a value.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "value": {
+                    "type": "string",
+                    "description": "The value to search for"
+                },
+                "before_transaction_id": {
+                    "type": "string",
+                    "description": "Optional transaction ID to limit search to events before this transaction"
+                }
+            },
+            "required": ["value"]
+        },
+        availability=lambda self: self._network_data_loader is not None,
+    )
+    def _scan_for_value(
+        self,
+        value: str,
+        before_transaction_id: str | None = None
+    ) -> dict[str, Any]:
+        """
+        Scan storage, window properties, and transactions for a value.
+
+        Args:
+            value: The value to search for.
+            before_transaction_id: Optional transaction ID to limit search to events before this transaction.
+        """
+        max_timestamp = None
+        if before_transaction_id:
+            entry = self._network_data_loader.get_entry(before_transaction_id)
+            if entry:
+                max_timestamp = entry.timestamp
+
+        # Scan storage
+        storage_sources = []
+        if self._storage_data_loader:
+            storage_sources = self._storage_data_loader.scan_for_value(value, max_timestamp=max_timestamp)
+
+        # Scan window properties
+        window_sources = []
+        if self._window_property_data_loader:
+            window_sources = self._window_property_data_loader.scan_for_value(value, max_timestamp=max_timestamp)
+
+        # Scan transaction responses
+        transaction_sources = []
+        for entry in self._network_data_loader.entries:
+            if max_timestamp and entry.timestamp >= max_timestamp:
+                continue
+            if entry.response_body and value in str(entry.response_body):
+                transaction_sources.append({
+                    "transaction_id": entry.request_id,
+                    "url": entry.url,
+                    "timestamp": entry.timestamp,
+                })
+
+        return {
+            "storage_sources": storage_sources[:5],  # Limit results
+            "window_property_sources": window_sources[:5],
+            "transaction_sources": transaction_sources[:5],
+            "found_count": len(storage_sources) + len(window_sources) + len(transaction_sources),
+        }
+
+    @agent_tool(
+        description="Add a transaction to the processing queue.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "transaction_id": {
+                    "type": "string",
+                    "description": "The transaction ID to add to the queue"
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Why this transaction is being added"
+                }
+            },
+            "required": ["transaction_id", "reason"]
+        },
+        availability=lambda self: self._network_data_loader is not None,
+    )
+    def _add_transaction_to_queue(
+        self,
+        transaction_id: str,
+        reason: str
+    ) -> dict[str, Any]:
+        """
+        Add a transaction to the processing queue.
+
+        Args:
+            transaction_id: The transaction ID to add to the queue.
+            reason: Why this transaction is being added.
+        """
+        entry = self._network_data_loader.get_entry(transaction_id)
+        if not entry:
+            return {"success": False, "error": f"Transaction {transaction_id} not found"}
+
+        added, position = self._discovery_state.add_to_queue(transaction_id)
+        return {
+            "success": True,
+            "added": added,
+            "queue_position": position,
+            "already_processed": transaction_id in self._discovery_state.processed_transactions,
+            "reason": reason,
+        }
+
+    @agent_tool(
+        description="Get current queue status.",
+        parameters={"type": "object", "properties": {}, "required": []},
+        availability=True,
+    )
+    def _get_queue_status(self) -> dict[str, Any]:
+        """Get current queue status."""
+        return self._discovery_state.get_queue_status()
+
+    @agent_tool(
+        description="Mark a transaction as complete and get the next one.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "transaction_id": {
+                    "type": "string",
+                    "description": "The transaction ID to mark as complete"
+                }
+            },
+            "required": ["transaction_id"]
+        },
+        availability=True,
+    )
+    def _mark_transaction_complete(self, transaction_id: str) -> dict[str, Any]:
+        """
+        Mark a transaction as complete and get the next one.
+
+        Args:
+            transaction_id: The transaction ID to mark as complete.
+        """
+        self._discovery_state.mark_transaction_complete(transaction_id)
+        next_tx = self._discovery_state.pop_next_transaction()
+
+        # Check if we should advance phase
+        if not next_tx and not self._discovery_state.transaction_queue:
+            self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
+
+        return {
+            "success": True,
+            "next_transaction": next_tx,
+            "remaining_count": len(self._discovery_state.transaction_queue),
+            "phase": self._discovery_state.phase.value,
+        }
+
+    @agent_tool(
+        description="Search documentation and code files for schema definitions, examples, and implementation details.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "String to search for (e.g., 'Parameter schema', 'fetch operation')"
+                },
+                "file_type": {
+                    "type": "string",
+                    "enum": ["documentation", "code"],
+                    "description": "Optional filter"
+                }
+            },
+            "required": ["query"]
+        },
+        availability=lambda self: self._documentation_data_loader is not None,
+    )
     def _search_documentation(
         self,
         query: str,
@@ -1463,7 +1634,28 @@ class SuperDiscoveryAgent(AbstractAgent):
             "results": results[:10],  # Limit to top 10 files
         }
 
-    @agent_tool()
+    @agent_tool(
+        description="Read the full content of a documentation or code file.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "File path (supports partial matching)"
+                },
+                "start_line": {
+                    "type": "integer",
+                    "description": "Optional starting line (1-indexed, inclusive)"
+                },
+                "end_line": {
+                    "type": "integer",
+                    "description": "Optional ending line (1-indexed, inclusive)"
+                }
+            },
+            "required": ["path"]
+        },
+        availability=lambda self: self._documentation_data_loader is not None,
+    )
     def _read_documentation_file(
         self,
         path: str,
@@ -1500,39 +1692,42 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     ## Tools - Routine Construction
 
-    @agent_tool(description="""Construct and auto-execute a routine. Pass complete routine dict.
-
-EXAMPLE:
-construct_routine(routine={
-    "name": "get_standings",
-    "description": "Get league standings",
-    "parameters": [
-        {"name": "competition_id", "description": "Competition ID", "type": "string", "required": True},
-        {"name": "season_id", "description": "Season ID", "type": "string", "required": True}
-    ],
-    "operations": [
-        {
-            "type": "fetch",
-            "endpoint": {
-                "description": "Get standings",
-                "url": "https://api.example.com/competitions/\\"{{competition_id}}\\"/seasons/\\"{{season_id}}\\"/standings",
-                "method": "GET",
-                "headers": {"Accept": "application/json"},
-                "body": None,
-                "credentials": "omit"
-            },
-            "session_storage_key": "standings"
-        },
-        {"type": "return", "session_storage_key": "standings"}
-    ]
-})
+    @agent_tool(
+        description="""Construct and auto-execute a routine. Pass complete routine dict with name, description, parameters, operations.
 
 CRITICAL PLACEHOLDER FORMAT:
 ❌ WRONG: /seasons/{{season_id}}/standings
 ❌ WRONG: /seasons/'{{season_id}}'/standings
 ✅ RIGHT: /seasons/\\"{{season_id}}\\"/standings
 
-The backslash-quote \\"{{param}}\\" is MANDATORY! Parameter names must match exactly.""")
+The backslash-quote \\"{{param}}\\" is MANDATORY! Parameter names must match exactly.""",
+        parameters={
+            "type": "object",
+            "properties": {
+                "routine": {
+                    "type": "object",
+                    "description": "Complete routine dictionary with name, description, parameters, and operations",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "parameters": {
+                            "type": "array",
+                            "items": {"type": "object"},
+                            "description": "List of parameter objects"
+                        },
+                        "operations": {
+                            "type": "array",
+                            "items": {"type": "object"},
+                            "description": "List of operation objects"
+                        }
+                    },
+                    "required": ["name", "description", "operations"]
+                }
+            },
+            "required": ["routine"]
+        },
+        availability=True,
+    )
     def _construct_routine(
         self,
         routine: dict[str, Any],
@@ -1540,6 +1735,12 @@ The backslash-quote \\"{{param}}\\" is MANDATORY! Parameter names must match exa
 
         self._discovery_state.construction_attempts += 1
         self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
+
+        # Extract from routine dict
+        name = routine["name"]
+        description = routine["description"]
+        parameters = routine.get("parameters", [])
+        operations = routine["operations"]
 
         # Optional: Provide guidance if discovery state has data
         warnings = []
@@ -1702,7 +1903,20 @@ The backslash-quote \\"{{param}}\\" is MANDATORY! Parameter names must match exa
                 "help": help_text,
             }
 
-    @agent_tool()
+    @agent_tool(
+        description="Execute the constructed routine to validate it works.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "parameters": {
+                    "type": "object",
+                    "description": "Optional test parameters for execution"
+                }
+            },
+            "required": []
+        },
+        availability=lambda self: self._remote_debugging_address is not None,
+    )
     def _execute_routine(self, parameters: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Execute the constructed routine to validate it works.
@@ -1770,7 +1984,11 @@ The backslash-quote \\"{{param}}\\" is MANDATORY! Parameter names must match exa
 
     ## Tools - Completion
 
-    @agent_tool()
+    @agent_tool(
+        description="Mark discovery as complete. Call this ONLY after construct_routine shows execution_success=True.",
+        parameters={"type": "object", "properties": {}, "required": []},
+        availability=True,
+    )
     def _done(self) -> dict[str, Any]:
         """Mark discovery as complete. Call this ONLY after construct_routine shows execution_success=True."""
         if not self._discovery_state.production_routine:
@@ -1784,7 +2002,20 @@ The backslash-quote \\"{{param}}\\" is MANDATORY! Parameter names must match exa
             "routine_name": self._final_routine.name,
         }
 
-    @agent_tool()
+    @agent_tool(
+        description="Mark discovery as failed.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "Why discovery could not be completed"
+                }
+            },
+            "required": ["reason"]
+        },
+        availability=True,
+    )
     def _fail(self, reason: str) -> dict[str, Any]:
         """
         Mark discovery as failed.
