@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 from abc import abstractmethod
 from enum import StrEnum
-from typing import Any, Callable, ClassVar, NamedTuple
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, NamedTuple
 
 import jsonschema
 from pydantic import BaseModel
@@ -39,6 +39,9 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
 
 logger = get_logger(name=__name__)
 
@@ -186,6 +189,7 @@ class AbstractSpecialist(AbstractAgent):
         run_mode: RunMode = RunMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
+        documentation_data_loader: DocumentationDataLoader | None = None,
     ) -> None:
         """
         Initialize the specialist.
@@ -199,6 +203,7 @@ class AbstractSpecialist(AbstractAgent):
             run_mode: How the specialist will be run (conversational or autonomous).
             chat_thread: Existing ChatThread to continue, or None for new.
             existing_chats: Existing Chat messages if loading from persistence.
+            documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
         """
         # lifecycle state (must be set before parent __init__, which calls _sync_tools)
         self.run_mode: RunMode = run_mode
@@ -220,6 +225,7 @@ class AbstractSpecialist(AbstractAgent):
             llm_model=llm_model,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
+            documentation_data_loader=documentation_data_loader,
         )
 
     ## Properties

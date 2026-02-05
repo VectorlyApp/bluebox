@@ -13,7 +13,7 @@ Contains:
 from __future__ import annotations
 
 from textwrap import dedent
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlparse, parse_qs
 
 from bluebox.agents.abstract_agent import agent_tool
@@ -28,6 +28,9 @@ from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
 
 logger = get_logger(name=__name__)
 
@@ -129,6 +132,7 @@ class NetworkSpecialist(AbstractSpecialist):
         run_mode: RunMode = RunMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
+        documentation_data_loader: DocumentationDataLoader | None = None,
     ) -> None:
         """
         Initialize the network specialist agent.
@@ -143,6 +147,7 @@ class NetworkSpecialist(AbstractSpecialist):
             run_mode: How the specialist will be run (conversational or autonomous).
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
+            documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
         """
         self._network_data_store = network_data_store
 
@@ -155,6 +160,7 @@ class NetworkSpecialist(AbstractSpecialist):
             run_mode=run_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
+            documentation_data_loader=documentation_data_loader,
         )
         logger.debug(
             "NetworkSpecialist initialized with model: %s, chat_thread_id: %s, entries: %d",

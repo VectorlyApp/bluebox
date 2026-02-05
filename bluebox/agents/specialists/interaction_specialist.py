@@ -10,7 +10,7 @@ Analyzes UI interaction recordings to discover routine parameters
 from __future__ import annotations
 
 from textwrap import dedent
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from bluebox.agents.abstract_agent import agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
@@ -23,6 +23,9 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.data_loaders.interactions_data_loader import InteractionsDataLoader
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
 
 logger = get_logger(name=__name__)
 
@@ -125,6 +128,7 @@ class InteractionSpecialist(AbstractSpecialist):
         run_mode: RunMode = RunMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
+        documentation_data_loader: DocumentationDataLoader | None = None,
     ) -> None:
         self._interaction_data_store = interaction_data_store
 
@@ -137,6 +141,7 @@ class InteractionSpecialist(AbstractSpecialist):
             run_mode=run_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
+            documentation_data_loader=documentation_data_loader,
         )
         logger.debug(
             "InteractionSpecialist initialized with %d events",

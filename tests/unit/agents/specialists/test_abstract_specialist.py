@@ -322,6 +322,11 @@ class TestCollectTools:
             # Generic finalize tools from AbstractSpecialist
             "finalize_with_output",
             "finalize_with_failure",
+            # Documentation tools from AbstractAgent
+            "search_docs",
+            "get_doc_file",
+            "search_docs_by_terms",
+            "search_docs_by_regex",
         }
         assert tool_names == expected
 

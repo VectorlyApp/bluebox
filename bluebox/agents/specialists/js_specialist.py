@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 from textwrap import dedent
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from bluebox.agents.abstract_agent import agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
@@ -31,6 +31,9 @@ from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.utils.js_utils import generate_js_evaluate_wrapper_js, validate_js
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
 
 logger = get_logger(name=__name__)
 
@@ -173,6 +176,7 @@ class JSSpecialist(AbstractSpecialist):
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         remote_debugging_address: str | None = None,
+        documentation_data_loader: DocumentationDataLoader | None = None,
     ) -> None:
         self._dom_snapshots = dom_snapshots or []
         self._remote_debugging_address = remote_debugging_address
@@ -188,6 +192,7 @@ class JSSpecialist(AbstractSpecialist):
             run_mode=run_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
+            documentation_data_loader=documentation_data_loader,
         )
         logger.debug(
             "JSSpecialist initialized: dom_snapshots=%d, network_data_store=%s, js_data_store=%s, browser=%s",

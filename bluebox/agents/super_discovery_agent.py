@@ -28,7 +28,6 @@ from bluebox.agents.abstract_agent import AbstractAgent, agent_tool
 from bluebox.agents.specialists import (  # importing registers all specialists
     AbstractSpecialist,
     AutonomousConfig,
-    DocsSpecialist,
     JSSpecialist,
     NetworkSpecialist,
     ValueTraceResolverSpecialist,
@@ -45,7 +44,7 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus
 from bluebox.data_models.orchestration.state import SuperDiscoveryState, SuperDiscoveryPhase
 from bluebox.data_models.routine.routine import Routine
-from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader, FileType
+from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
 from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
@@ -72,7 +71,9 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         ## Your Specialist Team
 
-        You have 4 specialist agents. Each has specific expertise and tools:
+        You have 3 specialist agents. Each has specific expertise and tools.
+        Note: All agents (including you) have built-in documentation search tools
+        (search_docs, get_doc_file, search_docs_by_terms, search_docs_by_regex) when docs are loaded.
 
         ### 1. ValueTraceResolverSpecialist - Value Origin Detective
         **What it does:**
@@ -131,25 +132,6 @@ class SuperDiscoveryAgent(AbstractAgent):
         ✗ BAD: "Find the search API" (use NetworkSpecialist)
         ✗ BAD: "Analyze network traffic" (use ValueTraceResolverSpecialist or NetworkSpecialist)
 
-        ### 4. DocsSpecialist - Schema & Documentation Expert
-        **What it does:**
-        - Searches documentation files for schemas and examples
-        - Finds routine examples and patterns
-        - Looks up parameter/operation definitions
-        - Synthesizes information from multiple doc sources
-
-        **When to use:**
-        - Need to understand routine/parameter/operation schemas
-        - Looking for example routines to follow patterns
-        - Unsure about operation structure or fields
-        - Need to see how others solved similar problems
-
-        **How to prompt:**
-        ✓ GOOD: "Find example routines that use fetch operations with POST requests"
-        ✓ GOOD: "Look up the schema for Parameter objects - what fields are required?"
-        ✗ BAD: "Find the API endpoint" (use NetworkSpecialist)
-        ✗ BAD: "Trace this token" (use ValueTraceResolverSpecialist)
-
         ## CRITICAL: You MUST Delegate
 
         You are an ORCHESTRATOR, NOT a data analyst. Your job:
@@ -203,7 +185,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         Use specialist results to build the routine:
         1. `construct_routine` with parameters and operations based on specialist findings
         2. If construction fails, check error message:
-           - Schema issues? → Create DocsSpecialist task to look up examples
+           - Schema issues? → Use your built-in docs tools (search_docs, get_doc_file) to look up examples
            - Missing values? → Create ValueTraceResolverSpecialist task to find them
            - Wrong endpoint? → Create NetworkSpecialist task to verify
 
@@ -325,6 +307,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             llm_model=llm_model,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
+            documentation_data_loader=documentation_data_loader,
         )
 
     ## Abstract method implementations
@@ -483,10 +466,11 @@ class SuperDiscoveryAgent(AbstractAgent):
 
     def _get_specialist_kwargs(self, agent_type: str) -> dict[str, Any]:
         """Build kwargs for specialist constructor based on type."""
-        # Common kwargs for all specialists
+        # Common kwargs for all specialists (docs tools are inherited from AbstractAgent)
         kwargs: dict[str, Any] = {
             "emit_message_callable": self._emit_message_callable,
             "llm_model": self._subagent_llm_model,
+            "documentation_data_loader": self._documentation_data_loader,
         }
 
         # Type-specific kwargs and validation
@@ -502,11 +486,6 @@ class SuperDiscoveryAgent(AbstractAgent):
             if not self._network_data_loader:
                 raise ValueError(f"{NetworkSpecialist.__name__} requires network_data_loader")
             kwargs["network_data_store"] = self._network_data_loader
-
-        elif agent_type == DocsSpecialist.__name__:
-            if not self._documentation_data_loader:
-                raise ValueError(f"{DocsSpecialist.__name__} requires documentation_data_loader")
-            kwargs["documentation_data_store"] = self._documentation_data_loader
 
         return kwargs
 
@@ -581,7 +560,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         Create a new task for a specialist subagent.
 
         Args:
-            agent_type: Type of specialist (JSSpecialist, NetworkSpecialist, ValueTraceResolverSpecialist, DocsSpecialist).
+            agent_type: Type of specialist (JSSpecialist, NetworkSpecialist, ValueTraceResolverSpecialist).
             prompt: Task instructions for the specialist.
             output_schema: JSON Schema defining the expected output structure (dict).
                 The specialist will return data matching this schema. Example:
@@ -735,80 +714,6 @@ class SuperDiscoveryAgent(AbstractAgent):
             "post_data": entry.post_data,
             "response_headers": entry.response_headers,
             "response_body": entry.response_body[:5000] if entry.response_body else None,  # Truncate large bodies
-        }
-
-    @agent_tool()
-    def _search_documentation(
-        self,
-        query: str,
-        file_type: str | None = None,
-    ) -> dict[str, Any]:
-        """
-        Search documentation and code files for a query string.
-
-        Use this to find schema definitions, examples, and implementation details
-        when you need to understand how to construct parameters or operations.
-
-        Args:
-            query: String to search for (e.g., "Parameter schema", "fetch operation").
-            file_type: Optional filter - "documentation" or "code".
-        """
-        if not self._documentation_data_loader:
-            return {"error": "No documentation data store available"}
-
-        file_type_enum = None
-        if file_type:
-            try:
-                file_type_enum = FileType(file_type)
-            except ValueError:
-                return {"error": f"Invalid file_type. Use 'documentation' or 'code'"}
-
-        results = self._documentation_data_loader.search_content_with_lines(
-            query=query,
-            file_type=file_type_enum,
-            case_sensitive=False,
-            max_matches_per_file=5,
-        )
-
-        return {
-            "query": query,
-            "results_count": len(results),
-            "results": results[:10],  # Limit to top 10 files
-        }
-
-    @agent_tool()
-    def _read_documentation_file(
-        self,
-        path: str,
-        start_line: int | None = None,
-        end_line: int | None = None,
-    ) -> dict[str, Any]:
-        """
-        Read the full content of a documentation or code file.
-
-        Args:
-            path: File path (supports partial matching).
-            start_line: Optional starting line (1-indexed, inclusive).
-            end_line: Optional ending line (1-indexed, inclusive).
-        """
-        if not self._documentation_data_loader:
-            return {"error": "No documentation data store available"}
-
-        result = self._documentation_data_loader.get_file_lines(
-            path=path,
-            start_line=start_line,
-            end_line=end_line,
-        )
-
-        if result is None:
-            return {"error": f"File not found: {path}"}
-
-        content, total_lines = result
-        return {
-            "path": path,
-            "content": content,
-            "total_lines": total_lines,
-            "showing_lines": f"{start_line or 1}-{end_line or total_lines}",
         }
 
     ## Tools - Routine Construction

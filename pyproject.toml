@@ -77,7 +77,6 @@ bluebox-network-specialist = "bluebox.scripts.specialists.run_network_specialist
 bluebox-value-trace-resolver = "bluebox.scripts.specialists.run_value_trace_resolver_specialist:main"
 bluebox-js-specialist = "bluebox.scripts.specialists.run_js_specialist:main"
 bluebox-interaction-specialist = "bluebox.scripts.specialists.run_interaction_specialist:main"
-bluebox-docs-specialist = "bluebox.scripts.specialists.run_docs_specialist:main"
 
 # Dev tools
 bluebox-benchmarks = "bluebox.scripts.run_benchmarks:main"
