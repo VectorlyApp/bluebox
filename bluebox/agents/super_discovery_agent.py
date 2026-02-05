@@ -18,6 +18,8 @@ The agent inherits from AbstractAgent for LLM/chat/tool infrastructure.
 
 from __future__ import annotations
 
+import json
+import re
 from datetime import datetime
 from textwrap import dedent
 from typing import Any, Callable
@@ -1526,62 +1528,151 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         return context
 
+    ## Routine Validation Helpers
+
+    def _extract_placeholders(self, data: Any) -> set[str]:
+        """
+        Extract all {{...}} placeholders from routine data.
+
+        Args:
+            data: Dict, list, or string containing routine data.
+
+        Returns:
+            Set of placeholder names (without the {{ }} wrapper).
+        """
+        json_str = json.dumps(data) if not isinstance(data, str) else data
+        matches = re.findall(r'\{\{(.*?)\}\}', json_str)
+        return set(matches)
+
+    def _validate_routine_structure(
+        self,
+        parameters: list[dict[str, Any]],
+        operations: list[dict[str, Any]],
+    ) -> list[str]:
+        """
+        Validate routine structure and return warnings (not errors).
+
+        Checks the same things as DevRoutine.validate() but returns warnings
+        instead of failing, allowing the agent to see potential issues.
+
+        Args:
+            parameters: List of parameter definitions.
+            operations: List of operation definitions.
+
+        Returns:
+            List of warning messages for potential issues.
+        """
+        warnings = []
+
+        # 1. Operation count check
+        if len(operations) < 3:
+            warnings.append(
+                f"Routine has {len(operations)} operations, expected at least 3 (navigate, fetch, return)"
+            )
+
+        if not operations:
+            return warnings  # Can't check further without operations
+
+        # 2. First operation should be navigate
+        first_op_type = operations[0].get("type")
+        if first_op_type != "navigate":
+            warnings.append(f"First operation is '{first_op_type}', expected 'navigate'")
+
+        # 3. Last operation should be return
+        last_op_type = operations[-1].get("type")
+        if last_op_type != "return":
+            warnings.append(f"Last operation is '{last_op_type}', expected 'return'")
+
+        # 4. Second-to-last should be fetch
+        if len(operations) >= 2:
+            second_last_type = operations[-2].get("type")
+            if second_last_type != "fetch":
+                warnings.append(f"Second-to-last operation is '{second_last_type}', expected 'fetch'")
+
+        # 5. Extract all placeholders from operations
+        all_placeholders = self._extract_placeholders(operations)
+
+        # 6. Check that every parameter is used
+        defined_params = {p.get("name") for p in parameters if p.get("name")}
+        unused_params = defined_params - all_placeholders
+        for param_name in unused_params:
+            warnings.append(f"Parameter '{param_name}' is defined but not used in operations")
+
+        # 7. Check placeholder prefixes (for non-parameter placeholders)
+        valid_prefixes = {"sessionStorage", "cookie", "localStorage", "uuid", "epoch_milliseconds", "meta", "windowProperty"}
+        remaining_placeholders = all_placeholders - defined_params
+        for placeholder in remaining_placeholders:
+            prefix = placeholder.split(":")[0]
+            if prefix not in valid_prefixes:
+                warnings.append(
+                    f"Placeholder '{placeholder}' has invalid prefix '{prefix}'. "
+                    f"Valid prefixes: {sorted(valid_prefixes)}"
+                )
+
+        # 8. Collect session storage keys from placeholders
+        used_session_keys = set()
+        for placeholder in all_placeholders:
+            if placeholder.startswith("sessionStorage:"):
+                # Extract key name (before any dot path)
+                key_path = placeholder.split(":", 1)[1]
+                key_name = key_path.split(".")[0]
+                used_session_keys.add(key_name)
+
+        # Include return operation's key
+        if operations and operations[-1].get("type") == "return":
+            return_key = operations[-1].get("session_storage_key")
+            if return_key:
+                used_session_keys.add(return_key)
+
+        # 9. Collect all fetch session storage keys
+        all_fetch_keys = set()
+        for op in operations:
+            if op.get("type") == "fetch":
+                fetch_key = op.get("session_storage_key")
+                if fetch_key:
+                    all_fetch_keys.add(fetch_key)
+
+        # 10. Check for unused fetch keys
+        unused_fetch_keys = all_fetch_keys - used_session_keys
+        for key in unused_fetch_keys:
+            warnings.append(f"Fetch session_storage_key '{key}' is set but never used")
+
+        # 11. Last fetch key should match return key
+        if len(operations) >= 2:
+            last_op = operations[-1]
+            second_last_op = operations[-2]
+            if last_op.get("type") == "return" and second_last_op.get("type") == "fetch":
+                return_key = last_op.get("session_storage_key")
+                fetch_key = second_last_op.get("session_storage_key")
+                if return_key and fetch_key and return_key != fetch_key:
+                    warnings.append(
+                        f"Last fetch session_storage_key '{fetch_key}' does not match "
+                        f"return session_storage_key '{return_key}'"
+                    )
+
+        return warnings
+
     ## Tools - Routine Construction
 
     @agent_tool(
         description="Construct a routine from discovered data. Auto-executes if browser connected.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "Name for the routine"
-                },
-                "description": {
-                    "type": "string",
-                    "description": "What the routine does"
-                },
-                "parameters": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "description": {"type": "string"},
-                            "type": {"type": "string"},
-                            "required": {"type": "boolean"},
-                            "observed_value": {"type": "string"}
-                        }
-                    },
-                    "description": "Parameter definitions with observed_value for testing"
-                },
-                "operations": {
-                    "type": "array",
-                    "items": {"type": "object"},
-                    "description": "Operations list (navigate, fetch, return, etc.)"
-                }
-            },
-            "required": ["name", "description", "parameters", "operations"]
-        },
-        availability=True,
+        parameters={"type": "object", "properties": {}, "required": []},
+        availability=lambda self: (
+            self._discovery_state.root_transaction is not None
+        ),
     )
-    def _construct_routine(
-        self,
-        name: str,
-        description: str,
-        parameters: list[dict[str, Any]],
-        operations: list[dict[str, Any]],
-    ) -> dict[str, Any]:
+    def _construct_routine(self, routine: Routine) -> dict[str, Any]:
         """
         Construct a routine from discovered data.
 
         Args:
-            name: Name for the routine.
-            description: What the routine does.
-            parameters: Parameter definitions with observed_value for testing.
-            operations: Operations list (navigate, fetch, return, etc.).
+            routine: The routine to construct.
         """
         self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
+        self._discovery_state.construction_attempts += 1
+
+        # Validate routine structure and collect warnings
+        structure_warnings = self._validate_routine_structure(parameters, operations)
 
         try:
             routine = Routine(
@@ -1616,54 +1707,40 @@ class SuperDiscoveryAgent(AbstractAgent):
 
                 if result.get("success"):
                     exec_result = result.get("result")
-                    if exec_result and exec_result.ok:
+                    if exec_result and exec_result.ok and exec_result.data is not None:
                         return {
-                            "success": True,
                             "routine_name": routine.name,
-                            "operations_count": len(routine.operations),
-                            "parameters_count": len(routine.parameters),
-                            "execution_success": True,
-                            "data_preview": str(exec_result.data)[:500] if exec_result.data else None,
-                            "message": "Routine constructed and validated successfully! Call done() to complete.",
+                            "data_preview": str(exec_result.data)[:500],
+                            "warnings": structure_warnings,
+                            "message": "Routine constructed and validated successfully! Ensure that the returned data is correct for the original task (IF NOT REVIEW DOCS and UPDATE ROUTINE). Call done() to complete.",
                         }
                     else:
-                        failed_placeholders = []
-                        if exec_result:
-                            failed_placeholders = [
-                                k for k, v in exec_result.placeholder_resolution.items() if v is None
-                            ]
                         return {
-                            "success": True,
                             "routine_name": routine.name,
-                            "execution_success": False,
-                            "execution_error": exec_result.error if exec_result else "Unknown error",
-                            "failed_placeholders": failed_placeholders,
-                            "message": "Routine constructed but execution failed. Fix issues and try again.",
+                            "exec_result": exec_result.model_dump() if exec_result else None,
+                            "warnings": structure_warnings,
+                            "message": "Routine executed but the 'data' field is missing or empty. Ensure the routine returns the data required by the original task",
                         }
                 else:
                     return {
-                        "success": True,
                         "routine_name": routine.name,
-                        "execution_success": False,
-                        "execution_error": result.get("error", "Unknown error"),
-                        "message": "Routine constructed but execution failed. Fix issues and try again.",
+                        "error": result.get("error", "Unknown error"),
+                        "warnings": structure_warnings,
+                        "message": "Routine execution failed. Fix issues and try again. review docs if necessary",
                     }
             else:
                 # No browser - just construct
                 return {
-                    "success": True,
                     "routine_name": routine.name,
-                    "operations_count": len(routine.operations),
-                    "parameters_count": len(routine.parameters),
-                    "execution_success": None,
-                    "message": "Routine constructed (no browser for validation). Call done() to complete.",
+                    "warnings": structure_warnings,
+                    "message": "Routine constructed (no browser for validation). Call done() to complete",
                 }
 
         except Exception as e:
             return {
-                "success": False,
                 "error": str(e),
-                "message": "Failed to construct routine. Check schema and try again.",
+                "warnings": structure_warnings,
+                "message": "Failed to construct routine. Check schema in the docs and try again.",
             }
 
     ## Tools - Completion
@@ -1671,7 +1748,9 @@ class SuperDiscoveryAgent(AbstractAgent):
     @agent_tool(
         description="Mark discovery as complete. Call when routine is ready.",
         parameters={"type": "object", "properties": {}, "required": []},
-        availability=True,
+        availability=lambda self: (
+            self._discovery_state.construction_attempts >= 1
+        ),
     )
     def _done(self) -> dict[str, Any]:
         """Mark discovery as complete."""
@@ -1698,7 +1777,10 @@ class SuperDiscoveryAgent(AbstractAgent):
             },
             "required": ["reason"]
         },
-        availability=True,
+        availability=lambda self: (
+            self._discovery_state.root_transaction is None
+            or self._discovery_state.construction_attempts >= 5
+        ),
     )
     def _fail(self, reason: str) -> dict[str, Any]:
         """
@@ -1710,7 +1792,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         self._discovery_state.phase = DiscoveryPhase.FAILED
         self._failure_reason = reason
         return {
-            "success": True,
+            "success": False,
             "message": "Discovery marked as failed",
             "reason": reason,
         }
