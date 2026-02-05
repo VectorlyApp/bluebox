@@ -286,13 +286,17 @@ class AbstractAgent(ABC):
         if extra:
             return {"error": f"Unknown parameter(s) for '{tool_name}': {', '.join(sorted(extra))}"}
 
-        # validate types using the handler's type hints
+        # validate and coerce types using the handler's type hints
+        # (e.g. a dict from the LLM becomes a Pydantic model instance)
+        validated_arguments: dict[str, Any] = {}
         try:
             hints = get_type_hints(obj=handler)
             for param_name, value in tool_arguments.items():
                 if param_name in hints and value is not None:
                     expected_type = hints[param_name]
-                    TypeAdapter(expected_type).validate_python(value)
+                    validated_arguments[param_name] = TypeAdapter(expected_type).validate_python(value)
+                else:
+                    validated_arguments[param_name] = value
         except ValidationError as e:
             # extract readable error message
             errors = e.errors()
@@ -305,7 +309,7 @@ class AbstractAgent(ABC):
 
         logger.debug("Executing tool %s with arguments: %s", tool_name, tool_arguments)
         # handler is unbound (from cls, not self) so pass self explicitly
-        return handler(self, **tool_arguments)
+        return handler(self, **validated_arguments)
 
     @classmethod
     @functools.lru_cache

@@ -21,6 +21,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import BaseModel, Field
 
 from bluebox.agents.abstract_agent import AbstractAgent, agent_tool, _ToolMeta
 from bluebox.data_models.llms.interaction import (
@@ -40,6 +41,13 @@ from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDat
 # =============================================================================
 # Concrete subclass for testing
 # =============================================================================
+
+
+class SearchParams(BaseModel):
+    """A Pydantic model used as an agent tool parameter."""
+    query: str = Field(description="The search query.")
+    max_results: int = Field(default=10, description="Maximum number of results.")
+    tags: list[str] = Field(default_factory=list, description="Tags to filter by.")
 
 
 class ConcreteAgent(AbstractAgent):
@@ -99,6 +107,22 @@ class ConcreteAgent(AbstractAgent):
     def _raises_error(self) -> dict[str, Any]:
         """A tool that raises an exception."""
         raise RuntimeError("intentional test error")
+
+    @agent_tool()
+    def _search(self, params: SearchParams) -> dict[str, Any]:
+        """
+        Search with structured params.
+
+        Args:
+            params: The search parameters.
+        """
+        # params should arrive as a SearchParams instance, not a raw dict
+        return {
+            "is_model": isinstance(params, SearchParams),
+            "query": params.query,
+            "max_results": params.max_results,
+            "tags": params.tags,
+        }
 
 
 @pytest.fixture
@@ -357,7 +381,7 @@ class TestCollectTools:
 
         expected = {
             "echo", "add_numbers", "disabled_tool", "gated_tool",
-            "no_params", "optional_params", "raises_error",
+            "no_params", "optional_params", "raises_error", "search",
             # Documentation tools from AbstractAgent
             "search_docs", "get_doc_file", "search_docs_by_terms", "search_docs_by_regex",
         }
@@ -497,6 +521,50 @@ class TestExecuteTool:
         result = agent._execute_tool("add_numbers", {"a": "not_int", "b": 2})
         assert "error" in result
         assert "Invalid argument type" in result["error"]
+
+    # --- Pydantic model coercion ---
+
+    def test_pydantic_model_coerced_from_dict(self, agent: ConcreteAgent) -> None:
+        """A dict matching a Pydantic model's schema should be coerced into the model instance."""
+        result = agent._execute_tool("search", {
+            "params": {"query": "bluebox", "max_results": 5, "tags": ["api"]},
+        })
+        assert result["is_model"] is True
+        assert result["query"] == "bluebox"
+        assert result["max_results"] == 5
+        assert result["tags"] == ["api"]
+
+    def test_pydantic_model_defaults_applied(self, agent: ConcreteAgent) -> None:
+        """Pydantic defaults should fill in when fields are omitted from the dict."""
+        result = agent._execute_tool("search", {
+            "params": {"query": "test"},  # max_results and tags use defaults
+        })
+        assert result["is_model"] is True
+        assert result["max_results"] == 10
+        assert result["tags"] == []
+
+    def test_pydantic_model_validation_error(self, agent: ConcreteAgent) -> None:
+        """Invalid data for the Pydantic model should return a validation error."""
+        result = agent._execute_tool("search", {
+            "params": {"query": 12345},  # query should be str
+        })
+        assert "error" in result
+        assert "Invalid argument type" in result["error"]
+
+    def test_pydantic_model_missing_required_field(self, agent: ConcreteAgent) -> None:
+        """Missing required fields in the Pydantic model dict should fail validation."""
+        result = agent._execute_tool("search", {
+            "params": {},  # query is required
+        })
+        assert "error" in result
+
+    def test_primitives_still_pass_through(self, agent: ConcreteAgent) -> None:
+        """Primitive types should still work after the coercion change."""
+        result = agent._execute_tool("echo", {"message": "hello"})
+        assert result == {"echoed": "hello"}
+
+        result = agent._execute_tool("add_numbers", {"a": 3, "b": 7})
+        assert result == {"sum": 10}
 
 
 # =============================================================================
@@ -1480,6 +1548,54 @@ class TestAgentToolDecorator:
         assert schema["properties"]["tags"]["description"] == "Tags to filter by."
         assert schema["properties"]["verbose"]["description"] == "Enable verbose output."
         assert schema["properties"]["limit"]["description"] == "Max results (optional)."
+
+    # ---- Pydantic model as parameter ----
+
+    def test_pydantic_model_param_generates_object_schema(self) -> None:
+        """A Pydantic model param should produce a nested object schema with its fields."""
+        meta = self._get_tool("search")
+        schema = meta.parameters
+        param_schema = schema["properties"]["params"]
+
+        # Pydantic model becomes an object with its own properties
+        assert param_schema["type"] == "object"
+        assert "query" in param_schema["properties"]
+        assert "max_results" in param_schema["properties"]
+        assert "tags" in param_schema["properties"]
+
+    def test_pydantic_model_field_types_in_schema(self) -> None:
+        """The nested Pydantic model's field types should be correct in the schema."""
+        meta = self._get_tool("search")
+        param_schema = meta.parameters["properties"]["params"]
+
+        assert param_schema["properties"]["query"]["type"] == "string"
+        assert param_schema["properties"]["max_results"]["type"] == "integer"
+        assert param_schema["properties"]["tags"]["type"] == "array"
+
+    def test_pydantic_model_field_descriptions_in_schema(self) -> None:
+        """Pydantic Field(description=...) should appear in the nested schema."""
+        meta = self._get_tool("search")
+        param_schema = meta.parameters["properties"]["params"]
+
+        assert param_schema["properties"]["query"]["description"] == "The search query."
+        assert param_schema["properties"]["max_results"]["description"] == "Maximum number of results."
+        assert param_schema["properties"]["tags"]["description"] == "Tags to filter by."
+
+    def test_pydantic_model_required_fields_in_schema(self) -> None:
+        """Only fields without defaults should be required in the nested schema."""
+        meta = self._get_tool("search")
+        param_schema = meta.parameters["properties"]["params"]
+
+        assert "query" in param_schema["required"]
+        # max_results and tags have defaults, so not required
+        assert "max_results" not in param_schema.get("required", [])
+        assert "tags" not in param_schema.get("required", [])
+
+    def test_pydantic_model_param_docstring_description(self) -> None:
+        """The Args docstring description should appear on the param, not the model fields."""
+        meta = self._get_tool("search")
+        param_schema = meta.parameters["properties"]["params"]
+        assert param_schema.get("description") == "The search parameters."
 
 
 # =============================================================================
