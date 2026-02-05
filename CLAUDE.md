@@ -16,8 +16,8 @@ This file provides context and guidelines for working with the bluebox-sdk codeb
 - `pytest tests/ -v` - Run all tests with verbose output
 - `pytest tests/unit/test_js_utils.py -v` - Run specific test file
 - `pytest tests/unit/test_js_utils.py::test_function_name -v` - Run specific test
-- `python bluebox/scripts/run_benchmarks.py` - Run routine discovery benchmarks
-- `python bluebox/scripts/run_benchmarks.py -v` - Run benchmarks with verbose output
+- `python scripts/dev/run_benchmarks.py` - Run routine discovery benchmarks
+- `python scripts/dev/run_benchmarks.py -v` - Run benchmarks with verbose output
 
 ### CLI Tools
 
@@ -158,7 +158,7 @@ from bluebox.llms.infra.data_store import DiscoveryDataStore, LocalDiscoveryData
 
 - Prefer running single tests or test files for faster iteration
 - Run full test suite before committing: `pytest tests/ -v`
-- Benchmarks validate routine discovery pipeline: `python bluebox/scripts/run_benchmarks.py`
+- Benchmarks validate routine discovery pipeline: `python scripts/dev/run_benchmarks.py`
 
 ## Environment Setup
 

@@ -1,5 +1,5 @@
 """
-bluebox/agents/docs_digger_agent.py
+bluebox/agents/specialists/docs_digger_agent.py
 
 # NOTE: THIS AGENT IS IN BETA AND NOT READY FOR PRODUCTION YET
 
