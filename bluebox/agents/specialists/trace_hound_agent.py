@@ -764,7 +764,3 @@ class TraceHoundAgent(AbstractSpecialist):
             "message": "Token origin tracing failed",
             "result": self._origin_failure.model_dump(),
         }
-
-
-# Backwards compatibility alias
-PathFinderAgent = TraceHoundAgent
