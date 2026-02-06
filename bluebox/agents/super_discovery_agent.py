@@ -156,21 +156,23 @@ class SuperDiscoveryAgent(AbstractAgent):
         6. Use `mark_transaction_processed` when done with a transaction (all variables extracted/resolved)
         7. Continue until queue is empty
 
-        ### Phase 3: Construct and Finalize Routine
+        ### Phase 3: Construct, Validate, and Analyze Routine
         1. Use `get_discovery_context` to see all processed data (includes CRITICAL_OBSERVED_VALUES)
         2. **IMPORTANT**: If you need help with routine structure, check the documentation:
            - Use search_documentation to find examples and schemas for routine construction
-           - run_pending_tasks() then get_task_result() to get examples
-           - This is MUCH better than search_documentation which may return 0 results
-        3. Use `construct_routine` with TWO required arguments:
+        3. Use `construct_routine` with the routine definition:
            - `routine`: the routine definition (name, description, parameters, operations)
+        4. Use `validate_routine` with test parameters to execute:
            - `test_parameters`: dict mapping parameter names to observed values
            - Example: test_parameters={{"origin": "NYC", "destination": "BOS"}}
            - Get these values from extracted variables' observed_value fields (see CRITICAL_OBSERVED_VALUES)
-        4. construct_routine AUTOMATICALLY executes the routine with test_parameters and returns results
-        5. Review execution results:
-           - If execution_success=True: call `done`
-           - If execution_success=False: fix issues and call construct_routine again
+        5. Use `analyze_validation` to reflect on results (REQUIRED before done):
+           - `analysis`: What worked and what failed
+           - `data_matches_task`: Does the returned data accomplish the user's original task?
+           - `next_action`: "done" | "fix_routine" | "retry_validation"
+        6. Based on your analysis:
+           - If data_matches_task=True and next_action="done": call `done`
+           - If data_matches_task=False: set next_action="fix_routine", then use construct_routine to fix and re-validate
 
         ## Variable Classification Rules
 
@@ -1659,7 +1661,7 @@ class SuperDiscoveryAgent(AbstractAgent):
     ## Tools - Routine Construction
 
     @agent_tool(
-        description="Construct a routine from discovered data. Auto-executes if browser connected.",
+        description="Construct a routine from discovered data. After constructing, use validate_routine to test it.",
         parameters={
             "type": "object",
             "properties": {
@@ -1690,18 +1692,8 @@ class SuperDiscoveryAgent(AbstractAgent):
                     },
                     "required": ["name", "description", "parameters", "operations"],
                 },
-                "test_parameters": {
-                    "type": "object",
-                    "description": (
-                        "REQUIRED: Test parameter values from observed data. "
-                        "Map of parameter_name -> observed_value. "
-                        "Example: {\"origin\": \"NYC\", \"destination\": \"BOS\"}. "
-                        "Get these from the extracted variables' observed_value fields."
-                    ),
-                    "additionalProperties": {"type": "string"},
-                },
             },
-            "required": ["routine", "test_parameters"],
+            "required": ["routine"],
         },
         availability=lambda self: (
             self._discovery_state.root_transaction is not None and
@@ -1711,20 +1703,22 @@ class SuperDiscoveryAgent(AbstractAgent):
     def _construct_routine(
         self,
         routine: dict[str, Any],
-        test_parameters: dict[str, str],
     ) -> dict[str, Any]:
         """
-        Construct a routine from discovered data. Auto-executes if browser connected.
+        Construct a routine from discovered data (no execution).
+
+        After constructing, use validate_routine to test it with parameters.
 
         Args:
             routine: The routine dict with name, description, parameters, and operations.
-            test_parameters: Map of parameter names to observed values for testing.
         """
         self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
         self._discovery_state.construction_attempts += 1
 
-        # Store test_parameters in discovery state for later saving
-        self._discovery_state.test_parameters = test_parameters
+        # Reset validation state when routine is (re)constructed
+        self._discovery_state.last_validation_result = None
+        self._discovery_state.validation_analyzed = False
+        self._discovery_state.last_analysis = None
 
         try:
             routine_obj = Routine.model_validate(routine)
@@ -1734,57 +1728,20 @@ class SuperDiscoveryAgent(AbstractAgent):
                 "message": "Failed to parse routine. Check schema in the docs and try again.",
             }
 
-        # Validate routine structure and collect warnings
+        # Get structure warnings (errors are already caught by model validation above)
         structure_warnings = routine_obj.get_structure_warnings()
 
         try:
             self._discovery_state.production_routine = routine_obj
 
-            # Auto-execute if browser connected
-            if self._remote_debugging_address:
-                self._discovery_state.phase = DiscoveryPhase.VALIDATING
-
-                # Import here to avoid circular dependency
-                from bluebox.llms.tools.execute_routine_tool import execute_routine
-
-                result = execute_routine(
-                    routine=routine_obj.model_dump(),
-                    parameters=test_parameters,
-                    remote_debugging_address=self._remote_debugging_address,
-                    timeout=60,
-                    close_tab_when_done=True,
-                )
-
-                if result.get("success"):
-                    exec_result = result.get("result")
-                    if exec_result and exec_result.ok and exec_result.data is not None:
-                        return {
-                            "routine_name": routine_obj.name,
-                            "data_preview": str(exec_result.data)[:500],
-                            "warnings": structure_warnings,
-                            "message": "Routine constructed and validated successfully! Ensure that the returned data is correct for the original task (IF NOT REVIEW DOCS and UPDATE ROUTINE). Call done() to complete.",
-                        }
-                    else:
-                        return {
-                            "routine_name": routine_obj.name,
-                            "exec_result": exec_result.model_dump() if exec_result else None,
-                            "warnings": structure_warnings,
-                            "message": "Routine executed but the 'data' field is missing or empty. Ensure the routine returns the data required by the original task",
-                        }
-                else:
-                    return {
-                        "routine_name": routine_obj.name,
-                        "error": result.get("error", "Unknown error"),
-                        "warnings": structure_warnings,
-                        "message": "Routine execution failed. Fix issues and try again. review docs if necessary",
-                    }
-            else:
-                # No browser - just construct
-                return {
-                    "routine_name": routine_obj.name,
-                    "warnings": structure_warnings,
-                    "message": "Routine constructed (no browser for validation). Call done() to complete",
-                }
+            return {
+                "success": True,
+                "routine_name": routine_obj.name,
+                "parameter_count": len(routine_obj.parameters),
+                "operation_count": len(routine_obj.operations),
+                "warnings": structure_warnings,
+                "message": "Routine constructed. Now use validate_routine with test_parameters to execute and verify it works.",
+            }
 
         except Exception as e:
             return {
@@ -1792,17 +1749,266 @@ class SuperDiscoveryAgent(AbstractAgent):
                 "message": "Failed to construct routine. Check schema in the docs and try again.",
             }
 
-    ## Tools - Completion
-
     @agent_tool(
+        description="Execute the constructed routine with test parameters to validate it works.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "test_parameters": {
+                    "type": "object",
+                    "description": (
+                        "Test parameter values from observed data. "
+                        "Map of parameter_name -> observed_value. "
+                        "Example: {\"origin\": \"NYC\", \"destination\": \"BOS\"}. "
+                        "Get these from the extracted variables' observed_value fields."
+                    ),
+                    "additionalProperties": {"type": "string"},
+                },
+            },
+            "required": ["test_parameters"],
+        },
         availability=lambda self: (
-            self._discovery_state.construction_attempts >= 1
+            self._discovery_state.production_routine is not None
         ),
     )
-    def _done(self) -> dict[str, Any]:
-        """Mark discovery as complete."""
+    def _validate_routine(
+        self,
+        test_parameters: dict[str, str],
+    ) -> dict[str, Any]:
+        """
+        Execute the constructed routine with test parameters to validate it works.
+
+        After validation, use analyze_validation to reflect on results before calling done.
+
+        Args:
+            test_parameters: Map of parameter names to observed values for testing.
+        """
         if not self._discovery_state.production_routine:
             return {"error": "No routine constructed. Use construct_routine first."}
+
+        self._discovery_state.phase = DiscoveryPhase.VALIDATING
+        self._discovery_state.validation_attempts += 1
+
+        # Store test_parameters in discovery state
+        self._discovery_state.test_parameters = test_parameters
+
+        # Reset analysis state
+        self._discovery_state.validation_analyzed = False
+        self._discovery_state.last_analysis = None
+
+        routine_obj = self._discovery_state.production_routine
+
+        if not self._remote_debugging_address:
+            # No browser connected - store result indicating skip
+            self._discovery_state.last_validation_result = {
+                "skipped": True,
+                "reason": "No browser connected for validation",
+            }
+            return {
+                "routine_name": routine_obj.name,
+                "skipped": True,
+                "message": "No browser connected - validation skipped. Use analyze_validation to proceed.",
+            }
+
+        # Import here to avoid circular dependency
+        from bluebox.llms.tools.execute_routine_tool import execute_routine
+
+        result = execute_routine(
+            routine=routine_obj.model_dump(),
+            parameters=test_parameters,
+            remote_debugging_address=self._remote_debugging_address,
+            timeout=60,
+            close_tab_when_done=True,
+        )
+
+        # Store full result for analysis
+        if result.get("success"):
+            exec_result = result.get("result")
+            self._discovery_state.last_validation_result = {
+                "success": True,
+                "exec_result": exec_result.model_dump() if exec_result else None,
+                "data_returned": exec_result.data is not None if exec_result else False,
+            }
+
+            if exec_result and exec_result.ok and exec_result.data is not None:
+                return {
+                    "routine_name": routine_obj.name,
+                    "execution_success": True,
+                    "data_returned": True,
+                    "data_preview": str(exec_result.data)[:500],
+                    "message": "Routine executed successfully with data. Use analyze_validation to reflect on results.",
+                }
+            else:
+                return {
+                    "routine_name": routine_obj.name,
+                    "execution_success": True,
+                    "data_returned": False,
+                    "exec_result": exec_result.model_dump() if exec_result else None,
+                    "message": "Routine executed but 'data' field is missing or empty. Use analyze_validation to decide next steps.",
+                }
+        else:
+            self._discovery_state.last_validation_result = {
+                "success": False,
+                "error": result.get("error", "Unknown error"),
+            }
+            return {
+                "routine_name": routine_obj.name,
+                "execution_success": False,
+                "error": result.get("error", "Unknown error"),
+                "message": "Routine execution failed. Use analyze_validation to decide next steps.",
+            }
+
+    @agent_tool(
+        description="Analyze validation results and decide next steps. REQUIRED before calling done().",
+        parameters={
+            "type": "object",
+            "properties": {
+                "analysis": {
+                    "type": "string",
+                    "description": "Your analysis of what worked and what failed in the validation.",
+                },
+                "data_matches_task": {
+                    "type": "boolean",
+                    "description": "Does the returned data accomplish the original task the user requested?",
+                },
+                "next_action": {
+                    "type": "string",
+                    "enum": ["done", "fix_routine", "retry_validation"],
+                    "description": "What to do next: 'done' if successful, 'fix_routine' to modify routine, 'retry_validation' to re-run.",
+                },
+            },
+            "required": ["analysis", "data_matches_task", "next_action"],
+        },
+        availability=lambda self: (
+            self._discovery_state.last_validation_result is not None and
+            not self._discovery_state.validation_analyzed
+        ),
+    )
+    def _analyze_validation(
+        self,
+        analysis: str,
+        data_matches_task: bool,
+        next_action: str,
+    ) -> dict[str, Any]:
+        """
+        Analyze validation results and decide next steps. Required before calling done().
+
+        Args:
+            analysis: Your analysis of what worked and what failed.
+            data_matches_task: Does the returned data accomplish the original task?
+            next_action: What to do next - 'done', 'fix_routine', or 'retry_validation'.
+        """
+        if self._discovery_state.last_validation_result is None:
+            return {"error": "No validation result to analyze. Use validate_routine first."}
+
+        # Validate next_action
+        valid_actions = ["done", "fix_routine", "retry_validation"]
+        if next_action not in valid_actions:
+            return {"error": f"Invalid next_action. Must be one of: {valid_actions}"}
+
+        # Store the analysis
+        self._discovery_state.last_analysis = {
+            "analysis": analysis,
+            "data_matches_task": data_matches_task,
+            "next_action": next_action,
+        }
+        self._discovery_state.validation_analyzed = True
+
+        # Check for inconsistency: can't say "done" if data doesn't match task
+        if next_action == "done" and not data_matches_task:
+            return {
+                "error": "Inconsistent analysis: next_action is 'done' but data_matches_task is False.",
+                "message": "If data doesn't match the task, you must fix the routine first.",
+                "hint": "Set next_action to 'fix_routine' and update the routine to return correct data.",
+            }
+
+        # Check validation result
+        validation_result = self._discovery_state.last_validation_result
+        validation_failed = not validation_result.get("success", False) and not validation_result.get("skipped", False)
+
+        if next_action == "done" and validation_failed:
+            return {
+                "error": "Cannot mark as done when validation failed.",
+                "message": "Fix the routine and re-validate before completing.",
+            }
+
+        # Return guidance based on next_action
+        if next_action == "done":
+            return {
+                "success": True,
+                "message": "Analysis recorded. You may now call done() to complete discovery.",
+                "analysis_summary": {
+                    "analysis": analysis,
+                    "data_matches_task": data_matches_task,
+                },
+            }
+        elif next_action == "fix_routine":
+            return {
+                "success": True,
+                "message": "Analysis recorded. Use construct_routine to fix the routine, then validate_routine again.",
+                "analysis_summary": {
+                    "analysis": analysis,
+                    "data_matches_task": data_matches_task,
+                },
+            }
+        else:  # retry_validation
+            # Reset for retry
+            self._discovery_state.validation_analyzed = False
+            self._discovery_state.last_analysis = None
+            return {
+                "success": True,
+                "message": "Analysis recorded. Use validate_routine to retry validation.",
+                "analysis_summary": {
+                    "analysis": analysis,
+                    "data_matches_task": data_matches_task,
+                },
+            }
+
+    ## Tools - Completion
+
+    def _can_complete(self) -> bool:
+        """Check if discovery can be marked complete."""
+        # Must have a routine
+        if not self._discovery_state.production_routine:
+            return False
+
+        # Must have analyzed validation
+        if not self._discovery_state.validation_analyzed:
+            return False
+
+        # Analysis must indicate data matches task
+        analysis = self._discovery_state.last_analysis
+        if not analysis:
+            return False
+
+        # Either data matches task OR validation was skipped (no browser)
+        validation_result = self._discovery_state.last_validation_result
+        validation_skipped = validation_result and validation_result.get("skipped", False)
+
+        return analysis.get("data_matches_task", False) or validation_skipped
+
+    @agent_tool(
+        availability=lambda self: self._can_complete(),
+    )
+    def _done(self) -> dict[str, Any]:
+        """Mark discovery as complete. Only available after successful analyze_validation."""
+        if not self._discovery_state.production_routine:
+            return {"error": "No routine constructed. Use construct_routine first."}
+
+        if not self._discovery_state.validation_analyzed:
+            return {"error": "Validation not analyzed. Use analyze_validation first."}
+
+        analysis = self._discovery_state.last_analysis
+        if not analysis:
+            return {"error": "No analysis found. Use analyze_validation first."}
+
+        if not analysis.get("data_matches_task", False):
+            validation_result = self._discovery_state.last_validation_result
+            if not (validation_result and validation_result.get("skipped", False)):
+                return {
+                    "error": "Cannot complete when data doesn't match task.",
+                    "message": "Fix the routine with construct_routine, then validate_routine and analyze_validation again.",
+                }
 
         self._discovery_state.phase = DiscoveryPhase.COMPLETE
         self._final_routine = self._discovery_state.production_routine

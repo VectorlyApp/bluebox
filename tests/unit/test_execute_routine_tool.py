@@ -65,8 +65,18 @@ def test_execute_routine_valid_json_string(mock_executor):
         ],
         "operations": [
             {
-                "type": "navigate",
-                "url": "https://example.com/\"{{test_param}}\"",
+                "type": "fetch",
+                "endpoint": {
+                    "url": "https://example.com/\"{{test_param}}\"",
+                    "method": "GET",
+                    "headers": {},
+                    "body": {}
+                },
+                "session_storage_key": "result"
+            },
+            {
+                "type": "return",
+                "session_storage_key": "result",
             }
         ],
     }
@@ -96,8 +106,18 @@ def test_execute_routine_valid_dict(mock_executor):
         ],
         "operations": [
             {
-                "type": "navigate",
-                "url": "https://example.com/\"{{test_param}}\"",
+                "type": "fetch",
+                "endpoint": {
+                    "url": "https://example.com/\"{{test_param}}\"",
+                    "method": "GET",
+                    "headers": {},
+                    "body": {}
+                },
+                "session_storage_key": "result"
+            },
+            {
+                "type": "return",
+                "session_storage_key": "result",
             }
         ],
     }
