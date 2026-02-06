@@ -1734,7 +1734,7 @@ class SuperDiscoveryAgent(AbstractAgent):
                 "message": "Failed to parse routine. Check schema in the docs and try again.",
             }
 
-        # Validate routine structure and collect warnings
+        # Get structure warnings (errors are already caught by model validation above)
         structure_warnings = routine_obj.get_structure_warnings()
 
         try:

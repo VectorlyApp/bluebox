@@ -72,15 +72,68 @@ def make_routine() -> Callable[..., Routine]:
     """
     Factory fixture to create Routine with hardcoded defaults.
 
+    Automatically ensures the routine ends with a proper return operation
+    and has at least 2 operations (required by validation).
+
     Usage:
         routine = make_routine(operations=[...])
         routine = make_routine(operations=[...], parameters=[...], name="custom")
     """
+    from bluebox.data_models.routine.operation import (
+        RoutineFetchOperation,
+        RoutineReturnOperation,
+        RoutineReturnHTMLOperation,
+    )
+    from bluebox.data_models.routine.endpoint import Endpoint, HTTPMethod
+
     def factory(operations: list[RoutineOperationUnion], **kwargs: Any) -> Routine:
         defaults = {
             "name": "test_routine",
             "description": "Test routine",
         }
+
+        # Check if operations end with a return operation
+        has_return = operations and isinstance(
+            operations[-1], (RoutineReturnOperation, RoutineReturnHTMLOperation)
+        )
+
+        # If no return operation, add a fetch + return
+        if not has_return:
+            # Add a fetch operation that sets a session_storage_key
+            fetch_op = RoutineFetchOperation(
+                endpoint=Endpoint(
+                    url="https://test.example.com/api",
+                    method=HTTPMethod.GET,
+                    headers={},
+                    body={}
+                ),
+                session_storage_key="test_result"
+            )
+            return_op = RoutineReturnOperation(session_storage_key="test_result")
+            operations = list(operations) + [fetch_op, return_op]
+        else:
+            # Ensure the return operation's session_storage_key is set by a prior fetch/js_evaluate
+            last_op = operations[-1]
+            return_key = last_op.session_storage_key if hasattr(last_op, 'session_storage_key') else None
+            if return_key:
+                # Check if any prior operation sets this key
+                has_setter = any(
+                    hasattr(op, 'session_storage_key') and op.session_storage_key == return_key
+                    for op in operations[:-1]
+                )
+                if not has_setter and len(operations) >= 2:
+                    # Add a fetch operation before the return that sets the key
+                    fetch_op = RoutineFetchOperation(
+                        endpoint=Endpoint(
+                            url="https://test.example.com/api",
+                            method=HTTPMethod.GET,
+                            headers={},
+                            body={}
+                        ),
+                        session_storage_key=return_key
+                    )
+                    operations = list(operations[:-1]) + [fetch_op, operations[-1]]
+
         return Routine(
             operations=operations,
             **{**defaults, **kwargs}

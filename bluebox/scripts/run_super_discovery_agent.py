@@ -19,6 +19,7 @@ Usage:
 
 Commands:
     /discover <task>         Start routine discovery for the given task
+    /execute                 Execute the discovered routine with test parameters
     /status                  Show current discovery state
     /chats                   Show all messages in the thread
     /routine                 Show the current/discovered routine
@@ -29,8 +30,10 @@ Commands:
 """
 
 import argparse
+import hashlib
 import json
 import logging
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -62,6 +65,7 @@ from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
 from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
+from bluebox.llms.tools.execute_routine_tool import execute_routine
 from bluebox.utils.logger import get_logger
 from bluebox.utils.terminal_utils import SlashCommandCompleter, SlashCommandLexer
 
@@ -74,6 +78,7 @@ console = Console()
 
 SLASH_COMMANDS = [
     ("/discover", "Start routine discovery — /discover <task description>"),
+    ("/execute", "Execute the discovered routine with test parameters"),
     ("/status", "Show current discovery state"),
     ("/chats", "Show all messages in the thread"),
     ("/routine", "Show the current/discovered routine"),
@@ -154,6 +159,7 @@ your captured traffic and build reusable routines.
 
 [bold]Commands:[/bold]
   [cyan]/discover <task>[/cyan]         Start routine discovery for the given task
+  [cyan]/execute[/cyan]                 Execute routine with test parameters
   [cyan]/status[/cyan]                  Show current discovery state
   [cyan]/chats[/cyan]                   Show all messages in the thread
   [cyan]/routine[/cyan]                 Show the current/discovered routine
@@ -248,6 +254,7 @@ class TerminalSuperDiscoveryChat:
         self._discovered_routine: Routine | None = None
         self._is_discovering: bool = False
         self._message_history: list[dict] = []
+        self._last_state_hash: str | None = None  # For tracking state changes
 
     def _get_prompt(self) -> HTML:
         """Get the input prompt (HTML format for prompt_toolkit)."""
@@ -309,6 +316,153 @@ class TerminalSuperDiscoveryChat:
 
         self._message_history.append(message_dict)
 
+        # Dump full chat thread after each message
+        self._dump_chat_thread()
+
+        # Dump state if changed
+        self._dump_state_if_changed()
+
+    def _dump_chat_thread(self) -> None:
+        """Dump chat threads for super agent and all subagents to chat_threads/ directory."""
+        if not self._current_agent:
+            return
+
+        # Create chat_threads directory
+        chat_threads_dir = self._output_dir / "chat_threads"
+        chat_threads_dir.mkdir(parents=True, exist_ok=True)
+
+        # Dump super agent's chat thread
+        self._dump_agent_thread(
+            self._current_agent._thread,
+            self._current_agent._chats,
+            chat_threads_dir / "super_agent.json",
+            agent_type="super_agent",
+        )
+
+        # Dump each subagent's chat thread
+        for agent_id, agent_instance in self._current_agent._agent_instances.items():
+            # Get the subagent type from orchestration state
+            subagent_info = self._current_agent._orchestration_state.subagents.get(agent_id)
+            agent_type = subagent_info.type.value if subagent_info else "unknown"
+
+            self._dump_agent_thread(
+                agent_instance._thread,
+                agent_instance._chats,
+                chat_threads_dir / f"{agent_type}_{agent_id}.json",
+                agent_type=agent_type,
+                agent_id=agent_id,
+            )
+
+    def _dump_agent_thread(
+        self,
+        thread: Any,
+        chats: dict[str, Any],
+        output_path: Path,
+        agent_type: str,
+        agent_id: str | None = None,
+    ) -> None:
+        """Dump a single agent's chat thread to a JSON file."""
+        # Build ordered list of messages
+        messages = []
+        for chat_id in thread.chat_ids:
+            chat = chats.get(chat_id)
+            if chat:
+                messages.append({
+                    "id": chat.id,
+                    "role": chat.role.value,
+                    "content": chat.content,
+                    "tool_calls": [tc.model_dump() for tc in chat.tool_calls] if chat.tool_calls else None,
+                    "tool_call_id": chat.tool_call_id,
+                })
+
+        # Write to file
+        thread_data: dict[str, Any] = {
+            "agent_type": agent_type,
+            "thread_id": thread.id,
+            "updated_at": thread.updated_at,
+            "messages": messages,
+        }
+        if agent_id:
+            thread_data["agent_id"] = agent_id
+
+        output_path.write_text(json.dumps(thread_data, indent=2, default=str))
+
+    def _dump_state_if_changed(self) -> None:
+        """Dump discovery and orchestration state to state/ directory if changed."""
+        if not self._current_agent:
+            return
+
+        # Build current state snapshot
+        discovery_state = self._current_agent._discovery_state
+        orchestration_state = self._current_agent._orchestration_state
+
+        state_snapshot: dict[str, Any] = {
+            "discovery_state": {
+                "phase": discovery_state.phase.value,
+                "root_transaction": discovery_state.root_transaction.model_dump() if discovery_state.root_transaction else None,
+                "transaction_queue": list(discovery_state.transaction_queue),
+                "processed_transactions": list(discovery_state.processed_transactions),
+                "transaction_data": {
+                    tx_id: {
+                        "request": tx_data.get("request"),
+                        "extracted_variables": tx_data["extracted_variables"].model_dump() if tx_data.get("extracted_variables") else None,
+                        "resolved_variables": [rv.model_dump() for rv in tx_data.get("resolved_variables", [])],
+                    }
+                    for tx_id, tx_data in discovery_state.transaction_data.items()
+                },
+                "production_routine": discovery_state.production_routine.model_dump() if discovery_state.production_routine else None,
+                "test_parameters": discovery_state.test_parameters,
+                "construction_attempts": discovery_state.construction_attempts,
+            },
+            "orchestration_state": {
+                "tasks": {
+                    task_id: {
+                        "id": task.id,
+                        "agent_type": task.agent_type.value,
+                        "status": task.status.value,
+                        "prompt": task.prompt,
+                        "result": task.result,
+                        "error": task.error,
+                        "loops_used": task.loops_used,
+                        "max_loops": task.max_loops,
+                    }
+                    for task_id, task in orchestration_state.tasks.items()
+                },
+                "subagents": {
+                    agent_id: {
+                        "id": subagent.id,
+                        "type": subagent.type.value,
+                        "task_ids": subagent.task_ids,
+                    }
+                    for agent_id, subagent in orchestration_state.subagents.items()
+                },
+            },
+        }
+
+        # Compute hash of current state
+        state_json = json.dumps(state_snapshot, sort_keys=True, default=str)
+        state_hash = hashlib.sha256(state_json.encode()).hexdigest()[:16]
+
+        # Only save if state has changed
+        if state_hash == self._last_state_hash:
+            return
+
+        self._last_state_hash = state_hash
+
+        # Save to state directory with timestamp
+        state_dir = self._output_dir / "state"
+        state_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        state_path = state_dir / f"{timestamp}.json"
+
+        state_snapshot["_meta"] = {
+            "timestamp": timestamp,
+            "hash": state_hash,
+        }
+
+        state_path.write_text(json.dumps(state_snapshot, indent=2, default=str))
+
     def _create_agent(self, task: str) -> SuperDiscoveryAgent:
         """Create a new SuperDiscoveryAgent for the given task."""
         return SuperDiscoveryAgent(
@@ -365,6 +519,12 @@ class TerminalSuperDiscoveryChat:
             console.print("[dim]Example: /discover Search for trains from NYC to Boston[/dim]")
             console.print()
             return
+
+        # Clear existing output directory and reset state tracking
+        if self._output_dir.exists():
+            shutil.rmtree(self._output_dir)
+            console.print(f"[dim]Cleared existing output directory: {self._output_dir}[/dim]")
+        self._last_state_hash = None  # Reset to capture initial state
 
         console.print()
         console.print(Panel(
@@ -581,6 +741,87 @@ class TerminalSuperDiscoveryChat:
             console.print(f"[red]✗ Failed to save: {e}[/red]")
             console.print()
 
+    def _handle_execute_command(self) -> None:
+        """Handle /execute command to run the discovered routine with test parameters."""
+        if not self._discovered_routine:
+            console.print()
+            console.print("[yellow]No routine discovered yet. Use /discover <task> first.[/yellow]")
+            console.print()
+            return
+
+        # Get test parameters from the agent's discovery state (can be empty if routine has no params)
+        test_params: dict[str, str] = {}
+        if self._current_agent and self._current_agent._discovery_state.test_parameters is not None:
+            test_params = self._current_agent._discovery_state.test_parameters
+
+        # Warn if routine has parameters but test_params is empty
+        if self._discovered_routine.parameters and not test_params:
+            console.print()
+            console.print("[yellow]Warning: Routine has parameters but no test values available.[/yellow]")
+            console.print()
+
+        if not self._remote_debugging_address:
+            console.print()
+            console.print("[yellow]No browser connected. Use --remote-debugging-address to connect.[/yellow]")
+            console.print("[dim]Example: bluebox-super-discovery --cdp-captures-dir ./cdp_captures --remote-debugging-address http://127.0.0.1:9222[/dim]")
+            console.print()
+            return
+
+        console.print()
+        console.print(Panel(
+            f"[bold]Routine:[/bold] {self._discovered_routine.name}\n"
+            f"[bold]Parameters:[/bold] {json.dumps(test_params, indent=2)}",
+            title="[bold cyan]Executing Routine[/bold cyan]",
+            border_style="cyan",
+            box=box.ROUNDED,
+        ))
+        console.print()
+
+        try:
+            with console.status("[bold blue]Executing routine...[/bold blue]"):
+                result = execute_routine(
+                    routine=self._discovered_routine.model_dump(),
+                    parameters=test_params,
+                    remote_debugging_address=self._remote_debugging_address,
+                    timeout=120,
+                    close_tab_when_done=True,
+                )
+
+            if result.get("success"):
+                exec_result = result.get("result")
+                if exec_result and exec_result.ok and exec_result.data is not None:
+                    # Save result to file
+                    result_path = self._output_dir / "execution_result.json"
+                    result_path.write_text(json.dumps({
+                        "success": True,
+                        "data": exec_result.data,
+                    }, indent=2, default=str))
+
+                    console.print("[bold green]✓ Execution succeeded![/bold green]")
+                    console.print()
+
+                    # Show data preview
+                    data_str = json.dumps(exec_result.data, indent=2, default=str)
+                    if len(data_str) > 1000:
+                        console.print(f"[dim]Data preview (truncated):[/dim]\n{data_str[:1000]}...")
+                    else:
+                        console.print(f"[dim]Data:[/dim]\n{data_str}")
+
+                    console.print()
+                    console.print(f"[dim]Full result saved to: {result_path}[/dim]")
+                else:
+                    console.print("[yellow]⚠ Execution completed but no data returned.[/yellow]")
+                    if exec_result:
+                        console.print(f"[dim]Result: {exec_result.model_dump()}[/dim]")
+            else:
+                error = result.get("error", "Unknown error")
+                console.print(f"[bold red]✗ Execution failed: {error}[/bold red]")
+
+        except Exception as e:
+            console.print(f"[bold red]✗ Execution error: {e}[/bold red]")
+
+        console.print()
+
     def _handle_reset_command(self) -> None:
         """Handle /reset command to clear state."""
         self._current_agent = None
@@ -641,6 +882,7 @@ class TerminalSuperDiscoveryChat:
                     console.print(Panel(
                         """[bold]Commands:[/bold]
   [cyan]/discover <task>[/cyan]         Start routine discovery for the given task
+  [cyan]/execute[/cyan]                 Execute routine with test parameters
   [cyan]/status[/cyan]                  Show current discovery state
   [cyan]/chats[/cyan]                   Show all messages in the thread
   [cyan]/routine[/cyan]                 Show the current/discovered routine
@@ -653,6 +895,7 @@ class TerminalSuperDiscoveryChat:
   - Use /discover with a clear task description
   - The agent will analyze your CDP captures automatically
   - Use /routine to see the discovered routine details
+  - Use /execute to run the routine (requires --remote-debugging-address)
   - Use /save to export the routine to a JSON file""",
                         title="[bold cyan]Help[/bold cyan]",
                         border_style="cyan",
@@ -671,6 +914,10 @@ class TerminalSuperDiscoveryChat:
 
                 if cmd == "/routine":
                     self._handle_routine_command()
+                    continue
+
+                if cmd == "/execute":
+                    self._handle_execute_command()
                     continue
 
                 if cmd == "/reset":
