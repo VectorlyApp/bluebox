@@ -156,12 +156,14 @@ class SuperDiscoveryAgent(AbstractAgent):
         6. Use `mark_transaction_processed` when done with a transaction (all variables extracted/resolved)
         7. Continue until queue is empty
 
-        ### Phase 3: Construct, Validate, and Analyze Routine
+        ### Phase 3: Construct and Finalize Routine
         1. Use `get_discovery_context` to see all processed data (includes CRITICAL_OBSERVED_VALUES)
         2. **IMPORTANT**: If you need help with routine structure, check the documentation:
            - Use search_documentation to find examples and schemas for routine construction
         3. Use `construct_routine` with the routine definition:
            - `routine`: the routine definition (name, description, parameters, operations)
+
+        **If browser is connected (validation available):**
         4. Use `validate_routine` with test parameters to execute:
            - `test_parameters`: dict mapping parameter names to observed values
            - Example: test_parameters={{"origin": "NYC", "destination": "BOS"}}
@@ -173,6 +175,9 @@ class SuperDiscoveryAgent(AbstractAgent):
         6. Based on your analysis:
            - If data_matches_task=True and next_action="done": call `done`
            - If data_matches_task=False: set next_action="fix_routine", then use construct_routine to fix and re-validate
+
+        **If NO browser connected (validation NOT available):**
+        4. Call `done` directly after construct_routine (routine cannot be validated without browser)
 
         ## Variable Classification Rules
 
@@ -1750,7 +1755,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             }
 
     @agent_tool(
-        description="Execute the constructed routine with test parameters to validate it works.",
+        description="Execute the constructed routine with test parameters to validate it works. Only available when browser is connected.",
         parameters={
             "type": "object",
             "properties": {
@@ -1768,7 +1773,8 @@ class SuperDiscoveryAgent(AbstractAgent):
             "required": ["test_parameters"],
         },
         availability=lambda self: (
-            self._discovery_state.production_routine is not None
+            self._discovery_state.production_routine is not None and
+            self._remote_debugging_address is not None  # Require browser connection
         ),
     )
     def _validate_routine(
@@ -1797,18 +1803,6 @@ class SuperDiscoveryAgent(AbstractAgent):
         self._discovery_state.last_analysis = None
 
         routine_obj = self._discovery_state.production_routine
-
-        if not self._remote_debugging_address:
-            # No browser connected - store result indicating skip
-            self._discovery_state.last_validation_result = {
-                "skipped": True,
-                "reason": "No browser connected for validation",
-            }
-            return {
-                "routine_name": routine_obj.name,
-                "skipped": True,
-                "message": "No browser connected - validation skipped. Use analyze_validation to proceed.",
-            }
 
         # Import here to avoid circular dependency
         from bluebox.llms.tools.execute_routine_tool import execute_routine
@@ -1972,39 +1966,39 @@ class SuperDiscoveryAgent(AbstractAgent):
         if not self._discovery_state.production_routine:
             return False
 
-        # Must have analyzed validation
+        # If no browser connected, can complete without validation
+        # (we can't execute routines without a browser)
+        if not self._remote_debugging_address:
+            return True
+
+        # With browser: must have validated and analyzed successfully
         if not self._discovery_state.validation_analyzed:
             return False
 
-        # Analysis must indicate data matches task
         analysis = self._discovery_state.last_analysis
         if not analysis:
             return False
 
-        # Either data matches task OR validation was skipped (no browser)
-        validation_result = self._discovery_state.last_validation_result
-        validation_skipped = validation_result and validation_result.get("skipped", False)
-
-        return analysis.get("data_matches_task", False) or validation_skipped
+        return analysis.get("data_matches_task", False)
 
     @agent_tool(
         availability=lambda self: self._can_complete(),
     )
     def _done(self) -> dict[str, Any]:
-        """Mark discovery as complete. Only available after successful analyze_validation."""
+        """Mark discovery as complete. Available after construct_routine (no browser) or successful analyze_validation (with browser)."""
         if not self._discovery_state.production_routine:
             return {"error": "No routine constructed. Use construct_routine first."}
 
-        if not self._discovery_state.validation_analyzed:
-            return {"error": "Validation not analyzed. Use analyze_validation first."}
+        # If browser connected, require successful validation analysis
+        if self._remote_debugging_address:
+            if not self._discovery_state.validation_analyzed:
+                return {"error": "Validation not analyzed. Use validate_routine then analyze_validation first."}
 
-        analysis = self._discovery_state.last_analysis
-        if not analysis:
-            return {"error": "No analysis found. Use analyze_validation first."}
+            analysis = self._discovery_state.last_analysis
+            if not analysis:
+                return {"error": "No analysis found. Use analyze_validation first."}
 
-        if not analysis.get("data_matches_task", False):
-            validation_result = self._discovery_state.last_validation_result
-            if not (validation_result and validation_result.get("skipped", False)):
+            if not analysis.get("data_matches_task", False):
                 return {
                     "error": "Cannot complete when data doesn't match task.",
                     "message": "Fix the routine with construct_routine, then validate_routine and analyze_validation again.",
@@ -2012,9 +2006,15 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         self._discovery_state.phase = DiscoveryPhase.COMPLETE
         self._final_routine = self._discovery_state.production_routine
+
+        # Note if routine was not validated
+        message = "Discovery completed"
+        if not self._remote_debugging_address:
+            message += " (routine not validated - no browser connected)"
+
         return {
             "success": True,
-            "message": "Discovery completed",
+            "message": message,
             "routine_name": self._final_routine.name,
         }
 
