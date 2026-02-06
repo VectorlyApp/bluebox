@@ -101,6 +101,20 @@ class RoutineDiscoveryState(BaseModel):
     construction_attempts: int = Field(default=0)
     validation_attempts: int = Field(default=0)
 
+    # Validation tracking (for construct → validate → analyze workflow)
+    last_validation_result: dict | None = Field(
+        default=None,
+        description="Full result from last validation execution"
+    )
+    validation_analyzed: bool = Field(
+        default=False,
+        description="Whether the agent has analyzed the last validation result"
+    )
+    last_analysis: dict | None = Field(
+        default=None,
+        description="The agent's analysis of the last validation result"
+    )
+
     def add_to_queue(self, transaction_id: str) -> tuple[bool, int]:
         """
         Add a transaction to the queue if not already processed.
@@ -204,3 +218,6 @@ class RoutineDiscoveryState(BaseModel):
         self.identification_attempts = 0
         self.construction_attempts = 0
         self.validation_attempts = 0
+        self.last_validation_result = None
+        self.validation_analyzed = False
+        self.last_analysis = None
