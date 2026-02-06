@@ -574,13 +574,6 @@ class TerminalSuperDiscoveryChat:
         finally:
             self._is_discovering = False
 
-        # Save message history
-        if self._message_history:
-            self._output_dir.mkdir(parents=True, exist_ok=True)
-            history_path = self._output_dir / "message_history.json"
-            history_path.write_text(json.dumps(self._message_history, indent=2, default=str))
-            console.print(f"[dim]Message history: {history_path}[/dim]")
-
         console.print()
 
     def _print_routine_summary(self, routine: Routine) -> None:
