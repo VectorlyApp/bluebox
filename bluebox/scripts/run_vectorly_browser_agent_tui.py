@@ -30,6 +30,7 @@ from rich.console import Console
 from rich.text import Text
 from textual.widgets import RichLog
 
+from bluebox.agents.vectorly_browser_agent import VectorlyBrowserAgent
 from bluebox.config import Config
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
@@ -58,7 +59,6 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
     # ── Abstract implementations ─────────────────────────────────────────
 
     def _create_agent(self) -> AbstractAgent:
-        from bluebox.agents.vectorly_browser_agent import VectorlyBrowserAgent
         return VectorlyBrowserAgent(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
