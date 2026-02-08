@@ -11,6 +11,7 @@ Contains:
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from textwrap import dedent
 from typing import Any, Callable
@@ -26,6 +27,7 @@ from bluebox.cdp.connection import cdp_new_tab
 from bluebox.config import Config
 from bluebox.data_models.llms.interaction import (
     Chat,
+    ChatResponseEmittedMessage,
     ChatThread,
     EmittedMessage,
 )
@@ -76,12 +78,12 @@ class VectorlyBrowserAgent(AbstractSpecialist):
         ## Pre-Built Routines
         - `search_routines(keywords: list[str])` — Search routines by keywords. Use this to find matching routines.
         - `get_routine_details(routine_id: str)` — Get routine parameters before execution.
-        - `execute_routine(routine_id: str, parameters: dict = {})` — Run a routine with parameters.
+        - `execute_routines_parallel(routine_requests: list[dict], max_concurrency: int = 5)` — Execute routines in parallel, each on its own tab. Each dict needs 'routine_id' and optionally 'parameters'. Returns tab_id per result so you can interact with the page afterwards. Works for single or multiple routines.
 
         ## IMPORTANT: Always Prioritize Routines
         Before using browser tools:
         1. Use `search_routines(keywords)` to find a matching routine
-        2. If found → use `get_routine_details(routine_id)` then `execute_routine()` with proper parameters
+        2. If found → use `get_routine_details(routine_id)` then `execute_routines_parallel()` with proper parameters
         3. Only use browser tools when NO routine fits
 
         Routines are pre-built, tested, and reliable. Browser tools are for custom/exploratory tasks only.
@@ -364,52 +366,135 @@ class VectorlyBrowserAgent(AbstractSpecialist):
         return routine.model_dump()
 
     @agent_tool()
-    def _execute_routine(
+    def _execute_routines_parallel(
         self,
-        routine_id: str,
-        parameters: dict[str, Any] = {},
+        routine_requests: list[dict[str, Any]],
+        max_concurrency: int = 5,
     ) -> dict[str, Any]:
         """
-        Execute a routine with the given parameters.
+        Execute one or more routines in parallel, each on its own browser tab.
 
-        This will run the routine against the connected Chrome browser.
-        Make sure Chrome is running with remote debugging enabled.
+        Each routine runs in an isolated tab that remains open after execution.
+        The tab_id is returned in each result so you can interact with the page afterwards
+        using browser tools (after switching to that tab).
+        The agent's own browser tab is not affected.
 
         Args:
-            routine_id: The ID of the routine to execute.
-            parameters: Dictionary of parameter values required by the routine.
+            routine_requests: List of routine execution requests. Each dict must have 'routine_id' (str) and optionally 'parameters' (dict).
+            max_concurrency: Maximum number of routines to run simultaneously. Defaults to 5.
         """
+        if not routine_requests:
+            return {"error": "No routine requests provided"}
+
         try:
             routines = self._get_all_routines()
         except requests.RequestException as e:
             return {"error": f"Failed to fetch routines: {e}"}
 
-        if routine_id not in routines:
-            return {"error": f"Routine ID '{routine_id}' not found"}
+        max_concurrency = max(1, min(max_concurrency, 10))
 
-        routine = routines[routine_id]
+        # Validate each request
+        validated: list[tuple[str, Any, dict]] = []
+        validation_errors: list[dict[str, Any]] = []
 
-        try:
-            result = routine.execute(
-                parameters_dict=parameters,
-                remote_debugging_address=self._remote_debugging_address,
-                tab_id=self._tab_id,
-                close_tab_when_done=False,
-            )
-            return {
-                "success": True,
-                "routine_id": routine_id,
-                "routine_name": routine.name,
-                "result": result.model_dump() if hasattr(result, "model_dump") else result,
-            }
-        except Exception as e:
-            logger.exception("Routine execution failed: %s", e)
+        for i, req in enumerate(routine_requests):
+            routine_id = req.get("routine_id")
+            parameters = req.get("parameters", {})
+
+            if not routine_id:
+                validation_errors.append({"index": i, "error": "Missing 'routine_id'"})
+                continue
+
+            if routine_id not in routines:
+                validation_errors.append({"index": i, "routine_id": routine_id, "error": f"Routine ID '{routine_id}' not found"})
+                continue
+
+            validated.append((routine_id, routines[routine_id], parameters))
+
+        if not validated:
             return {
                 "success": False,
-                "routine_id": routine_id,
-                "routine_name": routine.name,
-                "error": str(e),
+                "error": "All routine requests failed validation",
+                "validation_errors": validation_errors,
+                "results": [],
             }
+
+        # Execute validated routines in parallel, each on its own new tab
+        def execute_one(routine_id: str, routine: Any, parameters: dict) -> dict[str, Any]:
+            # Create a dedicated tab for this routine
+            target_id = None
+            browser_context_id = None
+            try:
+                target_id, browser_context_id, browser_ws = cdp_new_tab(
+                    remote_debugging_address=self._remote_debugging_address,
+                    incognito=routine.incognito,
+                )
+                browser_ws.close()  # Close creation ws; routine.execute() creates its own
+            except Exception as e:
+                logger.exception("Failed to create tab for routine %s: %s", routine_id, e)
+                return {
+                    "success": False,
+                    "routine_id": routine_id,
+                    "routine_name": routine.name,
+                    "error": f"Failed to create tab: {e}",
+                }
+
+            try:
+                result = routine.execute(
+                    parameters_dict=parameters,
+                    remote_debugging_address=self._remote_debugging_address,
+                    tab_id=target_id,
+                    close_tab_when_done=False,
+                )
+                return {
+                    "success": result.ok,
+                    "routine_id": routine_id,
+                    "routine_name": routine.name,
+                    "tab_id": target_id,
+                    "data": result.data,
+                }
+            except Exception as e:
+                logger.exception("Parallel routine execution failed for %s: %s", routine_id, e)
+                return {
+                    "success": False,
+                    "routine_id": routine_id,
+                    "routine_name": routine.name,
+                    "tab_id": target_id,
+                    "error": str(e),
+                }
+
+        results: list[dict[str, Any]] = []
+        completed_count = 0
+        with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
+            futures = {
+                executor.submit(execute_one, rid, routine, params): rid
+                for rid, routine, params in validated
+            }
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result)
+                completed_count += 1
+
+                # Stream each result as it completes
+                status = "succeeded" if result.get("success") else "FAILED"
+                self._emit_message(ChatResponseEmittedMessage(
+                    content=f"[{completed_count}/{len(validated)}] Routine '{result.get('routine_name')}' {status}.",
+                ))
+
+        results.sort(key=lambda r: r.get("routine_id", ""))
+
+        succeeded = sum(1 for r in results if r.get("success"))
+        failed = len(results) - succeeded
+
+        return {
+            "success": failed == 0 and not validation_errors,
+            "total_requested": len(routine_requests),
+            "total_executed": len(validated),
+            "succeeded": succeeded,
+            "failed": failed,
+            "validation_errors": validation_errors or None,
+            "results": results,
+        }
 
     ## Browser control tools
 
