@@ -17,6 +17,7 @@ from datetime import datetime
 from textwrap import dedent
 from typing import TYPE_CHECKING, ClassVar
 
+from rich.markdown import Markdown as RichMarkdown
 from rich.markup import escape
 from rich.text import Text
 from textual import work
@@ -303,22 +304,12 @@ class AbstractAgentTUI(App):
     # ── Agent callbacks ──────────────────────────────────────────────────
 
     def _handle_stream_chunk(self, chunk: str) -> None:
-        """Buffer streaming chunks, flushing complete lines immediately."""
+        """Buffer streaming chunks for markdown rendering when complete."""
         chat = self.query_one("#chat-log", RichLog)
         if not self._streaming_started:
             chat.write(Text.from_markup("\n[bold cyan]Assistant[/bold cyan]"))
             self._streaming_started = True
-
         self._stream_buffer.append(chunk)
-
-        combined = "".join(self._stream_buffer)
-        if "\n" in combined:
-            lines = combined.split("\n")
-            for line in lines[:-1]:
-                chat.write(line)
-            self._stream_buffer.clear()
-            if lines[-1]:
-                self._stream_buffer.append(lines[-1])
 
     def _flush_auto_executed_tools(self, tool_log: RichLog, chat: RichLog) -> None:
         """Detect and log auto-executed tools by scanning new chat entries."""
@@ -384,15 +375,16 @@ class AbstractAgentTUI(App):
         if isinstance(message, ChatResponseEmittedMessage):
             self._flush_auto_executed_tools(tool_log, chat)
 
-            if self._streaming_started:
-                remainder = "".join(self._stream_buffer)
-                if remainder:
-                    chat.write(remainder)
-                self._stream_buffer.clear()
-                self._streaming_started = False
-            else:
+            if not self._streaming_started:
                 chat.write(Text.from_markup("\n[bold cyan]Assistant[/bold cyan]"))
-                chat.write(message.content)
+
+            # Prefer the message content; fall back to stream buffer
+            content = message.content or "".join(self._stream_buffer)
+            self._stream_buffer.clear()
+            self._streaming_started = False
+
+            if content:
+                chat.write(RichMarkdown(content))
             chat.write("")
 
         elif isinstance(message, ToolInvocationResultEmittedMessage):
