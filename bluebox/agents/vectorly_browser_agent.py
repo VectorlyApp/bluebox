@@ -13,11 +13,13 @@ from __future__ import annotations
 from datetime import datetime
 from textwrap import dedent
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 import requests
 
 from bluebox.agents.abstract_agent import agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
+from bluebox.cdp.connection import cdp_new_tab
 from bluebox.config import Config
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -93,6 +95,12 @@ class VectorlyBrowserAgent(AbstractSpecialist):
         self._remote_debugging_address = remote_debugging_address
         self._routines_cache: dict[str, Routine] | None = None
 
+        # Create a new browser tab for this agent session
+        self._tab_id: str | None = None
+        self._browser_context_id: str | None = None
+        self._page_ws_url: str | None = None
+        self._create_browser_tab()
+
         super().__init__(
             emit_message_callable=emit_message_callable,
             persist_chat_callable=persist_chat_callable,
@@ -108,10 +116,50 @@ class VectorlyBrowserAgent(AbstractSpecialist):
         self._get_all_routines()
 
         logger.debug(
-            "VectorlyBrowserAgent initialized with model: %s, chat_thread_id: %s",
+            "VectorlyBrowserAgent initialized with model: %s, chat_thread_id: %s, tab_id: %s",
             llm_model,
             self._thread.id,
+            self._tab_id,
         )
+
+    ## Browser tab management
+
+    def _create_browser_tab(self) -> None:
+        """Create a new browser tab for this agent session."""
+        try:
+            target_id, browser_context_id, browser_ws = cdp_new_tab(
+                remote_debugging_address=self._remote_debugging_address,
+                incognito=False,
+                url="about:blank",
+            )
+            # Close the browser-level websocket (we only needed it for tab creation)
+            try:
+                browser_ws.close()
+            except Exception:
+                pass
+
+            self._tab_id = target_id
+            self._browser_context_id = browser_context_id
+
+            # Build page-level WebSocket URL
+            parsed = urlparse(self._remote_debugging_address)
+            host_port = f"{parsed.hostname}:{parsed.port}"
+            self._page_ws_url = f"ws://{host_port}/devtools/page/{target_id}"
+
+            logger.info("Created browser tab: %s", self._tab_id)
+        except Exception as e:
+            logger.error("Failed to create browser tab: %s", e)
+            raise RuntimeError(f"Failed to create browser tab: {e}")
+
+    @property
+    def tab_id(self) -> str | None:
+        """Return the tab ID for this agent session."""
+        return self._tab_id
+
+    @property
+    def page_ws_url(self) -> str | None:
+        """Return the page-level WebSocket URL for this agent session."""
+        return self._page_ws_url
 
     ## Abstract method implementations
 
@@ -291,6 +339,8 @@ class VectorlyBrowserAgent(AbstractSpecialist):
             result = routine.execute(
                 parameters_dict=parameters,
                 remote_debugging_address=self._remote_debugging_address,
+                tab_id=self._tab_id,
+                close_tab_when_done=False,
             )
             return {
                 "success": True,
