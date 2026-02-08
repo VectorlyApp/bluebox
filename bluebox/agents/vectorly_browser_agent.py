@@ -451,7 +451,7 @@ class VectorlyBrowserAgent(AbstractSpecialist):
                     "routine_id": routine_id,
                     "routine_name": routine.name,
                     "tab_id": target_id,
-                    "result": result.model_dump() if hasattr(result, "model_dump") else result,
+                    "data": result.data,
                 }
             except Exception as e:
                 logger.exception("Parallel routine execution failed for %s: %s", routine_id, e)
