@@ -74,14 +74,14 @@ class VectorlyBrowserAgent(AbstractSpecialist):
         - `get_cookies(domain_filter: str = "*")` — Get cookies, optionally filtered by domain.
 
         ## Pre-Built Routines
-        - `list_routines()` — List available automation routines.
+        - `search_routines(keywords: list[str])` — Search routines by keywords. Use this to find matching routines.
         - `get_routine_details(routine_id: str)` — Get routine parameters before execution.
         - `execute_routine(routine_id: str, parameters: dict = {})` — Run a routine with parameters.
 
         ## IMPORTANT: Always Prioritize Routines
-        Available routines are listed at the bottom of this prompt. Before using browser tools:
-        1. Check if a routine below matches the task
-        2. If yes → use `get_routine_details(routine_id)` then `execute_routine()` with proper parameters
+        Before using browser tools:
+        1. Use `search_routines(keywords)` to find a matching routine
+        2. If found → use `get_routine_details(routine_id)` then `execute_routine()` with proper parameters
         3. Only use browser tools when NO routine fits
 
         Routines are pre-built, tested, and reliable. Browser tools are for custom/exploratory tasks only.
@@ -225,30 +225,10 @@ class VectorlyBrowserAgent(AbstractSpecialist):
     ## Abstract method implementations
 
     def _get_system_prompt(self) -> str:
-        """Get system prompt with current time and available routines."""
+        """Get system prompt with current time."""
         now = datetime.now()
         time_info = f"\n\n## Current Time\n{now.strftime('%Y-%m-%d %H:%M:%S %Z').strip()}"
-
-        try:
-            routines = self._get_all_routines()
-            routine_count = len(routines)
-            routine_summary = f"\n\n## Available Routines: {routine_count}\n"
-
-            if routines:
-                routine_lines = []
-                for routine_id, routine in list(routines.items())[:30]:
-                    desc = routine.description[:80] + "..." if routine.description and len(routine.description) > 80 else (routine.description or "")
-                    routine_lines.append(f"- **{routine.name}** (`{routine_id}`): {desc}")
-                routine_summary += "\n".join(routine_lines)
-                if routine_count > 30:
-                    routine_summary += f"\n... and {routine_count - 30} more. Use `list_routines()` to see all."
-            else:
-                routine_summary += "No routines available."
-
-        except Exception as e:
-            routine_summary = f"\n\n## Routines: Error - {e}"
-
-        return self.SYSTEM_PROMPT + time_info + routine_summary
+        return self.SYSTEM_PROMPT + time_info
 
     def _get_autonomous_system_prompt(self) -> str:
         """Get system prompt for autonomous mode (not implemented)."""
@@ -315,12 +295,12 @@ class VectorlyBrowserAgent(AbstractSpecialist):
 
     @agent_tool()
     @token_optimized
-    def _list_routines(self) -> dict[str, Any]:
+    def _search_routines(self, keywords: list[str]) -> dict[str, Any]:
         """
-        List all available routines from Vectorly (organization + public).
+        Search for routines by keywords. Matches against routine name and description.
 
-        Returns a list of routines with their IDs, names, and descriptions.
-        Use `get_routine_details` to see full details including parameters.
+        Args:
+            keywords: List of keywords to search for (case-insensitive, matches if ANY keyword is found).
         """
         try:
             routines = self._get_all_routines()
@@ -328,24 +308,36 @@ class VectorlyBrowserAgent(AbstractSpecialist):
             return {"error": f"Failed to fetch routines: {e}"}
 
         if not routines:
-            return {
-                "message": "No routines available",
-                "total_count": 0,
-            }
+            return {"message": "No routines available", "matches": []}
 
-        routine_list = [
-            {
-                "id": routine_id,
-                "name": routine.name,
-                "description": routine.description,
-                "parameter_count": len(routine.parameters) if routine.parameters else 0,
-            }
-            for routine_id, routine in routines.items()
-        ]
+        # Normalize keywords to lowercase
+        keywords_lower = [kw.lower().strip() for kw in keywords if kw.strip()]
+        if not keywords_lower:
+            return {"error": "No valid keywords provided"}
+
+        matches = []
+        for routine_id, routine in routines.items():
+            # Build searchable text from name and description
+            searchable = f"{routine.name} {routine.description or ''}".lower()
+
+            # Check if any keyword matches
+            matched_keywords = [kw for kw in keywords_lower if kw in searchable]
+            if matched_keywords:
+                matches.append({
+                    "id": routine_id,
+                    "name": routine.name,
+                    "description": routine.description,
+                    "parameter_count": len(routine.parameters) if routine.parameters else 0,
+                    "matched_keywords": matched_keywords,
+                })
+
+        # Sort by number of matched keywords (most matches first)
+        matches.sort(key=lambda x: len(x["matched_keywords"]), reverse=True)
 
         return {
-            "total_count": len(routine_list),
-            "routines": routine_list,
+            "keywords": keywords_lower,
+            "match_count": len(matches),
+            "matches": matches[:20],  # Limit to top 20 matches
         }
 
     @agent_tool()
