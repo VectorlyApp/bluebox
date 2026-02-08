@@ -154,7 +154,7 @@ class GuideAgentTUI(AbstractAgentTUI):
         chat.write("")
 
     def _build_status_text(self) -> str:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
         msg_count = len(self._agent.get_chats()) if self._agent else 0
         tokens_used, ctx_pct = self._estimate_context_usage()
         ctx_bar = self._context_bar(ctx_pct)
@@ -197,7 +197,6 @@ class GuideAgentTUI(AbstractAgentTUI):
 
     def _handle_additional_message(self, message: BaseEmittedMessage) -> bool:
         chat = self.query_one("#chat-log", RichLog)
-        tool_log = self.query_one("#tool-log", RichLog)
 
         if isinstance(message, ToolInvocationRequestEmittedMessage):
             inv = message.tool_invocation
@@ -209,16 +208,13 @@ class GuideAgentTUI(AbstractAgentTUI):
                 f"[dim]\u2014 y/n to approve[/dim]"
             ))
 
-            ts = datetime.now().strftime("%H:%M:%S")
-            tool_log.write(Text.from_markup(
-                f"[dim]{ts}[/dim] [yellow]REQUEST[/yellow] [bold]{inv.tool_name}[/bold]"
-            ))
-            args_str = json.dumps(inv.tool_arguments, indent=2)
-            lines = args_str.split("\n")
-            if len(lines) > 20:
-                args_str = "\n".join(lines[:20]) + f"\n... ({len(lines) - 20} more lines)"
-            tool_log.write(args_str)
-            tool_log.write("")
+            ts = datetime.now().strftime("%H:%M")
+            self._add_tool_node(
+                Text.assemble(
+                    (ts, "dim"), " ", ("REQUEST", "yellow"), " ", (inv.tool_name, "bold"),
+                ),
+                json.dumps(inv.tool_arguments, indent=2).split("\n"),
+            )
 
             inp = self.query_one("#user-input", Input)
             inp.placeholder = "Approve tool call? (y/n)"

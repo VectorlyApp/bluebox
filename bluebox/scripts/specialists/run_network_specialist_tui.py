@@ -162,7 +162,7 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
         chat.write("")
 
     def _build_status_text(self) -> str:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
         msg_count = len(self._agent.get_chats()) if self._agent else 0
         tokens_used, ctx_pct = self._estimate_context_usage()
         ctx_bar = self._context_bar(ctx_pct)
@@ -202,7 +202,6 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
     def _run_discovery(self, task: str) -> None:
         """Run autonomous endpoint discovery in a background thread."""
         chat = self.query_one("#chat-log", RichLog)
-        tool_log = self.query_one("#tool-log", RichLog)
 
         self.call_from_thread(
             lambda: chat.write(Text.from_markup(
@@ -234,11 +233,14 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
                     output_str = "\n".join(output_lines[:40]) + f"\n... ({len(output_lines) - 40} more lines)"
                 chat.write(output_str)
 
-                tool_log.write(Text.from_markup(
-                    f"[green]DISCOVERY RESULT[/green] [dim]({iterations} iter, {elapsed:.1f}s)[/dim]"
-                ))
-                tool_log.write(output_str[:500])
-                tool_log.write("")
+                self._add_tool_node(
+                    Text.assemble(
+                        ("DISCOVERY RESULT", "green"),
+                        " ",
+                        (f"({iterations} iter, {elapsed:.1f}s)", "dim"),
+                    ),
+                    output_str.split("\n"),
+                )
 
             elif isinstance(result, SpecialistResultWrapper) and not result.success:
                 reason = result.failure_reason or "Unknown"

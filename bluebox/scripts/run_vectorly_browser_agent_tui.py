@@ -16,7 +16,7 @@ Layout:
 Usage:
     bluebox-vectorly-browser-tui
     bluebox-vectorly-browser-tui --model gpt-5.1
-    bluebox-vectorly-browser-tui --remote-debugging-address http://127.0.0.1:9222
+    bluebox-vectorly-browser-tui --model gpt-5.2 --remote-debugging-address http://127.0.0.1:9222
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
         chat.write("")
 
     def _build_status_text(self) -> str:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
         msg_count = len(self._agent.get_chats()) if self._agent else 0
         tokens_used, ctx_pct = self._estimate_context_usage()
         ctx_bar = self._context_bar(ctx_pct)

@@ -26,7 +26,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.suggester import SuggestFromList
-from textual.widgets import Input, RichLog, Static
+from textual.widgets import Input, RichLog, Static, Tree
 
 from bluebox.data_models.llms.interaction import (
     ChatRole,
@@ -96,6 +96,7 @@ APP_CSS = dedent("""\
         height: 1fr;
         border: solid $secondary;
         border-title-color: $secondary;
+        overflow-y: auto;
     }
 
     #status-panel {
@@ -249,9 +250,10 @@ class AbstractAgentTUI(App):
                     ),
                 )
             with Vertical(id="right-pane"):
-                tool_log = RichLog(id="tool-log", wrap=True, highlight=True, markup=True)
-                tool_log.border_title = "Tools"
-                yield tool_log
+                tool_tree = Tree("Tools", id="tool-log")
+                tool_tree.show_root = False
+                tool_tree.border_title = "Tools"
+                yield tool_tree
                 status = Static(id="status-panel")
                 status.border_title = "Info"
                 yield status
@@ -414,7 +416,52 @@ class AbstractAgentTUI(App):
             i += 1
         return result
 
-    def _flush_auto_executed_tools(self, tool_log: RichLog, chat: RichLog) -> None:
+    def _add_tool_node(
+        self,
+        label: Text,
+        details: list[str],
+        *,
+        expand: bool = False,
+        max_lines: int = 15,
+        max_line_len: int = 200,
+    ) -> None:
+        """Add a collapsed node to the tool tree with detail lines as leaves.
+
+        Lines beyond *max_lines* are replaced by a clickable "show more"
+        leaf.  Clicking it inserts the remaining lines at the same level.
+        """
+        tool_tree = self.query_one("#tool-log", Tree)
+        node = tool_tree.root.add(label, expand=expand)
+
+        visible = details[:max_lines]
+        overflow = details[max_lines:]
+
+        for line in visible:
+            node.add_leaf(line[:max_line_len])
+
+        if overflow:
+            node.add_leaf(
+                Text(f"... ({len(overflow)} more lines)", style="dim italic"),
+                data={"overflow": overflow, "max_line_len": max_line_len},
+            )
+
+        tool_tree.scroll_end(animate=False)
+
+    def on_tree_node_selected(self, event: Tree.NodeSelected) -> None:
+        """Expand a 'show more' placeholder into sibling leaves."""
+        node = event.node
+        if not isinstance(node.data, dict) or "overflow" not in node.data:
+            return
+        overflow: list[str] = node.data["overflow"]
+        max_line_len: int = node.data.get("max_line_len", 200)
+        parent = node.parent
+
+        # Add overflow lines at the same level, then remove the placeholder
+        for line in overflow:
+            parent.add_leaf(line[:max_line_len])
+        node.remove()
+
+    def _flush_auto_executed_tools(self, chat: RichLog) -> None:
         """Detect and log auto-executed tools by scanning new chat entries."""
         if not self._agent:
             return
@@ -424,7 +471,7 @@ class AbstractAgentTUI(App):
             self._last_seen_chat_count = current_count
             return
 
-        ts = datetime.now().strftime("%H:%M:%S")
+        ts = datetime.now().strftime("%H:%M")
         for c in chats[self._last_seen_chat_count:]:
             if c.role.value == "tool":
                 self._tool_call_count += 1
@@ -437,38 +484,40 @@ class AbstractAgentTUI(App):
                 chat.write(Text.from_markup(
                     f"[green]\u2713[/green] [dim]{tool_name} (auto)[/dim]"
                 ))
-                tool_log.write(Text.from_markup(
-                    f"[dim]{ts}[/dim] [green]AUTO[/green] [bold]{tool_name}[/bold]"
-                ))
-                result_preview = (
+                result_text = (
                     c.content[c.content.find("result: ") + 8:]
                     if "result: " in (c.content or "")
                     else (c.content or "")
                 )
-                if len(result_preview) > 300:
-                    result_preview = result_preview[:300] + "..."
-                tool_log.write(result_preview)
-                tool_log.write("")
+                # Try to pretty-print JSON results for line-by-line display
+                try:
+                    result_text = json.dumps(json.loads(result_text), indent=2)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                self._add_tool_node(
+                    Text.assemble(
+                        (ts, "dim"), " ", ("AUTO", "green"), " ", (tool_name, "bold"),
+                    ),
+                    result_text.split("\n") if result_text.strip() else [],
+                )
 
             elif c.role.value == "assistant" and c.tool_calls:
                 for tc in c.tool_calls:
-                    tool_log.write(Text.from_markup(
-                        f"[dim]{ts}[/dim] [yellow]CALL[/yellow] [bold]{tc.tool_name}[/bold]"
-                    ))
+                    details: list[str] = []
                     if hasattr(tc, "tool_arguments") and tc.tool_arguments:
-                        args_str = json.dumps(tc.tool_arguments, indent=2)
-                        lines = args_str.split("\n")
-                        if len(lines) > 15:
-                            args_str = "\n".join(lines[:15]) + f"\n... ({len(lines) - 15} more)"
-                        tool_log.write(args_str)
-                    tool_log.write("")
+                        details = json.dumps(tc.tool_arguments, indent=2).split("\n")
+                    self._add_tool_node(
+                        Text.assemble(
+                            (ts, "dim"), " ", ("CALL", "yellow"), " ", (tc.tool_name, "bold"),
+                        ),
+                        details,
+                    )
 
         self._last_seen_chat_count = current_count
 
     def _handle_message(self, message: BaseEmittedMessage) -> None:
         """Route emitted messages to the appropriate pane."""
         chat = self.query_one("#chat-log", RichLog)
-        tool_log = self.query_one("#tool-log", RichLog)
 
         # Let subclass handle first — if it returns True, we're done.
         if self._handle_additional_message(message):
@@ -476,7 +525,7 @@ class AbstractAgentTUI(App):
             return
 
         if isinstance(message, ChatResponseEmittedMessage):
-            self._flush_auto_executed_tools(tool_log, chat)
+            self._flush_auto_executed_tools(chat)
 
             if self._streaming_started:
                 # Flush remaining partial line with formatting
@@ -504,25 +553,24 @@ class AbstractAgentTUI(App):
 
         elif isinstance(message, ToolInvocationResultEmittedMessage):
             inv = message.tool_invocation
-            ts = datetime.now().strftime("%H:%M:%S")
+            ts = datetime.now().strftime("%H:%M")
             self._tool_call_count += 1
 
             if inv.status == ToolInvocationStatus.EXECUTED:
                 chat.write(Text.from_markup(
                     f"[green]\u2713[/green] [dim]{inv.tool_name} executed[/dim]"
                 ))
-                tool_log.write(Text.from_markup(
-                    f"[dim]{ts}[/dim] [green]RESULT[/green] [bold]{inv.tool_name}[/bold]"
-                ))
+                details: list[str] = []
                 if isinstance(message.tool_result, dict):
-                    result_str = json.dumps(message.tool_result, indent=2)
-                    lines = result_str.split("\n")
-                    if len(lines) > 30:
-                        result_str = "\n".join(lines[:30]) + f"\n... ({len(lines) - 30} more)"
-                    tool_log.write(result_str)
+                    details = json.dumps(message.tool_result, indent=2).split("\n")
                 elif message.tool_result:
-                    tool_log.write(str(message.tool_result)[:500])
-                tool_log.write("")
+                    details = str(message.tool_result).split("\n")
+                self._add_tool_node(
+                    Text.assemble(
+                        (ts, "dim"), " ", ("RESULT", "green"), " ", (inv.tool_name, "bold"),
+                    ),
+                    details,
+                )
 
             elif inv.status == ToolInvocationStatus.FAILED:
                 error = (
@@ -531,10 +579,12 @@ class AbstractAgentTUI(App):
                     else str(message.tool_result)
                 )
                 chat.write(Text.from_markup(f"[red]\u2717 {inv.tool_name} failed[/red]"))
-                tool_log.write(Text.from_markup(
-                    f"[dim]{ts}[/dim] [red]FAILED[/red] [bold]{inv.tool_name}[/bold]: {error}"
-                ))
-                tool_log.write("")
+                self._add_tool_node(
+                    Text.assemble(
+                        (ts, "dim"), " ", ("FAILED", "red"), " ", (inv.tool_name, "bold"),
+                    ),
+                    [str(error)[:500]] if error else [],
+                )
 
             elif inv.status == ToolInvocationStatus.DENIED:
                 chat.write(Text.from_markup(
