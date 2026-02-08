@@ -76,6 +76,7 @@ bluebox-guide-tui = "bluebox.scripts.run_guide_agent_tui:main"
 
 # Specialist agents
 bluebox-network-specialist = "bluebox.scripts.specialists.run_network_specialist:main"
+bluebox-network-specialist-tui = "bluebox.scripts.specialists.run_network_specialist_tui:main"
 bluebox-value-trace-resolver = "bluebox.scripts.specialists.run_value_trace_resolver_specialist:main"
 bluebox-js-specialist = "bluebox.scripts.specialists.run_js_specialist:main"
 bluebox-interaction-specialist = "bluebox.scripts.specialists.run_interaction_specialist:main"
