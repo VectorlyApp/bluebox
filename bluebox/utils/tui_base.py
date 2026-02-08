@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from rich.markdown import Markdown as RichMarkdown
 from rich.markup import escape
+from rich.syntax import Syntax
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
@@ -170,6 +171,9 @@ class AbstractAgentTUI(App):
         # Streaming state
         self._streaming_started: bool = False
         self._stream_buffer: list[str] = []
+        self._in_code_block: bool = False
+        self._code_block_lang: str = ""
+        self._code_block_buffer: list[str] = []
 
         # Counters
         self._tool_call_count: int = 0
@@ -304,12 +308,108 @@ class AbstractAgentTUI(App):
     # ── Agent callbacks ──────────────────────────────────────────────────
 
     def _handle_stream_chunk(self, chunk: str) -> None:
-        """Buffer streaming chunks for markdown rendering when complete."""
+        """Buffer streaming chunks, rendering markdown line-by-line."""
         chat = self.query_one("#chat-log", RichLog)
         if not self._streaming_started:
             chat.write(Text.from_markup("\n[bold cyan]Assistant[/bold cyan]"))
             self._streaming_started = True
+
         self._stream_buffer.append(chunk)
+
+        combined = "".join(self._stream_buffer)
+        if "\n" in combined:
+            lines = combined.split("\n")
+            for line in lines[:-1]:
+                self._write_md_line(chat, line)
+            self._stream_buffer.clear()
+            if lines[-1]:
+                self._stream_buffer.append(lines[-1])
+
+    # ── Markdown helpers ──────────────────────────────────────────────
+
+    def _write_md_line(self, chat: RichLog, line: str) -> None:
+        """Write a single line to chat with markdown formatting."""
+        stripped = line.strip()
+
+        # Code block delimiters
+        if stripped.startswith("```"):
+            if self._in_code_block:
+                # Closing fence — render buffered code with syntax highlighting
+                code = "\n".join(self._code_block_buffer)
+                lang = self._code_block_lang or "text"
+                chat.write(Syntax(
+                    code, lang, theme="monokai",
+                    line_numbers=False, word_wrap=True,
+                ))
+                self._code_block_buffer.clear()
+                self._in_code_block = False
+            else:
+                # Opening fence — start buffering
+                self._in_code_block = True
+                self._code_block_lang = stripped[3:].strip()
+                self._code_block_buffer.clear()
+            return
+
+        # Inside code block — buffer, don't render yet
+        if self._in_code_block:
+            self._code_block_buffer.append(line)
+            return
+
+        if not stripped:
+            chat.write("")
+            return
+
+        chat.write(self._render_md_line(line))
+
+    def _render_md_line(self, line: str) -> Text:
+        """Convert a single markdown line to a Rich Text renderable."""
+        stripped = line.strip()
+
+        # Headers
+        if stripped.startswith("### "):
+            return Text(stripped[4:], style="bold")
+        if stripped.startswith("## "):
+            return Text(stripped[3:], style="bold underline")
+        if stripped.startswith("# "):
+            return Text(stripped[2:], style="bold underline")
+
+        # Unordered list items
+        if stripped.startswith(("- ", "* ")):
+            result = Text("  \u2022 ")
+            result.append_text(self._apply_inline_md(stripped[2:]))
+            return result
+
+        return self._apply_inline_md(line)
+
+    def _apply_inline_md(self, text: str) -> Text:
+        """Apply **bold**, `code`, and *italic* inline formatting."""
+        result = Text()
+        i = 0
+        while i < len(text):
+            # Bold: **text**
+            if text[i : i + 2] == "**":
+                end = text.find("**", i + 2)
+                if end != -1:
+                    result.append(text[i + 2 : end], style="bold")
+                    i = end + 2
+                    continue
+            # Inline code: `text`
+            if text[i] == "`":
+                end = text.find("`", i + 1)
+                if end != -1:
+                    result.append(text[i + 1 : end], style="bold cyan")
+                    i = end + 1
+                    continue
+            # Italic: *text* (but not **)
+            if text[i] == "*" and text[i : i + 2] != "**":
+                end = text.find("*", i + 1)
+                if end != -1 and text[end : end + 2] != "**":
+                    result.append(text[i + 1 : end], style="italic")
+                    i = end + 1
+                    continue
+            result.append(text[i])
+            i += 1
+        return result
 
     def _flush_auto_executed_tools(self, tool_log: RichLog, chat: RichLog) -> None:
         """Detect and log auto-executed tools by scanning new chat entries."""
@@ -375,16 +475,28 @@ class AbstractAgentTUI(App):
         if isinstance(message, ChatResponseEmittedMessage):
             self._flush_auto_executed_tools(tool_log, chat)
 
-            if not self._streaming_started:
+            if self._streaming_started:
+                # Flush remaining partial line with formatting
+                remainder = "".join(self._stream_buffer)
+                if remainder.strip():
+                    self._write_md_line(chat, remainder)
+                # Flush any unclosed code block
+                if self._in_code_block and self._code_block_buffer:
+                    code = "\n".join(self._code_block_buffer)
+                    lang = self._code_block_lang or "text"
+                    chat.write(Syntax(
+                        code, lang, theme="monokai",
+                        line_numbers=False, word_wrap=True,
+                    ))
+                    self._code_block_buffer.clear()
+                self._stream_buffer.clear()
+                self._streaming_started = False
+                self._in_code_block = False
+            else:
+                # Non-streaming: render full response as markdown
                 chat.write(Text.from_markup("\n[bold cyan]Assistant[/bold cyan]"))
-
-            # Prefer the message content; fall back to stream buffer
-            content = message.content or "".join(self._stream_buffer)
-            self._stream_buffer.clear()
-            self._streaming_started = False
-
-            if content:
-                chat.write(RichMarkdown(content))
+                if message.content:
+                    chat.write(RichMarkdown(message.content))
             chat.write("")
 
         elif isinstance(message, ToolInvocationResultEmittedMessage):
