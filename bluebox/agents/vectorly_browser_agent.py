@@ -11,7 +11,6 @@ Contains:
 from __future__ import annotations
 
 from datetime import datetime
-from functools import lru_cache
 from textwrap import dedent
 from typing import Any, Callable
 
@@ -85,7 +84,14 @@ class VectorlyBrowserAgent(AbstractSpecialist):
             existing_chats: Existing Chat messages if loading from persistence.
             remote_debugging_address: Chrome remote debugging address for routine execution.
         """
+        # Validate required config
+        if not Config.VECTORLY_API_KEY:
+            raise ValueError("VECTORLY_API_KEY is not set")
+        if not Config.VECTORLY_API_BASE:
+            raise ValueError("VECTORLY_API_BASE is not set")
+
         self._remote_debugging_address = remote_debugging_address
+        self._routines_cache: dict[str, Routine] | None = None
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -142,9 +148,8 @@ class VectorlyBrowserAgent(AbstractSpecialist):
         """Build initial message for autonomous mode (not implemented)."""
         return f"TASK: {task}"
 
-    ## Routine fetching (cached)
+    ## Routine fetching (instance-level cache)
 
-    @lru_cache(maxsize=1)
     def _get_all_routines(self) -> dict[str, Routine]:
         """
         Get all routines from Vectorly (organization + public).
@@ -152,11 +157,14 @@ class VectorlyBrowserAgent(AbstractSpecialist):
         Returns:
             Dictionary mapping routine IDs to Routine objects.
         """
+        if self._routines_cache is not None:
+            return self._routines_cache
+
         routines: list[dict[str, Any]] = []
 
         headers = {
             "Content-Type": "application/json",
-            "X-Service-Token": Config.VECTORLY_API_KEY or "",
+            "X-Service-Token": Config.VECTORLY_API_KEY,
         }
 
         # Get organization routines
@@ -183,13 +191,15 @@ class VectorlyBrowserAgent(AbstractSpecialist):
             try:
                 routine = Routine(**routine_data)
                 routine_dict[routine_data["id"]] = routine
-            except Exception as e:
+            except Exception:
                 continue
+
+        self._routines_cache = routine_dict
         return routine_dict
 
     def _clear_routine_cache(self) -> None:
         """Clear the routine cache to force a refresh."""
-        self._get_all_routines.cache_clear()
+        self._routines_cache = None
 
     ## Tool handlers
 
@@ -255,7 +265,7 @@ class VectorlyBrowserAgent(AbstractSpecialist):
     def _execute_routine(
         self,
         routine_id: str,
-        parameters: dict[str, Any],
+        parameters: dict[str, Any] = {},
     ) -> dict[str, Any]:
         """
         Execute a routine with the given parameters.
