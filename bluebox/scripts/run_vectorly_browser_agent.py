@@ -94,13 +94,8 @@ class TerminalVectorlyBrowserChat(AbstractTerminalAgentChat):
 
         config_table.add_row("Remote Debug", self.remote_debugging_address)
         config_table.add_row("Model", self.llm_model.value)
-
-        # Check API configuration
-        api_status = "Configured" if Config.VECTORLY_API_KEY else "[red]Missing[/red]"
-        config_table.add_row("Vectorly API Key", api_status)
-
-        api_base = Config.VECTORLY_API_BASE or "[red]Not set[/red]"
-        config_table.add_row("Vectorly API Base", api_base)
+        config_table.add_row("Tab ID", self._agent.tab_id or "[red]Not created[/red]")
+        config_table.add_row("Page WS URL", self._agent.page_ws_url or "[red]Not available[/red]")
 
         self.console.print(Panel(
             config_table,
