@@ -29,7 +29,6 @@ from pathlib import Path
 from typing import Any
 
 from openai import OpenAI
-from rich import box
 from rich.console import Console
 from rich.markup import escape
 from rich.text import Text
@@ -246,7 +245,6 @@ class GuideAgentTUI(App):
         self._streaming_started = False
         self._stream_buffer: list[str] = []  # buffer chunks until full message arrives
         self._tool_call_count = 0
-        self._estimated_tokens_used = 0
         self._last_seen_chat_count = 0  # track to detect auto-executed tools
 
     # ── Compose ──────────────────────────────────────────────────────────
@@ -1010,6 +1008,8 @@ def main() -> None:
         console.print("[bold red]Error: OPENAI_API_KEY environment variable is not set[/bold red]")
         sys.exit(1)
 
+    data_store: LocalDiscoveryDataStore | None = None
+
     try:
         llm_model = parse_model(args.model)
         openai_client = OpenAI(api_key=Config.OPENAI_API_KEY)
@@ -1063,6 +1063,17 @@ def main() -> None:
     except Exception as e:
         console.print(f"[bold red]Fatal error: {e}[/bold red]")
         sys.exit(1)
+    finally:
+        if data_store is not None:
+            console.print()
+            with console.status("[dim]Cleaning up vectorstores...[/dim]"):
+                try:
+                    data_store.clean_up()
+                except KeyboardInterrupt:
+                    console.print("[yellow]Cleanup interrupted[/yellow]")
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Cleanup failed: {e}[/yellow]")
+            console.print("[green]✓ Cleanup complete![/green]")
 
 
 if __name__ == "__main__":
