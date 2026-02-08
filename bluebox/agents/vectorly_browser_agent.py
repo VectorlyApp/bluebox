@@ -11,6 +11,7 @@ Contains:
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from textwrap import dedent
 from typing import Any, Callable
@@ -77,6 +78,7 @@ class VectorlyBrowserAgent(AbstractSpecialist):
         - `search_routines(keywords: list[str])` — Search routines by keywords. Use this to find matching routines.
         - `get_routine_details(routine_id: str)` — Get routine parameters before execution.
         - `execute_routine(routine_id: str, parameters: dict = {})` — Run a routine with parameters.
+        - `execute_routines_parallel(routine_requests: list[dict], max_concurrency: int = 5)` — Run multiple independent routines in parallel on separate tabs. Each dict needs 'routine_id' and optionally 'parameters'. Use when routines don't depend on each other's results.
 
         ## IMPORTANT: Always Prioritize Routines
         Before using browser tools:
@@ -410,6 +412,107 @@ class VectorlyBrowserAgent(AbstractSpecialist):
                 "routine_name": routine.name,
                 "error": str(e),
             }
+
+    @agent_tool()
+    def _execute_routines_parallel(
+        self,
+        routine_requests: list[dict[str, Any]],
+        max_concurrency: int = 5,
+    ) -> dict[str, Any]:
+        """
+        Execute multiple routines in parallel, each on its own browser tab.
+
+        Each routine runs in an isolated tab that is automatically closed after execution.
+        Use this when you need to run several independent routines simultaneously for faster results.
+        The agent's own browser tab is not affected.
+
+        Args:
+            routine_requests: List of routine execution requests. Each dict must have 'routine_id' (str) and optionally 'parameters' (dict).
+            max_concurrency: Maximum number of routines to run simultaneously. Defaults to 5.
+        """
+        if not routine_requests:
+            return {"error": "No routine requests provided"}
+
+        try:
+            routines = self._get_all_routines()
+        except requests.RequestException as e:
+            return {"error": f"Failed to fetch routines: {e}"}
+
+        max_concurrency = max(1, min(max_concurrency, 10))
+
+        # Validate each request
+        validated: list[tuple[str, Any, dict]] = []
+        validation_errors: list[dict[str, Any]] = []
+
+        for i, req in enumerate(routine_requests):
+            routine_id = req.get("routine_id")
+            parameters = req.get("parameters", {})
+
+            if not routine_id:
+                validation_errors.append({"index": i, "error": "Missing 'routine_id'"})
+                continue
+
+            if routine_id not in routines:
+                validation_errors.append({"index": i, "routine_id": routine_id, "error": f"Routine ID '{routine_id}' not found"})
+                continue
+
+            validated.append((routine_id, routines[routine_id], parameters))
+
+        if not validated:
+            return {
+                "success": False,
+                "error": "All routine requests failed validation",
+                "validation_errors": validation_errors,
+                "results": [],
+            }
+
+        # Execute validated routines in parallel, each on its own new tab
+        def execute_one(routine_id: str, routine: Any, parameters: dict) -> dict[str, Any]:
+            try:
+                result = routine.execute(
+                    parameters_dict=parameters,
+                    remote_debugging_address=self._remote_debugging_address,
+                    tab_id=None,
+                    close_tab_when_done=True,
+                )
+                return {
+                    "success": True,
+                    "routine_id": routine_id,
+                    "routine_name": routine.name,
+                    "result": result.model_dump() if hasattr(result, "model_dump") else result,
+                }
+            except Exception as e:
+                logger.exception("Parallel routine execution failed for %s: %s", routine_id, e)
+                return {
+                    "success": False,
+                    "routine_id": routine_id,
+                    "routine_name": routine.name,
+                    "error": str(e),
+                }
+
+        results: list[dict[str, Any]] = []
+        with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
+            futures = {
+                executor.submit(execute_one, rid, routine, params): rid
+                for rid, routine, params in validated
+            }
+            for future in as_completed(futures):
+                results.append(future.result())
+
+        results.sort(key=lambda r: r.get("routine_id", ""))
+
+        succeeded = sum(1 for r in results if r.get("success"))
+        failed = len(results) - succeeded
+
+        return {
+            "success": failed == 0 and not validation_errors,
+            "total_requested": len(routine_requests),
+            "total_executed": len(validated),
+            "succeeded": succeeded,
+            "failed": failed,
+            "validation_errors": validation_errors or None,
+            "results": results,
+        }
 
     ## Browser control tools
 
