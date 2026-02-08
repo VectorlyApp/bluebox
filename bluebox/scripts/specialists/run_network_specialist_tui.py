@@ -18,53 +18,36 @@ Usage:
     bluebox-network-specialist-tui --jsonl-path ./cdp_captures/network/events.jsonl --model gpt-5.1
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+
 from rich.console import Console
 from rich.markup import escape
 from rich.text import Text
 from textual import work
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
-from textual.suggester import SuggestFromList
-from textual.widgets import Input, RichLog, Static
+from textual.widgets import RichLog
 
-from bluebox.agents.specialists.network_specialist import NetworkSpecialist
-from bluebox.data_models.llms.interaction import (
-    ChatRole,
-    BaseEmittedMessage,
-    ChatResponseEmittedMessage,
-    ToolInvocationResultEmittedMessage,
-    ErrorEmittedMessage,
-    ToolInvocationStatus,
-)
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
-from bluebox.utils.logger import enable_tui_logging, get_logger
+from bluebox.utils.logger import enable_tui_logging
+from bluebox.utils.tui_base import AbstractAgentTUI, BASE_SLASH_COMMANDS
 
-logger = get_logger(name=__name__)
+if TYPE_CHECKING:
+    from bluebox.agents.abstract_agent import AbstractAgent
 
-# Rough context window sizes (tokens) per model family
-MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    "gpt-4": 128_000,
-    "gpt-5": 128_000,
-    "o3": 200_000,
-    "o4": 200_000,
-}
-DEFAULT_CONTEXT_WINDOW = 128_000
 
 # ─── Slash commands ──────────────────────────────────────────────────────────
 
-SLASH_COMMANDS = [
-    "/discover", "/reset", "/status", "/chats", "/clear", "/help", "/quit",
-]
+SLASH_COMMANDS = ["/discover"] + BASE_SLASH_COMMANDS
 
 HELP_TEXT = """\
 [bold]Commands:[/bold]
@@ -78,94 +61,14 @@ HELP_TEXT = """\
 """
 
 
-# ─── Textual CSS ─────────────────────────────────────────────────────────────
-
-APP_CSS = """
-Screen {
-    layout: horizontal;
-}
-
-#left-pane {
-    width: 3fr;
-    layout: vertical;
-}
-
-#right-pane {
-    width: 1fr;
-    layout: vertical;
-}
-
-#chat-log {
-    height: 1fr;
-    border: solid $accent;
-    border-title-color: $accent;
-}
-
-#user-input {
-    height: 3;
-    margin: 0 0;
-}
-
-#tool-log {
-    height: 1fr;
-    border: solid $secondary;
-    border-title-color: $secondary;
-}
-
-#status-panel {
-    height: auto;
-    min-height: 10;
-    max-height: 16;
-    border: solid $primary;
-    border-title-color: $primary;
-    padding: 0 1;
-}
-"""
-
-
-# ─── Helpers ─────────────────────────────────────────────────────────────────
-
-def get_context_window_size(model_value: str) -> int:
-    """Get approximate context window size for a model."""
-    for prefix, size in MODEL_CONTEXT_WINDOWS.items():
-        if model_value.startswith(prefix):
-            return size
-    return DEFAULT_CONTEXT_WINDOW
-
-
-def configure_logging(quiet: bool = False, log_file: str | None = None) -> None:
-    """Configure logging — in TUI mode, redirect ALL loggers to file.
-
-    Uses enable_tui_logging() which sets a module-level override so that every
-    future get_logger() call also routes to file instead of stderr.
-    """
-    enable_tui_logging(
-        log_file=log_file or ".bluebox_network_tui.log",
-        quiet=quiet,
-    )
-
-
-# ─── Slash command suggester ─────────────────────────────────────────────────
-
-class SlashCommandSuggester(SuggestFromList):
-    """Only suggest when input starts with '/'."""
-
-    async def get_suggestion(self, value: str) -> str | None:
-        if not value.startswith("/"):
-            return None
-        return await super().get_suggestion(value)
-
-
 # ─── Textual App ─────────────────────────────────────────────────────────────
 
-class NetworkSpecialistTUI(App):
+class NetworkSpecialistTUI(AbstractAgentTUI):
     """Multi-pane TUI for the Network Specialist."""
 
-    CSS = APP_CSS
     TITLE = "Network Spy"
-    BINDINGS = [
-        Binding("ctrl+c", "quit", "Quit", priority=True),
-    ]
+    SLASH_COMMANDS = SLASH_COMMANDS
+    HELP_TEXT = HELP_TEXT
 
     def __init__(
         self,
@@ -173,56 +76,20 @@ class NetworkSpecialistTUI(App):
         network_store: NetworkDataLoader,
         data_path: str = "",
     ) -> None:
-        super().__init__()
-        self._llm_model = llm_model
+        super().__init__(llm_model)
         self._network_store = network_store
         self._data_path = data_path
-        self._context_window_size = get_context_window_size(llm_model.value)
 
-        # Agent state
-        self._agent: NetworkSpecialist | None = None
-        self._streaming_started = False
-        self._stream_buffer: list[str] = []
-        self._tool_call_count = 0
-        self._last_seen_chat_count = 0
+    # ── Abstract implementations ─────────────────────────────────────────
 
-    # ── Compose ──────────────────────────────────────────────────────────
-
-    def compose(self) -> ComposeResult:
-        with Horizontal():
-            with Vertical(id="left-pane"):
-                chat_log = RichLog(id="chat-log", wrap=True, highlight=True, markup=True)
-                chat_log.border_title = "Chat"
-                yield chat_log
-                yield Input(
-                    placeholder="Type a message or /help ...",
-                    id="user-input",
-                    suggester=SlashCommandSuggester(SLASH_COMMANDS, case_sensitive=False),
-                )
-            with Vertical(id="right-pane"):
-                tool_log = RichLog(id="tool-log", wrap=True, highlight=True, markup=True)
-                tool_log.border_title = "Tools"
-                yield tool_log
-                status = Static(id="status-panel")
-                status.border_title = "Info"
-                yield status
-
-    # ── Lifecycle ────────────────────────────────────────────────────────
-
-    def on_mount(self) -> None:
-        """Initialize agent and show welcome."""
-        self._agent = NetworkSpecialist(
+    def _create_agent(self) -> AbstractAgent:
+        from bluebox.agents.specialists.network_specialist import NetworkSpecialist
+        return NetworkSpecialist(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
             network_data_store=self._network_store,
             llm_model=self._llm_model,
         )
-        self._print_welcome()
-        self._update_status()
-        self.set_interval(10, self._update_status)
-        self.query_one("#user-input", Input).focus()
-
-    # ── Welcome ──────────────────────────────────────────────────────────
 
     def _print_welcome(self) -> None:
         chat = self.query_one("#chat-log", RichLog)
@@ -294,241 +161,40 @@ class NetworkSpecialistTUI(App):
         ))
         chat.write("")
 
-    # ── Status panel ─────────────────────────────────────────────────────
-
-    def _estimate_context_usage(self) -> tuple[int, float]:
-        """Estimate tokens used and percentage of context window filled."""
-        if not self._agent:
-            return 0, 0.0
-        total_chars = 0
-        for c in self._agent.get_chats():
-            total_chars += len(c.content or "")
-            if c.tool_calls:
-                for tc in c.tool_calls:
-                    if hasattr(tc, "tool_arguments"):
-                        total_chars += len(json.dumps(tc.tool_arguments))
-        tokens = total_chars // 4
-        pct = (tokens / self._context_window_size) * 100 if self._context_window_size > 0 else 0.0
-        return tokens, min(pct, 100.0)
-
-    def _context_bar(self, pct: float, width: int = 15) -> str:
-        """Render a text-based context fill bar."""
-        filled = int(pct / 100 * width)
-        empty = width - filled
-        if pct < 50:
-            color = "green"
-        elif pct < 80:
-            color = "yellow"
-        else:
-            color = "red"
-        bar = "█" * filled + "░" * empty
-        return f"[{color}]{bar}[/{color}] {pct:.0f}%"
-
-    def _update_status(self) -> None:
-        """Refresh the status panel content."""
-        panel = self.query_one("#status-panel", Static)
-
+    def _build_status_text(self) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg_count = len(self._agent.get_chats()) if self._agent else 0
         tokens_used, ctx_pct = self._estimate_context_usage()
         ctx_bar = self._context_bar(ctx_pct)
         stats = self._network_store.stats
 
-        status_text = (
+        return (
             f"[bold cyan]NETWORK SPY[/bold cyan]\n"
-            f"[dim]──────────────────[/dim]\n"
+            f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
             f"[dim]Model:[/dim]     {self._llm_model.value}\n"
             f"[dim]Messages:[/dim]  {msg_count}\n"
             f"[dim]Tools:[/dim]     {self._tool_call_count}\n"
             f"[dim]Context:[/dim]   {ctx_bar}\n"
             f"[dim](est.)      ~{tokens_used:,} / {self._context_window_size:,}[/dim]\n"
-            f"[dim]──────────────────[/dim]\n"
+            f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
             f"[dim]Requests:[/dim]  {stats.total_requests}\n"
             f"[dim]URLs:[/dim]      {stats.unique_urls}\n"
             f"[dim]Hosts:[/dim]     {stats.unique_hosts}\n"
             f"[dim]Time:[/dim]      {now}\n"
         )
-        panel.update(Text.from_markup(status_text))
 
-    # ── Agent callbacks ──────────────────────────────────────────────────
+    # ── Custom commands ──────────────────────────────────────────────────
 
-    def _handle_stream_chunk(self, chunk: str) -> None:
-        """Buffer streaming chunks, flushing complete lines immediately."""
-        chat = self.query_one("#chat-log", RichLog)
-        if not self._streaming_started:
-            chat.write(Text.from_markup("\n[bold cyan]Assistant[/bold cyan]"))
-            self._streaming_started = True
-
-        self._stream_buffer.append(chunk)
-
-        combined = "".join(self._stream_buffer)
-        if "\n" in combined:
-            lines = combined.split("\n")
-            for line in lines[:-1]:
-                chat.write(line)
-            self._stream_buffer.clear()
-            if lines[-1]:
-                self._stream_buffer.append(lines[-1])
-
-    def _flush_auto_executed_tools(self, tool_log: RichLog, chat: RichLog) -> None:
-        """Detect and log auto-executed tools by scanning new chat entries."""
-        if not self._agent:
-            return
-        chats = self._agent.get_chats()
-        current_count = len(chats)
-        if current_count <= self._last_seen_chat_count:
-            self._last_seen_chat_count = current_count
-            return
-
-        ts = datetime.now().strftime("%H:%M:%S")
-        for c in chats[self._last_seen_chat_count:]:
-            if c.role.value == "tool":
-                self._tool_call_count += 1
-                tool_name = "tool"
-                if c.content and c.content.startswith("Tool '"):
-                    end = c.content.find("'", 6)
-                    if end > 6:
-                        tool_name = c.content[6:end]
-
-                chat.write(Text.from_markup(
-                    f"[green]✓[/green] [dim]{tool_name} (auto)[/dim]"
-                ))
-
-                tool_log.write(Text.from_markup(
-                    f"[dim]{ts}[/dim] [green]AUTO[/green] [bold]{tool_name}[/bold]"
-                ))
-                result_preview = c.content[c.content.find("result: ") + 8:] if "result: " in c.content else c.content
-                if len(result_preview) > 300:
-                    result_preview = result_preview[:300] + "..."
-                tool_log.write(result_preview)
-                tool_log.write("")
-
-            elif c.role.value == "assistant" and c.tool_calls:
-                for tc in c.tool_calls:
-                    tool_log.write(Text.from_markup(
-                        f"[dim]{ts}[/dim] [yellow]CALL[/yellow] [bold]{tc.tool_name}[/bold]"
-                    ))
-                    if hasattr(tc, "tool_arguments") and tc.tool_arguments:
-                        args_str = json.dumps(tc.tool_arguments, indent=2)
-                        lines = args_str.split("\n")
-                        if len(lines) > 15:
-                            args_str = "\n".join(lines[:15]) + f"\n... ({len(lines) - 15} more)"
-                        tool_log.write(args_str)
-                    tool_log.write("")
-
-        self._last_seen_chat_count = current_count
-
-    def _handle_message(self, message: BaseEmittedMessage) -> None:
-        """Route emitted messages to the appropriate pane."""
-        chat = self.query_one("#chat-log", RichLog)
-        tool_log = self.query_one("#tool-log", RichLog)
-
-        if isinstance(message, ChatResponseEmittedMessage):
-            self._flush_auto_executed_tools(tool_log, chat)
-
-            if self._streaming_started:
-                remainder = "".join(self._stream_buffer)
-                if remainder:
-                    chat.write(remainder)
-                self._stream_buffer.clear()
-                self._streaming_started = False
-            else:
-                chat.write(Text.from_markup("\n[bold cyan]Assistant[/bold cyan]"))
-                chat.write(message.content)
-            chat.write("")
-
-        elif isinstance(message, ToolInvocationResultEmittedMessage):
-            inv = message.tool_invocation
-            ts = datetime.now().strftime("%H:%M:%S")
-            self._tool_call_count += 1
-
-            if inv.status == ToolInvocationStatus.EXECUTED:
-                chat.write(Text.from_markup(
-                    f"[green]✓[/green] [dim]{inv.tool_name} executed[/dim]"
-                ))
-                tool_log.write(Text.from_markup(
-                    f"[dim]{ts}[/dim] [green]RESULT[/green] [bold]{inv.tool_name}[/bold]"
-                ))
-                if isinstance(message.tool_result, dict):
-                    result_str = json.dumps(message.tool_result, indent=2)
-                    lines = result_str.split("\n")
-                    if len(lines) > 30:
-                        result_str = "\n".join(lines[:30]) + f"\n... ({len(lines) - 30} more)"
-                    tool_log.write(result_str)
-                elif message.tool_result:
-                    tool_log.write(str(message.tool_result)[:500])
-                tool_log.write("")
-
-            elif inv.status == ToolInvocationStatus.FAILED:
-                error = message.tool_result.get("error") if isinstance(message.tool_result, dict) else str(message.tool_result)
-                chat.write(Text.from_markup(f"[red]✗ {inv.tool_name} failed[/red]"))
-                tool_log.write(Text.from_markup(
-                    f"[dim]{ts}[/dim] [red]FAILED[/red] [bold]{inv.tool_name}[/bold]: {error}"
-                ))
-                tool_log.write("")
-
-        elif isinstance(message, ErrorEmittedMessage):
-            chat.write(Text.from_markup(f"[bold red]Error:[/bold red] {escape(message.error)}"))
-
-        self._update_status()
-
-    # ── Input handling ───────────────────────────────────────────────────
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Handle user input submission."""
-        user_input = event.value.strip()
-        if not user_input:
-            return
-
-        inp = self.query_one("#user-input", Input)
-        inp.value = ""
-
-        chat = self.query_one("#chat-log", RichLog)
-
-        # Show user message
-        chat.write(Text.from_markup(f"[bold green]You>[/bold green] {escape(user_input)}"))
-
-        cmd = user_input.lower()
-
-        if cmd in ("/quit", "/exit", "/q"):
-            self.exit()
-            return
-        if cmd in ("/help", "/h", "/?"):
-            chat.write(Text.from_markup(HELP_TEXT))
-            return
-        if cmd == "/reset":
-            self._agent.reset()
-            self._last_seen_chat_count = 0
-            chat.write(Text.from_markup("[yellow]↺ Conversation reset[/yellow]"))
-            self._update_status()
-            return
-        if cmd == "/status":
-            self._show_status_in_chat()
-            return
-        if cmd == "/chats":
-            self._show_chats()
-            return
-        if cmd == "/clear":
-            self.query_one("#chat-log", RichLog).clear()
-            return
-
-        # Handle /discover <task>
-        if user_input.lower().startswith("/discover"):
-            task = user_input[9:].strip()
+    def _handle_custom_command(self, cmd: str, raw_input: str) -> bool:
+        if raw_input.lower().startswith("/discover"):
+            task = raw_input[9:].strip()
+            chat = self.query_one("#chat-log", RichLog)
             if not task:
                 chat.write(Text.from_markup("[yellow]Usage: /discover <task>[/yellow]"))
-                return
-            self._run_discovery(task)
-            return
-
-        # Regular message → send to agent
-        self._send_to_agent(user_input)
-
-    @work(thread=True)
-    def _send_to_agent(self, user_input: str) -> None:
-        """Send message to agent in a background thread."""
-        self._agent.process_new_message(user_input, ChatRole.USER)
-        self.call_from_thread(self._update_status)
+            else:
+                self._run_discovery(task)
+            return True
+        return False
 
     # ── Autonomous discovery ─────────────────────────────────────────────
 
@@ -557,10 +223,9 @@ class NetworkSpecialistTUI(App):
             chat.write("")
 
             if isinstance(result, SpecialistResultWrapper) and result.success and result.output:
-                # Success — show the output
                 output = result.output
                 chat.write(Text.from_markup(
-                    f"[bold green]✓ Discovery Complete[/bold green] "
+                    f"[bold green]\u2713 Discovery Complete[/bold green] "
                     f"[dim]({iterations} iterations, {elapsed:.1f}s)[/dim]"
                 ))
                 output_str = json.dumps(output, indent=2)
@@ -569,7 +234,6 @@ class NetworkSpecialistTUI(App):
                     output_str = "\n".join(output_lines[:40]) + f"\n... ({len(output_lines) - 40} more lines)"
                 chat.write(output_str)
 
-                # Also log to tool pane
                 tool_log.write(Text.from_markup(
                     f"[green]DISCOVERY RESULT[/green] [dim]({iterations} iter, {elapsed:.1f}s)[/dim]"
                 ))
@@ -577,23 +241,19 @@ class NetworkSpecialistTUI(App):
                 tool_log.write("")
 
             elif isinstance(result, SpecialistResultWrapper) and not result.success:
-                # Explicit failure
                 reason = result.failure_reason or "Unknown"
                 chat.write(Text.from_markup(
-                    f"[bold red]✗ Endpoint Not Found[/bold red] "
+                    f"[bold red]\u2717 Endpoint Not Found[/bold red] "
                     f"[dim]({iterations} iterations, {elapsed:.1f}s)[/dim]\n"
                     f"[red]Reason:[/red] {escape(reason)}"
                 ))
-
-                # Notes if any
                 if result.notes:
                     notes_str = "\n".join(f"  - {n}" for n in result.notes[:10])
                     chat.write(Text.from_markup(f"[dim]Notes:[/dim]\n{notes_str}"))
 
             else:
-                # None or unexpected — max iterations without finalization
                 chat.write(Text.from_markup(
-                    f"[bold yellow]⚠ Discovery Incomplete[/bold yellow] "
+                    f"[bold yellow]\u26a0 Discovery Incomplete[/bold yellow] "
                     f"[dim]({iterations} iterations, {elapsed:.1f}s)[/dim]\n"
                     "[yellow]Agent reached max iterations without finalizing.[/yellow]"
                 ))
@@ -603,9 +263,10 @@ class NetworkSpecialistTUI(App):
 
         self.call_from_thread(_show_result)
 
-    # ── Slash command handlers ───────────────────────────────────────────
+    # ── Overrides ────────────────────────────────────────────────────────
 
     def _show_status_in_chat(self) -> None:
+        """Show a compact status summary in the chat pane."""
         chat = self.query_one("#chat-log", RichLog)
         stats = self._network_store.stats
         msg_count = len(self._agent.get_chats()) if self._agent else 0
@@ -622,34 +283,12 @@ class NetworkSpecialistTUI(App):
             f"  File: {self._data_path or 'N/A'}"
         ))
 
-    def _show_chats(self) -> None:
-        chat = self.query_one("#chat-log", RichLog)
-        chats = self._agent.get_chats()
-        if not chats:
-            chat.write(Text.from_markup("[yellow]No messages yet.[/yellow]"))
-            return
-
-        chat.write(Text.from_markup(f"[bold cyan]Chat History ({len(chats)} messages)[/bold cyan]"))
-        role_colors = {"user": "green", "assistant": "cyan", "system": "yellow", "tool": "magenta"}
-        for i, c in enumerate(chats, 1):
-            color = role_colors.get(c.role.value, "white")
-            content = (c.content or "").replace("\n", " ")[:60]
-            suffix = "..." if len(c.content or "") > 60 else ""
-            if c.role.value == "tool":
-                tid = (c.tool_call_id[:8] + "...") if c.tool_call_id else "?"
-                chat.write(Text.from_markup(f"[dim]{i}.[/dim] [{color}]TOOL[/{color}] [dim]({tid})[/dim] {escape(content)}{suffix}"))
-            elif c.role.value == "assistant" and c.tool_calls:
-                tool_names = ", ".join(tc.tool_name for tc in c.tool_calls)
-                chat.write(Text.from_markup(f"[dim]{i}.[/dim] [{color}]ASSISTANT[/{color}] [yellow]→ {tool_names}[/yellow]"))
-            else:
-                chat.write(Text.from_markup(f"[dim]{i}.[/dim] [{color}]{c.role.value.upper()}[/{color}] {escape(content)}{suffix}"))
-
 
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
 def main() -> None:
     """Entry point for the network specialist TUI."""
-    parser = argparse.ArgumentParser(description="Network Spy — Multi-pane TUI")
+    parser = argparse.ArgumentParser(description="Network Spy \u2014 Multi-pane TUI")
     parser.add_argument(
         "--jsonl-path",
         type=str,
@@ -679,11 +318,11 @@ def main() -> None:
 
     llm_model = resolve_model(args.model, console)
 
-    console.print(f"[green]✓ Loaded {network_store.stats.total_requests} requests[/green]")
+    console.print(f"[green]\u2713 Loaded {network_store.stats.total_requests} requests[/green]")
     console.print()
 
     # Redirect logging + stderr AFTER all console output, right before TUI takes over.
-    configure_logging(quiet=args.quiet, log_file=args.log_file)
+    enable_tui_logging(log_file=args.log_file or ".bluebox_network_tui.log", quiet=args.quiet)
 
     app = NetworkSpecialistTUI(
         llm_model=llm_model,

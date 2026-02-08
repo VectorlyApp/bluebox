@@ -81,6 +81,7 @@ bluebox-value-trace-resolver = "bluebox.scripts.specialists.run_value_trace_reso
 bluebox-js-specialist = "bluebox.scripts.specialists.run_js_specialist:main"
 bluebox-interaction-specialist = "bluebox.scripts.specialists.run_interaction_specialist:main"
 bluebox-vectorly-browser = "bluebox.scripts.run_vectorly_browser_agent:main"
+bluebox-vectorly-browser-tui = "bluebox.scripts.run_vectorly_browser_agent_tui:main"
 
 # Dev tools
 bluebox-benchmarks = "bluebox.scripts.run_benchmarks:main"

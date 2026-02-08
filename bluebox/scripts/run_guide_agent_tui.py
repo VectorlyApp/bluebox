@@ -19,48 +19,46 @@ Usage:
     bluebox-guide-tui --cdp-captures-dir ./cdp_captures -q
 """
 
+from __future__ import annotations
+
 import argparse
 import difflib
 import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from openai import OpenAI
 from rich.console import Console
 from rich.markup import escape
 from rich.text import Text
 from textual import work
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
-from textual.suggester import SuggestFromList
-from textual.widgets import Input, RichLog, Static
+from textual.widgets import Input, RichLog
 
 from bluebox.agents.guide_agent import GuideAgent
 from bluebox.config import Config
-from bluebox.data_models.llms.vendors import OpenAIModel
-from bluebox.utils.logger import enable_tui_logging
 from bluebox.data_models.llms.interaction import (
     ChatRole,
     BaseEmittedMessage,
-    ChatResponseEmittedMessage,
     ToolInvocationRequestEmittedMessage,
-    ToolInvocationResultEmittedMessage,
     SuggestedEditEmittedMessage,
     BrowserRecordingRequestEmittedMessage,
     RoutineDiscoveryRequestEmittedMessage,
     RoutineCreationRequestEmittedMessage,
-    ErrorEmittedMessage,
     PendingToolInvocation,
     SuggestedEditRoutine,
-    ToolInvocationStatus,
 )
+from bluebox.data_models.llms.vendors import OpenAIModel
 from bluebox.data_models.routine.routine import Routine
 from bluebox.llms.tools.guide_agent_tools import validate_routine
 from bluebox.llms.infra.data_store import LocalDiscoveryDataStore
 from bluebox.utils.chrome_utils import ensure_chrome_running
+from bluebox.utils.logger import enable_tui_logging
+from bluebox.utils.tui_base import AbstractAgentTUI, BASE_SLASH_COMMANDS
+
+if TYPE_CHECKING:
+    from bluebox.agents.abstract_agent import AbstractAgent
 
 # Package root for code_paths
 BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
@@ -69,22 +67,12 @@ BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 PORT = 9222
 DEFAULT_CDP_CAPTURES_DIR = Path("./cdp_captures")
 
-# Rough context window sizes (tokens) per model family
-MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    "gpt-4": 128_000,
-    "gpt-5": 128_000,
-    "o3": 200_000,
-    "o4": 200_000,
-}
-DEFAULT_CONTEXT_WINDOW = 128_000
-
 # ─── Slash commands ──────────────────────────────────────────────────────────
 
 SLASH_COMMANDS = [
     "/load", "/unload", "/show", "/validate", "/execute",
     "/monitor", "/diff", "/accept", "/reject",
-    "/status", "/chats", "/clear", "/reset", "/help", "/quit",
-]
+] + BASE_SLASH_COMMANDS
 
 HELP_TEXT = """\
 [bold]Commands:[/bold]
@@ -106,51 +94,6 @@ HELP_TEXT = """\
 """
 
 
-# ─── Textual CSS ─────────────────────────────────────────────────────────────
-
-APP_CSS = """
-Screen {
-    layout: horizontal;
-}
-
-#left-pane {
-    width: 3fr;
-    layout: vertical;
-}
-
-#right-pane {
-    width: 1fr;
-    layout: vertical;
-}
-
-#chat-log {
-    height: 1fr;
-    border: solid $accent;
-    border-title-color: $accent;
-}
-
-#user-input {
-    height: 3;
-    margin: 0 0;
-}
-
-#tool-log {
-    height: 1fr;
-    border: solid $secondary;
-    border-title-color: $secondary;
-}
-
-#status-panel {
-    height: auto;
-    min-height: 8;
-    max-height: 12;
-    border: solid $primary;
-    border-title-color: $primary;
-    padding: 0 1;
-}
-"""
-
-
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def safe_parse_routine(routine_str: str | None) -> tuple[dict[str, Any] | None, str | None]:
@@ -163,47 +106,14 @@ def safe_parse_routine(routine_str: str | None) -> tuple[dict[str, Any] | None, 
         return None, f"Invalid JSON: {e}"
 
 
-def get_context_window_size(model_value: str) -> int:
-    """Get approximate context window size for a model."""
-    for prefix, size in MODEL_CONTEXT_WINDOWS.items():
-        if model_value.startswith(prefix):
-            return size
-    return DEFAULT_CONTEXT_WINDOW
-
-
-def configure_logging(quiet: bool = False, log_file: str | None = None) -> None:
-    """Configure logging — in TUI mode, redirect ALL loggers to file.
-
-    Uses enable_tui_logging() which sets a module-level override so that every
-    future get_logger() call also routes to file instead of stderr.
-    """
-    enable_tui_logging(
-        log_file=log_file or ".bluebox_tui.log",
-        quiet=quiet,
-    )
-
-
-# ─── Slash command suggester ─────────────────────────────────────────────────
-
-class SlashCommandSuggester(SuggestFromList):
-    """Only suggest when input starts with '/'."""
-
-    async def get_suggestion(self, value: str) -> str | None:
-        if not value.startswith("/"):
-            return None
-        return await super().get_suggestion(value)
-
-
 # ─── Textual App ─────────────────────────────────────────────────────────────
 
-class GuideAgentTUI(App):
+class GuideAgentTUI(AbstractAgentTUI):
     """Multi-pane TUI for the Guide Agent."""
 
-    CSS = APP_CSS
     TITLE = "Guide Agent"
-    BINDINGS = [
-        Binding("ctrl+c", "quit", "Quit", priority=True),
-    ]
+    SLASH_COMMANDS = SLASH_COMMANDS
+    HELP_TEXT = HELP_TEXT
 
     def __init__(
         self,
@@ -211,60 +121,24 @@ class GuideAgentTUI(App):
         data_store: LocalDiscoveryDataStore | None = None,
         cdp_captures_dir: Path = DEFAULT_CDP_CAPTURES_DIR,
     ) -> None:
-        super().__init__()
-        self._llm_model = llm_model
+        super().__init__(llm_model)
         self._data_store = data_store
         self._cdp_captures_dir = cdp_captures_dir
-        self._context_window_size = get_context_window_size(llm_model.value)
 
-        # Agent state
-        self._agent: GuideAgent | None = None
+        # Guide-specific state
         self._pending_invocation: PendingToolInvocation | None = None
         self._pending_suggested_edit: SuggestedEditRoutine | None = None
         self._loaded_routine_path: Path | None = None
-        self._streaming_started = False
-        self._stream_buffer: list[str] = []  # buffer chunks until full message arrives
-        self._tool_call_count = 0
-        self._last_seen_chat_count = 0  # track to detect auto-executed tools
 
-    # ── Compose ──────────────────────────────────────────────────────────
+    # ── Abstract implementations ─────────────────────────────────────────
 
-    def compose(self) -> ComposeResult:
-        with Horizontal():
-            with Vertical(id="left-pane"):
-                chat_log = RichLog(id="chat-log", wrap=True, highlight=True, markup=True)
-                chat_log.border_title = "Chat"
-                yield chat_log
-                yield Input(
-                    placeholder="Type a message or /help ...",
-                    id="user-input",
-                    suggester=SlashCommandSuggester(SLASH_COMMANDS, case_sensitive=False),
-                )
-            with Vertical(id="right-pane"):
-                tool_log = RichLog(id="tool-log", wrap=True, highlight=True, markup=True)
-                tool_log.border_title = "Tools"
-                yield tool_log
-                status = Static(id="status-panel")
-                status.border_title = "Info"
-                yield status
-
-    # ── Lifecycle ────────────────────────────────────────────────────────
-
-    def on_mount(self) -> None:
-        """Initialize agent and show welcome."""
-        self._agent = GuideAgent(
+    def _create_agent(self) -> AbstractAgent:
+        return GuideAgent(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
             data_store=self._data_store,
         )
-        self._print_welcome()
-        self._update_status()
-        # Refresh clock every 10 seconds
-        self.set_interval(10, self._update_status)
-        self.query_one("#user-input", Input).focus()
-
-    # ── Welcome ──────────────────────────────────────────────────────────
 
     def _print_welcome(self) -> None:
         chat = self.query_one("#chat-log", RichLog)
@@ -279,48 +153,15 @@ class GuideAgentTUI(App):
         ))
         chat.write("")
 
-    # ── Status panel ─────────────────────────────────────────────────────
-
-    def _estimate_context_usage(self) -> tuple[int, float]:
-        """Estimate tokens used and percentage of context window filled."""
-        if not self._agent:
-            return 0, 0.0
-        total_chars = 0
-        for c in self._agent.get_chats():
-            total_chars += len(c.content or "")
-            if c.tool_calls:
-                for tc in c.tool_calls:
-                    if hasattr(tc, "tool_arguments"):
-                        total_chars += len(json.dumps(tc.tool_arguments))
-        tokens = total_chars // 4  # ~4 chars per token
-        pct = (tokens / self._context_window_size) * 100 if self._context_window_size > 0 else 0.0
-        return tokens, min(pct, 100.0)
-
-    def _context_bar(self, pct: float, width: int = 15) -> str:
-        """Render a text-based context fill bar like [████░░░░░░] 34%."""
-        filled = int(pct / 100 * width)
-        empty = width - filled
-        if pct < 50:
-            color = "green"
-        elif pct < 80:
-            color = "yellow"
-        else:
-            color = "red"
-        bar = "█" * filled + "░" * empty
-        return f"[{color}]{bar}[/{color}] {pct:.0f}%"
-
-    def _update_status(self) -> None:
-        """Refresh the status panel content."""
-        panel = self.query_one("#status-panel", Static)
-
+    def _build_status_text(self) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg_count = len(self._agent.get_chats()) if self._agent else 0
         tokens_used, ctx_pct = self._estimate_context_usage()
         ctx_bar = self._context_bar(ctx_pct)
 
-        status_text = (
+        return (
             f"[bold magenta]VECTORLY[/bold magenta]\n"
-            f"[dim]──────────────────[/dim]\n"
+            f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
             f"[dim]Model:[/dim]    {self._llm_model.value}\n"
             f"[dim]Messages:[/dim] {msg_count}\n"
             f"[dim]Tools:[/dim]    {self._tool_call_count}\n"
@@ -328,118 +169,46 @@ class GuideAgentTUI(App):
             f"[dim](est.)     ~{tokens_used:,} / {self._context_window_size:,}[/dim]\n"
             f"[dim]Time:[/dim]     {now}\n"
         )
-        panel.update(Text.from_markup(status_text))
 
-    # ── Agent callbacks ──────────────────────────────────────────────────
+    # ── Hooks ────────────────────────────────────────────────────────────
 
-    def _handle_stream_chunk(self, chunk: str) -> None:
-        """Buffer streaming chunks line-by-line, flushing complete lines immediately."""
-        chat = self.query_one("#chat-log", RichLog)
-        if not self._streaming_started:
-            chat.write(Text.from_markup("\n[bold cyan]Assistant[/bold cyan]"))
-            self._streaming_started = True
+    def _on_reset(self) -> None:
+        self._pending_invocation = None
+        self._pending_suggested_edit = None
+        self._loaded_routine_path = None
 
-        self._stream_buffer.append(chunk)
+    def _pre_process_input(self, user_input: str) -> bool:
+        """Intercept input when waiting for tool confirmation."""
+        if self._pending_invocation:
+            self._handle_tool_confirmation(user_input)
+            return True
+        return False
 
-        # Flush complete lines as they come in for a real streaming feel
-        combined = "".join(self._stream_buffer)
-        if "\n" in combined:
-            # Split on newlines — write all complete lines, keep the remainder
-            lines = combined.split("\n")
-            for line in lines[:-1]:  # all complete lines
-                chat.write(line)
-            # Keep the last (incomplete) part in the buffer
-            self._stream_buffer.clear()
-            if lines[-1]:  # leftover partial line
-                self._stream_buffer.append(lines[-1])
+    def _format_user_label(self) -> str:
+        routine_label = ""
+        if self._agent and hasattr(self._agent, "routine_state"):
+            routine_str = self._agent.routine_state.current_routine_str
+            if routine_str:
+                rd, _ = safe_parse_routine(routine_str)
+                if rd:
+                    name = rd.get("name", "")[:20]
+                    routine_label = f" [dim]({name})[/dim]"
+        return f"[bold green]You{routine_label}>[/bold green]"
 
-    def _flush_auto_executed_tools(self, tool_log: RichLog, chat: RichLog) -> None:
-        """Detect and log auto-executed tools by scanning new chat entries."""
-        if not self._agent:
-            return
-        chats = self._agent.get_chats()
-        current_count = len(chats)
-        if current_count <= self._last_seen_chat_count:
-            self._last_seen_chat_count = current_count
-            return
-
-        # Scan new messages for TOOL-role entries (auto-executed results)
-        ts = datetime.now().strftime("%H:%M:%S")
-        for c in chats[self._last_seen_chat_count:]:
-            if c.role.value == "tool":
-                self._tool_call_count += 1
-                # Extract tool name from content like "Tool 'name' result: ..."
-                tool_name = "tool"
-                if c.content and c.content.startswith("Tool '"):
-                    end = c.content.find("'", 6)
-                    if end > 6:
-                        tool_name = c.content[6:end]
-
-                # Compact line in chat pane
-                chat.write(Text.from_markup(
-                    f"[green]✓[/green] [dim]{tool_name} (auto)[/dim]"
-                ))
-
-                # Details in tool pane
-                tool_log.write(Text.from_markup(
-                    f"[dim]{ts}[/dim] [green]AUTO[/green] [bold]{tool_name}[/bold]"
-                ))
-                # Show truncated result
-                result_preview = c.content[c.content.find("result: ") + 8:] if "result: " in c.content else c.content
-                if len(result_preview) > 300:
-                    result_preview = result_preview[:300] + "..."
-                tool_log.write(result_preview)
-                tool_log.write("")
-
-            elif c.role.value == "assistant" and c.tool_calls:
-                # Assistant message with tool_calls — log the calls themselves
-                for tc in c.tool_calls:
-                    tool_log.write(Text.from_markup(
-                        f"[dim]{ts}[/dim] [yellow]CALL[/yellow] [bold]{tc.tool_name}[/bold]"
-                    ))
-                    if hasattr(tc, "tool_arguments") and tc.tool_arguments:
-                        args_str = json.dumps(tc.tool_arguments, indent=2)
-                        lines = args_str.split("\n")
-                        if len(lines) > 15:
-                            args_str = "\n".join(lines[:15]) + f"\n... ({len(lines) - 15} more)"
-                        tool_log.write(args_str)
-                    tool_log.write("")
-
-        self._last_seen_chat_count = current_count
-
-    def _handle_message(self, message: BaseEmittedMessage) -> None:
-        """Route emitted messages to the appropriate pane."""
+    def _handle_additional_message(self, message: BaseEmittedMessage) -> bool:
         chat = self.query_one("#chat-log", RichLog)
         tool_log = self.query_one("#tool-log", RichLog)
 
-        if isinstance(message, ChatResponseEmittedMessage):
-            # Flush any auto-executed tools that happened before this response
-            self._flush_auto_executed_tools(tool_log, chat)
-
-            if self._streaming_started:
-                # Flush any remaining buffered text
-                remainder = "".join(self._stream_buffer)
-                if remainder:
-                    chat.write(remainder)
-                self._stream_buffer.clear()
-                self._streaming_started = False
-            else:
-                chat.write(Text.from_markup("\n[bold cyan]Assistant[/bold cyan]"))
-                chat.write(message.content)
-            chat.write("")
-
-        elif isinstance(message, ToolInvocationRequestEmittedMessage):
+        if isinstance(message, ToolInvocationRequestEmittedMessage):
             inv = message.tool_invocation
             self._pending_invocation = inv
             self._tool_call_count += 1
 
-            # Compact in chat pane
             chat.write(Text.from_markup(
-                f"[yellow]▶ Tool:[/yellow] [bold]{inv.tool_name}[/bold] "
-                f"[dim]— y/n to approve[/dim]"
+                f"[yellow]\u25b6 Tool:[/yellow] [bold]{inv.tool_name}[/bold] "
+                f"[dim]\u2014 y/n to approve[/dim]"
             ))
 
-            # Full details in tool pane
             ts = datetime.now().strftime("%H:%M:%S")
             tool_log.write(Text.from_markup(
                 f"[dim]{ts}[/dim] [yellow]REQUEST[/yellow] [bold]{inv.tool_name}[/bold]"
@@ -451,160 +220,79 @@ class GuideAgentTUI(App):
             tool_log.write(args_str)
             tool_log.write("")
 
-            # Switch input placeholder
             inp = self.query_one("#user-input", Input)
             inp.placeholder = "Approve tool call? (y/n)"
+            return True
 
-        elif isinstance(message, ToolInvocationResultEmittedMessage):
-            inv = message.tool_invocation
-            ts = datetime.now().strftime("%H:%M:%S")
-
-            if inv.status == ToolInvocationStatus.EXECUTED:
-                chat.write(Text.from_markup(
-                    f"[green]✓[/green] [dim]{inv.tool_name} executed[/dim]"
-                ))
-                tool_log.write(Text.from_markup(
-                    f"[dim]{ts}[/dim] [green]RESULT[/green] [bold]{inv.tool_name}[/bold]"
-                ))
-                if isinstance(message.tool_result, dict):
-                    result_str = json.dumps(message.tool_result, indent=2)
-                    lines = result_str.split("\n")
-                    if len(lines) > 30:
-                        result_str = "\n".join(lines[:30]) + f"\n... ({len(lines) - 30} more)"
-                    tool_log.write(result_str)
-                elif message.tool_result:
-                    tool_log.write(str(message.tool_result)[:500])
-                tool_log.write("")
-
-            elif inv.status == ToolInvocationStatus.FAILED:
-                error = message.tool_result.get("error") if isinstance(message.tool_result, dict) else str(message.tool_result)
-                chat.write(Text.from_markup(f"[red]✗ {inv.tool_name} failed[/red]"))
-                tool_log.write(Text.from_markup(
-                    f"[dim]{ts}[/dim] [red]FAILED[/red] [bold]{inv.tool_name}[/bold]: {error}"
-                ))
-                tool_log.write("")
-
-            elif inv.status == ToolInvocationStatus.DENIED:
-                chat.write(Text.from_markup(f"[yellow]✗ {inv.tool_name} denied[/yellow]"))
-
-        elif isinstance(message, SuggestedEditEmittedMessage):
+        if isinstance(message, SuggestedEditEmittedMessage):
             self._pending_suggested_edit = message.suggested_edit
             chat.write(Text.from_markup(
                 "[bold yellow]Agent suggested a routine edit[/bold yellow]\n"
                 "[dim]Use /diff, /accept, or /reject[/dim]"
             ))
+            return True
 
-        elif isinstance(message, BrowserRecordingRequestEmittedMessage):
+        if isinstance(message, BrowserRecordingRequestEmittedMessage):
             chat.write(Text.from_markup(
                 "[yellow]Agent requests browser recording. Use /monitor to start.[/yellow]"
             ))
+            return True
 
-        elif isinstance(message, RoutineDiscoveryRequestEmittedMessage):
+        if isinstance(message, RoutineDiscoveryRequestEmittedMessage):
             chat.write(Text.from_markup(
                 f"[yellow]Agent requests routine discovery:[/yellow] {message.routine_discovery_task}\n"
                 "[dim]Use bluebox-guide for discovery features.[/dim]"
             ))
+            return True
 
-        elif isinstance(message, RoutineCreationRequestEmittedMessage):
+        if isinstance(message, RoutineCreationRequestEmittedMessage):
             self._handle_routine_creation(message.created_routine)
+            return True
 
-        elif isinstance(message, ErrorEmittedMessage):
-            chat.write(Text.from_markup(f"[bold red]Error:[/bold red] {escape(message.error)}"))
+        return False
 
-        self._update_status()
-
-    # ── Input handling ───────────────────────────────────────────────────
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Handle user input submission."""
-        user_input = event.value.strip()
-        if not user_input:
-            return
-
-        inp = self.query_one("#user-input", Input)
-        inp.value = ""
-
-        # Tool confirmation mode
-        if self._pending_invocation:
-            self._handle_tool_confirmation(user_input)
-            return
-
+    def _handle_custom_command(self, cmd: str, raw_input: str) -> bool:
         chat = self.query_one("#chat-log", RichLog)
 
-        # Show user message with routine label
-        routine_label = ""
-        if self._agent and self._agent.routine_state.current_routine_str:
-            rd, _ = safe_parse_routine(self._agent.routine_state.current_routine_str)
-            if rd:
-                name = rd.get("name", "")[:20]
-                routine_label = f" [dim]({name})[/dim]"
-        chat.write(Text.from_markup(f"[bold green]You{routine_label}>[/bold green] {escape(user_input)}"))
-
-        # Route slash commands
-        cmd = user_input.lower()
-
-        if cmd in ("/quit", "/exit", "/q"):
-            self.exit()
-            return
-        if cmd in ("/help", "/h", "/?"):
-            chat.write(Text.from_markup(HELP_TEXT))
-            return
-        if cmd == "/reset":
-            self._agent.reset()
-            self._pending_invocation = None
-            self._pending_suggested_edit = None
-            self._loaded_routine_path = None
-            chat.write(Text.from_markup("[yellow]↺ Conversation reset[/yellow]"))
-            self._update_status()
-            return
-        if cmd == "/status":
-            self._show_status_in_chat()
-            return
-        if cmd == "/chats":
-            self._show_chats()
-            return
         if cmd == "/show":
             self._show_routine()
-            return
+            return True
         if cmd == "/validate":
             self._validate_routine()
-            return
+            return True
         if cmd == "/diff":
             self._show_diff()
-            return
+            return True
         if cmd == "/accept":
             self._accept_edit()
-            return
+            return True
         if cmd == "/reject":
             self._reject_edit()
-            return
-        if cmd == "/clear":
-            self.query_one("#chat-log", RichLog).clear()
-            return
+            return True
         if cmd == "/unload":
             self._unload_routine()
-            return
+            return True
         if cmd == "/monitor":
             chat.write(Text.from_markup(
                 "[yellow]Browser monitoring requires the scrolling terminal.[/yellow]\n"
                 "[dim]Use bluebox-guide for monitor/discovery features.[/dim]"
             ))
-            return
-        if user_input.startswith("/load "):
-            self._load_routine(user_input[6:].strip())
-            return
-        if user_input.startswith("/execute"):
-            params_path = user_input[8:].strip() or None
+            return True
+        if raw_input.startswith("/load "):
+            self._load_routine(raw_input[6:].strip())
+            return True
+        if raw_input.startswith("/execute"):
+            params_path = raw_input[8:].strip() or None
             self._execute_routine(params_path)
-            return
+            return True
 
-        # Regular message → send to agent in background
-        self._reload_routine_from_file()
-        self._send_to_agent(user_input)
+        return False
+
+    # ── Send to agent (override to reload routine file) ──────────────────
 
     @work(thread=True)
     def _send_to_agent(self, user_input: str) -> None:
-        """Send message to agent in a background thread."""
+        self._reload_routine_from_file()
         self._agent.process_new_message(user_input, ChatRole.USER)
         self.call_from_thread(self._update_status)
 
@@ -638,14 +326,14 @@ class GuideAgentTUI(App):
         self._agent.deny_tool_invocation(invocation_id, reason="User declined")
         self.call_from_thread(self._update_status)
 
-    # ── Slash command handlers ───────────────────────────────────────────
+    # ── Routine management ───────────────────────────────────────────────
 
     def _load_routine(self, file_path: str) -> None:
         chat = self.query_one("#chat-log", RichLog)
         try:
             path = Path(file_path).resolve()
             if not path.exists():
-                chat.write(Text.from_markup(f"[red]✗ File not found: {file_path}[/red]"))
+                chat.write(Text.from_markup(f"[red]\u2717 File not found: {file_path}[/red]"))
                 return
 
             with open(path, encoding="utf-8") as f:
@@ -660,21 +348,21 @@ class GuideAgentTUI(App):
                 ops = len(routine_dict.get("operations", []))
                 params = len(routine_dict.get("parameters", []))
                 validation = validate_routine(routine_dict)
-                valid_str = "[green]✓ valid[/green]" if validation.get("valid") else f"[red]✗ {validation.get('error', '')}[/red]"
+                valid_str = "[green]\u2713 valid[/green]" if validation.get("valid") else f"[red]\u2717 {validation.get('error', '')}[/red]"
                 chat.write(Text.from_markup(
-                    f"[green]✓ Loaded:[/green] {name}\n"
+                    f"[green]\u2713 Loaded:[/green] {name}\n"
                     f"  Operations: {ops} | Parameters: {params}\n"
                     f"  {valid_str}\n"
                     f"  [dim]File: {path}[/dim]"
                 ))
             else:
                 chat.write(Text.from_markup(
-                    f"[yellow]⚠ Loaded file with invalid JSON: {parse_error}[/yellow]\n"
+                    f"[yellow]\u26a0 Loaded file with invalid JSON: {parse_error}[/yellow]\n"
                     "[dim]Ask the agent for help fixing the JSON.[/dim]"
                 ))
             self._update_status()
         except Exception as e:
-            chat.write(Text.from_markup(f"[red]✗ Error loading routine: {e}[/red]"))
+            chat.write(Text.from_markup(f"[red]\u2717 Error loading routine: {e}[/red]"))
 
     def _unload_routine(self) -> None:
         chat = self.query_one("#chat-log", RichLog)
@@ -683,7 +371,7 @@ class GuideAgentTUI(App):
             return
         self._loaded_routine_path = None
         self._agent.routine_state.update_current_routine(None)
-        chat.write(Text.from_markup("[yellow]✓ Routine unloaded[/yellow]"))
+        chat.write(Text.from_markup("[yellow]\u2713 Routine unloaded[/yellow]"))
         self._update_status()
 
     def _show_routine(self) -> None:
@@ -695,7 +383,7 @@ class GuideAgentTUI(App):
 
         routine_dict, parse_error = safe_parse_routine(routine_str)
         if routine_dict is None:
-            chat.write(Text.from_markup(f"[red]✗ {parse_error}[/red]"))
+            chat.write(Text.from_markup(f"[red]\u2717 {parse_error}[/red]"))
             return
 
         name = routine_dict.get("name", "N/A")
@@ -728,35 +416,13 @@ class GuideAgentTUI(App):
             return
         routine_dict, parse_error = safe_parse_routine(routine_str)
         if routine_dict is None:
-            chat.write(Text.from_markup(f"[red]✗ {parse_error}[/red]"))
+            chat.write(Text.from_markup(f"[red]\u2717 {parse_error}[/red]"))
             return
         result = validate_routine(routine_dict)
         if result.get("valid"):
-            chat.write(Text.from_markup(f"[green]✓ Valid:[/green] {result.get('message', 'OK')}"))
+            chat.write(Text.from_markup(f"[green]\u2713 Valid:[/green] {result.get('message', 'OK')}"))
         else:
-            chat.write(Text.from_markup(f"[red]✗ Invalid:[/red] {result.get('error', 'Unknown')}"))
-
-    def _show_chats(self) -> None:
-        chat = self.query_one("#chat-log", RichLog)
-        chats = self._agent.get_chats()
-        if not chats:
-            chat.write(Text.from_markup("[yellow]No messages yet.[/yellow]"))
-            return
-
-        chat.write(Text.from_markup(f"[bold cyan]Chat History ({len(chats)} messages)[/bold cyan]"))
-        role_colors = {"user": "green", "assistant": "cyan", "system": "yellow", "tool": "magenta"}
-        for i, c in enumerate(chats, 1):
-            color = role_colors.get(c.role.value, "white")
-            content = c.content.replace("\n", " ")[:60]
-            suffix = "..." if len(c.content) > 60 else ""
-            if c.role.value == "tool":
-                tid = (c.tool_call_id[:8] + "...") if c.tool_call_id else "?"
-                chat.write(Text.from_markup(f"[dim]{i}.[/dim] [{color}]TOOL[/{color}] [dim]({tid})[/dim] {escape(content)}{suffix}"))
-            elif c.role.value == "assistant" and c.tool_calls:
-                tool_names = ", ".join(tc.tool_name for tc in c.tool_calls)
-                chat.write(Text.from_markup(f"[dim]{i}.[/dim] [{color}]ASSISTANT[/{color}] [yellow]→ {tool_names}[/yellow]"))
-            else:
-                chat.write(Text.from_markup(f"[dim]{i}.[/dim] [{color}]{c.role.value.upper()}[/{color}] {escape(content)}{suffix}"))
+            chat.write(Text.from_markup(f"[red]\u2717 Invalid:[/red] {result.get('error', 'Unknown')}"))
 
     def _show_status_in_chat(self) -> None:
         chat = self.query_one("#chat-log", RichLog)
@@ -817,7 +483,7 @@ class GuideAgentTUI(App):
         routine_str = json.dumps(routine_dict)
         self._agent.routine_state.update_current_routine(routine_str)
         self._persist_routine(routine_dict)
-        chat.write(Text.from_markup("[green]✓ Edit accepted and applied[/green]"))
+        chat.write(Text.from_markup("[green]\u2713 Edit accepted and applied[/green]"))
         self._pending_suggested_edit = None
         self._update_status()
 
@@ -826,33 +492,33 @@ class GuideAgentTUI(App):
         if not self._pending_suggested_edit:
             chat.write(Text.from_markup("[yellow]No pending suggested edit.[/yellow]"))
             return
-        chat.write(Text.from_markup("[yellow]✗ Edit rejected[/yellow]"))
+        chat.write(Text.from_markup("[yellow]\u2717 Edit rejected[/yellow]"))
         self._pending_suggested_edit = None
 
     def _persist_routine(self, routine_dict: dict[str, Any]) -> None:
         """Save routine to loaded file path."""
         chat = self.query_one("#chat-log", RichLog)
         if self._loaded_routine_path is None:
-            chat.write(Text.from_markup("[yellow]⚠ No file loaded — routine updated in memory only[/yellow]"))
+            chat.write(Text.from_markup("[yellow]\u26a0 No file loaded \u2014 routine updated in memory only[/yellow]"))
             return
         try:
             new_content = json.dumps(routine_dict, indent=2)
             with open(self._loaded_routine_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
-            chat.write(Text.from_markup(f"[green]✓ Saved to {self._loaded_routine_path}[/green]"))
+            chat.write(Text.from_markup(f"[green]\u2713 Saved to {self._loaded_routine_path}[/green]"))
         except Exception as e:
-            chat.write(Text.from_markup(f"[red]✗ Failed to save: {e}[/red]"))
+            chat.write(Text.from_markup(f"[red]\u2717 Failed to save: {e}[/red]"))
 
     def _execute_routine(self, params_path: str | None) -> None:
         """Execute the loaded routine."""
         chat = self.query_one("#chat-log", RichLog)
         routine_str = self._agent.routine_state.current_routine_str
         if routine_str is None:
-            chat.write(Text.from_markup("[red]✗ No routine loaded.[/red]"))
+            chat.write(Text.from_markup("[red]\u2717 No routine loaded.[/red]"))
             return
         routine_dict, parse_error = safe_parse_routine(routine_str)
         if routine_dict is None:
-            chat.write(Text.from_markup(f"[red]✗ Cannot execute: {parse_error}[/red]"))
+            chat.write(Text.from_markup(f"[red]\u2717 Cannot execute: {parse_error}[/red]"))
             return
 
         params: dict[str, Any] = {}
@@ -860,16 +526,16 @@ class GuideAgentTUI(App):
             try:
                 path = Path(params_path)
                 if not path.exists():
-                    chat.write(Text.from_markup(f"[red]✗ Params file not found: {params_path}[/red]"))
+                    chat.write(Text.from_markup(f"[red]\u2717 Params file not found: {params_path}[/red]"))
                     return
                 with open(path, encoding="utf-8") as f:
                     params = json.load(f)
             except json.JSONDecodeError as e:
-                chat.write(Text.from_markup(f"[red]✗ Invalid params JSON: {e}[/red]"))
+                chat.write(Text.from_markup(f"[red]\u2717 Invalid params JSON: {e}[/red]"))
                 return
 
         if not ensure_chrome_running(PORT):
-            chat.write(Text.from_markup(f"[red]✗ Chrome not running on port {PORT}[/red]"))
+            chat.write(Text.from_markup(f"[red]\u2717 Chrome not running on port {PORT}[/red]"))
             return
         self._run_execution(routine_dict, params)
 
@@ -886,17 +552,17 @@ class GuideAgentTUI(App):
             )
             if result.ok:
                 self.call_from_thread(
-                    lambda: chat.write(Text.from_markup("[green]✓ Execution succeeded[/green]"))
+                    lambda: chat.write(Text.from_markup("[green]\u2713 Execution succeeded[/green]"))
                 )
             else:
                 self.call_from_thread(
                     lambda: chat.write(Text.from_markup(
-                        f"[red]✗ Execution failed: {result.error or 'Unknown'}[/red]"
+                        f"[red]\u2717 Execution failed: {result.error or 'Unknown'}[/red]"
                     ))
                 )
         except Exception as e:
             self.call_from_thread(
-                lambda: chat.write(Text.from_markup(f"[red]✗ Execution error: {e}[/red]"))
+                lambda: chat.write(Text.from_markup(f"[red]\u2717 Execution error: {e}[/red]"))
             )
         self.call_from_thread(self._update_status)
 
@@ -918,7 +584,7 @@ class GuideAgentTUI(App):
             self._agent.routine_state.update_current_routine(routine_str)
 
             chat.write(Text.from_markup(
-                f"[green]✓ Routine created:[/green] {routine.name}\n"
+                f"[green]\u2713 Routine created:[/green] {routine.name}\n"
                 f"  Ops: {len(routine.operations)} | Params: {len(routine.parameters)}\n"
                 f"  [dim]Saved: {routine_path}[/dim]"
             ))
@@ -932,7 +598,7 @@ class GuideAgentTUI(App):
             self._agent.process_new_message(system_message, ChatRole.SYSTEM)
             self._update_status()
         except Exception as e:
-            chat.write(Text.from_markup(f"[red]✗ Failed to create routine: {e}[/red]"))
+            chat.write(Text.from_markup(f"[red]\u2717 Failed to create routine: {e}[/red]"))
 
     def _reload_routine_from_file(self) -> None:
         """Re-read routine from file (picks up external edits)."""
@@ -958,7 +624,7 @@ def parse_model(model_str: str) -> OpenAIModel:
 
 def main() -> None:
     """Entry point for the guide agent TUI."""
-    parser = argparse.ArgumentParser(description="Guide Agent — Multi-pane TUI")
+    parser = argparse.ArgumentParser(description="Guide Agent \u2014 Multi-pane TUI")
     parser.add_argument(
         "--model", type=str, default=OpenAIModel.GPT_5_1.value,
         help=f"LLM model to use (default: {OpenAIModel.GPT_5_1.value})",
@@ -1023,13 +689,13 @@ def main() -> None:
             status.update("[bold blue]Creating documentation vectorstore...[/bold blue]")
             data_store.make_documentation_vectorstore()
 
-        console.print("[green]✓ Vectorstores ready![/green]")
+        console.print("[green]\u2713 Vectorstores ready![/green]")
         console.print()
 
         cdp_captures_dir = Path(args.cdp_captures_dir) if args.cdp_captures_dir else DEFAULT_CDP_CAPTURES_DIR
 
         # Redirect logging + stderr AFTER all console output, right before TUI takes over.
-        configure_logging(quiet=args.quiet, log_file=args.log_file)
+        enable_tui_logging(log_file=args.log_file or ".bluebox_tui.log", quiet=args.quiet)
 
         app = GuideAgentTUI(
             llm_model=llm_model,
@@ -1054,7 +720,7 @@ def main() -> None:
                     console.print("[yellow]Cleanup interrupted[/yellow]")
                 except Exception as e:
                     console.print(f"[yellow]Warning: Cleanup failed: {e}[/yellow]")
-            console.print("[green]✓ Cleanup complete![/green]")
+            console.print("[green]\u2713 Cleanup complete![/green]")
 
 
 if __name__ == "__main__":
