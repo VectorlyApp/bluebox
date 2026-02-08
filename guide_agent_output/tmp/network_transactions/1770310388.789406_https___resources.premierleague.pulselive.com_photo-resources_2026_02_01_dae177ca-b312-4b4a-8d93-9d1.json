@@ -1,0 +1,42 @@
+{
+ "timestamp": 1770310388.789406,
+ "request_id": "59735.462",
+ "request": {
+  "url": "https://resources.premierleague.pulselive.com/photo-resources/2026/02/01/dae177ca-b312-4b4a-8d93-9d13c9c9e357/2252091909.jpg?height=186&width=332",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "cache-control": "public, max-age=31536000, s-maxage=31536000",
+   "etag": "b430ed79aa3759965e5ae5bea5701e2a2dc92e8b",
+   "age": "357193",
+   "via": "1.1 37d94e77ea5ef204701fb119d20b69fe.cloudfront.net (CloudFront)",
+   "x-cache": "Hit from cloudfront",
+   "content-length": "9038",
+   "x-amz-cf-id": "F41_wG27mzFssOcFhCLf_NkXovb4IJIOZkl4AwRImou90kvUuyveNQ==",
+   "date": "Sun, 01 Feb 2026 13:39:54 GMT",
+   "content-type": "image/webp",
+   "x-amz-cf-pop": "BOS50-P3",
+   "vary": "Origin"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/webp",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

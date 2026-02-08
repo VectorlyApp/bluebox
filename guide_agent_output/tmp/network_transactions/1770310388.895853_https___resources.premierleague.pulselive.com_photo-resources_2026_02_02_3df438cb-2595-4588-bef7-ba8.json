@@ -1,0 +1,43 @@
+{
+ "timestamp": 1770310388.895853,
+ "request_id": "interception-job-25078.0",
+ "request": {
+  "url": "https://resources.premierleague.pulselive.com/photo-resources/2026/02/02/3df438cb-2595-4588-bef7-ba83fc35388a/Strand-Larsen-in-a-Palace-shirt.jpg?height=186&width=332",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "image/webp",
+   "content-length": "10760",
+   "date": "Mon, 02 Feb 2026 19:10:35 GMT",
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "cache-control": "public, max-age=31536000, s-maxage=31536000",
+   "etag": "138bbbb481b98f43cd51a7a75ed58ed5e00af121",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 37d94e77ea5ef204701fb119d20b69fe.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P3",
+   "x-amz-cf-id": "Cvdr5E_nLxBkqkwl_bnxfwgeaRn6TMsFWLLzmW5dWBFCtj-pmRF3YA==",
+   "age": "250953",
+   "vary": "Origin"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/webp",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

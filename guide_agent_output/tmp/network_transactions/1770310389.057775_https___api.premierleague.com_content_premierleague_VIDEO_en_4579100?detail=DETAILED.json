@@ -1,0 +1,46 @@
+{
+ "timestamp": 1770310389.057775,
+ "request_id": "interception-job-25110.0",
+ "request": {
+  "url": "https://api.premierleague.com/content/premierleague/VIDEO/en/4579100?detail=DETAILED",
+  "method": "GET",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "application/json;charset=UTF-8",
+   "date": "Thu, 05 Feb 2026 16:51:15 GMT",
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "content-encoding": "br",
+   "cache-control": "max-age=30, stale-while-revalidate=600, stale-if-error=86400",
+   "etag": "W/\"09d7ab4eb926505a845d1a9539aa28424\"",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 0854f146df243db4c3bbb6ababb1772a.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P6",
+   "x-amz-cf-id": "KkIuKybaj4jYkHXm8VxRunLYxfEb_7OkKfTWPIo8Z2bUxbffgKjoDw==",
+   "age": "114",
+   "access-control-allow-credentials": "true",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "vary": "Origin"
+  },
+  "body": "{\"id\":4579100,\"accountId\":10,\"type\":\"video\",\"title\":\"CINEMA! Must-see footage of Solanke's scorpion kick \\uD83E\\uDD82\",\"description\":\"Watch this insane angle of Dominic Solanke's sublime goal in Tottenham Hotspur 2-2 Manchester City\",\"date\":\"2026-02-01T19:43:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1769974976210,\"publishTo\":0,\"tags\":[{\"id\":12186,\"label\":\"content-type:video\"},{\"id\":12438,\"label\":\"VOD\"},{\"id\":825,\"label\":\"Highlights\"},{\"id\":13570,\"label\":\"label:Video\"},{\"id\":12432,\"label\":\"free\"}],\"platform\":\"MEDIA_KIND\",\"language\":\"en\",\"additionalInfo\":{\"mediaKindStreamingUrl\":\"https://uksouth-2.av.mk.io/epl-vod-a/hls-itc/premierleague.com_b16f5e7e-118d-45eb-8dbc-f3df503830d7/index.m3u8\"},\"canonicalUrl\":\"\",\"references\":[{\"label\":null,\"id\":154566,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"154566\"},{\"label\":null,\"id\":6,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"6\"},{\"label\":null,\"id\":2562133,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562133\"}],\"related\":[],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1769977694652,\"titleUrlSegment\":\"cinema-must-see-footage-of-solankes-scorpion-kick\",\"visibilityOrder\":[{\"id\":5819474,\"type\":\"REF\",\"data\":{\"visibilityOrderType\":\"REF\",\"label\":null,\"id\":6,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"6\"}},{\"id\":5963583,\"type\":\"REF\",\"data\":{\"visibilityOrderType\":\"REF\",\"label\":null,\"id\":154566,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"154566\"}}],\"thumbnailUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/01/3a087800-0d5f-4909-9bb7-106e4b432c05/frame_10522.jpg?width=1280\",\"duration\":44,\"variants\":[{\"aspectRatio\":0.0,\"displayAspectRatio\":null,\"bitRate\":0,\"codec\":null,\"duration\":44,\"format\":null,\"frameRate\":0.0,\"height\":0,\"mediaId\":\"premierleague.com_b16f5e7e-118d-45eb-8dbc-f3df503830d7\",\"tags\":[],\"width\":0}],\"thumbnail\":{\"id\":4579096,\"accountId\":10,\"type\":\"photo\",\"title\":\"CINEMA! Must-see footage of Solanke's scorpion kick\",\"description\":null,\"date\":\"2026-02-01T19:38:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1769974730544,\"publishTo\":0,\"tags\":[],\"platform\":\"PULSE_CMS\",\"language\":\"en\",\"additionalInfo\":{},\"canonicalUrl\":\"\",\"references\":[],\"related\":[],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1769974870157,\"titleUrlSegment\":\"frame_10522\",\"visibilityOrder\":[],\"subtitle\":null,\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/01/3a087800-0d5f-4909-9bb7-106e4b432c05/frame_10522.jpg\",\"originalDetails\":{\"width\":1684,\"height\":931,\"aspectRatio\":1.8088077},\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/01/594fdd12-a05d-45e5-9d0d-80380fff10b9/frame_10522.jpg\"},\"mediaId\":\"premierleague.com_b16f5e7e-118d-45eb-8dbc-f3df503830d7\",\"mediaGuid\":\"premierleague.com_b16f5e7e-118d-45eb-8dbc-f3df503830d7\",\"subtitle\":null,\"closedCaptioned\":false,\"hotlinkUrl\":null,\"views\":0,\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/01/594fdd12-a05d-45e5-9d0d-80380fff10b9/frame_10522.jpg\",\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/01/3a087800-0d5f-4909-9bb7-106e4b432c05/frame_10522.jpg\"}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json;charset=UTF-8",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

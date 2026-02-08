@@ -1,0 +1,45 @@
+{
+ "timestamp": 1770310403.426399,
+ "request_id": "59735.2506",
+ "request": {
+  "url": "https://resources.premierleague.com/premierleague25/partners/sponsors-light-theme/sorare",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "vary": "accept-encoding, Origin",
+   "x-amz-version-id": "rW7LUtcKDjCLraLg5DVGDk2KyWjaM4n5",
+   "etag": "\"16f66157cc7fe5c24a3001008b350371\"",
+   "age": "2882",
+   "via": "1.1 3a2d54938c927c873b7d286793504060.cloudfront.net (CloudFront)",
+   "accept-ranges": "bytes",
+   "x-cache": "Hit from cloudfront",
+   "content-length": "2991",
+   "x-amz-cf-id": "i2Stku5jNa3125_b5XbP8-kq1Ak68d2G3JG44CBlC3iJ6CyDwg3mnQ==",
+   "date": "Thu, 05 Feb 2026 16:05:26 GMT",
+   "content-type": "image/png",
+   "last-modified": "Thu, 19 Jun 2025 08:28:39 GMT",
+   "server": "AmazonS3",
+   "x-amz-cf-pop": "BOS50-P1",
+   "x-amz-server-side-encryption": "AES256"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/png",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

@@ -1,0 +1,44 @@
+{
+ "timestamp": 1770310388.339565,
+ "request_id": "59735.233",
+ "request": {
+  "url": "https://api.premierleague.com/country",
+  "method": "GET",
+  "type": "Fetch",
+  "headers": {
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "x-amz-apigw-id": "YUSg6FArDoEEkHA=",
+   "age": "34",
+   "x-amzn-trace-id": "Root=1-6984cad2-7e7d9d9f43bdb8457c373acd;Parent=2d0fea6db805c035;Sampled=0;Lineage=1:602f8a4f:0",
+   "access-control-allow-credentials": "true",
+   "x-amzn-requestid": "93f5bae3-982b-4729-b458-357458ace338",
+   "via": "1.1 6e96e2926c8953a2e57fa9907208c588.cloudfront.net (CloudFront), 1.1 0854f146df243db4c3bbb6ababb1772a.cloudfront.net (CloudFront)",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "x-cache": "Hit from cloudfront",
+   "content-length": "16",
+   "x-amz-cf-id": "nGQ6aRrHK3ifYleFwo7Hns0Q70m1mNGeVxjcZ6aHljt29sdqYTuopg==",
+   "date": "Thu, 05 Feb 2026 16:52:34 GMT",
+   "content-type": "application/json",
+   "x-amz-cf-pop": "IAD61-P12, BOS50-P6",
+   "vary": "Origin"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

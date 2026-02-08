@@ -1,0 +1,46 @@
+{
+ "timestamp": 1770310388.998363,
+ "request_id": "interception-job-25100.0",
+ "request": {
+  "url": "https://api.premierleague.com/content/premierleague/VIDEO/en/4580917?detail=DETAILED",
+  "method": "GET",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "application/json;charset=UTF-8",
+   "date": "Thu, 05 Feb 2026 16:52:38 GMT",
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "content-encoding": "br",
+   "cache-control": "max-age=30, stale-while-revalidate=600, stale-if-error=86400",
+   "etag": "W/\"02eb0219a071bfbd134c389b9ba782ffd\"",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 0854f146df243db4c3bbb6ababb1772a.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P6",
+   "x-amz-cf-id": "G_YL55xSzd51NZI7JD890JGrlEDzMHUFRgjItor5G-64J7AvcdW1zg==",
+   "age": "30",
+   "access-control-allow-credentials": "true",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "vary": "Origin"
+  },
+  "body": "{\"id\":4580917,\"accountId\":10,\"type\":\"video\",\"title\":\"Watch January's Coca-Cola Save of the Month contenders\",\"description\":\"Watch SIX stunning saves by Premier League goalkeepers and VOTE for your favourite\",\"date\":\"2026-02-05T09:55:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1770278100000,\"publishTo\":0,\"tags\":[{\"id\":12438,\"label\":\"VOD\"},{\"id\":5269,\"label\":\"video playlist\"},{\"id\":12234,\"label\":\"label:Awards\"},{\"id\":12186,\"label\":\"content-type:video\"},{\"id\":12350,\"label\":\"franchise:save-of-the-month\"},{\"id\":12204,\"label\":\"content-format:video-playlist\"},{\"id\":12432,\"label\":\"free\"}],\"platform\":\"MEDIA_KIND\",\"language\":\"en\",\"additionalInfo\":{\"mediaKindStreamingUrl\":\"https://uksouth-2.av.mk.io/epl-vod-a/hls-itc/premierleague.com_5c1afffc-d393-4070-a8ce-20dc573952d1/index.m3u8\"},\"canonicalUrl\":\"\",\"references\":[{\"label\":null,\"id\":84182,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"84182\"},{\"label\":null,\"id\":465247,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"465247\"},{\"label\":null,\"id\":85633,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"85633\"},{\"label\":null,\"id\":457569,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"457569\"},{\"label\":null,\"id\":111234,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"111234\"}],\"related\":[],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1770299762277,\"titleUrlSegment\":\"watch-januarys-coca-cola-save-of-the-month-contenders\",\"visibilityOrder\":[{\"id\":5830187,\"type\":\"REF\",\"data\":{\"visibilityOrderType\":\"REF\",\"label\":null,\"id\":85633,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"85633\"}},{\"id\":5859504,\"type\":\"REF\",\"data\":{\"visibilityOrderType\":\"REF\",\"label\":null,\"id\":111234,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"111234\"}},{\"id\":5841277,\"type\":\"REF\",\"data\":{\"visibilityOrderType\":\"REF\",\"label\":null,\"id\":84182,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"84182\"}},{\"id\":6016136,\"type\":\"REF\",\"data\":{\"visibilityOrderType\":\"REF\",\"label\":null,\"id\":457569,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"457569\"}},{\"id\":5865766,\"type\":\"REF\",\"data\":{\"visibilityOrderType\":\"REF\",\"label\":null,\"id\":465247,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"465247\"}}],\"thumbnailUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/05/8d5fa564-74e2-4878-b11d-3389f2f5a5e0/SOTM_NOMINEES_16x9-4-.png?width=1280\",\"duration\":108,\"variants\":[{\"aspectRatio\":0.0,\"displayAspectRatio\":null,\"bitRate\":0,\"codec\":null,\"duration\":108,\"format\":null,\"frameRate\":0.0,\"height\":0,\"mediaId\":\"premierleague.com_5c1afffc-d393-4070-a8ce-20dc573952d1\",\"tags\":[],\"width\":0}],\"thumbnail\":{\"id\":4580997,\"accountId\":10,\"type\":\"photo\",\"title\":\"January 2026 Coca-Cola Save of the Month contenders\",\"description\":null,\"date\":\"2026-02-05T13:22:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1770297772110,\"publishTo\":0,\"tags\":[],\"platform\":\"PULSE_CMS\",\"language\":\"en\",\"additionalInfo\":{},\"canonicalUrl\":\"\",\"references\":[],\"related\":[],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1770297835293,\"titleUrlSegment\":\"january-2026-coca-cola-save-of-the-month-contenders\",\"visibilityOrder\":[],\"subtitle\":null,\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/05/8d5fa564-74e2-4878-b11d-3389f2f5a5e0/SOTM_NOMINEES_16x9-4-.png\",\"originalDetails\":{\"width\":1920,\"height\":1080,\"aspectRatio\":1.7777778},\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/05/b1d940b4-36d8-46f9-9317-60966b5a7301/SOTM_NOMINEES_16x9-4-.png\"},\"mediaId\":\"premierleague.com_5c1afffc-d393-4070-a8ce-20dc573952d1\",\"mediaGuid\":\"premierleague.com_5c1afffc-d393-4070-a8ce-20dc573952d1\",\"subtitle\":null,\"closedCaptioned\":false,\"hotlinkUrl\":null,\"views\":0,\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/05/b1d940b4-36d8-46f9-9317-60966b5a7301/SOTM_NOMINEES_16x9-4-.png\",\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/05/8d5fa564-74e2-4878-b11d-3389f2f5a5e0/SOTM_NOMINEES_16x9-4-.png\"}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json;charset=UTF-8",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

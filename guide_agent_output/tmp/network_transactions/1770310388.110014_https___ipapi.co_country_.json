@@ -1,0 +1,54 @@
+{
+ "timestamp": 1770310388.110014,
+ "request_id": "interception-job-24795.0",
+ "request": {
+  "url": "https://ipapi.co/country/",
+  "method": "GET",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 403,
+  "status_text": "",
+  "headers": {
+   "date": "Thu, 05 Feb 2026 16:53:08 GMT",
+   "content-type": "text/html; charset=UTF-8",
+   "accept-ch": "Sec-CH-UA-Bitness, Sec-CH-UA-Arch, Sec-CH-UA-Full-Version, Sec-CH-UA-Mobile, Sec-CH-UA-Model, Sec-CH-UA-Platform-Version, Sec-CH-UA-Full-Version-List, Sec-CH-UA-Platform, Sec-CH-UA, UA-Bitness, UA-Arch, UA-Full-Version, UA-Mobile, UA-Model, UA-Platform-Version, UA-Platform, UA",
+   "cf-mitigated": "challenge",
+   "critical-ch": "Sec-CH-UA-Bitness, Sec-CH-UA-Arch, Sec-CH-UA-Full-Version, Sec-CH-UA-Mobile, Sec-CH-UA-Model, Sec-CH-UA-Platform-Version, Sec-CH-UA-Full-Version-List, Sec-CH-UA-Platform, Sec-CH-UA, UA-Bitness, UA-Arch, UA-Full-Version, UA-Mobile, UA-Model, UA-Platform-Version, UA-Platform, UA",
+   "cross-origin-embedder-policy": "require-corp",
+   "cross-origin-opener-policy": "same-origin",
+   "cross-origin-resource-policy": "same-origin",
+   "origin-agent-cluster": "?1",
+   "permissions-policy": "accelerometer=(),browsing-topics=(),camera=(),clipboard-read=(),clipboard-write=(),geolocation=(),gyroscope=(),hid=(),interest-cohort=(),magnetometer=(),microphone=(),payment=(),publickey-credentials-get=(),screen-wake-lock=(),serial=(),sync-xhr=(),usb=()",
+   "referrer-policy": "same-origin",
+   "server-timing": "chlray;desc=\"9c93ec156ca58ce6\"",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN",
+   "cache-control": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+   "expires": "Thu, 01 Jan 1970 00:00:01 GMT",
+   "report-to": "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=RgFzwTeVR6QMNrY0yafepkWrW7nPNHDWftZlneQ6cjZ38UHao%2BrolC0Le3i0LFf%2F7nl5EUR9F9RB0jKh4GYXQx7yRZ%2BC%2FT09KFoFBUbotrbLZDQSDf32yAwd\"}],\"group\":\"cf-nel\",\"max_age\":604800}",
+   "nel": "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}",
+   "vary": "Accept-Encoding",
+   "server": "cloudflare",
+   "cf-ray": "9c93ec156ca58ce6-EWR",
+   "content-encoding": "br"
+  },
+  "body": "Just a moment...",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "text/html; charset=UTF-8",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

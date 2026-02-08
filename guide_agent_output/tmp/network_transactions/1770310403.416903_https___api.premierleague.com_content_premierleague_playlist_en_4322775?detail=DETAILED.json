@@ -1,0 +1,45 @@
+{
+ "timestamp": 1770310403.416903,
+ "request_id": "AE668AA13AE8BF2C44086D5FC523EDBD",
+ "request": {
+  "url": "https://api.premierleague.com/content/premierleague/playlist/en/4322775?detail=DETAILED",
+  "method": "OPTIONS",
+  "type": "Other",
+  "headers": {
+   "Accept": "*/*",
+   "Access-Control-Request-Headers": "x-pulse-application-name,x-pulse-application-version",
+   "Access-Control-Request-Method": "GET",
+   "Origin": "https://www.premierleague.com",
+   "Sec-Fetch-Mode": "cors",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "access-control-allow-headers": "x-pulse-application-name,x-pulse-application-version",
+   "access-control-allow-methods": "GET,HEAD,PUT,POST,PATCH,DELETE,OPTIONS",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "access-control-max-age": "600",
+   "allow": "GET, HEAD, POST, PUT, DELETE, OPTIONS, TRACE, PATCH",
+   "content-length": "0",
+   "date": "Thu, 05 Feb 2026 16:53:23 GMT",
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "vary": "Origin\nAccess-Control-Request-Method\nAccess-Control-Request-Headers\nAccess-Control-Request-Method\nOrigin\nAccess-Control-Request-Headers",
+   "via": "1.1 0854f146df243db4c3bbb6ababb1772a.cloudfront.net (CloudFront)",
+   "x-amz-cf-id": "aUqR2dGGDHlk2Df0gtjN--QCdM5ioR03UBZUlnu89o6mUqV8VGLeRw==",
+   "x-amz-cf-pop": "BOS50-P6",
+   "x-cache": "Miss from cloudfront"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

@@ -1,0 +1,48 @@
+{
+ "timestamp": 1770310389.370009,
+ "request_id": "interception-job-25141.0",
+ "request": {
+  "url": "https://firebaseremoteconfig.googleapis.com/v1/projects/premier-league-app-v2-prod/namespaces/firebase:fetch?key=AIzaSyA-IEfY0MbeRPZlQkaxq-tytyzM7buoHYs",
+  "method": "POST",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Content-Encoding": "gzip",
+   "Content-Type": "application/json",
+   "If-None-Match": "*",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": "{\"sdk_version\":\"12.2.0\",\"app_instance_id\":\"cqeQcZbLOS7eyk-CS1LZf8\",\"app_instance_id_token\":\"eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBJZCI6IjE6Mjc1NDM0OTMzNjA4OndlYjo5NjVmNDA0YTYyZDZhOTUzYjIxYWRkIiwiZXhwIjoxNzcwOTE1MTg4LCJmaWQiOiJjcWVRY1piTE9TN2V5ay1DUzFMWmY4IiwicHJvamVjdE51bWJlciI6Mjc1NDM0OTMzNjA4fQ.AB2LPV8wRQIgUMIyi5crmNwC_t1D9iWQHx2BdP9L7FpPo_dHik2wVvACIQCusaO1he_v_XoID0EfmBFzbpexM1AYKbOER1R4Yh6TqA\",\"app_id\":\"1:275434933608:web:965f404a62d6a953b21add\",\"language_code\":\"en-US\"}"
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "etag": "etag-premier-league-app-v2-prod-firebase-fetch-1743445935",
+   "content-type": "application/json; charset=UTF-8",
+   "vary": "Referer",
+   "content-encoding": "gzip",
+   "date": "Thu, 05 Feb 2026 16:53:09 GMT",
+   "server": "ESF",
+   "content-length": "784",
+   "x-xss-protection": "0",
+   "x-frame-options": "SAMEORIGIN",
+   "x-content-type-options": "nosniff",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "access-control-expose-headers": "etag,vary,vary,vary,content-encoding,date,server,content-length",
+   "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+  },
+  "body": "{\n  \"entries\": {\n    \"AllTimeStats\": \"true\",\n    \"androidMinimumVersion\": \"4337470\",\n    \"androidRecommendedVersion\": \"3925\",\n    \"appMaintenanceIsShowing\": \"false\",\n    \"appMaintenanceMessage\": \"Message goes here Lorem ipsum\",\n    \"appMaintenanceTitle\": \"Maintenance / failure title\",\n    \"appRatingIsShowing\": \"false\",\n    \"appRatingPrePromptIsShowing\": \"false\",\n    \"appRatingPromptConfirmCTA\": \"Yes, leave a rating\",\n    \"appRatingPromptDeclineCTA\": \"Maybe later\",\n    \"appRatingPromptTitle\": \"Are you enjoying the experience?\",\n    \"ff_adobe_badge_creator\": \"false\",\n    \"ff_automated_blog\": \"false\",\n    \"ff_club_comparison\": \"false\",\n    \"ff_copilot_open_prompts\": \"true\",\n    \"ff_copilot_refresh_prompts\": \"true\",\n    \"ff_copilot_wsc_moments\": \"true\",\n    \"ff_fantasy\": \"true\",\n    \"ff_live_audio\": \"true\",\n    \"ff_motm\": \"true\",\n    \"ff_onetrust\": \"false\",\n    \"ff_onetrust_force_user_reconsent\": \"{\\\"force_reconsent\\\":false,\\\"version\\\":1}\",\n    \"ff_player_comparison\": \"true\",\n    \"ff_pltv_active\": \"false\",\n    \"ff_pulse_headers\": \"true\",\n    \"ff_seamless_login\": \"true\",\n    \"ff_singapore\": \"false\",\n    \"ff_smp_non_pl\": \"false\",\n    \"ff_subscriptions_demo\": \"true\",\n    \"forceUpdateMessage\": \"Please update to continue using the app.\",\n    \"forceUpdateTitle\": \"Update required\",\n    \"iOS_sentry_configuration\": \"{\\\"isSentryEnabled\\\":true,\\\"tracesSampleRate\\\":0.01,\\\"isSessionReplayEnabled\\\":false,\\\"configureProfiling\\\":true,\\\"profilingSessionSampleRate\\\":0.000001,\\\"addViewInformation\\\":false}\",\n    \"iosMinimumVersion\": \"431\",\n    \"isCopilotOpenPromptEnabled\": \"false\",\n    \"liveAudio\": \"true\",\n    \"live_video_demo_entry_smp\": \"true\",\n    \"playerClubComparison\": \"false\",\n    \"sentry_attach_screenshot\": \"false\",\n    \"sentry_sample_rate\": \"0.01\",\n    \"softUpdateMessage\": \"It is recommended to update your app for a better experience.\",\n    \"softUpdateTitle\": \"Update available\",\n    \"webPlayerComparison\": \"true\"\n  },\n  \"state\": \"UPDATE\",\n  \"templateVersion\": \"151\"\n}\n",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json; charset=UTF-8",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

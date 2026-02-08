@@ -51,6 +51,7 @@ dependencies = [
     "regex>=2024.0.0",
     "requests>=2.31.0",
     "rich>=13.0.0",
+    "textual>=1.0.0",
     "tldextract>=5.1.0",
     "toonify[pydantic]>=1.5.1",
     "websocket-client>=1.6.0",
@@ -71,6 +72,7 @@ bluebox-execute = "bluebox.scripts.execute_routine:main"
 
 # Guide agent
 bluebox-guide = "bluebox.scripts.run_guide_agent:main"
+bluebox-guide-tui = "bluebox.scripts.run_guide_agent_tui:main"
 
 # Specialist agents
 bluebox-network-specialist = "bluebox.scripts.specialists.run_network_specialist:main"

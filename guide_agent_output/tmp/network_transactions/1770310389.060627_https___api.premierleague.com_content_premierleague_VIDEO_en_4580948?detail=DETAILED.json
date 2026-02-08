@@ -1,0 +1,46 @@
+{
+ "timestamp": 1770310389.060627,
+ "request_id": "interception-job-25099.0",
+ "request": {
+  "url": "https://api.premierleague.com/content/premierleague/VIDEO/en/4580948?detail=DETAILED",
+  "method": "GET",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "application/json;charset=UTF-8",
+   "date": "Thu, 05 Feb 2026 16:52:43 GMT",
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "content-encoding": "br",
+   "cache-control": "max-age=30, stale-while-revalidate=600, stale-if-error=86400",
+   "etag": "W/\"0d2f9fa460aff52a56bf61821a8875c79\"",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 0854f146df243db4c3bbb6ababb1772a.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P6",
+   "x-amz-cf-id": "zOKsuXRg3cCGhPaU1odtQkLBmmbt96PEj9kG_wDQvec5aOOpNQH8GA==",
+   "age": "26",
+   "access-control-allow-credentials": "true",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "vary": "Origin"
+  },
+  "body": "{\"id\":4580948,\"accountId\":10,\"type\":\"video\",\"title\":\"Watch: The PL2 BEST GOALS of the week\",\"description\":\"Which of these efforts from the PL2 this week impressed you most?\",\"date\":\"2026-02-05T10:06:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1770285959896,\"publishTo\":0,\"tags\":[{\"id\":12438,\"label\":\"VOD\"},{\"id\":830,\"label\":\"ayouth\"},{\"id\":13570,\"label\":\"label:Video\"},{\"id\":5269,\"label\":\"video playlist\"},{\"id\":12184,\"label\":\"video-type:vod\"},{\"id\":829,\"label\":\"label:Youth\"},{\"id\":12186,\"label\":\"content-type:video\"},{\"id\":12432,\"label\":\"free\"}],\"platform\":\"MEDIA_KIND\",\"language\":\"en\",\"additionalInfo\":{\"mediaKindStreamingUrl\":\"https://uksouth-2.av.mk.io/epl-vod-a/hls-itc/premierleague.com_67368bf0-c96c-4b41-a674-0a8e9880a772/index.m3u8\"},\"canonicalUrl\":\"\",\"references\":[{\"label\":null,\"id\":16,\"type\":\"FOOTBALL_COMPETITION\",\"sid\":\"16\"},{\"label\":null,\"id\":60,\"type\":\"FOOTBALL_SEASON\",\"sid\":\"60\"}],\"related\":[{\"label\":\"Watch: The PL2 BEST GOALS of the week\",\"id\":4573741,\"type\":\"VIDEO\",\"sid\":\"4573741\"},{\"label\":\"Watch the PL2 BEST GOALS of the week\",\"id\":4563333,\"type\":\"VIDEO\",\"sid\":\"4563333\"}],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1770294737997,\"titleUrlSegment\":\"pl2-goals-of-the-week\",\"visibilityOrder\":[],\"thumbnailUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/05/69de7c8e-683c-425f-b6fe-c200087cf7de/PL2-GOTW-X-BRAIDEN-GRAHAM-THUMB.png?width=1280\",\"duration\":129,\"variants\":[{\"aspectRatio\":0.0,\"displayAspectRatio\":null,\"bitRate\":0,\"codec\":null,\"duration\":129,\"format\":null,\"frameRate\":0.0,\"height\":0,\"mediaId\":\"premierleague.com_67368bf0-c96c-4b41-a674-0a8e9880a772\",\"tags\":[],\"width\":0}],\"thumbnail\":{\"id\":4580985,\"accountId\":10,\"type\":\"photo\",\"title\":\"PL2 GOTW X BRAIDEN GRAHAM THUMB\",\"description\":null,\"date\":\"2026-02-05T12:31:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1770294719640,\"publishTo\":0,\"tags\":[],\"platform\":\"PULSE_CMS\",\"language\":\"en\",\"additionalInfo\":{},\"canonicalUrl\":\"\",\"references\":[],\"related\":[],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1770294741730,\"titleUrlSegment\":\"pl2-gotw-x-braiden-graham-thumb\",\"subtitle\":null,\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/05/69de7c8e-683c-425f-b6fe-c200087cf7de/PL2-GOTW-X-BRAIDEN-GRAHAM-THUMB.png\",\"originalDetails\":{\"width\":1920,\"height\":1080,\"aspectRatio\":1.7777778},\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/05/69de7c8e-683c-425f-b6fe-c200087cf7de/PL2-GOTW-X-BRAIDEN-GRAHAM-THUMB.png\"},\"mediaId\":\"premierleague.com_67368bf0-c96c-4b41-a674-0a8e9880a772\",\"mediaGuid\":\"premierleague.com_67368bf0-c96c-4b41-a674-0a8e9880a772\",\"subtitle\":null,\"closedCaptioned\":false,\"hotlinkUrl\":null,\"views\":0,\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/05/69de7c8e-683c-425f-b6fe-c200087cf7de/PL2-GOTW-X-BRAIDEN-GRAHAM-THUMB.png\",\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/05/69de7c8e-683c-425f-b6fe-c200087cf7de/PL2-GOTW-X-BRAIDEN-GRAHAM-THUMB.png\"}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json;charset=UTF-8",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

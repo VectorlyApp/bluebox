@@ -1,0 +1,28 @@
+{
+ "timestamp": 1770310391.1316,
+ "request_id": "59735.1085",
+ "request": {
+  "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACsAAAAWBAMAAACrl3iAAAAABlBMVEUAAAD+AciWmZzWAAAAAnRSTlMAApidrBQAAAB+SURBVBjTbZEBDsAgCAPLD/j/axegLWwZIaixwgnAv8VY7V6n7Nv0OjFKUcp2n0qX2bGkOu19jN5q+M3JzdqhzCRZE425ocBHLSJA78Yxxe1HTgizdAlxSLTJ4W4kwV/cAo7bM7IQfuurKTjdSOZOAh3abd9nOvzsmd4OtNYHI8UFkVXpRV4AAAAASUVORK5CYII=",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "Referer": ""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "OK",
+  "headers": {
+   "Content-Type": "image/png"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/png",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

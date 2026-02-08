@@ -1,0 +1,55 @@
+{
+ "timestamp": 1770310406.019905,
+ "request_id": "interception-job-26560.0",
+ "request": {
+  "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/8/seasons/2025/phases/undefined/matches?live=false&_limit=100",
+  "method": "GET",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\"",
+   "x-pulse-application-name": "web",
+   "x-pulse-application-version": "v1.38.15"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "application/json",
+   "permissions-policy": "accelerometer=(), autoplay=(), camera=(), ch-dpr=(), ch-save-data=(), ch-viewport-width=(), ch-width=(), clipboard-read=(), clipboard-write=(), cross-origin-isolated=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), idle-detection=(), keyboard-map=(), local-fonts=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), sync-xhr=(), usb=(), window-placement=(), xr-spatial-tracking=()",
+   "date": "Thu, 05 Feb 2026 16:53:13 GMT",
+   "x-cache-server": "norp",
+   "content-encoding": "br",
+   "x-pulse-sdp-endpoint": "/v1/competitions/{cid}/seasons/{sid}/phases/{p}/matches",
+   "cache-control": "max-age=30, stale-while-revalidate=600, stale-if-error=86400",
+   "x-cache-status": "HIT",
+   "vary": "Origin",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 747d47277bb55e9ca12ebb92db620d58.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P4",
+   "alt-svc": "h3=\":443\"; ma=86400",
+   "access-control-allow-origin": "*",
+   "age": "21",
+   "x-frame-options": "DENY",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "content-security-policy": "frame-ancestors 'none'; default-src 'self'; script-src 'self'; script-src-elem 'self'; script-src-attr 'self'; style-src 'self'; style-src-elem 'self'; style-src-attr 'self'; img-src 'self'; connect-src 'self'; frame-src 'self'; font-src 'self'; media-src 'self'; object-src 'self'; manifest-src 'self'; worker-src 'self'; prefetch-src 'self'; form-action 'self';",
+   "x-content-type-options": "nosniff",
+   "strict-transport-security": "max-age=31536000; includeSubDomains",
+   "x-amz-cf-id": "JzMfrwDq1aWoJzWa0yL5a-wp3Iv1b7p9ozGWbVhoT7Yz1GrVR6H2tw=="
+  },
+  "body": "{\"pagination\":{\"_limit\":100,\"_prev\":null,\"_next\":null},\"data\":[]}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

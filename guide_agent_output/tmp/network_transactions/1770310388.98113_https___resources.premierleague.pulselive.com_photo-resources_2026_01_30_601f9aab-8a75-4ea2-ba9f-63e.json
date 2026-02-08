@@ -1,0 +1,42 @@
+{
+ "timestamp": 1770310388.98113,
+ "request_id": "59735.564",
+ "request": {
+  "url": "https://resources.premierleague.pulselive.com/photo-resources/2026/01/30/601f9aab-8a75-4ea2-ba9f-63e7e8beeebe/PL2526-BRUNO-FERNANDES-GIVEAWAY-16x9.png?width=570",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "cache-control": "public, max-age=31536000, s-maxage=31536000",
+   "etag": "72ce7472ccd682e77d7a6b43fb53f5144d9c207d",
+   "age": "536098",
+   "via": "1.1 37d94e77ea5ef204701fb119d20b69fe.cloudfront.net (CloudFront)",
+   "x-cache": "Hit from cloudfront",
+   "content-length": "37464",
+   "x-amz-cf-id": "viPawShtoe8xRBl-GxnMkpLxpfuo24vDKB-pTWzzN-p1ALmBuFQHRQ==",
+   "date": "Fri, 30 Jan 2026 11:58:10 GMT",
+   "content-type": "image/webp",
+   "x-amz-cf-pop": "BOS50-P3",
+   "vary": "Origin"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/webp",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

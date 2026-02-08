@@ -1,0 +1,49 @@
+{
+ "timestamp": 1770310394.241262,
+ "request_id": "interception-job-25630.0",
+ "request": {
+  "url": "https://ep2.adtrafficquality.google/sodar/sodar2/237/runner.html",
+  "method": "GET",
+  "type": "Document",
+  "headers": {
+   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+   "Referer": "https://www.premierleague.com/",
+   "Upgrade-Insecure-Requests": "1",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "accept-ranges": "bytes",
+   "content-encoding": "gzip",
+   "cross-origin-resource-policy": "cross-origin",
+   "cross-origin-opener-policy": "same-origin; report-to=\"adspam-signals-scs\"",
+   "report-to": "{\"group\":\"adspam-signals-scs\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/adspam-signals-scs\"}]}",
+   "content-length": "5044",
+   "x-content-type-options": "nosniff",
+   "server": "sffe",
+   "x-xss-protection": "0",
+   "date": "Thu, 05 Feb 2026 16:10:12 GMT",
+   "expires": "Thu, 05 Feb 2026 17:00:12 GMT",
+   "cache-control": "public, max-age=3000",
+   "age": "2582",
+   "last-modified": "Tue, 13 May 2025 23:17:50 GMT",
+   "content-type": "text/html",
+   "vary": "Accept-Encoding",
+   "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "text/html",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

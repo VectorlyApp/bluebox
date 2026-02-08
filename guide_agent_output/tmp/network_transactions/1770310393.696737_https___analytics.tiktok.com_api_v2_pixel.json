@@ -1,0 +1,51 @@
+{
+ "timestamp": 1770310393.696737,
+ "request_id": "59735.1342",
+ "request": {
+  "url": "https://analytics.tiktok.com/api/v2/pixel",
+  "method": "POST",
+  "type": "Ping",
+  "headers": {
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "Content-Type": "text/plain;charset=UTF-8",
+   "sec-ch-ua-mobile": "?0"
+  },
+  "post_data": "{\"event\":\"Pageview\",\"event_id\":\"\",\"message_id\":\"messageId-1770310393543-2119927156542-CQTPD5JC77U6D8VT2IE0\",\"is_onsite\":false,\"timestamp\":\"2026-02-05T16:53:13.543Z\",\"context\":{\"ad\":{\"sdk_env\":\"external\",\"jsb_status\":2},\"device\":{\"platform\":\"pc\"},\"user\":{\"anonymous_id\":\"01KGQBHKDM2E18C5GEA8A3Z7AM_.tt.1\"},\"pixel\":{\"code\":\"CQTPD5JC77U6D8VT2IE0\",\"runtime\":\"1\"},\"page\":{\"url\":\"https://www.premierleague.com/en/tables/premier-league/2025-26\",\"referrer\":\"https://www.premierleague.com/en/tables/premier-league\",\"load_progress\":\"1\"},\"library\":{\"name\":\"pixel.js\",\"version\":\"2.2.1\"},\"session_id\":\"25f5733f-02b3-11f1-8568-ea3ab8caf4b4::n_O7Da7hGiUjs9Dslrc6-CQTPD5JC77U6D8VT2IE0\",\"pageview_id\":\"25f5733f-02b3-11f1-8568-ea3ab8caf4b4-Uilk-.1.1::28aab0f0-02b3-11f1-bd94-b83fd2912b22-CQTPD5JC77U6D8VT2IE0\",\"variation_id\":\"traffic_2::default\",\"csid\":\"1770310389174::aqRAp2tLTZ-NxZpMAkJU\",\"page_csid\":\"1770310389174::aSYk8PLt0GgwNXZnXD5N\",\"csct\":1,\"userAgent\":\"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"},\"_inspection\":{\"tf\":\"hc\",\"vids\":\"75350340\",\"inter_id\":\"1.4361.4260::2888.3.370.74::0.0.0\"},\"properties\":{},\"signal_diagnostic_labels\":{\"raw_email\":{\"label\":\"missing\"},\"raw_auto_email\":{\"label\":\"missing\"},\"raw_phone\":{\"label\":\"missing\"},\"raw_auto_phone\":{\"label\":\"missing\"},\"hashed_email\":{\"label\":\"missing\"},\"hashed_phone\":{\"label\":\"missing\"},\"raw_eb_email\":{\"label\":\"missing\"},\"raw_eb_phone\":{\"label\":\"missing\"},\"hashed_eb_email\":{\"label\":\"missing\"},\"hashed_eb_phone\":{\"label\":\"missing\"}}}"
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "access-control-expose-headers": "x-tt-traceflag,x-tt-logid",
+   "x-cache-remote": "TCP_MISS from a23-48-200-208.deploy.akamaitechnologies.com (AkamaiGHost/22.4.1-457a7ac92aced575f7fafeb6146c6a89) (-)",
+   "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS,UPDATE",
+   "expires": "Thu, 05 Feb 2026 16:53:13 GMT",
+   "server-timing": "cdn-cache; desc=MISS, edge; dur=39, origin; dur=24, inner; dur=20",
+   "x-cache": "TCP_MISS from a184-25-148-21.deploy.akamaitechnologies.com (AkamaiGHost/22.4.1-457a7ac92aced575f7fafeb6146c6a89) (-)",
+   "date": "Thu, 05 Feb 2026 16:53:13 GMT",
+   "x-akamai-request-id": "5039b671.121885f8",
+   "access-control-allow-headers": "Authorization,*",
+   "x-tt-trace-host": "01f769e2594cf93c3a25413de0fa9f4342864b4f8a37ef19007ee15d6b481634ec35fa1ff401b056674ffd95495498e90185120d0ab626f9cb4cbb44fd161e7e6ebd0923434d8f2cf20378f8ead386f6180e929d774654d50cbca8b43cfddcc4817deedaf8f0fb39027d5a6ee16de8bf63",
+   "x-origin-response-time": "24,23.48.200.208",
+   "cache-control": "max-age=0, no-cache, no-store",
+   "pragma": "no-cache",
+   "x-tt-trace-tag": "id=16;cdn-cache=miss;type=dyn",
+   "access-control-allow-origin": "*",
+   "x-tt-trace-id": "00-26020516531317626FD3A9B856DBFA4B-6C2435504B74B0AD-00",
+   "content-length": "0",
+   "x-parent-response-time": "59,184.25.148.21",
+   "x-tt-logid": "2026020516531317626FD3A9B856DBFA4B",
+   "server": "nginx"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "text/plain",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

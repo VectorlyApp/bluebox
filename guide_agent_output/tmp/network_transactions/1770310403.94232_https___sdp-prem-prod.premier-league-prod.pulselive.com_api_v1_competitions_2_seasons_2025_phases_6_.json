@@ -1,0 +1,55 @@
+{
+ "timestamp": 1770310403.94232,
+ "request_id": "interception-job-26353.0",
+ "request": {
+  "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/2/seasons/2025/phases/6/matches?live=false&_limit=100",
+  "method": "GET",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\"",
+   "x-pulse-application-name": "web",
+   "x-pulse-application-version": "v1.38.15"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "application/json",
+   "permissions-policy": "accelerometer=(), autoplay=(), camera=(), ch-dpr=(), ch-save-data=(), ch-viewport-width=(), ch-width=(), clipboard-read=(), clipboard-write=(), cross-origin-isolated=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), idle-detection=(), keyboard-map=(), local-fonts=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), sync-xhr=(), usb=(), window-placement=(), xr-spatial-tracking=()",
+   "date": "Thu, 05 Feb 2026 16:53:23 GMT",
+   "x-cache-server": "norp",
+   "content-encoding": "br",
+   "x-pulse-sdp-endpoint": "/v1/competitions/{cid}/seasons/{sid}/phases/{p}/matches",
+   "cache-control": "max-age=30, stale-while-revalidate=600, stale-if-error=86400",
+   "x-cache-status": "HIT",
+   "vary": "Origin",
+   "x-cache": "Miss from cloudfront",
+   "via": "1.1 747d47277bb55e9ca12ebb92db620d58.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P4",
+   "alt-svc": "h3=\":443\"; ma=86400",
+   "access-control-allow-origin": "*",
+   "age": "0",
+   "x-frame-options": "DENY",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "content-security-policy": "frame-ancestors 'none'; default-src 'self'; script-src 'self'; script-src-elem 'self'; script-src-attr 'self'; style-src 'self'; style-src-elem 'self'; style-src-attr 'self'; img-src 'self'; connect-src 'self'; frame-src 'self'; font-src 'self'; media-src 'self'; object-src 'self'; manifest-src 'self'; worker-src 'self'; prefetch-src 'self'; form-action 'self';",
+   "x-content-type-options": "nosniff",
+   "strict-transport-security": "max-age=31536000; includeSubDomains",
+   "x-amz-cf-id": "P_NquyaPqUlRmbh20aND-qZs3Yg2gk8XxRUvI0jy_HvguPId1ijXnA=="
+  },
+  "body": "{\"pagination\":{\"_limit\":100,\"_prev\":null,\"_next\":null},\"data\":[{\"kickoffTimezone\":\"GMT\",\"period\":\"FullTime\",\"kickoff\":\"2026-01-14 20:00:00\",\"awayTeam\":{\"score\":3,\"name\":\"Arsenal\",\"id\":\"3\",\"halfTimeScore\":1,\"shortName\":\"Arsenal\",\"redCards\":0},\"homeTeam\":{\"score\":2,\"name\":\"Chelsea\",\"id\":\"8\",\"halfTimeScore\":0,\"shortName\":\"Chelsea\",\"redCards\":0},\"competition\":\"English League Cup\",\"ground\":\"Stamford Bridge, London\",\"clock\":\"97\",\"matchId\":\"2614884\",\"attendance\":39243},{\"kickoffTimezone\":\"GMT\",\"period\":\"FullTime\",\"kickoff\":\"2026-01-13 20:00:00\",\"awayTeam\":{\"score\":2,\"name\":\"Manchester City\",\"id\":\"43\",\"halfTimeScore\":0,\"shortName\":\"Man City\",\"redCards\":0},\"homeTeam\":{\"score\":0,\"name\":\"Newcastle United\",\"id\":\"4\",\"halfTimeScore\":0,\"shortName\":\"Newcastle\",\"redCards\":0},\"competition\":\"English League Cup\",\"ground\":\"St. James' Park, Newcastle\",\"clock\":\"100\",\"matchId\":\"2614885\",\"attendance\":51392},{\"kickoffTimezone\":\"GMT\",\"period\":\"FullTime\",\"kickoff\":\"2026-02-03 20:00:00\",\"awayTeam\":{\"score\":0,\"name\":\"Chelsea\",\"id\":\"8\",\"halfTimeScore\":0,\"shortName\":\"Chelsea\",\"redCards\":0},\"homeTeam\":{\"score\":1,\"name\":\"Arsenal\",\"id\":\"3\",\"halfTimeScore\":0,\"shortName\":\"Arsenal\",\"redCards\":0},\"competition\":\"English League Cup\",\"ground\":\"Emirates Stadium, London\",\"clock\":\"99\",\"matchId\":\"2614886\",\"attendance\":59452},{\"kickoffTimezone\":\"GMT\",\"period\":\"FullTime\",\"kickoff\":\"2026-02-04 20:00:00\",\"awayTeam\":{\"score\":1,\"name\":\"Newcastle United\",\"id\":\"4\",\"halfTimeScore\":0,\"shortName\":\"Newcastle\",\"redCards\":0},\"homeTeam\":{\"score\":3,\"name\":\"Manchester City\",\"id\":\"43\",\"halfTimeScore\":3,\"shortName\":\"Man City\",\"redCards\":0},\"competition\":\"English League Cup\",\"ground\":\"Etihad Stadium, Manchester\",\"clock\":\"92\",\"matchId\":\"2614887\",\"attendance\":51392}]}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

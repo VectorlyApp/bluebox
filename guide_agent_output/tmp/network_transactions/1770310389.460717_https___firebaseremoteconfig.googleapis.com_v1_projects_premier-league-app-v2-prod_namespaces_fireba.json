@@ -1,0 +1,46 @@
+{
+ "timestamp": 1770310389.460717,
+ "request_id": "59735.670",
+ "request": {
+  "url": "https://firebaseremoteconfig.googleapis.com/v1/projects/premier-league-app-v2-prod/namespaces/firebase:fetch?key=AIzaSyA-IEfY0MbeRPZlQkaxq-tytyzM7buoHYs",
+  "method": "POST",
+  "type": "Fetch",
+  "headers": {
+   "If-None-Match": "*",
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "Content-Encoding": "gzip",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "Content-Type": "application/json"
+  },
+  "post_data": "{\"sdk_version\":\"12.2.0\",\"app_instance_id\":\"cqeQcZbLOS7eyk-CS1LZf8\",\"app_instance_id_token\":\"eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBJZCI6IjE6Mjc1NDM0OTMzNjA4OndlYjo5NjVmNDA0YTYyZDZhOTUzYjIxYWRkIiwiZXhwIjoxNzcwOTE1MTg4LCJmaWQiOiJjcWVRY1piTE9TN2V5ay1DUzFMWmY4IiwicHJvamVjdE51bWJlciI6Mjc1NDM0OTMzNjA4fQ.AB2LPV8wRQIgUMIyi5crmNwC_t1D9iWQHx2BdP9L7FpPo_dHik2wVvACIQCusaO1he_v_XoID0EfmBFzbpexM1AYKbOER1R4Yh6TqA\",\"app_id\":\"1:275434933608:web:965f404a62d6a953b21add\",\"language_code\":\"en-US\"}"
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "access-control-expose-headers": "etag,vary,vary,vary,content-encoding,date,server,content-length",
+   "content-encoding": "gzip",
+   "etag": "etag-premier-league-app-v2-prod-firebase-fetch-1743445935",
+   "x-content-type-options": "nosniff",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+   "content-length": "784",
+   "date": "Thu, 05 Feb 2026 16:53:09 GMT",
+   "x-xss-protection": "0",
+   "content-type": "application/json; charset=UTF-8",
+   "vary": "Origin, X-Origin, Referer",
+   "server": "ESF",
+   "x-frame-options": "SAMEORIGIN"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}
