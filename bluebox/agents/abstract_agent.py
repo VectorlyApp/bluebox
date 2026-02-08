@@ -145,6 +145,9 @@ class AbstractAgent(ABC):
       - Message emission
     """
 
+    # Class-level configuration (can be overridden by subclasses)
+    AGENT_LOOP_MAX_ITERATIONS: int = 10
+
     ## Abstract methods
 
     @abstractmethod
@@ -788,7 +791,7 @@ class AbstractAgent(ABC):
 
     def _run_agent_loop(self) -> None:
         """Run a basic agent loop: call LLM → execute tools → repeat."""
-        max_iterations = 10
+        max_iterations = self.AGENT_LOOP_MAX_ITERATIONS
         for iteration in range(max_iterations):
             logger.debug("Agent loop iteration %d", iteration + 1)
 
