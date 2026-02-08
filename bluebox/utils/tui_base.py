@@ -175,6 +175,9 @@ class AbstractAgentTUI(App):
         self._code_block_lang: str = ""
         self._code_block_buffer: list[str] = []
 
+        # Processing guard
+        self._processing: bool = False
+
         # Counters
         self._tool_call_count: int = 0
         self._last_seen_chat_count: int = 0
@@ -551,6 +554,8 @@ class AbstractAgentTUI(App):
         user_input = event.value.strip()
         if not user_input:
             return
+        if self._processing:
+            return
 
         inp = self.query_one("#user-input", Input)
         inp.value = ""
@@ -601,13 +606,21 @@ class AbstractAgentTUI(App):
         if not self._agent:
             chat.write(Text.from_markup("[red]Agent not initialized.[/red]"))
             return
+        self._processing = True
         self._send_to_agent(user_input)
 
     @work(thread=True)
     def _send_to_agent(self, user_input: str) -> None:
         """Send message to agent in a background thread."""
-        self._agent.process_new_message(user_input, ChatRole.USER)
-        self.call_from_thread(self._update_status)
+        try:
+            self._agent.process_new_message(user_input, ChatRole.USER)
+        finally:
+            self.call_from_thread(self._finish_processing)
+
+    def _finish_processing(self) -> None:
+        """Re-enable input submission after agent finishes."""
+        self._processing = False
+        self._update_status()
 
     # ── Slash-command handlers ───────────────────────────────────────────
 
