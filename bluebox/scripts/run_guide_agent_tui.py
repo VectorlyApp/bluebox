@@ -22,7 +22,6 @@ Usage:
 import argparse
 import difflib
 import json
-import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -42,6 +41,7 @@ from textual.widgets import Input, RichLog, Static
 from bluebox.agents.guide_agent import GuideAgent
 from bluebox.config import Config
 from bluebox.data_models.llms.vendors import OpenAIModel
+from bluebox.utils.logger import enable_tui_logging
 from bluebox.data_models.llms.interaction import (
     ChatRole,
     BaseEmittedMessage,
@@ -172,35 +172,15 @@ def get_context_window_size(model_value: str) -> int:
 
 
 def configure_logging(quiet: bool = False, log_file: str | None = None) -> None:
-    """Configure logging — in TUI mode, always redirect to file or suppress.
+    """Configure logging — in TUI mode, redirect ALL loggers to file.
 
-    Without this, StreamHandler output bleeds into the Textual display.
+    Uses enable_tui_logging() which sets a module-level override so that every
+    future get_logger() call also routes to file instead of stderr.
     """
-    # Redirect ALL logging to file — any StreamHandler output corrupts the TUI
-    resolved_log_file = log_file or ".bluebox_tui.log"
-
-    # Clear root logger handlers (prevents any stderr StreamHandlers)
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-
-    # Clear bluebox logger
-    wh_logger = logging.getLogger("bluebox")
-    wh_logger.handlers.clear()
-    wh_logger.propagate = False
-
-    if quiet:
-        wh_logger.setLevel(logging.CRITICAL + 1)
-        root_logger.setLevel(logging.CRITICAL + 1)
-        return
-
-    file_handler = logging.FileHandler(resolved_log_file)
-    file_handler.setFormatter(logging.Formatter(
-        fmt="[%(asctime)s] %(levelname)s:%(name)s:%(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    ))
-    wh_logger.addHandler(file_handler)
-    # Also redirect root logger to the same file
-    root_logger.addHandler(file_handler)
+    enable_tui_logging(
+        log_file=log_file or ".bluebox_tui.log",
+        quiet=quiet,
+    )
 
 
 # ─── Slash command suggester ─────────────────────────────────────────────────
@@ -1000,8 +980,6 @@ def main() -> None:
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")
     args = parser.parse_args()
 
-    configure_logging(quiet=args.quiet, log_file=args.log_file)
-
     console = Console()
 
     if Config.OPENAI_API_KEY is None:
@@ -1049,6 +1027,9 @@ def main() -> None:
         console.print()
 
         cdp_captures_dir = Path(args.cdp_captures_dir) if args.cdp_captures_dir else DEFAULT_CDP_CAPTURES_DIR
+
+        # Redirect logging + stderr AFTER all console output, right before TUI takes over.
+        configure_logging(quiet=args.quiet, log_file=args.log_file)
 
         app = GuideAgentTUI(
             llm_model=llm_model,

@@ -24,8 +24,6 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-
 from rich.console import Console
 from rich.markup import escape
 from rich.text import Text
@@ -45,11 +43,11 @@ from bluebox.data_models.llms.interaction import (
     ErrorEmittedMessage,
     ToolInvocationStatus,
 )
-from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
+from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
-from bluebox.utils.logger import get_logger
+from bluebox.utils.logger import enable_tui_logging, get_logger
 
 logger = get_logger(name=__name__)
 
@@ -136,30 +134,15 @@ def get_context_window_size(model_value: str) -> int:
 
 
 def configure_logging(quiet: bool = False, log_file: str | None = None) -> None:
-    """Configure logging — in TUI mode, always redirect to file or suppress."""
-    import logging
+    """Configure logging — in TUI mode, redirect ALL loggers to file.
 
-    resolved_log_file = log_file or ".bluebox_network_tui.log"
-
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-
-    wh_logger = logging.getLogger("bluebox")
-    wh_logger.handlers.clear()
-    wh_logger.propagate = False
-
-    if quiet:
-        wh_logger.setLevel(logging.CRITICAL + 1)
-        root_logger.setLevel(logging.CRITICAL + 1)
-        return
-
-    file_handler = logging.FileHandler(resolved_log_file)
-    file_handler.setFormatter(logging.Formatter(
-        fmt="[%(asctime)s] %(levelname)s:%(name)s:%(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    ))
-    wh_logger.addHandler(file_handler)
-    root_logger.addHandler(file_handler)
+    Uses enable_tui_logging() which sets a module-level override so that every
+    future get_logger() call also routes to file instead of stderr.
+    """
+    enable_tui_logging(
+        log_file=log_file or ".bluebox_network_tui.log",
+        quiet=quiet,
+    )
 
 
 # ─── Slash command suggester ─────────────────────────────────────────────────
@@ -678,8 +661,6 @@ def main() -> None:
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")
     args = parser.parse_args()
 
-    configure_logging(quiet=args.quiet, log_file=args.log_file)
-
     console = Console()
 
     # Load JSONL file
@@ -700,6 +681,9 @@ def main() -> None:
 
     console.print(f"[green]✓ Loaded {network_store.stats.total_requests} requests[/green]")
     console.print()
+
+    # Redirect logging + stderr AFTER all console output, right before TUI takes over.
+    configure_logging(quiet=args.quiet, log_file=args.log_file)
 
     app = NetworkSpecialistTUI(
         llm_model=llm_model,
