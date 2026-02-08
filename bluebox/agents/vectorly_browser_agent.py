@@ -27,6 +27,7 @@ from bluebox.cdp.connection import cdp_new_tab
 from bluebox.config import Config
 from bluebox.data_models.llms.interaction import (
     Chat,
+    ChatResponseEmittedMessage,
     ChatThread,
     EmittedMessage,
 )
@@ -491,13 +492,22 @@ class VectorlyBrowserAgent(AbstractSpecialist):
                 }
 
         results: list[dict[str, Any]] = []
+        completed_count = 0
         with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
             futures = {
                 executor.submit(execute_one, rid, routine, params): rid
                 for rid, routine, params in validated
             }
             for future in as_completed(futures):
-                results.append(future.result())
+                result = future.result()
+                results.append(result)
+                completed_count += 1
+
+                # Stream each result as it completes
+                status = "succeeded" if result.get("success") else "FAILED"
+                self._emit_message(ChatResponseEmittedMessage(
+                    content=f"[{completed_count}/{len(validated)}] Routine '{result.get('routine_name')}' {status}.",
+                ))
 
         results.sort(key=lambda r: r.get("routine_id", ""))
 
