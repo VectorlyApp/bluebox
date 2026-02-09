@@ -128,8 +128,8 @@ def main() -> None:
     parser.add_argument(
         "--routine-output-dir",
         type=str,
-        default=None,
-        help="Directory to save routine execution results as JSON files",
+        default="./routine_output",
+        help="Directory to save routine execution results as JSON files (default: ./routine_output)",
     )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")

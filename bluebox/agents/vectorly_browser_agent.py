@@ -112,7 +112,7 @@ class VectorlyBrowserAgent(AbstractSpecialist):
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         remote_debugging_address: str = "http://127.0.0.1:9222",
-        routine_output_dir: str | None = None,
+        routine_output_dir: str = "./routine_output",
     ) -> None:
         """
         Initialize the Vectorly browser agent.
@@ -127,7 +127,7 @@ class VectorlyBrowserAgent(AbstractSpecialist):
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
             remote_debugging_address: Chrome remote debugging address for routine execution.
-            routine_output_dir: Optional directory to save routine execution results as JSON files.
+            routine_output_dir: Directory to save routine execution results as JSON files.
         """
         # Validate required config
         if not Config.VECTORLY_API_KEY:
@@ -137,7 +137,7 @@ class VectorlyBrowserAgent(AbstractSpecialist):
 
         self._remote_debugging_address = remote_debugging_address
         self._routines_cache: dict[str, Routine] | None = None
-        self._routine_output_dir: Path | None = Path(routine_output_dir) if routine_output_dir else None
+        self._routine_output_dir = Path(routine_output_dir)
 
         # Browser tab and CDP session state
         self._tab_id: str | None = None
@@ -426,19 +426,18 @@ class VectorlyBrowserAgent(AbstractSpecialist):
 
         # Execute validated routines in parallel, each on its own new tab
         def save_result(result: dict[str, Any]) -> dict[str, Any]:
-            """Save a single routine result to a JSON file if output dir is configured."""
-            if self._routine_output_dir is not None:
-                try:
-                    self._routine_output_dir.mkdir(parents=True, exist_ok=True)
-                    rid = result.get("routine_id", "unknown")
-                    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-                    output_path = self._routine_output_dir / f"routine_results_{rid}_{timestamp}.json"
-                    output_path.write_text(json.dumps(result, indent=2, default=str))
-                    result["output_file"] = str(output_path)
-                    logger.info("Routine result saved to %s", output_path)
-                except Exception as e:
-                    logger.exception("Failed to save routine result to file: %s", e)
-                    result["output_file_error"] = str(e)
+            """Save a single routine result to a JSON file."""
+            try:
+                self._routine_output_dir.mkdir(parents=True, exist_ok=True)
+                rid = result.get("routine_id", "unknown")
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                output_path = self._routine_output_dir / f"routine_results_{rid}_{timestamp}.json"
+                output_path.write_text(json.dumps(result, indent=2, default=str))
+                result["output_file"] = str(output_path)
+                logger.info("Routine result saved to %s", output_path)
+            except Exception as e:
+                logger.exception("Failed to save routine result to file: %s", e)
+                result["output_file_error"] = str(e)
             return result
 
         def execute_one(routine_id: str, routine: Any, parameters: dict) -> dict[str, Any]:
