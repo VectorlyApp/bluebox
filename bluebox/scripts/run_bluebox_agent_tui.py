@@ -1,5 +1,5 @@
 """
-bluebox/scripts/run_vectorly_browser_agent_tui.py
+bluebox/scripts/run_bluebox_agent_tui.py
 
 Multi-pane terminal UI for the BlueBoxAgent using Textual.
 
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from bluebox.agents.abstract_agent import AbstractAgent
 
 
-class VectorlyBrowserTUI(AbstractAgentTUI):
+class BlueBoxAgentTUI(AbstractAgentTUI):
     """Multi-pane TUI for the BlueBox Agent."""
 
     TITLE = "BlueBox Agent"
@@ -164,7 +164,7 @@ def main() -> None:
     # Redirect logging + stderr AFTER all console output, right before TUI takes over.
     enable_tui_logging(log_file=args.log_file or ".bluebox_browser_tui.log", quiet=args.quiet)
 
-    app = VectorlyBrowserTUI(
+    app = BlueBoxAgentTUI(
         llm_model=llm_model,
         remote_debugging_address=args.remote_debugging_address,
         routine_output_dir=args.routine_output_dir,
