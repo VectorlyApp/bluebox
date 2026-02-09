@@ -425,6 +425,22 @@ class VectorlyBrowserAgent(AbstractSpecialist):
             }
 
         # Execute validated routines in parallel, each on its own new tab
+        def save_result(result: dict[str, Any]) -> dict[str, Any]:
+            """Save a single routine result to a JSON file if output dir is configured."""
+            if self._routine_output_dir is not None:
+                try:
+                    self._routine_output_dir.mkdir(parents=True, exist_ok=True)
+                    rid = result.get("routine_id", "unknown")
+                    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                    output_path = self._routine_output_dir / f"routine_results_{rid}_{timestamp}.json"
+                    output_path.write_text(json.dumps(result, indent=2, default=str))
+                    result["output_file"] = str(output_path)
+                    logger.info("Routine result saved to %s", output_path)
+                except Exception as e:
+                    logger.exception("Failed to save routine result to file: %s", e)
+                    result["output_file_error"] = str(e)
+            return result
+
         def execute_one(routine_id: str, routine: Any, parameters: dict) -> dict[str, Any]:
             # Create a dedicated tab for this routine
             target_id = None
@@ -437,12 +453,12 @@ class VectorlyBrowserAgent(AbstractSpecialist):
                 browser_ws.close()  # Close creation ws; routine.execute() creates its own
             except Exception as e:
                 logger.exception("Failed to create tab for routine %s: %s", routine_id, e)
-                return {
+                return save_result({
                     "success": False,
                     "routine_id": routine_id,
                     "routine_name": routine.name,
                     "error": f"Failed to create tab: {e}",
-                }
+                })
 
             try:
                 result = routine.execute(
@@ -451,22 +467,22 @@ class VectorlyBrowserAgent(AbstractSpecialist):
                     tab_id=target_id,
                     close_tab_when_done=False,
                 )
-                return {
+                return save_result({
                     "success": result.ok,
                     "routine_id": routine_id,
                     "routine_name": routine.name,
                     "tab_id": target_id,
                     "data": result.data,
-                }
+                })
             except Exception as e:
                 logger.exception("Parallel routine execution failed for %s: %s", routine_id, e)
-                return {
+                return save_result({
                     "success": False,
                     "routine_id": routine_id,
                     "routine_name": routine.name,
                     "tab_id": target_id,
                     "error": str(e),
-                }
+                })
 
         results: list[dict[str, Any]] = []
         completed_count = 0
@@ -491,7 +507,7 @@ class VectorlyBrowserAgent(AbstractSpecialist):
         succeeded = sum(1 for r in results if r.get("success"))
         failed = len(results) - succeeded
 
-        response = {
+        return {
             "success": failed == 0 and not validation_errors,
             "total_requested": len(routine_requests),
             "total_executed": len(validated),
@@ -500,21 +516,6 @@ class VectorlyBrowserAgent(AbstractSpecialist):
             "validation_errors": validation_errors or None,
             "results": results,
         }
-
-        # Save results to a JSON file if an output directory is configured
-        if self._routine_output_dir is not None:
-            try:
-                self._routine_output_dir.mkdir(parents=True, exist_ok=True)
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-                output_path = self._routine_output_dir / f"routine_results_{timestamp}.json"
-                output_path.write_text(json.dumps(response, indent=2, default=str))
-                response["output_file"] = str(output_path)
-                logger.info("Routine results saved to %s", output_path)
-            except Exception as e:
-                logger.exception("Failed to save routine results to file: %s", e)
-                response["output_file_error"] = str(e)
-
-        return response
 
     ## Browser control tools
 
