@@ -1,7 +1,7 @@
 """
 bluebox/scripts/run_vectorly_browser_agent_tui.py
 
-Multi-pane terminal UI for the VectorlyBrowserAgent using Textual.
+Multi-pane terminal UI for the BlueBoxAgent using Textual.
 
 Layout:
   ┌─────────────────────────────┬──────────────────────┐
@@ -14,9 +14,9 @@ Layout:
   └─────────────────────────────┴──────────────────────┘
 
 Usage:
-    bluebox-vectorly-browser-tui
-    bluebox-vectorly-browser-tui --model gpt-5.1
-    bluebox-vectorly-browser-tui --model gpt-5.2 --remote-debugging-address http://127.0.0.1:9222
+    bluebox-agent-tui
+    bluebox-agent-tui --model gpt-5.1
+    bluebox-agent-tui --model gpt-5.2 --remote-debugging-address http://127.0.0.1:9222
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from rich.console import Console
 from rich.text import Text
 from textual.widgets import RichLog
 
-from bluebox.agents.vectorly_browser_agent import VectorlyBrowserAgent
+from bluebox.agents.vectorly_browser_agent import BlueBoxAgent
 from bluebox.config import Config
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
@@ -42,9 +42,9 @@ if TYPE_CHECKING:
 
 
 class VectorlyBrowserTUI(AbstractAgentTUI):
-    """Multi-pane TUI for the Vectorly Browser Agent."""
+    """Multi-pane TUI for the BlueBox Agent."""
 
-    TITLE = "Vectorly Browser Agent"
+    TITLE = "BlueBox Agent"
     SLASH_COMMANDS = BASE_SLASH_COMMANDS
     HELP_TEXT = BASE_HELP_TEXT
 
@@ -61,7 +61,7 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
     # ── Abstract implementations ─────────────────────────────────────────
 
     def _create_agent(self) -> AbstractAgent:
-        return VectorlyBrowserAgent(
+        return BlueBoxAgent(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
@@ -72,7 +72,7 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
     def _print_welcome(self) -> None:
         chat = self.query_one("#chat-log", RichLog)
         chat.write(Text.from_markup(
-            "[bold green]Vectorly Browser Agent[/bold green]  "
+            "[bold green]BlueBox Agent[/bold green]  "
             "[dim]powered by Vectorly[/dim]"
         ))
         chat.write("")
@@ -80,7 +80,6 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
         lines = [
             f"[dim]Model:[/dim]       {self._llm_model.value}",
             f"[dim]Remote:[/dim]      {self._remote_debugging_address}",
-            f"[dim]Tab ID:[/dim]      {self._agent.tab_id or 'N/A'}",
         ]
         chat.write(Text.from_markup("\n".join(lines)))
         chat.write("")
@@ -96,10 +95,8 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
         msg_count = len(self._agent.get_chats()) if self._agent else 0
         tokens_used, ctx_pct = self._estimate_context_usage()
         ctx_bar = self._context_bar(ctx_pct)
-        tab_id = self._agent.tab_id if self._agent else "N/A"
-
         return (
-            f"[bold green]BROWSER AGENT[/bold green]\n"
+            f"[bold green]BlueBox Agent[/bold green]\n"
             f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
             f"[dim]Model:[/dim]     {self._llm_model.value}\n"
             f"[dim]Messages:[/dim]  {msg_count}\n"
@@ -107,7 +104,6 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
             f"[dim]Context:[/dim]   {ctx_bar}\n"
             f"[dim](est.)      ~{tokens_used:,} / {self._context_window_size:,}[/dim]\n"
             f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
-            f"[dim]Tab:[/dim]       {tab_id}\n"
             f"[dim]Remote:[/dim]    {self._remote_debugging_address}\n"
             f"[dim]Time:[/dim]      {now}\n"
         )
@@ -130,8 +126,8 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
 def main() -> None:
-    """Entry point for the Vectorly Browser Agent TUI."""
-    parser = argparse.ArgumentParser(description="Vectorly Browser Agent \u2014 Multi-pane TUI")
+    """Entry point for the BlueBox Agent TUI."""
+    parser = argparse.ArgumentParser(description="BlueBox Agent \u2014 Multi-pane TUI")
     parser.add_argument(
         "--remote-debugging-address",
         type=str,
