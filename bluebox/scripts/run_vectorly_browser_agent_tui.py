@@ -52,11 +52,11 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
         self,
         llm_model: LLMModel,
         remote_debugging_address: str = "http://127.0.0.1:9222",
-        browser_output_dir: str | None = None,
+        routine_output_dir: str = "./routine_output",
     ) -> None:
-        super().__init__(llm_model, working_dir=browser_output_dir)
+        super().__init__(llm_model, working_dir=routine_output_dir)
         self._remote_debugging_address = remote_debugging_address
-        self._browser_output_dir = browser_output_dir
+        self._routine_output_dir = routine_output_dir
 
     # ── Abstract implementations ─────────────────────────────────────────
 
@@ -66,7 +66,7 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
             remote_debugging_address=self._remote_debugging_address,
-            routine_output_dir=self._browser_output_dir,
+            routine_output_dir=self._routine_output_dir,
         )
 
     def _print_welcome(self) -> None:
@@ -126,10 +126,10 @@ def main() -> None:
     )
     add_model_argument(parser)
     parser.add_argument(
-        "--browser-output-dir",
+        "--routine-output-dir",
         type=str,
-        default="./browser_output",
-        help="Directory to save routine execution results as JSON files (default: ./browser_output)",
+        default="./routine_output",
+        help="Directory to save routine execution results as JSON files (default: ./routine_output)",
     )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")
@@ -157,7 +157,7 @@ def main() -> None:
     app = VectorlyBrowserTUI(
         llm_model=llm_model,
         remote_debugging_address=args.remote_debugging_address,
-        browser_output_dir=args.browser_output_dir,
+        routine_output_dir=args.routine_output_dir,
     )
     app.run()
 
