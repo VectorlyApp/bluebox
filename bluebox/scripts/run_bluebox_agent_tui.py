@@ -47,6 +47,7 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
     TITLE = "BlueBox Agent"
     SLASH_COMMANDS = BASE_SLASH_COMMANDS
     HELP_TEXT = BASE_HELP_TEXT
+    SHOW_SAVED_FILES_PANE = True
 
     def __init__(
         self,

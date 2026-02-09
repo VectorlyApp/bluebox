@@ -133,6 +133,14 @@ APP_CSS = dedent("""\
         overflow-y: auto;
     }
 
+    #saved-files-log {
+        height: 1fr;
+        max-height: 33%;
+        border: solid $warning;
+        border-title-color: $warning;
+        overflow-y: auto;
+    }
+
 """)
 
 
@@ -198,6 +206,9 @@ class AbstractAgentTUI(App):
     # Override in subclasses to extend the command palette.
     SLASH_COMMANDS: ClassVar[dict[str, str]] = BASE_SLASH_COMMANDS
     HELP_TEXT: ClassVar[str] = BASE_HELP_TEXT
+
+    # Set True in subclasses to show a "Saved files" pane below the tool tree.
+    SHOW_SAVED_FILES_PANE: ClassVar[bool] = False
 
     # ── Init ─────────────────────────────────────────────────────────────
 
@@ -291,6 +302,17 @@ class AbstractAgentTUI(App):
         """Return Rich markup for the user-message prefix."""
         return "[bold green]You>[/bold green]"
 
+    def _add_saved_file(self, filepath: str) -> None:
+        """Write a timestamped entry to the saved-files pane."""
+        if not self.SHOW_SAVED_FILES_PANE:
+            return
+        log = self.query_one("#saved-files-log", RichLog)
+        ts = datetime.now().strftime("%H:%M:%S")
+        # Show just the filename, not the full path
+        filename = filepath.rsplit("/", 1)[-1] if "/" in filepath else filepath
+        log.write(Text.from_markup(f"[dim]{ts}[/dim]  {filename}"))
+        log.scroll_end(animate=False)
+
     # ── Compose ──────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
@@ -314,6 +336,10 @@ class AbstractAgentTUI(App):
                 tool_tree.show_root = False
                 tool_tree.border_title = "Tools invoked"
                 yield tool_tree
+                if self.SHOW_SAVED_FILES_PANE:
+                    saved_log = RichLog(id="saved-files-log", wrap=True, markup=True)
+                    saved_log.border_title = "Saved files"
+                    yield saved_log
         yield Static(id="status-bar")
 
     # ── Lifecycle ────────────────────────────────────────────────────────
@@ -627,7 +653,13 @@ class AbstractAgentTUI(App):
                     details = json.dumps(message.tool_result, indent=2).split("\n")
                 elif message.tool_result:
                     details = str(message.tool_result).split("\n")
-                details = prefix + details
+                if self.SHOW_SAVED_FILES_PANE and prefix:
+                    for line in prefix:
+                        # Strip the 📄 emoji prefix to get the raw path
+                        path = line.lstrip("\U0001f4c4 ").strip() if line.startswith("\U0001f4c4") else line
+                        self._add_saved_file(path)
+                else:
+                    details = prefix + details
                 self._add_tool_node(
                     Text.assemble(
                         (ts, "dim"), " ", ("RESULT", "green"), " ", (inv.tool_name, "bold"),
