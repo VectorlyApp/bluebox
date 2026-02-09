@@ -18,7 +18,6 @@ The agent inherits from AbstractAgent for LLM/chat/tool infrastructure.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from textwrap import dedent
 from typing import Any, Callable

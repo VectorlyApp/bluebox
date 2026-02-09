@@ -9,7 +9,7 @@ Usage:
     bluebox-super-discovery --cdp-captures-dir ./cdp_captures
     
     # Run discovery immediately
-    bluebox-super-discovery --cdp-captures-dir ./cdp_captures --task "Search for trains"
+    bluebox-super-discovery --cdp-captures-dir ./cdp_captures --task "Endpoint/routine for obtaining all Premier League matches for a given week"
 
     # Suppress logs for cleaner output
     bluebox-super-discovery --cdp-captures-dir ./cdp_captures -q
