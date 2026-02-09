@@ -348,7 +348,7 @@ class AbstractAgentTUI(App):
             f"{self.TITLE}  |  [dim]{self._llm_model.value}[/dim]  |  {ctx_bar}",
         ]
         if self._working_dir:
-            parts.append(f"  |  📁 [dim]Files saved to:[/dim] {self._working_dir}")
+            parts.append(f"  |  📁 [dim]Output dir:[/dim] {self._working_dir}")
         return "".join(parts)
 
     # ── Agent callbacks ──────────────────────────────────────────────────
