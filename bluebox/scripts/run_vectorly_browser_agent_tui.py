@@ -80,7 +80,6 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
         lines = [
             f"[dim]Model:[/dim]       {self._llm_model.value}",
             f"[dim]Remote:[/dim]      {self._remote_debugging_address}",
-            f"[dim]Tab ID:[/dim]      {self._agent.tab_id or 'N/A'}",
         ]
         chat.write(Text.from_markup("\n".join(lines)))
         chat.write("")
@@ -96,8 +95,6 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
         msg_count = len(self._agent.get_chats()) if self._agent else 0
         tokens_used, ctx_pct = self._estimate_context_usage()
         ctx_bar = self._context_bar(ctx_pct)
-        tab_id = self._agent.tab_id if self._agent else "N/A"
-
         return (
             f"[bold green]BROWSER AGENT[/bold green]\n"
             f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
@@ -107,7 +104,6 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
             f"[dim]Context:[/dim]   {ctx_bar}\n"
             f"[dim](est.)      ~{tokens_used:,} / {self._context_window_size:,}[/dim]\n"
             f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
-            f"[dim]Tab:[/dim]       {tab_id}\n"
             f"[dim]Remote:[/dim]    {self._remote_debugging_address}\n"
             f"[dim]Time:[/dim]      {now}\n"
         )
