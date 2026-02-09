@@ -24,6 +24,8 @@ This file provides context and guidelines for working with the bluebox-sdk codeb
 - `bluebox-monitor --host 127.0.0.1 --port 9222 --output-dir ./cdp_captures --url about:blank --incognito` - Start browser monitoring
 - `bluebox-discover --task "your task description" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5.1` - Discover routines from captures
 - `bluebox-execute --routine-path example_data/example_routines/amtrak_one_way_train_search_routine.json --parameters-path example_data/example_routines/amtrak_one_way_train_search_input.json` - Execute a routine
+- `bluebox-agent-adapter --agent SuperDiscoveryAgent --cdp-captures-dir ./cdp_captures` - Start HTTP adapter for programmatic agent interaction (see Agent HTTP Adapter section below)
+- `bluebox-agent-adapter --list-agents` - List all available agents and their required data
 
 ### Chrome Debug Mode
 
@@ -112,6 +114,35 @@ AI agents that power routine discovery and conversational interactions:
 
 - `bluebox/agents/routine_discovery_agent.py` - Analyzes CDP captures to generate routines (identifies transactions, extracts/resolves variables, constructs operations)
 - `bluebox/agents/guide_agent.py` - Conversational agent for guiding users through routine creation/editing (maintains chat history, dynamic tool registration)
+
+**Agent HTTP Adapter** (`bluebox/scripts/agent_http_adapter.py`):
+
+HTTP wrapper that exposes any `AbstractAgent` (or `AbstractSpecialist`) subclass as a JSON API, enabling programmatic interaction via curl. Agents are auto-discovered at runtime — adding a new `AbstractSpecialist` subclass makes it available with zero adapter changes.
+
+```bash
+# Start adapter (default: SuperDiscoveryAgent)
+bluebox-agent-adapter --cdp-captures-dir ./cdp_captures --port 8765 -q
+
+# Or pick a specific agent
+bluebox-agent-adapter --agent NetworkSpecialist --cdp-captures-dir ./cdp_captures
+
+# Agents with no data requirements (e.g. BlueBoxAgent) don't need --cdp-captures-dir
+bluebox-agent-adapter --agent BlueBoxAgent
+```
+
+Endpoints:
+- `GET /health` — liveness check
+- `GET /status` — agent type, chat state, discovery support
+- `POST /chat {"message": "..."}` — send a chat message (all agents)
+- `POST /discover {"task": "..."}` — run discovery/autonomous mode (specialists + SuperDiscoveryAgent)
+- `GET /routine` — retrieve discovered routine JSON
+
+**Best practices when calling from Claude Code or scripts:**
+- **Use `--max-time 300` (5 min) on curl calls.** The first `/chat` or `/discover` request triggers a cold start (agent construction + first LLM round-trip) that can take 2+ minutes. Subsequent requests are fast since the agent stays in memory.
+- **Start the adapter in the background** and poll `/health` until ready before sending requests.
+- **Use `-q` (quiet mode)** to suppress Bluebox logging noise from the adapter process.
+- **Save responses to files** (`-o /tmp/response.json`) rather than piping directly, to avoid losing data on timeout.
+- Constructor params are auto-wired via `inspect.signature` — the adapter maps data loader param names (handling the `_loader`/`_store` naming split) to canonical keys automatically.
 
 **LLM Infrastructure:**
 - `bluebox/llms/data_loaders/` - Specialized data loaders for CDP capture analysis:
