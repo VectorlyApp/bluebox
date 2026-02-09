@@ -431,7 +431,7 @@ class VectorlyBrowserAgent(AbstractSpecialist):
                 self._routine_output_dir.mkdir(parents=True, exist_ok=True)
                 rid = result.get("routine_id", "unknown")
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-                output_path = self._routine_output_dir / f"routine_results_{rid}_{timestamp}.json"
+                output_path = self._routine_output_dir / f"routine_results_{timestamp}_{rid}.json"
                 output_path.write_text(json.dumps(result, indent=2, default=str))
                 result["output_file"] = str(output_path)
                 logger.info("Routine result saved to %s", output_path)
