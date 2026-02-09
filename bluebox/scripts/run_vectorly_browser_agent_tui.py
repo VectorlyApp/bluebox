@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 from rich.text import Text
@@ -80,6 +80,7 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
         lines = [
             f"[dim]Model:[/dim]       {self._llm_model.value}",
             f"[dim]Remote:[/dim]      {self._remote_debugging_address}",
+            f"[dim]Tab ID:[/dim]      {self._agent.tab_id or 'N/A'}",
         ]
         chat.write(Text.from_markup("\n".join(lines)))
         chat.write("")
@@ -95,6 +96,8 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
         msg_count = len(self._agent.get_chats()) if self._agent else 0
         tokens_used, ctx_pct = self._estimate_context_usage()
         ctx_bar = self._context_bar(ctx_pct)
+        tab_id = self._agent.tab_id if self._agent else "N/A"
+
         return (
             f"[bold green]BROWSER AGENT[/bold green]\n"
             f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
@@ -104,9 +107,24 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
             f"[dim]Context:[/dim]   {ctx_bar}\n"
             f"[dim](est.)      ~{tokens_used:,} / {self._context_window_size:,}[/dim]\n"
             f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
+            f"[dim]Tab:[/dim]       {tab_id}\n"
             f"[dim]Remote:[/dim]    {self._remote_debugging_address}\n"
             f"[dim]Time:[/dim]      {now}\n"
         )
+
+    def _extract_tool_result_prefix_lines(self, tool_name: str, tool_result: Any) -> list[str]:
+        """Surface output_file paths at the top of RESULT nodes."""
+        if not isinstance(tool_result, dict):
+            return []
+        paths: list[str] = []
+        # Top-level output_file
+        if tool_result.get("output_file"):
+            paths.append(f"📄 {tool_result['output_file']}")
+        # Nested results (e.g. execute_routines_parallel)
+        for r in tool_result.get("results", []):
+            if isinstance(r, dict) and r.get("output_file"):
+                paths.append(f"📄 {r['output_file']}")
+        return paths
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────

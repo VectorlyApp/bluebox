@@ -15,7 +15,7 @@ import json
 from abc import abstractmethod
 from datetime import datetime
 from textwrap import dedent
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from rich.markdown import Markdown as RichMarkdown
 from rich.markup import escape
@@ -254,6 +254,14 @@ class AbstractAgentTUI(App):
         Return True to consume the input (skip normal processing).
         """
         return False
+
+    def _extract_tool_result_prefix_lines(self, tool_name: str, tool_result: Any) -> list[str]:
+        """Return lines to prepend above the RESULT details in the tool tree.
+
+        Override in subclasses to surface key fields (e.g. output paths)
+        at the top of tool-result nodes.
+        """
+        return []
 
     def _format_user_label(self) -> str:
         """Return Rich markup for the user-message prefix."""
@@ -604,11 +612,15 @@ class AbstractAgentTUI(App):
                 chat.write(Text.from_markup(
                     f"[green]\u2713[/green] [dim]{inv.tool_name} executed[/dim]"
                 ))
+                prefix = self._extract_tool_result_prefix_lines(
+                    inv.tool_name, message.tool_result,
+                )
                 details: list[str] = []
                 if isinstance(message.tool_result, dict):
                     details = json.dumps(message.tool_result, indent=2).split("\n")
                 elif message.tool_result:
                     details = str(message.tool_result).split("\n")
+                details = prefix + details
                 self._add_tool_node(
                     Text.assemble(
                         (ts, "dim"), " ", ("RESULT", "green"), " ", (inv.tool_name, "bold"),
