@@ -95,7 +95,7 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
         chat = self.query_one("#chat-log", RichLog)
         chat.write(Text.from_markup(
             "[bold cyan]Network Spy[/bold cyan]  "
-            "[dim]powered by vectorly[/dim]"
+            "[dim]powered by Vectorly[/dim]"
         ))
         chat.write("")
 
