@@ -142,8 +142,8 @@ def main() -> None:
     parser.add_argument(
         "--routine-output-dir",
         type=str,
-        default=None,
-        help="Directory to save routine execution results as JSON files",
+        default="./routine_output",
+        help="Directory to save routine execution results as JSON files (default: ./routine_output)",
     )
     add_model_argument(parser)
     args = parser.parse_args()

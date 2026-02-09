@@ -79,7 +79,7 @@ class VectorlyBrowserAgent(AbstractAgent):
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         remote_debugging_address: str = "http://127.0.0.1:9222",
-        routine_output_dir: str | None = None,
+        routine_output_dir: str = "./routine_output",
     ) -> None:
         """
         Initialize the Vectorly browser agent.
@@ -93,7 +93,7 @@ class VectorlyBrowserAgent(AbstractAgent):
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
             remote_debugging_address: Chrome remote debugging address for routine execution.
-            routine_output_dir: Optional directory to save routine execution results as JSON files.
+            routine_output_dir: Directory to save routine execution results as JSON files.
         """
         # Validate required config
         if not Config.VECTORLY_API_KEY:
@@ -103,7 +103,7 @@ class VectorlyBrowserAgent(AbstractAgent):
 
         self._remote_debugging_address = remote_debugging_address
         self._routines_cache: dict[str, Routine] | None = None
-        self._routine_output_dir: Path | None = Path(routine_output_dir) if routine_output_dir else None
+        self._routine_output_dir = Path(routine_output_dir)
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -318,6 +318,21 @@ class VectorlyBrowserAgent(AbstractAgent):
             }
 
         # Execute validated routines in parallel, each on its own new tab
+        def save_result(result: dict[str, Any]) -> dict[str, Any]:
+            """Save a single routine result to a JSON file."""
+            try:
+                self._routine_output_dir.mkdir(parents=True, exist_ok=True)
+                rid = result.get("routine_id", "unknown")
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                output_path = self._routine_output_dir / f"routine_results_{timestamp}_{rid}.json"
+                output_path.write_text(json.dumps(result, indent=2, default=str))
+                result["output_file"] = str(output_path)
+                logger.info("Routine result saved to %s", output_path)
+            except Exception as e:
+                logger.exception("Failed to save routine result to file: %s", e)
+                result["output_file_error"] = str(e)
+            return result
+
         def execute_one(routine_id: str, routine: Any, parameters: dict) -> dict[str, Any]:
             # Create a dedicated tab for this routine
             target_id = None
@@ -330,12 +345,12 @@ class VectorlyBrowserAgent(AbstractAgent):
                 browser_ws.close()  # Close creation ws; routine.execute() creates its own
             except Exception as e:
                 logger.exception("Failed to create tab for routine %s: %s", routine_id, e)
-                return {
+                return save_result({
                     "success": False,
                     "routine_id": routine_id,
                     "routine_name": routine.name,
                     "error": f"Failed to create tab: {e}",
-                }
+                })
 
             try:
                 result = routine.execute(
@@ -344,22 +359,22 @@ class VectorlyBrowserAgent(AbstractAgent):
                     tab_id=target_id,
                     close_tab_when_done=True,
                 )
-                return {
+                return save_result({
                     "success": result.ok,
                     "routine_id": routine_id,
                     "routine_name": routine.name,
                     "tab_id": target_id,
                     "data": result.data,
-                }
+                })
             except Exception as e:
                 logger.exception("Parallel routine execution failed for %s: %s", routine_id, e)
-                return {
+                return save_result({
                     "success": False,
                     "routine_id": routine_id,
                     "routine_name": routine.name,
                     "tab_id": target_id,
                     "error": str(e),
-                }
+                })
 
         results: list[dict[str, Any]] = []
         completed_count = 0
@@ -384,7 +399,7 @@ class VectorlyBrowserAgent(AbstractAgent):
         succeeded = sum(1 for r in results if r.get("success"))
         failed = len(results) - succeeded
 
-        response = {
+        return {
             "success": failed == 0 and not validation_errors,
             "total_requested": len(routine_requests),
             "total_executed": len(validated),
@@ -393,18 +408,3 @@ class VectorlyBrowserAgent(AbstractAgent):
             "validation_errors": validation_errors or None,
             "results": results,
         }
-
-        # Save results to a JSON file if an output directory is configured
-        if self._routine_output_dir is not None:
-            try:
-                self._routine_output_dir.mkdir(parents=True, exist_ok=True)
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-                output_path = self._routine_output_dir / f"routine_results_{timestamp}.json"
-                output_path.write_text(json.dumps(response, indent=2, default=str))
-                response["output_file"] = str(output_path)
-                logger.info("Routine results saved to %s", output_path)
-            except Exception as e:
-                logger.exception("Failed to save routine results to file: %s", e)
-                response["output_file_error"] = str(e)
-
-        return response

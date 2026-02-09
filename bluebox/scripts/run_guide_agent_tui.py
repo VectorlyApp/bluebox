@@ -144,7 +144,7 @@ class GuideAgentTUI(AbstractAgentTUI):
         chat = self.query_one("#chat-log", RichLog)
         chat.write(Text.from_markup(
             "[bold magenta]Guide Agent[/bold magenta]  "
-            "[dim]powered by vectorly[/dim]"
+            "[dim]powered by Vectorly[/dim]"
         ))
         chat.write("")
         chat.write(Text.from_markup(
@@ -208,7 +208,7 @@ class GuideAgentTUI(AbstractAgentTUI):
                 f"[dim]\u2014 y/n to approve[/dim]"
             ))
 
-            ts = datetime.now().strftime("%H:%M")
+            ts = datetime.now().strftime("%H:%M:%S")
             self._add_tool_node(
                 Text.assemble(
                     (ts, "dim"), " ", ("REQUEST", "yellow"), " ", (inv.tool_name, "bold"),
