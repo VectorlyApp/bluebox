@@ -82,7 +82,7 @@ class BlueBoxAgent(AbstractAgent):
         routine_output_dir: str = "./routine_output",
     ) -> None:
         """
-        Initialize the Vectorly BlueBox Agent.
+        Initialize the BlueBox Agent.
 
         Args:
             emit_message_callable: Callback function to emit messages to the host.

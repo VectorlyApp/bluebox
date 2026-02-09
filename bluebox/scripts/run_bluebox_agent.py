@@ -55,7 +55,7 @@ BANNER = """\
 
 
 class TerminalVectorlyBrowserChat(AbstractTerminalAgentChat):
-    """Interactive terminal chat interface for the Vectorly BlueBox Agent."""
+    """Interactive terminal chat interface for the BlueBox Agent."""
 
     autonomous_command_name = "run"  # Not used for now, but required by base class
 
@@ -72,7 +72,7 @@ class TerminalVectorlyBrowserChat(AbstractTerminalAgentChat):
         super().__init__(console=console, agent_color="green")
 
     def _create_agent(self) -> BlueBoxAgent:
-        """Create the Vectorly BlueBox Agent instance."""
+        """Create the BlueBox Agent instance."""
         return BlueBoxAgent(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
@@ -113,7 +113,7 @@ class TerminalVectorlyBrowserChat(AbstractTerminalAgentChat):
   [green]/quit[/green]   Exit
 
 Ask me to execute a routine or help you find the right one!""",
-            title="[bold green]Vectorly BlueBox Agent[/bold green]",
+            title="[bold green]BlueBox Agent[/bold green]",
             subtitle=f"[dim]Model: {self.llm_model.value}[/dim]",
             border_style="green",
             box=box.ROUNDED,
@@ -129,9 +129,9 @@ Ask me to execute a routine or help you find the right one!""",
 
 
 def main() -> None:
-    """Run the Vectorly BlueBox Agent interactively."""
+    """Run the BlueBox Agent interactively."""
     parser = argparse.ArgumentParser(
-        description="Vectorly BlueBox Agent - Execute web automation routines"
+        description="BlueBox Agent - Execute web automation routines"
     )
     parser.add_argument(
         "--remote-debugging-address",
