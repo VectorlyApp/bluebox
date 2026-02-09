@@ -96,7 +96,7 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
         tokens_used, ctx_pct = self._estimate_context_usage()
         ctx_bar = self._context_bar(ctx_pct)
         return (
-            f"[bold green]ROUTINE AGENT[/bold green]\n"
+            f"[bold green]BROWSER AGENT[/bold green]\n"
             f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
             f"[dim]Model:[/dim]     {self._llm_model.value}\n"
             f"[dim]Messages:[/dim]  {msg_count}\n"
