@@ -57,7 +57,7 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
 DEFAULT_CONTEXT_WINDOW = 200_000
 
 BASE_SLASH_COMMANDS: list[str] = [
-    "/reset", "/status", "/chats", "/clear", "/help", "/quit",
+    "/reset", "/status", "/chats", "/clear", "/help", "/commands", "/quit", "/exit", "/q",
 ]
 
 BASE_HELP_TEXT = dedent("""\
@@ -526,35 +526,7 @@ class AbstractAgentTUI(App):
 
         ts = datetime.now().strftime("%H:%M:%S")
         for c in chats[self._last_seen_chat_count:]:
-            if c.role.value == "tool":
-                self._tool_call_count += 1
-                tool_name = "tool"
-                if c.content and c.content.startswith("Tool '"):
-                    end = c.content.find("'", 6)
-                    if end > 6:
-                        tool_name = c.content[6:end]
-
-                chat.write(Text.from_markup(
-                    f"[green]\u2713[/green] [dim]{tool_name} (auto)[/dim]"
-                ))
-                result_text = (
-                    c.content[c.content.find("result: ") + 8:]
-                    if "result: " in (c.content or "")
-                    else (c.content or "")
-                )
-                # Try to pretty-print JSON results for line-by-line display
-                try:
-                    result_text = json.dumps(json.loads(result_text), indent=2)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-                self._add_tool_node(
-                    Text.assemble(
-                        (ts, "dim"), " ", ("AUTO", "green"), " ", (tool_name, "bold"),
-                    ),
-                    result_text.split("\n") if result_text.strip() else [],
-                )
-
-            elif c.role.value == "assistant" and c.tool_calls:
+            if c.role.value == "assistant" and c.tool_calls:
                 for tc in c.tool_calls:
                     details: list[str] = []
                     if hasattr(tc, "tool_arguments") and tc.tool_arguments:
@@ -682,7 +654,7 @@ class AbstractAgentTUI(App):
         if cmd in ("/quit", "/exit", "/q"):
             self.exit()
             return
-        if cmd in ("/help", "/h", "/?"):
+        if cmd in ("/help", "/commands", "/h", "/?"):
             chat.write(Text.from_markup(self.HELP_TEXT))
             return
         if cmd == "/reset":
