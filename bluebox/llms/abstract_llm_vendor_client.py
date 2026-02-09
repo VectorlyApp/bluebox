@@ -15,7 +15,6 @@ from pydantic import BaseModel
 from bluebox.data_models.llms.interaction import LLMChatResponse
 from bluebox.data_models.llms.vendors import LLMModel, LLMVendor
 
-
 T = TypeVar("T", bound=BaseModel)
 
 

@@ -242,6 +242,7 @@ class AbstractAgentTUI(App):
         # Counters
         self._tool_call_count: int = 0
         self._last_seen_chat_count: int = 0
+        self._seen_call_ids: set[str] = set()  # dedup CALL nodes in tool tree
 
     # ── Abstract / hook methods ──────────────────────────────────────────
 
@@ -586,6 +587,11 @@ class AbstractAgentTUI(App):
         for c in chats[self._last_seen_chat_count:]:
             if c.role.value == "assistant" and c.tool_calls:
                 for tc in c.tool_calls:
+                    # Deduplicate by call_id when available
+                    if tc.call_id:
+                        if tc.call_id in self._seen_call_ids:
+                            continue
+                        self._seen_call_ids.add(tc.call_id)
                     details: list[str] = []
                     if hasattr(tc, "tool_arguments") and tc.tool_arguments:
                         details = json.dumps(tc.tool_arguments, indent=2).split("\n")
@@ -729,6 +735,7 @@ class AbstractAgentTUI(App):
             if self._agent:
                 self._agent.reset()
             self._last_seen_chat_count = 0
+            self._seen_call_ids.clear()
             self._on_reset()
             chat.write(Text.from_markup("[yellow]\u21ba Conversation reset[/yellow]"))
             self._update_status()
