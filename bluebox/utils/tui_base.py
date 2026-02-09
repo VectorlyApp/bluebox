@@ -288,9 +288,13 @@ class AbstractAgentTUI(App):
             return
 
         self._print_welcome()
-        self._update_status()
+        self.call_after_refresh(self._update_status)  # defer until layout is done
         self.set_interval(10, self._update_status)
         self.query_one("#user-input", Input).focus()
+
+    def on_resize(self) -> None:
+        """Re-render status bar on terminal resize."""
+        self._update_status()
 
     # ── Status panel ─────────────────────────────────────────────────────
 
@@ -325,7 +329,14 @@ class AbstractAgentTUI(App):
     def _update_status(self) -> None:
         """Refresh the bottom status bar."""
         bar = self.query_one("#status-bar", Static)
-        bar.update(Text.from_markup(self._build_status_bar_text()))
+        left = Text.from_markup(self._build_status_bar_text())
+        hint = Text.from_markup("[dim]Shift+drag to select[/dim]")
+        # Pad the left text so the hint is right-aligned to the bar's width
+        bar_width = bar.size.width or self.size.width
+        pad = max(0, bar_width - left.cell_len - hint.cell_len)
+        left.append(" " * pad)
+        left.append_text(hint)
+        bar.update(left)
 
     def _build_status_bar_text(self) -> str:
         """Return Rich markup for the bottom status bar."""
