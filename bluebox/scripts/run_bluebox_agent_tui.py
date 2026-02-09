@@ -42,9 +42,9 @@ if TYPE_CHECKING:
 
 
 class VectorlyBrowserTUI(AbstractAgentTUI):
-    """Multi-pane TUI for the Vectorly BlueBox Agent."""
+    """Multi-pane TUI for the BlueBox Agent."""
 
-    TITLE = "Vectorly BlueBox Agent"
+    TITLE = "BlueBox Agent"
     SLASH_COMMANDS = BASE_SLASH_COMMANDS
     HELP_TEXT = BASE_HELP_TEXT
 
@@ -72,7 +72,7 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
     def _print_welcome(self) -> None:
         chat = self.query_one("#chat-log", RichLog)
         chat.write(Text.from_markup(
-            "[bold green]Vectorly BlueBox Agent[/bold green]  "
+            "[bold green]BlueBox Agent[/bold green]  "
             "[dim]powered by Vectorly[/dim]"
         ))
         chat.write("")
@@ -126,8 +126,8 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
 def main() -> None:
-    """Entry point for the Vectorly BlueBox Agent TUI."""
-    parser = argparse.ArgumentParser(description="Vectorly BlueBox Agent \u2014 Multi-pane TUI")
+    """Entry point for the BlueBox Agent TUI."""
+    parser = argparse.ArgumentParser(description="BlueBox Agent \u2014 Multi-pane TUI")
     parser.add_argument(
         "--remote-debugging-address",
         type=str,
