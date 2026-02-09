@@ -104,7 +104,7 @@ APP_CSS = dedent("""\
     }
 
     #status-bar {
-        height: 2;
+        height: 3;
         padding: 0 1;
     }
 
@@ -319,7 +319,7 @@ class AbstractAgentTUI(App):
 
     def _build_status_bar_text(self) -> str:
         """Return Rich markup for the bottom status bar."""
-        now = datetime.now().strftime("%I:%M %p").lstrip("0")
+        now = datetime.now().astimezone().strftime("%I:%M %p %Z").lstrip("0")
         tokens_used, ctx_pct = self._estimate_context_usage()
         ctx_bar = self._context_bar(ctx_pct, width=10)
         return (
@@ -536,13 +536,15 @@ class AbstractAgentTUI(App):
         """Route emitted messages to the appropriate pane."""
         chat = self.query_one("#chat-log", RichLog)
 
+        # Eagerly flush so CALL/AUTO nodes appear before any RESULT
+        self._flush_auto_executed_tools(chat)
+
         # Let subclass handle first — if it returns True, we're done.
         if self._handle_additional_message(message):
             self._update_status()
             return
 
         if isinstance(message, ChatResponseEmittedMessage):
-            self._flush_auto_executed_tools(chat)
 
             if self._streaming_started:
                 # Flush remaining partial line with formatting
