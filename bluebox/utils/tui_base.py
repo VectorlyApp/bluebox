@@ -68,6 +68,11 @@ BASE_HELP_TEXT = dedent("""\
 
 APP_CSS = dedent("""\
     Screen {
+        layout: vertical;
+    }
+
+    #main-row {
+        height: 1fr;
         layout: horizontal;
     }
 
@@ -87,9 +92,25 @@ APP_CSS = dedent("""\
         border-title-color: $accent;
     }
 
-    #user-input {
+    #input-row {
         height: 3;
-        margin: 0 0;
+    }
+
+    #input-prompt {
+        width: 2;
+        height: 3;
+        padding: 1 0 0 0;
+        color: green;
+        text-style: bold;
+    }
+
+    #user-input {
+        width: 1fr;
+    }
+
+    #status-bar {
+        height: 1;
+        padding: 0 1;
     }
 
     #tool-log {
@@ -99,14 +120,6 @@ APP_CSS = dedent("""\
         overflow-y: auto;
     }
 
-    #status-panel {
-        height: auto;
-        min-height: 8;
-        max-height: 16;
-        border: solid $primary;
-        border-title-color: $primary;
-        padding: 0 1;
-    }
 """)
 
 
@@ -161,9 +174,18 @@ class AbstractAgentTUI(App):
 
     # ── Init ─────────────────────────────────────────────────────────────
 
-    def __init__(self, llm_model: LLMModel) -> None:
+    def __init__(self, llm_model: LLMModel, working_dir: str | None = None) -> None:
+        """
+        Initialize the base agent TUI.
+
+        Args:
+            llm_model: The LLM model to use for the agent.
+            working_dir: Optional path shown in a "Working directory" pane on the right.
+                If None, the pane is not rendered.
+        """
         super().__init__()
         self._llm_model = llm_model
+        self._working_dir = working_dir
         self._context_window_size = get_context_window_size(llm_model.value)
 
         # Agent — set in on_mount via _create_agent()
@@ -237,26 +259,26 @@ class AbstractAgentTUI(App):
     # ── Compose ──────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
-        with Horizontal():
+        with Horizontal(id="main-row"):
             with Vertical(id="left-pane"):
                 chat_log = RichLog(id="chat-log", wrap=True, highlight=True, markup=True)
                 chat_log.border_title = "Chat"
                 yield chat_log
-                yield Input(
-                    placeholder="Type a message or /help ...",
-                    id="user-input",
-                    suggester=SlashCommandSuggester(
-                        self.SLASH_COMMANDS, case_sensitive=False,
-                    ),
-                )
+                with Horizontal(id="input-row"):
+                    yield Static(">", id="input-prompt")
+                    yield Input(
+                        placeholder="Type a message or /help ...",
+                        id="user-input",
+                        suggester=SlashCommandSuggester(
+                            self.SLASH_COMMANDS, case_sensitive=False,
+                        ),
+                    )
             with Vertical(id="right-pane"):
                 tool_tree = Tree("Tools", id="tool-log")
                 tool_tree.show_root = False
-                tool_tree.border_title = "Tools"
+                tool_tree.border_title = "Tools invoked"
                 yield tool_tree
-                status = Static(id="status-panel")
-                status.border_title = "Info"
-                yield status
+        yield Static(id="status-bar")
 
     # ── Lifecycle ────────────────────────────────────────────────────────
 
@@ -271,9 +293,13 @@ class AbstractAgentTUI(App):
             return
 
         self._print_welcome()
-        self._update_status()
+        self.call_after_refresh(self._update_status)  # defer until layout is done
         self.set_interval(10, self._update_status)
         self.query_one("#user-input", Input).focus()
+
+    def on_resize(self) -> None:
+        """Re-render status bar on terminal resize."""
+        self._update_status()
 
     # ── Status panel ─────────────────────────────────────────────────────
 
@@ -306,9 +332,22 @@ class AbstractAgentTUI(App):
         return f"[{color}]{bar}[/{color}] {pct:.0f}%"
 
     def _update_status(self) -> None:
-        """Refresh the right-pane status panel."""
-        panel = self.query_one("#status-panel", Static)
-        panel.update(Text.from_markup(self._build_status_text()))
+        """Refresh the bottom status bar."""
+        bar = self.query_one("#status-bar", Static)
+        bar.update(Text.from_markup(self._build_status_bar_text()))
+
+    def _build_status_bar_text(self) -> str:
+        """Return Rich markup for the bottom status bar."""
+        now = datetime.now().astimezone().strftime("%I:%M %p %Z").lstrip("0")
+        tokens_used, ctx_pct = self._estimate_context_usage()
+        ctx_bar = self._context_bar(ctx_pct, width=10)
+        parts = [
+            f"  [dim]{now}[/dim] |  [bold purple]Vectorly[/bold purple]  |  "
+            f"{self.TITLE}  |  [dim]{self._llm_model.value}[/dim]  |  {ctx_bar}",
+        ]
+        if self._working_dir:
+            parts.append(f"  |  📁 [dim]Output dir:[/dim] {self._working_dir}")
+        return "".join(parts)
 
     # ── Agent callbacks ──────────────────────────────────────────────────
 
@@ -471,7 +510,7 @@ class AbstractAgentTUI(App):
             self._last_seen_chat_count = current_count
             return
 
-        ts = datetime.now().strftime("%H:%M")
+        ts = datetime.now().strftime("%H:%M:%S")
         for c in chats[self._last_seen_chat_count:]:
             if c.role.value == "tool":
                 self._tool_call_count += 1
@@ -519,13 +558,15 @@ class AbstractAgentTUI(App):
         """Route emitted messages to the appropriate pane."""
         chat = self.query_one("#chat-log", RichLog)
 
+        # Eagerly flush so CALL/AUTO nodes appear before any RESULT
+        self._flush_auto_executed_tools(chat)
+
         # Let subclass handle first — if it returns True, we're done.
         if self._handle_additional_message(message):
             self._update_status()
             return
 
         if isinstance(message, ChatResponseEmittedMessage):
-            self._flush_auto_executed_tools(chat)
 
             if self._streaming_started:
                 # Flush remaining partial line with formatting
@@ -553,7 +594,7 @@ class AbstractAgentTUI(App):
 
         elif isinstance(message, ToolInvocationResultEmittedMessage):
             inv = message.tool_invocation
-            ts = datetime.now().strftime("%H:%M")
+            ts = datetime.now().strftime("%H:%M:%S")
             self._tool_call_count += 1
 
             if inv.status == ToolInvocationStatus.EXECUTED:

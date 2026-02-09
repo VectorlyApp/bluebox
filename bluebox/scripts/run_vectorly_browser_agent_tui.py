@@ -52,9 +52,9 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
         self,
         llm_model: LLMModel,
         remote_debugging_address: str = "http://127.0.0.1:9222",
-        routine_output_dir: str | None = None,
+        routine_output_dir: str = "./routine_output",
     ) -> None:
-        super().__init__(llm_model)
+        super().__init__(llm_model, working_dir=routine_output_dir)
         self._remote_debugging_address = remote_debugging_address
         self._routine_output_dir = routine_output_dir
 
@@ -73,7 +73,7 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
         chat = self.query_one("#chat-log", RichLog)
         chat.write(Text.from_markup(
             "[bold green]Vectorly Browser Agent[/bold green]  "
-            "[dim]powered by vectorly[/dim]"
+            "[dim]powered by Vectorly[/dim]"
         ))
         chat.write("")
 
