@@ -96,7 +96,6 @@ HELP_TEXT = """\
   [cyan]/status[/cyan]               Show current state
   [cyan]/chats[/cyan]                Show message history
   [cyan]/clear[/cyan]                Clear the chat display
-  [cyan]/copy[/cyan]                 Copy last response to clipboard
   [cyan]/reset[/cyan]                Start new conversation
   [cyan]/help[/cyan]                 Show this help
   [cyan]/quit[/cyan]                 Exit
