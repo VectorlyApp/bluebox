@@ -334,14 +334,7 @@ class AbstractAgentTUI(App):
     def _update_status(self) -> None:
         """Refresh the bottom status bar."""
         bar = self.query_one("#status-bar", Static)
-        left = Text.from_markup(self._build_status_bar_text())
-        hint = Text.from_markup("[dim]Shift+drag to select[/dim]")
-        # Pad the left text so the hint is right-aligned to the bar's width
-        bar_width = bar.size.width or self.size.width
-        pad = max(0, bar_width - left.cell_len - hint.cell_len)
-        left.append(" " * pad)
-        left.append_text(hint)
-        bar.update(left)
+        bar.update(Text.from_markup(self._build_status_bar_text()))
 
     def _build_status_bar_text(self) -> str:
         """Return Rich markup for the bottom status bar."""
