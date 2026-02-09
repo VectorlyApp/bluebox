@@ -1,5 +1,5 @@
 """
-bluebox/agents/vectorly_browser_agent.py
+bluebox/agents/bluebox_agent.py
 
 Agent specialized in browsing the web using Vectorly routines.
 

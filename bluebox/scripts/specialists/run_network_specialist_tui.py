@@ -47,7 +47,10 @@ if TYPE_CHECKING:
 
 # ─── Slash commands ──────────────────────────────────────────────────────────
 
-SLASH_COMMANDS = ["/discover"] + BASE_SLASH_COMMANDS
+SLASH_COMMANDS: dict[str, str] = {
+    "/discover": "Discover API endpoints for a task",
+    **BASE_SLASH_COMMANDS,
+}
 
 HELP_TEXT = """\
 [bold]Commands:[/bold]

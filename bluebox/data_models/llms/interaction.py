@@ -273,6 +273,7 @@ class LLMChatResponse(BaseModel):
     """
     Response from an LLM chat completion with tool support.
     """
+    # TODO: capture more metadata here returned from the LLM provider; probably standardize in this class
     content: str | None = Field(
         default=None,
         description="Text content of the response",
@@ -283,7 +284,7 @@ class LLMChatResponse(BaseModel):
     )
     response_id: str | None = Field(
         default=None,
-        description="Response ID for chaining (Responses API)",
+        description="Response ID for chaining (OpenAI Responses API)",
     )
     reasoning_content: str | None = Field(
         default=None,

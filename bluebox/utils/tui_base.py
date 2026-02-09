@@ -17,6 +17,7 @@ from datetime import datetime
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from rich.highlighter import Highlighter
 from rich.markdown import Markdown as RichMarkdown
 from rich.markup import escape
 from rich.syntax import Syntax
@@ -56,9 +57,17 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
 }
 DEFAULT_CONTEXT_WINDOW = 200_000
 
-BASE_SLASH_COMMANDS: list[str] = [
-    "/reset", "/status", "/chats", "/clear", "/help", "/commands", "/quit", "/exit", "/q",
-]
+BASE_SLASH_COMMANDS: dict[str, str] = {
+    "/reset": "Start a new conversation",
+    "/status": "Show current state",
+    "/chats": "Show message history",
+    "/clear": "Clear the chat display",
+    "/help": "Show available commands",
+    "/commands": "Show available commands",
+    "/quit": "Exit the application",
+    "/exit": "Exit the application",
+    "/q": "Exit the application",
+}
 
 BASE_HELP_TEXT = dedent("""\
     [bold]Commands:[/bold]
@@ -124,6 +133,14 @@ APP_CSS = dedent("""\
         overflow-y: auto;
     }
 
+    #saved-files-log {
+        height: 1fr;
+        max-height: 33%;
+        border: solid $warning;
+        border-title-color: $warning;
+        overflow-y: auto;
+    }
+
 """)
 
 
@@ -146,6 +163,20 @@ class SlashCommandSuggester(SuggestFromList):
         if not value.startswith("/"):
             return None
         return await super().get_suggestion(value)
+
+
+class SlashCommandHighlighter(Highlighter):
+    """Highlights the leading slash command in cyan when it matches a known command."""
+
+    def __init__(self, commands: dict[str, str]) -> None:
+        super().__init__()
+        self._commands = commands
+
+    def highlight(self, text: Text) -> None:
+        plain = text.plain
+        token = plain.split()[0] if plain.strip() else ""
+        if token in self._commands:
+            text.stylize("bold cyan", 0, len(token))
 
 
 # ─── Base TUI ────────────────────────────────────────────────────────────────
@@ -173,8 +204,11 @@ class AbstractAgentTUI(App):
     ]
 
     # Override in subclasses to extend the command palette.
-    SLASH_COMMANDS: ClassVar[list[str]] = BASE_SLASH_COMMANDS
+    SLASH_COMMANDS: ClassVar[dict[str, str]] = BASE_SLASH_COMMANDS
     HELP_TEXT: ClassVar[str] = BASE_HELP_TEXT
+
+    # Set True in subclasses to show a "Saved files" pane below the tool tree.
+    SHOW_SAVED_FILES_PANE: ClassVar[bool] = False
 
     # ── Init ─────────────────────────────────────────────────────────────
 
@@ -208,6 +242,7 @@ class AbstractAgentTUI(App):
         # Counters
         self._tool_call_count: int = 0
         self._last_seen_chat_count: int = 0
+        self._seen_call_ids: set[str] = set()  # dedup CALL nodes in tool tree
 
     # ── Abstract / hook methods ──────────────────────────────────────────
 
@@ -268,6 +303,17 @@ class AbstractAgentTUI(App):
         """Return Rich markup for the user-message prefix."""
         return "[bold green]You>[/bold green]"
 
+    def _add_saved_file(self, filepath: str) -> None:
+        """Write a timestamped entry to the saved-files pane."""
+        if not self.SHOW_SAVED_FILES_PANE:
+            return
+        log = self.query_one("#saved-files-log", RichLog)
+        ts = datetime.now().strftime("%H:%M:%S")
+        # Show just the filename, not the full path
+        filename = filepath.rsplit("/", 1)[-1] if "/" in filepath else filepath
+        log.write(Text.from_markup(f"[dim]{ts}[/dim]  {filename}"))
+        log.scroll_end(animate=False)
+
     # ── Compose ──────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
@@ -281,8 +327,9 @@ class AbstractAgentTUI(App):
                     yield Input(
                         placeholder="Type a message or /help ...",
                         id="user-input",
+                        highlighter=SlashCommandHighlighter(self.SLASH_COMMANDS),
                         suggester=SlashCommandSuggester(
-                            self.SLASH_COMMANDS, case_sensitive=False,
+                            list(self.SLASH_COMMANDS.keys()), case_sensitive=False,
                         ),
                     )
             with Vertical(id="right-pane"):
@@ -290,6 +337,10 @@ class AbstractAgentTUI(App):
                 tool_tree.show_root = False
                 tool_tree.border_title = "Tools invoked"
                 yield tool_tree
+                if self.SHOW_SAVED_FILES_PANE:
+                    saved_log = RichLog(id="saved-files-log", wrap=False, markup=True)
+                    saved_log.border_title = "Saved files"
+                    yield saved_log
         yield Static(id="status-bar")
 
     # ── Lifecycle ────────────────────────────────────────────────────────
@@ -536,6 +587,11 @@ class AbstractAgentTUI(App):
         for c in chats[self._last_seen_chat_count:]:
             if c.role.value == "assistant" and c.tool_calls:
                 for tc in c.tool_calls:
+                    # Deduplicate by call_id when available
+                    if tc.call_id:
+                        if tc.call_id in self._seen_call_ids:
+                            continue
+                        self._seen_call_ids.add(tc.call_id)
                     details: list[str] = []
                     if hasattr(tc, "tool_arguments") and tc.tool_arguments:
                         details = json.dumps(tc.tool_arguments, indent=2).split("\n")
@@ -603,7 +659,13 @@ class AbstractAgentTUI(App):
                     details = json.dumps(message.tool_result, indent=2).split("\n")
                 elif message.tool_result:
                     details = str(message.tool_result).split("\n")
-                details = prefix + details
+                if self.SHOW_SAVED_FILES_PANE and prefix:
+                    for line in prefix:
+                        # Strip the 📄 emoji prefix to get the raw path
+                        path = line.lstrip("\U0001f4c4 ").strip() if line.startswith("\U0001f4c4") else line
+                        self._add_saved_file(path)
+                else:
+                    details = prefix + details
                 self._add_tool_node(
                     Text.assemble(
                         (ts, "dim"), " ", ("RESULT", "green"), " ", (inv.tool_name, "bold"),
@@ -673,6 +735,7 @@ class AbstractAgentTUI(App):
             if self._agent:
                 self._agent.reset()
             self._last_seen_chat_count = 0
+            self._seen_call_ids.clear()
             self._on_reset()
             chat.write(Text.from_markup("[yellow]\u21ba Conversation reset[/yellow]"))
             self._update_status()
@@ -686,7 +749,6 @@ class AbstractAgentTUI(App):
         if cmd == "/clear":
             self.query_one("#chat-log", RichLog).clear()
             return
-
         # ── Agent-specific commands ──
         if self._handle_custom_command(cmd, user_input):
             return

@@ -4,6 +4,8 @@ bluebox/llms/abstract_llm_vendor_client.py
 Abstract base class for LLM vendor clients.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections.abc import Generator
 from typing import Any, ClassVar, TypeVar
@@ -12,7 +14,6 @@ from pydantic import BaseModel
 
 from bluebox.data_models.llms.interaction import LLMChatResponse
 from bluebox.data_models.llms.vendors import LLMModel, LLMVendor
-
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -38,7 +39,7 @@ class AbstractLLMVendorClient(ABC):
             raise TypeError(f"{cls.__name__} must define _vendor class attribute")
 
     @classmethod
-    def get_llm_vendor_client(cls, model: LLMModel) -> "AbstractLLMVendorClient":
+    def get_llm_vendor_client(cls, model: LLMModel) -> AbstractLLMVendorClient:
         """Create the appropriate vendor client for the given model."""
         for subclass in cls.__subclasses__():
             if subclass._vendor == model.vendor:
