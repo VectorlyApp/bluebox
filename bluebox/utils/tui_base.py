@@ -46,11 +46,14 @@ if TYPE_CHECKING:
 
 MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "gpt-4": 128_000,
-    "gpt-5": 128_000,
+    "gpt-5": 400_000,
     "o3": 200_000,
     "o4": 200_000,
+    "claude-opus": 200_000,
+    "claude-sonnet": 200_000,
+    "claude-haiku": 200_000,
 }
-DEFAULT_CONTEXT_WINDOW = 128_000
+DEFAULT_CONTEXT_WINDOW = 200_000
 
 BASE_SLASH_COMMANDS: list[str] = [
     "/reset", "/status", "/chats", "/clear", "/help", "/quit",
