@@ -23,6 +23,7 @@ from rich.syntax import Syntax
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
+from textual.events import Key
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.suggester import SuggestFromList
@@ -299,6 +300,16 @@ class AbstractAgentTUI(App):
         self.call_after_refresh(self._update_status)  # defer until layout is done
         self.set_interval(10, self._update_status)
         self.query_one("#user-input", Input).focus()
+
+    def on_key(self, event: Key) -> None:
+        """Accept slash-command suggestion on Tab."""
+        if event.key == "tab":
+            inp = self.query_one("#user-input", Input)
+            if inp.has_focus and inp._suggestion:
+                event.prevent_default()
+                event.stop()
+                inp.value = inp._suggestion
+                inp.cursor_position = len(inp.value)
 
     def on_resize(self) -> None:
         """Re-render status bar on terminal resize."""
