@@ -104,7 +104,7 @@ APP_CSS = dedent("""\
     }
 
     #status-bar {
-        height: 3;
+        height: 1;
         padding: 0 1;
     }
 
@@ -114,6 +114,7 @@ APP_CSS = dedent("""\
         border-title-color: $secondary;
         overflow-y: auto;
     }
+
 """)
 
 
@@ -168,9 +169,18 @@ class AbstractAgentTUI(App):
 
     # ── Init ─────────────────────────────────────────────────────────────
 
-    def __init__(self, llm_model: LLMModel) -> None:
+    def __init__(self, llm_model: LLMModel, working_dir: str | None = None) -> None:
+        """
+        Initialize the base agent TUI.
+
+        Args:
+            llm_model: The LLM model to use for the agent.
+            working_dir: Optional path shown in a "Working directory" pane on the right.
+                If None, the pane is not rendered.
+        """
         super().__init__()
         self._llm_model = llm_model
+        self._working_dir = working_dir
         self._context_window_size = get_context_window_size(llm_model.value)
 
         # Agent — set in on_mount via _create_agent()
@@ -322,10 +332,13 @@ class AbstractAgentTUI(App):
         now = datetime.now().astimezone().strftime("%I:%M %p %Z").lstrip("0")
         tokens_used, ctx_pct = self._estimate_context_usage()
         ctx_bar = self._context_bar(ctx_pct, width=10)
-        return (
+        parts = [
             f"  [dim]{now}[/dim] |  [bold purple]Vectorly[/bold purple]  |  "
-            f"{self.TITLE}  |  [dim]{self._llm_model.value}[/dim]  |  {ctx_bar}"
-        )
+            f"{self.TITLE}  |  [dim]{self._llm_model.value}[/dim]  |  {ctx_bar}",
+        ]
+        if self._working_dir:
+            parts.append(f"  |  📁 [dim]Files saved to:[/dim] {self._working_dir}")
+        return "".join(parts)
 
     # ── Agent callbacks ──────────────────────────────────────────────────
 

@@ -144,7 +144,7 @@ class GuideAgentTUI(AbstractAgentTUI):
         chat = self.query_one("#chat-log", RichLog)
         chat.write(Text.from_markup(
             "[bold magenta]Guide Agent[/bold magenta]  "
-            "[dim]powered by vectorly[/dim]"
+            "[dim]powered by Vectorly[/dim]"
         ))
         chat.write("")
         chat.write(Text.from_markup(
