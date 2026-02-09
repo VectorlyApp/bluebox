@@ -2,12 +2,12 @@
 """
 bluebox/scripts/run_vectorly_browser_agent.py
 
-Interactive CLI for the VectorlyBrowserAgent.
+Interactive CLI for the BlueBoxAgent.
 
 Usage:
-    bluebox-vectorly-browser
-    bluebox-vectorly-browser --model gpt-5.1
-    bluebox-vectorly-browser --remote-debugging-address http://127.0.0.1:9222
+    bluebox-agent
+    bluebox-agent --model gpt-5.1
+    bluebox-agent --remote-debugging-address http://127.0.0.1:9222
 """
 
 import argparse
@@ -18,7 +18,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from bluebox.agents.vectorly_browser_agent import VectorlyBrowserAgent
+from bluebox.agents.vectorly_browser_agent import BlueBoxAgent
 from bluebox.config import Config
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
@@ -55,7 +55,7 @@ BANNER = """\
 
 
 class TerminalVectorlyBrowserChat(AbstractTerminalAgentChat):
-    """Interactive terminal chat interface for the Vectorly Browser Agent."""
+    """Interactive terminal chat interface for the BlueBox Agent."""
 
     autonomous_command_name = "run"  # Not used for now, but required by base class
 
@@ -71,9 +71,9 @@ class TerminalVectorlyBrowserChat(AbstractTerminalAgentChat):
         self.routine_output_dir = routine_output_dir
         super().__init__(console=console, agent_color="green")
 
-    def _create_agent(self) -> VectorlyBrowserAgent:
-        """Create the Vectorly Browser agent instance."""
-        return VectorlyBrowserAgent(
+    def _create_agent(self) -> BlueBoxAgent:
+        """Create the BlueBox Agent instance."""
+        return BlueBoxAgent(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self.llm_model,
@@ -113,7 +113,7 @@ class TerminalVectorlyBrowserChat(AbstractTerminalAgentChat):
   [green]/quit[/green]   Exit
 
 Ask me to execute a routine or help you find the right one!""",
-            title="[bold green]Vectorly Browser Agent[/bold green]",
+            title="[bold green]BlueBox Agent[/bold green]",
             subtitle=f"[dim]Model: {self.llm_model.value}[/dim]",
             border_style="green",
             box=box.ROUNDED,
@@ -129,9 +129,9 @@ Ask me to execute a routine or help you find the right one!""",
 
 
 def main() -> None:
-    """Run the Vectorly Browser agent interactively."""
+    """Run the BlueBox Agent interactively."""
     parser = argparse.ArgumentParser(
-        description="Vectorly Browser Agent - Execute web automation routines"
+        description="BlueBox Agent - Execute web automation routines"
     )
     parser.add_argument(
         "--remote-debugging-address",

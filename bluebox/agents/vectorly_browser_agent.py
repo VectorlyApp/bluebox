@@ -4,7 +4,7 @@ bluebox/agents/vectorly_browser_agent.py
 Agent specialized in browsing the web using Vectorly routines.
 
 Contains:
-- VectorlyBrowserAgent: Agent for searching and executing Vectorly routines
+- BlueBoxAgent: Agent for searching and executing Vectorly routines
 - Uses: AbstractAgent base class for all agent plumbing
 """
 
@@ -36,9 +36,9 @@ from bluebox.utils.logger import get_logger
 logger = get_logger(name=__name__)
 
 
-class VectorlyBrowserAgent(AbstractAgent):
+class BlueBoxAgent(AbstractAgent):
     """
-    Vectorly browser agent that searches and executes web automation routines.
+    BlueBoxAgent that searches and executes web automation routines.
 
     The agent uses AbstractAgent as its base and provides tools to search,
     inspect, and execute Vectorly routines.
@@ -82,7 +82,7 @@ class VectorlyBrowserAgent(AbstractAgent):
         routine_output_dir: str = "./routine_output",
     ) -> None:
         """
-        Initialize the Vectorly browser agent.
+        Initialize the BlueBox Agent.
 
         Args:
             emit_message_callable: Callback function to emit messages to the host.
@@ -119,7 +119,7 @@ class VectorlyBrowserAgent(AbstractAgent):
         self._get_all_routines()
 
         logger.debug(
-            "VectorlyBrowserAgent initialized with model: %s, chat_thread_id: %s",
+            "BlueBoxAgent initialized with model: %s, chat_thread_id: %s",
             llm_model,
             self._thread.id,
         )
