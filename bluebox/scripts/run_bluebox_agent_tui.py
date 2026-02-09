@@ -30,7 +30,7 @@ from rich.console import Console
 from rich.text import Text
 from textual.widgets import RichLog
 
-from bluebox.agents.vectorly_browser_agent import BlueBoxAgent
+from bluebox.agents.bluebox_agent import BlueBoxAgent
 from bluebox.config import Config
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model

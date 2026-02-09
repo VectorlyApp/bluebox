@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
 """
-bluebox/scripts/run_vectorly_browser_agent.py
+bluebox/scripts/run_bluebox_agent.py
 
 Interactive CLI for the BlueBoxAgent.
 
@@ -18,7 +17,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from bluebox.agents.vectorly_browser_agent import BlueBoxAgent
+from bluebox.agents.bluebox_agent import BlueBoxAgent
 from bluebox.config import Config
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
