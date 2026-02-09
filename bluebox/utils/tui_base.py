@@ -68,6 +68,11 @@ BASE_HELP_TEXT = dedent("""\
 
 APP_CSS = dedent("""\
     Screen {
+        layout: vertical;
+    }
+
+    #main-row {
+        height: 1fr;
         layout: horizontal;
     }
 
@@ -254,7 +259,7 @@ class AbstractAgentTUI(App):
     # ── Compose ──────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
-        with Horizontal():
+        with Horizontal(id="main-row"):
             with Vertical(id="left-pane"):
                 chat_log = RichLog(id="chat-log", wrap=True, highlight=True, markup=True)
                 chat_log.border_title = "Chat"
@@ -268,12 +273,12 @@ class AbstractAgentTUI(App):
                             self.SLASH_COMMANDS, case_sensitive=False,
                         ),
                     )
-                yield Static(id="status-bar")
             with Vertical(id="right-pane"):
                 tool_tree = Tree("Tools", id="tool-log")
                 tool_tree.show_root = False
                 tool_tree.border_title = "Tools invoked"
                 yield tool_tree
+        yield Static(id="status-bar")
 
     # ── Lifecycle ────────────────────────────────────────────────────────
 
