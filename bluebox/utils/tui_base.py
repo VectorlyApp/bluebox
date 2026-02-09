@@ -87,9 +87,25 @@ APP_CSS = dedent("""\
         border-title-color: $accent;
     }
 
-    #user-input {
+    #input-row {
         height: 3;
-        margin: 0 0;
+    }
+
+    #input-prompt {
+        width: 2;
+        height: 3;
+        padding: 1 0 0 0;
+        color: green;
+        text-style: bold;
+    }
+
+    #user-input {
+        width: 1fr;
+    }
+
+    #status-bar {
+        height: 2;
+        padding: 0 1;
     }
 
     #tool-log {
@@ -97,15 +113,6 @@ APP_CSS = dedent("""\
         border: solid $secondary;
         border-title-color: $secondary;
         overflow-y: auto;
-    }
-
-    #status-panel {
-        height: auto;
-        min-height: 8;
-        max-height: 16;
-        border: solid $primary;
-        border-title-color: $primary;
-        padding: 0 1;
     }
 """)
 
@@ -242,21 +249,21 @@ class AbstractAgentTUI(App):
                 chat_log = RichLog(id="chat-log", wrap=True, highlight=True, markup=True)
                 chat_log.border_title = "Chat"
                 yield chat_log
-                yield Input(
-                    placeholder="Type a message or /help ...",
-                    id="user-input",
-                    suggester=SlashCommandSuggester(
-                        self.SLASH_COMMANDS, case_sensitive=False,
-                    ),
-                )
+                with Horizontal(id="input-row"):
+                    yield Static(">", id="input-prompt")
+                    yield Input(
+                        placeholder="Type a message or /help ...",
+                        id="user-input",
+                        suggester=SlashCommandSuggester(
+                            self.SLASH_COMMANDS, case_sensitive=False,
+                        ),
+                    )
+                yield Static(id="status-bar")
             with Vertical(id="right-pane"):
                 tool_tree = Tree("Tools", id="tool-log")
                 tool_tree.show_root = False
-                tool_tree.border_title = "Tools"
+                tool_tree.border_title = "Tools invoked"
                 yield tool_tree
-                status = Static(id="status-panel")
-                status.border_title = "Info"
-                yield status
 
     # ── Lifecycle ────────────────────────────────────────────────────────
 
@@ -306,9 +313,19 @@ class AbstractAgentTUI(App):
         return f"[{color}]{bar}[/{color}] {pct:.0f}%"
 
     def _update_status(self) -> None:
-        """Refresh the right-pane status panel."""
-        panel = self.query_one("#status-panel", Static)
-        panel.update(Text.from_markup(self._build_status_text()))
+        """Refresh the bottom status bar."""
+        bar = self.query_one("#status-bar", Static)
+        bar.update(Text.from_markup(self._build_status_bar_text()))
+
+    def _build_status_bar_text(self) -> str:
+        """Return Rich markup for the bottom status bar."""
+        now = datetime.now().strftime("%I:%M %p").lstrip("0")
+        tokens_used, ctx_pct = self._estimate_context_usage()
+        ctx_bar = self._context_bar(ctx_pct, width=10)
+        return (
+            f"  [dim]{now}[/dim] |  [bold purple]Vectorly[/bold purple]  |  "
+            f"{self.TITLE}  |  [dim]{self._llm_model.value}[/dim]  |  {ctx_bar}"
+        )
 
     # ── Agent callbacks ──────────────────────────────────────────────────
 
@@ -471,7 +488,7 @@ class AbstractAgentTUI(App):
             self._last_seen_chat_count = current_count
             return
 
-        ts = datetime.now().strftime("%H:%M")
+        ts = datetime.now().strftime("%H:%M:%S")
         for c in chats[self._last_seen_chat_count:]:
             if c.role.value == "tool":
                 self._tool_call_count += 1
@@ -553,7 +570,7 @@ class AbstractAgentTUI(App):
 
         elif isinstance(message, ToolInvocationResultEmittedMessage):
             inv = message.tool_invocation
-            ts = datetime.now().strftime("%H:%M")
+            ts = datetime.now().strftime("%H:%M:%S")
             self._tool_call_count += 1
 
             if inv.status == ToolInvocationStatus.EXECUTED:

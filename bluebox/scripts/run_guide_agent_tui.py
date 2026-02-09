@@ -208,7 +208,7 @@ class GuideAgentTUI(AbstractAgentTUI):
                 f"[dim]\u2014 y/n to approve[/dim]"
             ))
 
-            ts = datetime.now().strftime("%H:%M")
+            ts = datetime.now().strftime("%H:%M:%S")
             self._add_tool_node(
                 Text.assemble(
                     (ts, "dim"), " ", ("REQUEST", "yellow"), " ", (inv.tool_name, "bold"),
