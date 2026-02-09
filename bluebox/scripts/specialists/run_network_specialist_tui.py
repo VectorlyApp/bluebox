@@ -66,7 +66,7 @@ HELP_TEXT = """\
 class NetworkSpecialistTUI(AbstractAgentTUI):
     """Multi-pane TUI for the Network Specialist."""
 
-    TITLE = "Network Spy"
+    TITLE = "Network specialist"
     SLASH_COMMANDS = SLASH_COMMANDS
     HELP_TEXT = HELP_TEXT
 
