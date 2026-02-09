@@ -34,6 +34,7 @@ from rich.text import Text
 from textual import work
 from textual.widgets import RichLog
 
+from bluebox.agents.specialists.network_specialist import NetworkSpecialist
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
@@ -86,7 +87,6 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
     # ── Abstract implementations ─────────────────────────────────────────
 
     def _create_agent(self) -> AbstractAgent:
-        from bluebox.agents.specialists.network_specialist import NetworkSpecialist
         return NetworkSpecialist(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
