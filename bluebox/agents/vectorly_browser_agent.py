@@ -10,9 +10,11 @@ Contains:
 
 from __future__ import annotations
 
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from pathlib import Path
 from textwrap import dedent
 from typing import Any, Callable
 from urllib.parse import urlparse
@@ -110,6 +112,7 @@ class VectorlyBrowserAgent(AbstractSpecialist):
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         remote_debugging_address: str = "http://127.0.0.1:9222",
+        routine_output_dir: str | None = None,
     ) -> None:
         """
         Initialize the Vectorly browser agent.
@@ -124,6 +127,7 @@ class VectorlyBrowserAgent(AbstractSpecialist):
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
             remote_debugging_address: Chrome remote debugging address for routine execution.
+            routine_output_dir: Optional directory to save routine execution results as JSON files.
         """
         # Validate required config
         if not Config.VECTORLY_API_KEY:
@@ -133,6 +137,7 @@ class VectorlyBrowserAgent(AbstractSpecialist):
 
         self._remote_debugging_address = remote_debugging_address
         self._routines_cache: dict[str, Routine] | None = None
+        self._routine_output_dir: Path | None = Path(routine_output_dir) if routine_output_dir else None
 
         # Browser tab and CDP session state
         self._tab_id: str | None = None
@@ -486,7 +491,7 @@ class VectorlyBrowserAgent(AbstractSpecialist):
         succeeded = sum(1 for r in results if r.get("success"))
         failed = len(results) - succeeded
 
-        return {
+        response = {
             "success": failed == 0 and not validation_errors,
             "total_requested": len(routine_requests),
             "total_executed": len(validated),
@@ -495,6 +500,21 @@ class VectorlyBrowserAgent(AbstractSpecialist):
             "validation_errors": validation_errors or None,
             "results": results,
         }
+
+        # Save results to a JSON file if an output directory is configured
+        if self._routine_output_dir is not None:
+            try:
+                self._routine_output_dir.mkdir(parents=True, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                output_path = self._routine_output_dir / f"routine_results_{timestamp}.json"
+                output_path.write_text(json.dumps(response, indent=2, default=str))
+                response["output_file"] = str(output_path)
+                logger.info("Routine results saved to %s", output_path)
+            except Exception as e:
+                logger.exception("Failed to save routine results to file: %s", e)
+                response["output_file_error"] = str(e)
+
+        return response
 
     ## Browser control tools
 
