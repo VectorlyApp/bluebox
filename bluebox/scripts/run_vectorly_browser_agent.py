@@ -63,10 +63,12 @@ class TerminalVectorlyBrowserChat(AbstractTerminalAgentChat):
         self,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
         remote_debugging_address: str = "http://127.0.0.1:9222",
+        routine_output_dir: str | None = None,
     ) -> None:
         """Initialize the terminal chat interface."""
         self.llm_model = llm_model
         self.remote_debugging_address = remote_debugging_address
+        self.routine_output_dir = routine_output_dir
         super().__init__(console=console, agent_color="green")
 
     def _create_agent(self) -> VectorlyBrowserAgent:
@@ -76,6 +78,7 @@ class TerminalVectorlyBrowserChat(AbstractTerminalAgentChat):
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self.llm_model,
             remote_debugging_address=self.remote_debugging_address,
+            routine_output_dir=self.routine_output_dir,
         )
 
     def get_slash_commands(self) -> list[tuple[str, str]]:
@@ -138,6 +141,12 @@ def main() -> None:
         default="http://127.0.0.1:9222",
         help="Chrome remote debugging address (default: http://127.0.0.1:9222)",
     )
+    parser.add_argument(
+        "--routine-output-dir",
+        type=str,
+        default=None,
+        help="Directory to save routine execution results as JSON files",
+    )
     add_model_argument(parser)
     args = parser.parse_args()
 
@@ -156,6 +165,7 @@ def main() -> None:
     chat = TerminalVectorlyBrowserChat(
         llm_model=llm_model,
         remote_debugging_address=args.remote_debugging_address,
+        routine_output_dir=args.routine_output_dir,
     )
     chat.print_welcome()
     chat.run()
