@@ -11,6 +11,8 @@ import logging
 import os
 import sys
 
+from textual.logging import TextualHandler
+
 from bluebox.config import Config
 
 
@@ -131,8 +133,6 @@ def enable_tui_logging(log_file: str | None = None, quiet: bool = False) -> None
     global _tui_mode, _original_stderr  # noqa: PLW0603
     _tui_mode = True
 
-    from textual.logging import TextualHandler
-
     # Save original stderr before we redirect it
     _original_stderr = sys.stderr
 
@@ -140,7 +140,7 @@ def enable_tui_logging(log_file: str | None = None, quiet: bool = False) -> None
         logging.getLogger().setLevel(logging.CRITICAL + 1)
         logging.getLogger("bluebox").setLevel(logging.CRITICAL + 1)
         # Still redirect stderr even in quiet mode
-        sys.stderr = open(os.devnull, "w")  # noqa: SIM115
+        sys.stderr = open(os.devnull, mode="w")  # noqa: SIM115
         return
 
     tui_handler = TextualHandler()
@@ -179,6 +179,6 @@ def enable_tui_logging(log_file: str | None = None, quiet: bool = False) -> None
     # warnings.warn, C extensions, etc.) go to the log file or devnull
     # instead of corrupting the Textual display.
     if log_file:
-        sys.stderr = open(log_file, "a")  # noqa: SIM115
+        sys.stderr = open(log_file, mode="a")  # noqa: SIM115
     else:
-        sys.stderr = open(os.devnull, "w")  # noqa: SIM115
+        sys.stderr = open(os.devnull, mode="w")  # noqa: SIM115

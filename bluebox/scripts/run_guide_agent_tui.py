@@ -69,10 +69,18 @@ DEFAULT_CDP_CAPTURES_DIR = Path("./cdp_captures")
 
 # ─── Slash commands ──────────────────────────────────────────────────────────
 
-SLASH_COMMANDS = [
-    "/load", "/unload", "/show", "/validate", "/execute",
-    "/monitor", "/diff", "/accept", "/reject",
-] + BASE_SLASH_COMMANDS
+SLASH_COMMANDS: dict[str, str] = {
+    "/load": "Load a routine file",
+    "/unload": "Unload the current routine",
+    "/show": "Show current routine details",
+    "/validate": "Validate the current routine",
+    "/execute": "Execute the loaded routine",
+    "/monitor": "Start browser monitoring",
+    "/diff": "Show pending edit diff",
+    "/accept": "Accept pending edit",
+    "/reject": "Reject pending edit",
+    **BASE_SLASH_COMMANDS,
+}
 
 HELP_TEXT = """\
 [bold]Commands:[/bold]
@@ -88,6 +96,7 @@ HELP_TEXT = """\
   [cyan]/status[/cyan]               Show current state
   [cyan]/chats[/cyan]                Show message history
   [cyan]/clear[/cyan]                Clear the chat display
+  [cyan]/copy[/cyan]                 Copy last response to clipboard
   [cyan]/reset[/cyan]                Start new conversation
   [cyan]/help[/cyan]                 Show this help
   [cyan]/quit[/cyan]                 Exit

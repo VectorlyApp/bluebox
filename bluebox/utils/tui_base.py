@@ -12,11 +12,14 @@ welcome screen, status panel, and any extra slash commands.
 from __future__ import annotations
 
 import json
+import platform
+import subprocess
 from abc import abstractmethod
 from datetime import datetime
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from rich.highlighter import Highlighter
 from rich.markdown import Markdown as RichMarkdown
 from rich.markup import escape
 from rich.syntax import Syntax
@@ -56,15 +59,25 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
 }
 DEFAULT_CONTEXT_WINDOW = 200_000
 
-BASE_SLASH_COMMANDS: list[str] = [
-    "/reset", "/status", "/chats", "/clear", "/help", "/commands", "/quit", "/exit", "/q",
-]
+BASE_SLASH_COMMANDS: dict[str, str] = {
+    "/reset": "Start a new conversation",
+    "/status": "Show current state",
+    "/chats": "Show message history",
+    "/clear": "Clear the chat display",
+    "/copy": "Copy last response to clipboard",
+    "/help": "Show available commands",
+    "/commands": "Show available commands",
+    "/quit": "Exit the application",
+    "/exit": "Exit the application",
+    "/q": "Exit the application",
+}
 
 BASE_HELP_TEXT = dedent("""\
     [bold]Commands:[/bold]
     [cyan]/status[/cyan]           Show current state
     [cyan]/chats[/cyan]            Show message history
     [cyan]/clear[/cyan]            Clear the chat display
+    [cyan]/copy[/cyan]             Copy last response to clipboard
     [cyan]/reset[/cyan]            Start new conversation
     [cyan]/help[/cyan]             Show this help
     [cyan]/quit[/cyan]             Exit
@@ -148,6 +161,20 @@ class SlashCommandSuggester(SuggestFromList):
         return await super().get_suggestion(value)
 
 
+class SlashCommandHighlighter(Highlighter):
+    """Highlights the leading slash command in cyan when it matches a known command."""
+
+    def __init__(self, commands: dict[str, str]) -> None:
+        super().__init__()
+        self._commands = commands
+
+    def highlight(self, text: Text) -> None:
+        plain = text.plain
+        token = plain.split()[0] if plain.strip() else ""
+        if token in self._commands:
+            text.stylize("bold cyan", 0, len(token))
+
+
 # ─── Base TUI ────────────────────────────────────────────────────────────────
 
 class AbstractAgentTUI(App):
@@ -173,7 +200,7 @@ class AbstractAgentTUI(App):
     ]
 
     # Override in subclasses to extend the command palette.
-    SLASH_COMMANDS: ClassVar[list[str]] = BASE_SLASH_COMMANDS
+    SLASH_COMMANDS: ClassVar[dict[str, str]] = BASE_SLASH_COMMANDS
     HELP_TEXT: ClassVar[str] = BASE_HELP_TEXT
 
     # ── Init ─────────────────────────────────────────────────────────────
@@ -204,6 +231,9 @@ class AbstractAgentTUI(App):
 
         # Processing guard
         self._processing: bool = False
+
+        # Last assistant response (for /copy)
+        self._last_assistant_response: str = ""
 
         # Counters
         self._tool_call_count: int = 0
@@ -281,8 +311,9 @@ class AbstractAgentTUI(App):
                     yield Input(
                         placeholder="Type a message or /help ...",
                         id="user-input",
+                        highlighter=SlashCommandHighlighter(self.SLASH_COMMANDS),
                         suggester=SlashCommandSuggester(
-                            self.SLASH_COMMANDS, case_sensitive=False,
+                            list(self.SLASH_COMMANDS.keys()), case_sensitive=False,
                         ),
                     )
             with Vertical(id="right-pane"):
@@ -561,6 +592,8 @@ class AbstractAgentTUI(App):
             return
 
         if isinstance(message, ChatResponseEmittedMessage):
+            if message.content:
+                self._last_assistant_response = message.content
 
             if self._streaming_started:
                 # Flush remaining partial line with formatting
@@ -686,6 +719,9 @@ class AbstractAgentTUI(App):
         if cmd == "/clear":
             self.query_one("#chat-log", RichLog).clear()
             return
+        if cmd == "/copy":
+            self._copy_last_response()
+            return
 
         # ── Agent-specific commands ──
         if self._handle_custom_command(cmd, user_input):
@@ -712,6 +748,29 @@ class AbstractAgentTUI(App):
         self._update_status()
 
     # ── Slash-command handlers ───────────────────────────────────────────
+
+    def _copy_last_response(self) -> None:
+        """Copy the last assistant response to the system clipboard."""
+        chat = self.query_one("#chat-log", RichLog)
+        if not self._last_assistant_response:
+            chat.write(Text.from_markup("[yellow]No assistant response to copy.[/yellow]"))
+            return
+        try:
+            if platform.system() == "Darwin":
+                proc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            else:
+                proc = subprocess.Popen(
+                    ["xclip", "-selection", "clipboard"], stdin=subprocess.PIPE,
+                )
+            proc.communicate(self._last_assistant_response.encode("utf-8"))
+            chat.write(Text.from_markup("[green]\u2713 Copied to clipboard[/green]"))
+        except FileNotFoundError:
+            tool = "pbcopy" if platform.system() == "Darwin" else "xclip"
+            chat.write(Text.from_markup(
+                f"[red]\u2717 '{tool}' not found. Install it to use /copy.[/red]"
+            ))
+        except Exception as e:
+            chat.write(Text.from_markup(f"[red]\u2717 Copy failed: {e}[/red]"))
 
     def _show_status_in_chat(self) -> None:
         """Write status info into the chat pane (default: reuse panel text)."""
