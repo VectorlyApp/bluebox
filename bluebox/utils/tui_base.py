@@ -337,7 +337,7 @@ class AbstractAgentTUI(App):
                 tool_tree.border_title = "Tools invoked"
                 yield tool_tree
                 if self.SHOW_SAVED_FILES_PANE:
-                    saved_log = RichLog(id="saved-files-log", wrap=True, markup=True)
+                    saved_log = RichLog(id="saved-files-log", wrap=False, markup=True)
                     saved_log.border_title = "Saved files"
                     yield saved_log
         yield Static(id="status-bar")
