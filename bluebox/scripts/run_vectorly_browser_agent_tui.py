@@ -52,9 +52,11 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
         self,
         llm_model: LLMModel,
         remote_debugging_address: str = "http://127.0.0.1:9222",
+        routine_output_dir: str | None = None,
     ) -> None:
         super().__init__(llm_model)
         self._remote_debugging_address = remote_debugging_address
+        self._routine_output_dir = routine_output_dir
 
     # ── Abstract implementations ─────────────────────────────────────────
 
@@ -64,6 +66,7 @@ class VectorlyBrowserTUI(AbstractAgentTUI):
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
             remote_debugging_address=self._remote_debugging_address,
+            routine_output_dir=self._routine_output_dir,
         )
 
     def _print_welcome(self) -> None:
@@ -122,6 +125,12 @@ def main() -> None:
         help="Chrome remote debugging address (default: http://127.0.0.1:9222)",
     )
     add_model_argument(parser)
+    parser.add_argument(
+        "--routine-output-dir",
+        type=str,
+        default=None,
+        help="Directory to save routine execution results as JSON files",
+    )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")
     args = parser.parse_args()
@@ -148,6 +157,7 @@ def main() -> None:
     app = VectorlyBrowserTUI(
         llm_model=llm_model,
         remote_debugging_address=args.remote_debugging_address,
+        routine_output_dir=args.routine_output_dir,
     )
     app.run()
 
