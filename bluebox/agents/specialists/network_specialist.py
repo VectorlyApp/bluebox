@@ -16,7 +16,7 @@ from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlparse, parse_qs
 
-from bluebox.agents.abstract_agent import agent_tool
+from bluebox.agents.abstract_agent import AgentCard, agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -42,6 +42,13 @@ class NetworkSpecialist(AbstractSpecialist):
     The agent uses AbstractSpecialist as its base and provides tools to search
     and analyze network traffic data from JSONL captures.
     """
+
+    AGENT_CARD = AgentCard(
+        description=(
+            "Searches and analyzes HTTP network transactions. Use for finding endpoints, "
+            "inspecting request/response data, and semantic search across captured traffic."
+        ),
+    )
 
     SYSTEM_PROMPT: str = dedent("""
         You are a network traffic analyst specializing in captured browser network data.

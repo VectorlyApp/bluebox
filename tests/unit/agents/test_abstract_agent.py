@@ -23,7 +23,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel, Field
 
-from bluebox.agents.abstract_agent import AbstractAgent, agent_tool, _ToolMeta
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool, _ToolMeta
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatRole,
@@ -52,6 +52,8 @@ class SearchParams(BaseModel):
 
 class ConcreteAgent(AbstractAgent):
     """Minimal concrete AbstractAgent for testing."""
+
+    AGENT_CARD = AgentCard(description="Test agent for unit tests.")
 
     def _get_system_prompt(self) -> str:
         return "You are a test agent."

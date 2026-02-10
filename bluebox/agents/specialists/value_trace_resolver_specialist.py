@@ -15,7 +15,7 @@ from __future__ import annotations
 import textwrap
 from typing import TYPE_CHECKING, Any, Callable
 
-from bluebox.agents.abstract_agent import agent_tool
+from bluebox.agents.abstract_agent import AgentCard, agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -44,6 +44,13 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
     sessionStorage, IndexedDB), and window object properties to find where
     a specific value first appeared and how it propagates.
     """
+
+    AGENT_CARD = AgentCard(
+        description=(
+            "Traces where dynamic tokens and values originated from across network traffic, "
+            "browser storage, and window properties."
+        ),
+    )
 
     SYSTEM_PROMPT: str = textwrap.dedent("""
         You are a token origin specialist that traces where values come from in web traffic.

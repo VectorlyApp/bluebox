@@ -19,7 +19,7 @@ from typing import Any, Callable
 
 import requests
 
-from bluebox.agents.abstract_agent import AbstractAgent, agent_tool
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
 from bluebox.cdp.connection import cdp_new_tab
 from bluebox.config import Config
 from bluebox.data_models.llms.interaction import (
@@ -43,6 +43,10 @@ class BlueBoxAgent(AbstractAgent):
     The agent uses AbstractAgent as its base and provides tools to search,
     inspect, and execute Vectorly routines.
     """
+
+    AGENT_CARD = AgentCard(
+        description="Searches and executes pre-built Vectorly routines to fulfill user requests.",
+    )
 
     AGENT_LOOP_MAX_ITERATIONS: int = 100
 

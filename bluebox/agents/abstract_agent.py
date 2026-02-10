@@ -17,13 +17,13 @@ Subclasses implement domain-specific behavior by:
 
 from __future__ import annotations
 
-import functools
 import json
+import functools
 from abc import ABC, abstractmethod
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, get_type_hints
+from typing import Any, Callable, ClassVar, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -49,6 +49,18 @@ from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
+
+
+@dataclass(frozen=True)
+class AgentCard:
+    """
+    Self-describing metadata for an agent.
+
+    Every concrete (non-abstract) AbstractAgent subclass must define an AGENT_CARD
+    class variable. Orchestrator agents use these cards to discover subagent
+    capabilities at runtime — e.g. to auto-generate delegation prompts.
+    """
+    description: str  # 1-2 sentence summary for orchestrator prompts
 
 
 @dataclass(frozen=True)
@@ -147,6 +159,19 @@ class AbstractAgent(ABC):
 
     # Class-level configuration (can be overridden by subclasses)
     AGENT_LOOP_MAX_ITERATIONS: int = 10
+    AGENT_CARD: ClassVar[AgentCard]  # must be defined by every concrete subclass
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Validate that concrete subclasses define AGENT_CARD."""
+        super().__init_subclass__(**kwargs)
+        # skip abstract classes (matches existing naming convention in AbstractSpecialist)
+        if cls.__name__.startswith("Abstract"):
+            return
+        # validate that the subclass defines an AGENT_CARD class variable of type AgentCard
+        if not hasattr(cls, "AGENT_CARD") or not isinstance(cls.AGENT_CARD, AgentCard):
+            raise TypeError(
+                f"{cls.__name__} must define an AGENT_CARD class variable of type AgentCard"
+            )
 
     ## Abstract methods
 

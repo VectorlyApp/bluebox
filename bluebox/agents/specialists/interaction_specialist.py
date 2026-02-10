@@ -12,7 +12,7 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 
-from bluebox.agents.abstract_agent import agent_tool
+from bluebox.agents.abstract_agent import AgentCard, agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -36,6 +36,13 @@ class InteractionSpecialist(AbstractSpecialist):
 
     Analyzes recorded UI interactions to discover routine parameters.
     """
+
+    AGENT_CARD = AgentCard(
+        description=(
+            "Analyzes recorded UI interactions (form inputs, clicks, typed values) "
+            "to discover routine parameters."
+        ),
+    )
 
     SYSTEM_PROMPT: str = dedent("""\
         You are a UI interaction analyst specializing in discovering routine parameters from recorded browser interactions.

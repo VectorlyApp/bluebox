@@ -26,7 +26,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel
 
-from bluebox.agents.abstract_agent import AbstractAgent, agent_tool
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, AutonomousConfig, RunMode
 from bluebox.agents.specialists.js_specialist import JSSpecialist
 from bluebox.agents.specialists.network_specialist import NetworkSpecialist
@@ -79,6 +79,14 @@ class SuperDiscoveryAgent(AbstractAgent):
     - Uses results to construct routines
     """
 
+    AGENT_CARD = AgentCard(
+        description=(
+            "Orchestrates routine discovery by coordinating specialist subagents. "
+            "Delegates network analysis, value tracing, JS generation, and interaction "
+            "analysis to specialists, then assembles the results into a routine."
+        ),
+    )
+
     ## System prompts — phase-scoped sections
 
     # Core identity + delegation rules (included in every phase)
@@ -93,12 +101,6 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         **DO NOT** try to do everything yourself with direct tools. You are an ORCHESTRATOR.
         Your job is to coordinate specialists, not to manually inspect every transaction.
-
-        **ALWAYS delegate to specialists for:**
-        - Finding the right endpoint → use `network_specialist`
-        - Tracing dynamic token origins → use `value_trace_resolver`
-        - Browser JavaScript needs → use `js_specialist`
-        - UI interactions → use `interaction_specialist`
 
         **How to delegate:**
         1. `create_task(agent_type="network_specialist", prompt="...")`
@@ -302,6 +304,18 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         # Core identity + delegation rules (always included)
         prompt_parts = [self.PROMPT_CORE]
+
+        # Inject specialist descriptions from AgentCard metadata
+        specialist_lines = [
+            f"- `{agent_type.value}`: {cls.AGENT_CARD.description}"
+            for agent_type, cls in (
+                (SpecialistAgentType.NETWORK_SPECIALIST, NetworkSpecialist),
+                (SpecialistAgentType.VALUE_TRACE_RESOLVER, ValueTraceResolverSpecialist),
+                (SpecialistAgentType.JS_SPECIALIST, JSSpecialist),
+                (SpecialistAgentType.INTERACTION_SPECIALIST, InteractionSpecialist),
+            )
+        ]
+        prompt_parts.append("\n\n**Available specialists:**\n" + "\n".join(specialist_lines))
 
         # Phase-specific instructions
         if phase == DiscoveryPhase.PLANNING:
@@ -1837,7 +1851,10 @@ class SuperDiscoveryAgent(AbstractAgent):
             }
 
     @agent_tool(
-        description="Execute the constructed routine with test parameters to validate it works. Only available when browser is connected.",
+        description=(
+            "Execute the constructed routine with test parameters to validate it works. "
+            "Only available when browser is connected."
+        ),
         parameters={
             "type": "object",
             "properties": {
@@ -1920,7 +1937,10 @@ class SuperDiscoveryAgent(AbstractAgent):
                     "execution_success": True,
                     "data_returned": False,
                     "exec_result": exec_result.model_dump() if exec_result else None,
-                    "message": "Routine executed but 'data' field is missing or empty. Use analyze_validation to decide next steps.",
+                    "message": (
+                        "Routine executed but 'data' field is missing or empty. "
+                        "Use analyze_validation to decide next steps."
+                    ),
                 }
         else:
             self._discovery_state.last_validation_result = {
@@ -1950,7 +1970,10 @@ class SuperDiscoveryAgent(AbstractAgent):
                 "next_action": {
                     "type": "string",
                     "enum": ["done", "fix_routine", "retry_validation"],
-                    "description": "What to do next: 'done' if successful, 'fix_routine' to modify routine, 'retry_validation' to re-run.",
+                    "description": (
+                        "What to do next: 'done' if successful, 'fix_routine' to modify routine, "
+                        "'retry_validation' to re-run."
+                    ),
                 },
             },
             "required": ["analysis", "data_matches_task", "next_action"],

@@ -12,7 +12,7 @@ import time
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 
-from bluebox.agents.abstract_agent import agent_tool
+from bluebox.agents.abstract_agent import AgentCard, agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
 from bluebox.cdp.connection import (
     cdp_new_tab,
@@ -44,6 +44,13 @@ class JSSpecialist(AbstractSpecialist):
 
     Writes IIFE JavaScript for browser execution.
     """
+
+    AGENT_CARD = AgentCard(
+        description=(
+            "Writes and validates IIFE JavaScript for browser execution. Use for cookie/token "
+            "extraction, DOM scraping, and page state manipulation."
+        ),
+    )
 
     _BASE_CONTEXT: str = dedent("""\
         ## Context
