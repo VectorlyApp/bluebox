@@ -23,14 +23,6 @@ There's no central state machine. The phase can be set from multiple code paths,
 
 ---
 
-## 5. Variable Resolution and Placeholder Handling
-
-### 5.2. No validation of placeholder syntax before routine construction **[CODE]**
-
-Placeholder syntax errors (missing escaped quotes, wrong prefix) are only caught when `Routine.model_validate()` runs inside `_construct_routine`. There's no tool for the LLM to validate individual placeholder expressions before assembling the full routine. This means the LLM must get it right on the first try or iterate through construction failures.
-
----
-
 ### Honorable Mentions
 
 (None remaining)

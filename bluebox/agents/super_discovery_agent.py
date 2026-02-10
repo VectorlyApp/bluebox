@@ -44,6 +44,8 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus, SpecialistAgentType
 from bluebox.data_models.orchestration.state import AgentOrchestrationState
 from bluebox.data_models.routine.endpoint import HTTPMethod
+from bluebox.data_models.routine.parameter import VALID_PLACEHOLDER_PREFIXES, BUILTIN_PARAMETERS, ParameterType
+from bluebox.data_models.routine.placeholder import extract_placeholders_from_json_str, PlaceholderQuoteType
 from bluebox.data_models.routine.routine import Routine
 from bluebox.data_models.routine_discovery.state import RoutineDiscoveryState, DiscoveryPhase
 from bluebox.data_models.routine_discovery.llm_responses import (
@@ -176,7 +178,8 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         1. Use `get_discovery_context` to see all processed data (includes CRITICAL_OBSERVED_VALUES)
         2. Review the **Routine Schema Reference** below for required fields and operation types
-        3. Use `construct_routine` with the routine definition:
+        3. Use `validate_placeholders` on your fetch bodies/headers to catch quoting errors early
+        4. Use `construct_routine` with the routine definition:
            - `routine`: the routine definition (name, description, parameters, operations)
 
         **If browser is connected (validation available):**
@@ -1772,6 +1775,145 @@ class SuperDiscoveryAgent(AbstractAgent):
         return context
 
     ## Tools - Routine Construction
+
+    @agent_tool(
+        description=(
+            "Validate placeholder syntax in a JSON string before constructing a routine. "
+            "Checks quoting, prefixes, and parameter type compatibility. "
+            "Pass the JSON body/headers you plan to use and the parameter definitions."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "json_string": {
+                    "type": "string",
+                    "description": (
+                        "The JSON string containing placeholders to validate. "
+                        "Example: '{\"query\": \\\"{{search_term}}\\\", \"page\": \"{{page_number}}\"}'"
+                    ),
+                },
+                "parameters": {
+                    "type": "array",
+                    "description": (
+                        "Parameter definitions. Each needs 'name' and 'type'. "
+                        "Example: [{\"name\": \"search_term\", \"type\": \"string\"}, {\"name\": \"page_number\", \"type\": \"integer\"}]"
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "type": {"type": "string"},
+                        },
+                        "required": ["name", "type"],
+                    },
+                },
+            },
+            "required": ["json_string"],
+        },
+        availability=lambda self: self._discovery_state.root_transaction is not None,
+    )
+    def _validate_placeholders(
+        self,
+        json_string: str,
+        parameters: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Validate placeholder syntax in a JSON string before routine construction.
+
+        Checks that placeholders are properly quoted, prefixes are valid, and
+        quoting matches the parameter type (string params need escape-quoted).
+
+        Args:
+            json_string: JSON string containing {{...}} placeholders to validate.
+            parameters: Optional parameter definitions with 'name' and 'type' fields.
+        """
+        placeholders = extract_placeholders_from_json_str(json_string)
+
+        if not placeholders:
+            return {"valid": True, "placeholders_found": 0, "message": "No placeholders found in string."}
+
+        # Build param type map from provided definitions
+        param_type_map: dict[str, ParameterType] = {}
+        if parameters:
+            for p in parameters:
+                try:
+                    param_type_map[p["name"]] = ParameterType(p["type"])
+                except (KeyError, ValueError):
+                    pass  # skip malformed entries
+
+        builtin_names = {bp.name for bp in BUILTIN_PARAMETERS}
+        non_string_types = {ParameterType.INTEGER, ParameterType.NUMBER, ParameterType.BOOLEAN}
+        errors: list[str] = []
+        validated: list[dict[str, str]] = []
+
+        for ph in placeholders:
+            content = ph.content
+            quote_type = ph.quote_type
+
+            # Storage/meta/window prefix check
+            if ":" in content:
+                prefix, path = [s.strip() for s in content.split(":", 1)]
+                if prefix not in VALID_PLACEHOLDER_PREFIXES:
+                    errors.append(
+                        f"Invalid prefix '{prefix}' in placeholder '{{{{{content}}}}}'. "
+                        f"Valid: {sorted(VALID_PLACEHOLDER_PREFIXES)}"
+                    )
+                elif not path:
+                    errors.append(f"Path is required after '{prefix}:' in placeholder '{{{{{content}}}}}'.")
+                else:
+                    validated.append(
+                        {
+                            "placeholder": content,
+                            "type": "storage/meta",
+                            "quoting": quote_type.value,
+                            "status": "ok",
+                        }
+                    )
+                continue
+
+            # Builtin check
+            if content in builtin_names:
+                validated.append({"placeholder": content, "type": "builtin", "quoting": quote_type.value, "status": "ok"})
+                continue
+
+            # User-defined parameter
+            param_type = param_type_map.get(content)
+            if param_type is None and parameters is not None:
+                errors.append(f"Placeholder '{{{{{content}}}}}' not found in parameter definitions.")
+                continue
+
+            if param_type is not None and param_type not in non_string_types:
+                # String-like types must use escape-quoted
+                if quote_type != PlaceholderQuoteType.ESCAPE_QUOTED:
+                    errors.append(
+                        f"String parameter '{{{{{content}}}}}' must use escape-quoted format: "
+                        f'\\"{{{{{content}}}}}\\" instead of "{{{{{content}}}}}".'
+                    )
+                else:
+                    validated.append(
+                        {
+                            "placeholder": content,
+                            "type": f"param ({param_type.value})",
+                            "quoting": quote_type.value,
+                            "status": "ok",
+                        }
+                    )
+            else:
+                validated.append(
+                    {
+                        "placeholder": content,
+                        "type": f"param ({param_type.value if param_type else 'unknown'})",
+                        "quoting": quote_type.value,
+                        "status": "ok",
+                    }
+                )
+
+        return {
+            "valid": len(errors) == 0,
+            "placeholders_found": len(placeholders),
+            "validated": validated,
+            "errors": errors,
+        }
 
     @agent_tool(
         description="Construct a routine from discovered data. After constructing, use validate_routine to test it.",
