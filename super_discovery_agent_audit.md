@@ -48,10 +48,6 @@ There's no central state machine. The phase can be set from multiple code paths,
 
 ## 5. Variable Resolution and Placeholder Handling
 
-### 5.1. Resolution preference rule is hard to enforce reliably **[BOTH]**
-
-The system prompt says to prefer `source_type='transaction'` over storage when both match. But the orchestrator delegates value tracing to `ValueTraceResolverSpecialist`, which returns its findings — and the specialist's prompt doesn't contain this preference rule. The specialist may report storage as the source, and the orchestrator must override. There's no mechanism ensuring the preference is applied consistently.
-
 ### 5.2. No validation of placeholder syntax before routine construction **[CODE]**
 
 Placeholder syntax errors (missing escaped quotes, wrong prefix) are only caught when `Routine.model_validate()` runs inside `_construct_routine`. There's no tool for the LLM to validate individual placeholder expressions before assembling the full routine. This means the LLM must get it right on the first try or iterate through construction failures.
@@ -65,4 +61,3 @@ When `source_type='transaction'` is used, the tool auto-adds the source transact
 ### Honorable Mentions
 
 - **No request-side search on orchestrator**: Add request header/body search to `scan_for_value`, or document that delegation to NetworkSpecialist is required
-- **ValueTraceResolver doesn't know the "prefer transaction over storage" rule**: Add it to its system prompt (`value_trace_resolver_specialist.py:AUTONOMOUS_SYSTEM_PROMPT`)

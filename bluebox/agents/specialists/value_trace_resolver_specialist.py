@@ -67,6 +67,9 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         - Always start with `search_everywhere`
         - Look at timestamps to determine order of events
         - Values often flow: API response -> storage -> subsequent requests
+        - **PREFER NETWORK (transaction) SOURCES over storage.** When a value appears in
+          both a prior transaction response AND browser storage, report the transaction
+          response as the primary source. Storage may be empty in a fresh browser session.
     """).strip()
 
     AUTONOMOUS_SYSTEM_PROMPT: str = textwrap.dedent("""
@@ -88,6 +91,13 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         - First occurrence (by timestamp) is often the original source
         - Network responses often set values that end up in storage
         - Storage values (cookies) are often sent in subsequent request headers
+
+        ## Source Preference
+
+        **PREFER NETWORK (transaction) SOURCES over storage.** When a value appears in
+        both a prior transaction response AND browser storage (cookie, localStorage,
+        sessionStorage), report the transaction response as the primary source.
+        Storage may be empty in a fresh browser session, making it unreliable.
     """).strip()
 
     ## Magic methods
