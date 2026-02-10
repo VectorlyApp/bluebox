@@ -1,0 +1,43 @@
+{
+ "timestamp": 1770310386.324006,
+ "request_id": "interception-job-24697.0",
+ "request": {
+  "url": "https://www.premierleague.com/",
+  "method": "GET",
+  "type": "Document",
+  "headers": {
+   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+   "Upgrade-Insecure-Requests": "1",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "text/html;charset=utf-8",
+   "date": "Thu, 05 Feb 2026 16:52:50 GMT",
+   "no-cache": "set-cookie",
+   "strict-transport-security": "max-age=31536000; includeSubDomains",
+   "content-encoding": "gzip",
+   "cache-control": "max-age=30, stale-while-revalidate=600, stale-if-error=86400",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 8c1e06e160791fa22f4a732b9aaed82e.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P1",
+   "x-amz-cf-id": "umOrKZgM951yvc8ZpDEsmynuOKr52BJcJP5LWysQ0F3nsGqbHyxrXQ==",
+   "age": "16",
+   "vary": "Origin"
+  },
+  "body": "Premier League Football News, Fixtures, Scores & Results\nSkip to main content\nPremier League\nShop\nAbout Us\nFootball & Community\nEvents\nMedia\nMore\nMatches\nTable\nStatistics\nFantasy\nFantasy Premier League\nFantasy Draft\nFantasy Challenge\nNews\nTransfers\nInjuries\nPlayers\nClubs\nVideo\nWatch Live\nMore\nHome\nMatches\nTable\nStatistics\nFantasy\nFantasy\nFantasy Premier League\nFPL Draft\nFantasy Challenge\nGames\nTransfers\nInjuries\nNews\nNews\nNews\nFantasy News\nVideo & Audio\nVideo & Audio\nLatest Video\nVideo Series\nArchive\nFPL Podcast\nWatch Live\nWatch Live\nBroadcasters\nUSA Bar Finder\nClubs\nPlayers\nAwards\nTickets\nmyPremierLeague\nMore From the PL\nClub Websites\nClub Websites\nPremier League\nShop\nAbout Us\nFootball & Community\nEvents\nMedia\nSummer Series\nPrivacy & Support\nContact Us\nFAQs\nTerms and Conditions\nPrivacy Policy\nCookie Policy\nPremier League Channels\nTikTok\nInstagram\nYouTube\nWhatsapp\nSnapchat\nX\nFacebook\nLead Partner\nOfficial Creativity Partner\nOfficial Bank\nOfficial Soft Drink\nOfficial Beer\nOfficial Cloud & AI Partner\nOfficial Ball\nOfficial Licensee\nOfficial Licensee\nOfficial Licensee\nOfficial Licensee\nOfficial Licensee\nLead Partner\nOfficial Creativity Partner\nOfficial Bank\nOfficial Soft Drink\nOfficial Beer\nOfficial Cloud & AI Partner\nOfficial Ball\nOfficial Licensee\nOfficial Licensee\nOfficial Licensee\nOfficial Licensee\nOfficial Licensee\nFeatures\nJanuary transfer window\nFrom the Clubs\nLatest Videos\nView more\nLatest News\nWatch 2025/26 match highlights\nFantasy Premier League\nAwards\nPremier League\nMore than a Game\nHub\nPremier League Games\nMore\nLead Partner\nOfficial Creativity Partner\nOfficial Bank\nOfficial Soft Drink\nOfficial Beer\nOfficial Cloud & AI Partner\nOfficial Ball\nOfficial Licensee\nOfficial Licensee\nOfficial Licensee\nOfficial Licensee\nOfficial Licensee\nPremier League\nFantasy\nMatches\nTable\nStatistics\nLatest News\nLatest Video\nClubs\nPlayers\n© PREMIER LEAGUE 2026\nModern Slavery Statement\nEquality, Diversity and Inclusion Standard\nTerms of Use\nPolicies\nCookie Policy\nContact Us\nAppearance\nBack To Top",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "text/html;charset=utf-8",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

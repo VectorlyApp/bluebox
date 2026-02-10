@@ -1,0 +1,47 @@
+{
+ "timestamp": 1770310397.363859,
+ "request_id": "interception-job-25638.0",
+ "request": {
+  "url": "https://www.premierleague.com/en/tables/fa-cup",
+  "method": "GET",
+  "type": "Document",
+  "headers": {
+   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+   "Cookie": "optimizelyEndUserId=oeu1770310387203r0.6083826101801375; _cb=DZqqYDBkcOPIGJzoU; _cb_svref=external; pl_guest_id=446a53cd-f0de-402c-851a-bfc8fc1a7009; _gcl_au=1.1.827333669.1770310389; __spdt=0e519478aa364133987d240738452f94; _fbp=fb.1.1770310389052.67472678181097655; _tt_enable_cookie=1; _ttp=01KGQBHKDM2E18C5GEA8A3Z7AM_.tt.1; OptanonAlertBoxClosed=2026-02-05T16:53:10.953Z; __gads=ID=bc67174ed9c17a75:T=1770310391:RT=1770310391:S=ALNI_Mbm-pD5GiKXamQ0j3oE7zgAxDXHDw; __gpi=UID=000013364d94caf5:T=1770310391:RT=1770310391:S=ALNI_MYSjy6WRfOfz1BAiDHyZfGhDlBGMQ; __eoi=ID=df4e5a4d46bd677d:T=1770310391:RT=1770310391:S=AA-Afjau5V_yzDZG7UFi9jSqL08e; PLWithPride_TO=true; _ga=GA1.1.1447469045.1770310392; OptanonConsent=isGpcEnabled=0&datestamp=Thu+Feb+05+2026+11%3A53%3A12+GMT-0500+(Eastern+Standard+Time)&version=202502.1.0&browserGpcFlag=0&isIABGlobal=false&hosts=&consentId=12103b9c-f39b-4f69-9dba-94096345751b&interactionCount=2&isAnonUser=1&landingPath=NotLandingPage&AwaitingReconsent=false&groups=C0001%3A1%2CC0002%3A1%2CC0003%3A1%2CC0004%3A1&intType=1&geolocation=US%3BMA; _chartbeat2=.1770310387350.1770310392918.1.DSG0okCbNBPFBH8JTpDdc0vTCGc-iU.3; kndctr_0A661E8266D2273A0A495F8E_AdobeOrg_identity=CiYyMTY4MTM3MjA4MDMwMDU0ODA2NDUxNTMwMDQ4NTE3NDQyODk4NlISCMq54_XCMxABGAEqA1ZBNjAA8AHKueP1wjM=; kndctr_0A661E8266D2273A0A495F8E_AdobeOrg_cluster=va6; kndctr_0A661E8266D2273A0A495F8E_AdobeOrg_consent=general=in; AMCV_0A661E8266D2273A0A495F8E%40AdobeOrg=MCMID|21681372080300548064515300485174428986; s_nr=1770310393127-Repeat; optimizelySession=1770310393821; _ga_Z815NWVZJY=GS2.1.s1770310392$o1$g1$t1770310394$j58$l0$h0; ttcsid=1770310389174::aSYk8PLt0GgwNXZnXD5N.1.1770310397289.0::1.4361.4260::8110.4.202.428::6846.8.0; ttcsid_CQTPD5JC77U6D8VT2IE0=1770310389174::aqRAp2tLTZ-NxZpMAkJU.1.1770310397289.1; _chartbeat5=338|57|%2Fen%2F|https%3A%2F%2Fwww.premierleague.com%2Fen%2Ftables|BOlAXSVRJgmBRCxBZrCp5DzA3s9||c|BOlAXSVRJgmBRCxBZrCp5DzA3s9|premierleague.com||::169|404|%2Fen%2Ftables%2Fpremier-league|https%3A%2F%2Fwww.premierleague.com%2Fen%2Ftables%2Ffa-cup|DPhh_6qSxg1ZdKLkDzISj4CELL_b||c|BoEiAyDONfk9C_sUAJDYTy00FkTia|premierleague.com||",
+   "Referer": "https://www.premierleague.com/en/tables/premier-league/2025-26",
+   "Upgrade-Insecure-Requests": "1",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "text/html;charset=utf-8",
+   "date": "Thu, 05 Feb 2026 16:50:03 GMT",
+   "no-cache": "set-cookie",
+   "strict-transport-security": "max-age=31536000; includeSubDomains",
+   "content-encoding": "gzip",
+   "x-frame-options": "sameorigin",
+   "content-security-policy": "frame-ancestors 'self';",
+   "cache-control": "max-age=30, stale-while-revalidate=600, stale-if-error=86400",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 8c1e06e160791fa22f4a732b9aaed82e.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P1",
+   "x-amz-cf-id": "YVKH3fezplAnHL2ttKmr1I7Hq007Q2a4sq0ELMNWDfB-p92vIXWjAA==",
+   "age": "194",
+   "vary": "Origin"
+  },
+  "body": "Skip to main content\nPremier League\nShop\nAbout Us\nFootball & Community\nEvents\nMedia\nMore\nMatches\nTable\nStatistics\nFantasy\nFantasy Premier League\nFantasy Draft\nFantasy Challenge\nNews\nTransfers\nInjuries\nPlayers\nClubs\nVideo\nWatch Live\nMore\nHome\nMatches\nTable\nStatistics\nFantasy\nFantasy\nFantasy Premier League\nFPL Draft\nFantasy Challenge\nGames\nTransfers\nInjuries\nNews\nNews\nNews\nFantasy News\nVideo & Audio\nVideo & Audio\nLatest Video\nVideo Series\nArchive\nFPL Podcast\nWatch Live\nWatch Live\nBroadcasters\nUSA Bar Finder\nClubs\nPlayers\nAwards\nTickets\nmyPremierLeague\nMore From the PL\nClub Websites\nClub Websites\nPremier League\nShop\nAbout Us\nFootball & Community\nEvents\nMedia\nSummer Series\nPrivacy & Support\nContact Us\nFAQs\nTerms and Conditions\nPrivacy Policy\nCookie Policy\nPremier League Channels\nTikTok\nInstagram\nYouTube\nWhatsapp\nSnapchat\nX\nFacebook\nPremier League\nFA Cup\nEFL Cup\nUEFA Champions League\nUEFA Europa League\nUEFA Conference League\nSummer Series\nU21\nU18\nLead Partner\nOfficial Creativity Partner\nOfficial Bank\nOfficial Soft Drink\nOfficial Beer\nOfficial Cloud & AI Partner\nOfficial Ball\nOfficial Licensee\nOfficial Licensee\nOfficial Licensee\nOfficial Licensee\nOfficial Licensee\nPremier League\nFantasy\nMatches\nTable\nStatistics\nLatest News\nLatest Video\nClubs\nPlayers\n© PREMIER LEAGUE 2026\nModern Slavery Statement\nEquality, Diversity and Inclusion Standard\nTerms of Use\nPolicies\nCookie Policy\nContact Us\nAppearance\nBack To Top",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "text/html;charset=utf-8",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

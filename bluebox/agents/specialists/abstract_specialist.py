@@ -330,7 +330,7 @@ class AbstractSpecialist(AbstractAgent):
         return f"\n\n## Continue exploring (iteration {self._autonomous_iteration})."
 
     @agent_tool
-    def add_note(self, note: str) -> None:
+    def add_note(self, note: str) -> dict[str, Any]:
         """
         Add a note to the result wrapper.
 
@@ -341,6 +341,7 @@ class AbstractSpecialist(AbstractAgent):
             note: The note/complaint/warning/error message.
         """
         self._notes.append(note)
+        return {"status": "ok", "total_notes": len(self._notes)}
 
     ## Generic Finalize Tool (for orchestrator-defined schemas)
 

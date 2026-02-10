@@ -78,6 +78,11 @@ class InteractionsDataLoader(AbstractDataLoader[UIInteractionEvent, InteractionS
             len(self._entries),
         )
 
+    @property
+    def events(self) -> list[UIInteractionEvent]:
+        """Alias for entries — used by InteractionSpecialist tools."""
+        return self._entries
+
     ## Class methods
 
     @classmethod

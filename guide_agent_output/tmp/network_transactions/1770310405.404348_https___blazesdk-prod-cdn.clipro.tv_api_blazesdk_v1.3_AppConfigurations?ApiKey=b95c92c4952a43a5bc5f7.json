@@ -1,0 +1,47 @@
+{
+ "timestamp": 1770310405.404348,
+ "request_id": "interception-job-26418.0",
+ "request": {
+  "url": "https://blazesdk-prod-cdn.clipro.tv/api/blazesdk/v1.3/AppConfigurations?ApiKey=b95c92c4952a43a5bc5f7e692c1e3636&clientPlatform=Web",
+  "method": "GET",
+  "type": "XHR",
+  "headers": {
+   "Accept": "application/json",
+   "Content-Type": "application/json",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "application/json; charset=utf-8; x-api-version=1.3",
+   "date": "Thu, 05 Feb 2026 16:52:30 GMT",
+   "api-supported-versions": "1.3",
+   "server": "Kestrel",
+   "access-control-allow-credentials": "true",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "access-control-expose-headers": "x-wsc-ttl",
+   "content-encoding": "gzip",
+   "vary": "Accept-Encoding,Origin",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 2032fc652efa8b24e72db743fa879d26.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P3",
+   "x-amz-cf-id": "sQgLq45rrmbXNvp0Vdp42vRt52pzJ9ARCNVD5363u1fwRMfzVyEjYg==",
+   "age": "55"
+  },
+  "body": "{\"configurations\":{\"enableHLSPrefetch\":\"false\",\"enableHLSWarmUp\":\"false\",\"closedCaptionsParserURL\":\"https://blazeprod.prod-cdn.clipro.tv/interaction-templates/closed_captions_parser.html\"},\"platformConfigurations\":{\"configurations\":{},\"baseURL\":null},\"adsConfigurations\":[],\"universalLinksConfiguration\":{\"sharingCopy\":{\"moment\":\"Watch [[TITLE]] now - [[URL]]\",\"story\":\"Watch [[TITLE]] now - [[URL]]\",\"video\":\"Watch [[TITLE]] now - [[URL]]\"},\"sharingPath\":{\"story\":\"stories\",\"moment\":\"moments\",\"video\":\"videos\"},\"shareDomain\":\"epl.mvp.fan\",\"shareProtocol\":\"https\",\"validProtocols\":[\"https\"]},\"recommendationsConfigurations\":{\"supportForYou\":true,\"supportTrending\":false,\"supportMoreLike\":false,\"supportStoriesForYou\":true,\"supportStoriesTrending\":false,\"supportStoriesMoreLike\":false,\"enableForYouContentPreparation\":true,\"enableTrendingContentPreparation\":true,\"enableMoreLikeContentPreparation\":true},\"experiments\":[],\"sdkLoggerConfigurations\":null,\"analyticsLoadBalancerConfiguration\":{\"hosts\":[\"blaze-audit.clipro.tv\",\"blaze2-audit.clipro.tv\"]}}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json; charset=utf-8; x-api-version=1.3",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

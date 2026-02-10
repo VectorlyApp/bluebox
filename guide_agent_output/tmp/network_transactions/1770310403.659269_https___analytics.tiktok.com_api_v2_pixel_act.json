@@ -1,0 +1,52 @@
+{
+ "timestamp": 1770310403.659269,
+ "request_id": "interception-job-26294.0",
+ "request": {
+  "url": "https://analytics.tiktok.com/api/v2/pixel/act",
+  "method": "POST",
+  "type": "Ping",
+  "headers": {
+   "Accept": "*/*",
+   "Content-Type": "text/plain;charset=UTF-8",
+   "Cookie": "_ttp=39G77nJwryA523wwW1QwYob9bkr",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": "{\"event_id\":\"\",\"message_id\":\"messageId-1770310403588-2816526220253\",\"is_onsite\":false,\"timestamp\":\"2026-02-05T16:53:23.588Z\",\"context\":{\"ad\":{\"sdk_env\":\"external\",\"jsb_status\":2},\"device\":{\"platform\":\"pc\"},\"user\":{\"anonymous_id\":\"01KGQBHKDM2E18C5GEA8A3Z7AM_.tt.1\"},\"pixel\":{\"code\":\"CQTPD5JC77U6D8VT2IE0\",\"runtime\":\"1\",\"codes\":\"CQTPD5JC77U6D8VT2IE0\"},\"page\":{\"url\":\"https://www.premierleague.com/en/tables/efl-cup/2025-26\",\"referrer\":\"https://www.premierleague.com/en/tables/efl-cup\",\"load_progress\":\"1\"},\"library\":{\"name\":\"pixel.js\",\"version\":\"2.2.1\"},\"session_id\":\"25f5733f-02b3-11f1-8568-ea3ab8caf4b4::n_O7Da7hGiUjs9Dslrc6\",\"pageview_id\":\"25f5733f-02b3-11f1-8568-ea3ab8caf4b4-9Lj2A.3.1::2e99c31e-02b3-11f1-b695-02001721b87b\",\"variation_id\":\"traffic_2::default\",\"userAgent\":\"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\",\"index\":7,\"sessions\":[{\"csid\":\"1770310389174::aqRAp2tLTZ-NxZpMAkJU\",\"page_csid\":\"1770310389174::aSYk8PLt0GgwNXZnXD5N\",\"csct\":1,\"pixel_code\":\"CQTPD5JC77U6D8VT2IE0\"}]},\"_inspection\":{\"vids\":\"75350340\",\"inter_id\":\"1.14177.14054::12633.5.273.303::11198.14.1\"},\"properties\":{},\"signal_diagnostic_labels\":{\"raw_email\":{\"label\":\"missing\"},\"raw_auto_email\":{\"label\":\"missing\"},\"raw_phone\":{\"label\":\"missing\"},\"raw_auto_phone\":{\"label\":\"missing\"},\"hashed_email\":{\"label\":\"missing\"},\"hashed_phone\":{\"label\":\"missing\"},\"raw_eb_email\":{\"label\":\"missing\"},\"raw_eb_phone\":{\"label\":\"missing\"},\"hashed_eb_email\":{\"label\":\"missing\"},\"hashed_eb_phone\":{\"label\":\"missing\"}},\"action\":\"Metadata\",\"auto_collected_properties\":{\"page_trigger\":\"PageView\",\"form_details\":\"[]\"}}"
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "server": "nginx",
+   "content-length": "0",
+   "access-control-allow-headers": "Authorization,*",
+   "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS,UPDATE",
+   "access-control-allow-origin": "*",
+   "x-tt-logid": "20260205165323E9B1AA39372924C42D38",
+   "access-control-expose-headers": "x-tt-traceflag,x-tt-logid",
+   "server-timing": "cdn-cache; desc=MISS, edge; dur=4, origin; dur=31",
+   "x-tt-trace-host": "01f769e2594cf93c3a25413de0fa9f43423af317a599c466f078a695c65896f2f66d6f7681b0a54cec64bcc3c17c21302cdfc95d60f17d133e87cff28ac282b428e233a79178c4c06a4bdcc2ae050df4c1643408d4fe4c113ae54c5bb0bad91e47",
+   "x-tt-trace-id": "00-260205165323E9B1AA39372924C42D38-0398140865DB1F8E-00",
+   "expires": "Thu, 05 Feb 2026 16:53:23 GMT",
+   "cache-control": "max-age=0, no-cache, no-store",
+   "pragma": "no-cache",
+   "date": "Thu, 05 Feb 2026 16:53:23 GMT",
+   "x-cache": "TCP_MISS from a184-25-148-21.deploy.akamaitechnologies.com (AkamaiGHost/22.4.1-457a7ac92aced575f7fafeb6146c6a89) (-)",
+   "x-tt-trace-tag": "id=16;cdn-cache=miss;type=dyn",
+   "x-origin-response-time": "31,184.25.148.21",
+   "x-akamai-request-id": "1218b712"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

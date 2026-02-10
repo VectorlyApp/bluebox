@@ -1,0 +1,44 @@
+{
+ "timestamp": 1770310398.738038,
+ "request_id": "interception-job-25796.0",
+ "request": {
+  "url": "https://o4504101252104192.ingest.us.sentry.io/api/4508676591910912/envelope/?sentry_version=7&sentry_key=c7ff6cddd8d7825c4ef9080cec7431c5&sentry_client=sentry.javascript.browser%2F10.8.0",
+  "method": "POST",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Content-Type": "text/plain;charset=UTF-8",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": "{\"sent_at\":\"2026-02-05T16:53:18.670Z\",\"sdk\":{\"name\":\"sentry.javascript.browser\",\"version\":\"10.8.0\"}}\n{\"type\":\"session\"}\n{\"sid\":\"17b484eef0924d689f2eafc5fb64fbf5\",\"init\":true,\"started\":\"2026-02-05T16:53:18.670Z\",\"timestamp\":\"2026-02-05T16:53:18.670Z\",\"status\":\"ok\",\"errors\":0,\"attrs\":{\"release\":\"premier-league-25@1.38.13\",\"environment\":\"production\",\"user_agent\":\"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"}}"
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "server": "nginx",
+   "date": "Thu, 05 Feb 2026 16:53:18 GMT",
+   "content-type": "application/json",
+   "content-length": "2",
+   "vary": "origin, access-control-request-method, access-control-request-headers",
+   "access-control-allow-origin": "*",
+   "access-control-expose-headers": "x-sentry-error,x-sentry-rate-limits,retry-after",
+   "cross-origin-resource-policy": "cross-origin",
+   "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+   "via": "1.1 google",
+   "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+  },
+  "body": "{}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

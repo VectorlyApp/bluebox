@@ -1,0 +1,38 @@
+{
+ "timestamp": 1770310398.233697,
+ "request_id": "interception-job-25684.0",
+ "request": {
+  "url": "https://ping.chartbeat.net/ping?h=premierleague.com&p=%2Fen%2Ftables%2Ffa-cup&u=DZqqYDBkcOPIGJzoU&d=premierleague.com&g=67021&g0=No%20Section&g1=No%20Author&n=1&f=00001&c=0&x=0&m=0&y=862&o=1564&w=862&j=45&R=1&W=0&I=0&E=0&e=0&v=%2Fen%2Ftables%2Fpremier-league&K=169::404::DPhh_6qSxg1ZdKLkDzISj4CELL_b::::c::https%3A%2F%2Fwww.premierleague.com%2Fen%2Ftables%2Ffa-cup::BoEiAyDONfk9C_sUAJDYTy00FkTia::::&l1=2&PA=https%3A%2F%2Fwww.premierleague.com%2Fen%2Ftables%2Ffa-cup&b=906&t=CpL4UzBoQdo5BENWcKCET6Y9C_O88J&V=150&z=t%3DC6zJWDpGE_C2ttPnB55mKCxfmtA%26E%3D4%26x%3D0%26c%3D0.07%26y%3D2651%26w%3D862&tz=300&sn=1&sv=DSG0okCbNBPFBH8JTpDdc0vTCGc-iU&sr=external&sd=4&im=0602000f&_",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "date": "Thu, 05 Feb 2026 16:53:18 GMT",
+   "content-type": "image/gif",
+   "content-length": "43",
+   "cross-origin-resource-policy": "cross-origin",
+   "cache-control": "no-cache, no-store, must-revalidate",
+   "pragma": "no-cache",
+   "expires": "0"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/gif",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

@@ -1,0 +1,44 @@
+{
+ "timestamp": 1770310389.10138,
+ "request_id": "59735.633",
+ "request": {
+  "url": "https://api.premierleague.com/content/premierleague/VIDEO/en/4579086?detail=DETAILED",
+  "method": "GET",
+  "type": "Fetch",
+  "headers": {
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "cache-control": "max-age=30, stale-while-revalidate=600, stale-if-error=86400",
+   "content-encoding": "br",
+   "etag": "W/\"06bfdf53b9e1a84a0df08121e085fc7b9\"",
+   "age": "26",
+   "access-control-allow-credentials": "true",
+   "via": "1.1 0854f146df243db4c3bbb6ababb1772a.cloudfront.net (CloudFront)",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "x-cache": "Hit from cloudfront",
+   "x-amz-cf-id": "4APEwtHDgH8-rgRtmyjAvDs6U6lzvo3w99gneYcq3hmppjo4ii_JBw==",
+   "date": "Thu, 05 Feb 2026 16:52:43 GMT",
+   "content-type": "application/json;charset=UTF-8",
+   "x-amz-cf-pop": "BOS50-P6",
+   "vary": "Origin"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

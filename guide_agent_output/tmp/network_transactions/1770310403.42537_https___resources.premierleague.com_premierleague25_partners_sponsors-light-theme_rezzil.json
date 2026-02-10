@@ -1,0 +1,45 @@
+{
+ "timestamp": 1770310403.42537,
+ "request_id": "59735.2505",
+ "request": {
+  "url": "https://resources.premierleague.com/premierleague25/partners/sponsors-light-theme/rezzil",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "vary": "accept-encoding, Origin",
+   "x-amz-version-id": "AGsm8ZxDVKcUesJkqpSfLyfSr9bNaKGI",
+   "etag": "\"9b9bd4a522e99a20aad9faa329d74d72\"",
+   "age": "2895",
+   "via": "1.1 3a2d54938c927c873b7d286793504060.cloudfront.net (CloudFront)",
+   "accept-ranges": "bytes",
+   "x-cache": "Hit from cloudfront",
+   "content-length": "4314",
+   "x-amz-cf-id": "vXUIs5K3VkrbgRkXPa9o4Bn1nxHxHZOC5ViMYxP8Ewkc4WqHKpZrhA==",
+   "date": "Thu, 05 Feb 2026 16:05:17 GMT",
+   "content-type": "image/png",
+   "last-modified": "Thu, 19 Jun 2025 08:28:26 GMT",
+   "server": "AmazonS3",
+   "x-amz-cf-pop": "BOS50-P1",
+   "x-amz-server-side-encryption": "AES256"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/png",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

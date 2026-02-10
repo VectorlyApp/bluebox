@@ -1,0 +1,47 @@
+{
+ "timestamp": 1770310388.568776,
+ "request_id": "interception-job-24910.0",
+ "request": {
+  "url": "https://resources.premierleague.com/premierleague25/partners/sponsors-light-theme/sorare",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+   "Cookie": "optimizelyEndUserId=oeu1770310387203r0.6083826101801375; _cb=DZqqYDBkcOPIGJzoU; _cb_svref=external; _chartbeat2=.1770310387350.1770310388043.1.DSG0okCbNBPFBH8JTpDdc0vTCGc-iU.2; s_nr=1770310388284-Repeat; OptanonConsent=isGpcEnabled=0&datestamp=Thu+Feb+05+2026+11%3A53%3A08+GMT-0500+(Eastern+Standard+Time)&version=202502.1.0&browserGpcFlag=0&isIABGlobal=false&hosts=&consentId=12103b9c-f39b-4f69-9dba-94096345751b&interactionCount=1&isAnonUser=1&landingPath=NotLandingPage&AwaitingReconsent=false&groups=C0001%3A1%2CC0002%3A0%2CC0003%3A0%2CC0004%3A0",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "image/png",
+   "content-length": "2991",
+   "last-modified": "Thu, 19 Jun 2025 08:28:39 GMT",
+   "x-amz-server-side-encryption": "AES256",
+   "x-amz-version-id": "rW7LUtcKDjCLraLg5DVGDk2KyWjaM4n5",
+   "accept-ranges": "bytes",
+   "server": "AmazonS3",
+   "date": "Thu, 05 Feb 2026 16:05:26 GMT",
+   "etag": "\"16f66157cc7fe5c24a3001008b350371\"",
+   "vary": "Origin",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 3a2d54938c927c873b7d286793504060.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P1",
+   "x-amz-cf-id": "LJVkoDF9t0XZ7YzMcQljy5iT34zYleY3OShHbeLVsb46ofGhK7CwsA==",
+   "age": "2867"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/png",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

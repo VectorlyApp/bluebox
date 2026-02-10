@@ -1,0 +1,53 @@
+{
+ "timestamp": 1770310403.77829,
+ "request_id": "DBF20EA559D6B63D9A70DE2165910717",
+ "request": {
+  "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/2/seasons/2025/phases/6/matches?live=false&_limit=100",
+  "method": "OPTIONS",
+  "type": "Other",
+  "headers": {
+   "Accept": "*/*",
+   "Access-Control-Request-Headers": "x-pulse-application-name,x-pulse-application-version",
+   "Access-Control-Request-Method": "GET",
+   "Origin": "https://www.premierleague.com",
+   "Sec-Fetch-Mode": "cors",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "accept-ranges": "bytes",
+   "access-control-allow-headers": "x-pulse-application-name,x-pulse-application-version",
+   "access-control-allow-methods": "GET",
+   "access-control-allow-origin": "*",
+   "access-control-max-age": "600",
+   "allow": "GET, HEAD, POST, PUT, DELETE, OPTIONS, PATCH",
+   "alt-svc": "h3=\":443\"; ma=86400",
+   "content-length": "0",
+   "content-security-policy": "frame-ancestors 'none'; default-src 'self'; script-src 'self'; script-src-elem 'self'; script-src-attr 'self'; style-src 'self'; style-src-elem 'self'; style-src-attr 'self'; img-src 'self'; connect-src 'self'; frame-src 'self'; font-src 'self'; media-src 'self'; object-src 'self'; manifest-src 'self'; worker-src 'self'; prefetch-src 'self'; form-action 'self';",
+   "date": "Thu, 05 Feb 2026 16:53:23 GMT",
+   "permissions-policy": "accelerometer=(), autoplay=(), camera=(), ch-dpr=(), ch-save-data=(), ch-viewport-width=(), ch-width=(), clipboard-read=(), clipboard-write=(), cross-origin-isolated=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), idle-detection=(), keyboard-map=(), local-fonts=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), sync-xhr=(), usb=(), window-placement=(), xr-spatial-tracking=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "strict-transport-security": "max-age=31536000; includeSubDomains",
+   "vary": "Origin\nAccess-Control-Request-Method\nAccess-Control-Request-Headers",
+   "via": "1.1 747d47277bb55e9ca12ebb92db620d58.cloudfront.net (CloudFront)",
+   "x-amz-cf-id": "TBw2L8NiYR0B4bNcn57NAToeIkkrtCpWD0oiSyaWro9Z9Q_UQQtYxw==",
+   "x-amz-cf-pop": "BOS50-P4",
+   "x-cache": "Miss from cloudfront",
+   "x-cache-server": "norp",
+   "x-cache-status": "MISS",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "DENY"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

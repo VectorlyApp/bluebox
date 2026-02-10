@@ -1,0 +1,23 @@
+{
+ "timestamp": 1770310391.672,
+ "request_id": "59735.1104",
+ "request": {
+  "url": "unknown",
+  "method": "unknown",
+  "type": null,
+  "headers": {},
+  "post_data": null
+ },
+ "response": {
+  "status": null,
+  "status_text": null,
+  "headers": {},
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "",
+  "error_text": "net::ERR_ABORTED",
+  "failed": true
+ },
+ "other": null
+}

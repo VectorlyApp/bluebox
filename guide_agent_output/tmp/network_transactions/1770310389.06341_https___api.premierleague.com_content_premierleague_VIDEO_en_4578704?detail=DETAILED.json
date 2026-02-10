@@ -1,0 +1,46 @@
+{
+ "timestamp": 1770310389.06341,
+ "request_id": "interception-job-25112.0",
+ "request": {
+  "url": "https://api.premierleague.com/content/premierleague/VIDEO/en/4578704?detail=DETAILED",
+  "method": "GET",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "application/json;charset=UTF-8",
+   "date": "Thu, 05 Feb 2026 16:52:43 GMT",
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "content-encoding": "br",
+   "cache-control": "max-age=30, stale-while-revalidate=600, stale-if-error=86400",
+   "etag": "W/\"02df51aa3b3e05cf07969aa5386ed11b1\"",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 0854f146df243db4c3bbb6ababb1772a.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P6",
+   "x-amz-cf-id": "KaY9xVBPM-y_xURZYOKGTCQ2_tHsYcdtqHsfDItTemMu7wo4yuePrA==",
+   "age": "26",
+   "access-control-allow-credentials": "true",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "vary": "Origin"
+  },
+  "body": "{\"id\":4578704,\"accountId\":10,\"type\":\"video\",\"title\":\"Watch: Every penalty taken by record-breaker Raul Jimenez\",\"description\":\"See every spot-kick scored by Jimenez, after the Fulham forward moved clear of Yaya Toure as the Premier League's best-ever penalty-taker\",\"date\":\"2026-02-01T18:05:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1769969880000,\"publishTo\":0,\"tags\":[{\"id\":12184,\"label\":\"video-type:vod\"},{\"id\":12186,\"label\":\"content-type:video\"},{\"id\":12438,\"label\":\"VOD\"},{\"id\":13570,\"label\":\"label:Video\"},{\"id\":12432,\"label\":\"free\"}],\"platform\":\"MEDIA_KIND\",\"language\":\"en\",\"additionalInfo\":{\"mediaKindStreamingUrl\":\"https://uksouth-2.av.mk.io/epl-vod-a/hls-itc/premierleague.com_0c97c4a5-9f08-4f24-b62f-a1c46f64b9f9/index.m3u8\"},\"canonicalUrl\":\"\",\"references\":[{\"label\":null,\"id\":54,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"54\"},{\"label\":null,\"id\":2562130,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562130\"},{\"label\":null,\"id\":102057,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"102057\"}],\"related\":[],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1769984594949,\"titleUrlSegment\":\"watch-every-penalty-scored-by-premier-league-record-holder-raul-jimenez\",\"visibilityOrder\":[],\"thumbnailUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/01/8b07f416-447f-42c4-afe7-168273cbf8c2/Jimenez-of-Fulham-and-Wolves.png?width=1280\",\"duration\":45,\"variants\":[{\"aspectRatio\":0.0,\"displayAspectRatio\":null,\"bitRate\":0,\"codec\":null,\"duration\":45,\"format\":null,\"frameRate\":0.0,\"height\":0,\"mediaId\":\"premierleague.com_0c97c4a5-9f08-4f24-b62f-a1c46f64b9f9\",\"tags\":[],\"width\":0}],\"thumbnail\":{\"id\":4578825,\"accountId\":10,\"type\":\"photo\",\"title\":\"Jimenez of Fulham and Wolves\",\"description\":null,\"date\":\"2026-02-01T17:53:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1769968390442,\"publishTo\":0,\"tags\":[],\"platform\":\"PULSE_CMS\",\"language\":\"en\",\"additionalInfo\":{},\"canonicalUrl\":\"\",\"references\":[],\"related\":[],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1769968393368,\"titleUrlSegment\":\"jimenez-of-fulham-and-wolves\",\"subtitle\":null,\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/01/8b07f416-447f-42c4-afe7-168273cbf8c2/Jimenez-of-Fulham-and-Wolves.png\",\"originalDetails\":{\"width\":1920,\"height\":1080,\"aspectRatio\":1.7777778},\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/01/8b07f416-447f-42c4-afe7-168273cbf8c2/Jimenez-of-Fulham-and-Wolves.png\"},\"mediaId\":\"premierleague.com_0c97c4a5-9f08-4f24-b62f-a1c46f64b9f9\",\"mediaGuid\":\"premierleague.com_0c97c4a5-9f08-4f24-b62f-a1c46f64b9f9\",\"subtitle\":null,\"closedCaptioned\":false,\"hotlinkUrl\":null,\"views\":0,\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/01/8b07f416-447f-42c4-afe7-168273cbf8c2/Jimenez-of-Fulham-and-Wolves.png\",\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/01/8b07f416-447f-42c4-afe7-168273cbf8c2/Jimenez-of-Fulham-and-Wolves.png\"}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json;charset=UTF-8",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}
