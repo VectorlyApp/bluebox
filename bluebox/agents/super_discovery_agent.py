@@ -185,6 +185,18 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         **If NO browser connected:**
         4. Call `done` directly after construct_routine
+
+        ## Operation Ordering
+
+        Routines typically start with a `navigate` operation to load the target page before
+        performing any other operations. This is important because:
+        - `fetch` operations run in the page's JS context — without navigating first, the
+          browser has no origin, so requests fail with CORS errors.
+        - Similar situations apply to `js_evaluate`. 
+        - Click/input/scroll operations need a loaded DOM to interact with.
+
+        Look at the root transaction's URL to determine the base URL to navigate to (usually
+        the origin, e.g. `https://example.com`).
     """)
 
     PLACEHOLDER_INSTRUCTIONS: str = (
