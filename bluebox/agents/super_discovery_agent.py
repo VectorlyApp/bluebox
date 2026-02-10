@@ -562,10 +562,11 @@ class SuperDiscoveryAgent(AbstractAgent):
         elif agent_type == SpecialistAgentType.VALUE_TRACE_RESOLVER:
             return ValueTraceResolverSpecialist(
                 emit_message_callable=self._emit_message_callable,
-                llm_model=self._subagent_llm_model,
+                documentation_data_loader=self._documentation_data_loader,
                 network_data_store=self._network_data_loader,
                 storage_data_store=self._storage_data_loader,
                 window_property_data_store=self._window_property_data_loader,
+                llm_model=self._subagent_llm_model,
                 run_mode=RunMode.AUTONOMOUS,
             )
 
@@ -579,6 +580,7 @@ class SuperDiscoveryAgent(AbstractAgent):
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
                 network_data_store=self._network_data_loader,
+                documentation_data_loader=self._documentation_data_loader,
                 run_mode=RunMode.AUTONOMOUS,
             )
 
@@ -590,7 +592,8 @@ class SuperDiscoveryAgent(AbstractAgent):
                 )
             return InteractionSpecialist(
                 emit_message_callable=self._emit_message_callable,
-                interaction_data_store=self._interaction_data_loader,
+                interaction_data_loader=self._interaction_data_loader,
+                documentation_data_loader=self._documentation_data_loader,
                 llm_model=self._subagent_llm_model,
                 run_mode=RunMode.AUTONOMOUS,
             )

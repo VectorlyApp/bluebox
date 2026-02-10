@@ -85,7 +85,7 @@ class TerminalInteractionSpecialistChat(AbstractTerminalAgentChat):
         """Create the Interaction Specialist agent instance."""
         return InteractionSpecialist(
             emit_message_callable=self._handle_message,
-            interaction_data_store=self.interaction_store,
+            interaction_data_loader=self.interaction_store,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self.llm_model,
             run_mode=RunMode.CONVERSATIONAL,

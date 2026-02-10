@@ -112,6 +112,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
+        documentation_data_loader: DocumentationDataLoader | None = None,
         network_data_store: NetworkDataLoader | None = None,
         storage_data_store: StorageDataLoader | None = None,
         window_property_data_store: WindowPropertyDataLoader | None = None,
@@ -122,7 +123,6 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         run_mode: RunMode = RunMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
-        documentation_data_loader: DocumentationDataLoader | None = None,
     ) -> None:
         """
         Initialize the trace hound agent.

@@ -74,7 +74,7 @@ _DATA_PARAM_TO_KEY: dict[str, str] = {
     "js_data_loader": "js",
     "js_data_store": "js",
     "interaction_data_loader": "interaction",
-    "interaction_data_store": "interaction",
+    "interaction_data_loader": "interaction",
     "documentation_data_loader": "documentation",
 }
 

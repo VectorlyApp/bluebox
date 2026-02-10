@@ -39,8 +39,8 @@ class InteractionSpecialist(AbstractSpecialist):
 
     AGENT_CARD = AgentCard(
         description=(
-            "Analyzes recorded UI interactions (form inputs, clicks, typed values) "
-            "to discover routine parameters."
+            "Analyzes user recorded UI interactions (form inputs, clicks, typed values). "
+            "Useful to obtain parameters of a routine by analyzing user interactions."
         ),
     )
 
@@ -95,7 +95,8 @@ class InteractionSpecialist(AbstractSpecialist):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
-        interaction_data_store: InteractionsDataLoader,
+        interaction_data_loader: InteractionsDataLoader,
+        documentation_data_loader: DocumentationDataLoader | None = None,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -103,9 +104,8 @@ class InteractionSpecialist(AbstractSpecialist):
         run_mode: RunMode = RunMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
-        documentation_data_loader: DocumentationDataLoader | None = None,
     ) -> None:
-        self._interaction_data_store = interaction_data_store
+        self._interaction_data_loader = interaction_data_loader
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -120,13 +120,13 @@ class InteractionSpecialist(AbstractSpecialist):
         )
         logger.debug(
             "InteractionSpecialist initialized with %d events",
-            len(interaction_data_store.events),
+            len(interaction_data_loader.events),
         )
 
     ## Abstract method implementations
 
     def _get_system_prompt(self) -> str:
-        stats = self._interaction_data_store.stats
+        stats = self._interaction_data_loader.stats
         context = (
             f"\n\n## Interaction Data Context\n"
             f"- Total Events: {stats.total_events}\n"
@@ -137,7 +137,7 @@ class InteractionSpecialist(AbstractSpecialist):
         return self.SYSTEM_PROMPT + context
 
     def _get_autonomous_system_prompt(self) -> str:
-        stats = self._interaction_data_store.stats
+        stats = self._interaction_data_loader.stats
         context = (
             f"\n\n## Interaction Data Context\n"
             f"- Total Events: {stats.total_events}\n"
@@ -169,7 +169,7 @@ class InteractionSpecialist(AbstractSpecialist):
     @token_optimized
     def _get_interaction_summary(self) -> dict[str, Any]:
         """Get summary statistics of all recorded interactions."""
-        stats = self._interaction_data_store.stats
+        stats = self._interaction_data_loader.stats
         return {
             "total_events": stats.total_events,
             "unique_urls": stats.unique_urls,
@@ -190,13 +190,13 @@ class InteractionSpecialist(AbstractSpecialist):
         if not types:
             return {"error": "types list is required"}
 
-        events = self._interaction_data_store.filter_by_type(types)
+        events = self._interaction_data_loader.filter_by_type(types)
         # Return summary to avoid overwhelming the LLM
         results = []
         for event in events[:50]:
             el = event.element
             results.append({
-                "index": self._interaction_data_store.events.index(event),
+                "index": self._interaction_data_loader.events.index(event),
                 "type": event.type.value,
                 "tag_name": el.tag_name,
                 "element_id": el.id,
@@ -231,7 +231,7 @@ class InteractionSpecialist(AbstractSpecialist):
             class_name: CSS class name (substring match).
             type_attr: Input type attribute (e.g., text, email, date).
         """
-        events = self._interaction_data_store.filter_by_element(
+        events = self._interaction_data_loader.filter_by_element(
             tag_name=tag_name,
             element_id=element_id,
             class_name=class_name,
@@ -242,7 +242,7 @@ class InteractionSpecialist(AbstractSpecialist):
         for event in events[:50]:
             el = event.element
             results.append({
-                "index": self._interaction_data_store.events.index(event),
+                "index": self._interaction_data_loader.events.index(event),
                 "type": event.type.value,
                 "tag_name": el.tag_name,
                 "element_id": el.id,
@@ -269,9 +269,9 @@ class InteractionSpecialist(AbstractSpecialist):
         Args:
             index: Zero-based index of the interaction event.
         """
-        detail = self._interaction_data_store.get_event_detail(index)
+        detail = self._interaction_data_loader.get_event_detail(index)
         if detail is None:
-            return {"error": f"Event index {index} out of range (0-{len(self._interaction_data_store.events) - 1})"}
+            return {"error": f"Event index {index} out of range (0-{len(self._interaction_data_loader.events) - 1})"}
 
         return detail
 
@@ -280,7 +280,7 @@ class InteractionSpecialist(AbstractSpecialist):
     @token_optimized
     def _get_form_inputs(self) -> dict[str, Any]:
         """Get all input/change events with their values and element info."""
-        inputs = self._interaction_data_store.get_form_inputs()
+        inputs = self._interaction_data_loader.get_form_inputs()
         return {
             "total_inputs": len(inputs),
             "inputs": inputs[:100],
@@ -291,7 +291,7 @@ class InteractionSpecialist(AbstractSpecialist):
     @token_optimized
     def _get_unique_elements(self) -> dict[str, Any]:
         """Get deduplicated elements with interaction counts and types."""
-        elements = self._interaction_data_store.get_unique_elements()
+        elements = self._interaction_data_loader.get_unique_elements()
         return {
             "total_unique_elements": len(elements),
             "elements": elements[:50],
