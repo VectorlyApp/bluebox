@@ -576,6 +576,32 @@ class AbstractAgent(ABC):
 
         return self._documentation_data_loader.search_by_regex(pattern=pattern, top_n=top_n)
 
+    ## Tool availability prompt section
+
+    def _get_tool_availability_prompt_section(self) -> str:
+        """
+        Build a system prompt section listing currently available tools.
+
+        Only lists tools whose availability evaluates to True right now.
+        Called automatically after _sync_tools() so the tool set is current.
+        Injected in _call_llm() so tools are automatically listed in the system prompt.
+        """
+        if not self._registered_tool_names:
+            return ""
+
+        collected = self._collect_tools()
+        if not collected:
+            return ""
+
+        lines = ["\n\n## Tools"]
+        for tool_meta, _ in collected:
+            if tool_meta.name in self._registered_tool_names:
+                # Truncate long descriptions to first sentence
+                short = tool_meta.description.split(". ")[0].split("\n")[0]
+                lines.append(f"- `{tool_meta.name}` — {short}")
+
+        return "\n".join(lines)
+
     ## LLMs and streaming
 
     def _call_llm(
@@ -596,6 +622,9 @@ class AbstractAgent(ABC):
                 - Tool name string: Force the model to use a specific tool
         """
         self._sync_tools()  # ensure tool availability reflects current state
+
+        # Append tool availability (injected here so subclasses can't accidentally omit it)
+        system_prompt = system_prompt + self._get_tool_availability_prompt_section()
 
         # Append documentation context (injected here so subclasses can't accidentally omit it)
         docs_section = self._get_documentation_prompt_section()

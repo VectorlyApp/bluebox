@@ -108,16 +108,6 @@ class SuperDiscoveryAgent(AbstractAgent):
         - Keep parameters MINIMAL - only what the user MUST provide
         - If only one value was observed and it could be hardcoded, hardcode it
         - Credentials for fetch operations: same-origin > include > omit
-
-        ## Tools Available by Phase
-        Some tools are gated — they appear only after preconditions are met.
-
-        - **PLANNING** (initial): create_task, run_pending_tasks, list_tasks, get_task_result, list_transactions, get_transaction, scan_for_value, search_documentation
-        - **DISCOVERING** (after `record_identified_endpoint`): *above* + record_extracted_variable, record_resolved_variable, mark_transaction_processed, get_discovery_context
-        - **CONSTRUCTING** (after all transactions processed): *above* + construct_routine
-        - **VALIDATING** (after `construct_routine`, browser connected): *above* + validate_routine, analyze_validation
-        - **Any time after routine constructed**: done
-        - **If no root transaction or 5+ construction attempts**: fail
     """)
 
     # Phase-specific instructions (only the active phase's block is included)

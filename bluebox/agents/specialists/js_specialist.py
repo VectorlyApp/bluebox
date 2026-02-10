@@ -84,13 +84,6 @@ class JSSpecialist(AbstractSpecialist):
     SYSTEM_PROMPT: str = dedent("""\
         You are a JavaScript expert specializing in browser DOM manipulation.
 
-        ## Tools
-
-        - `get_dom_snapshot` — DOM snapshot (latest by default)
-        - `validate_js_code` — dry-run validation
-        - `finalize_result` — finalize with result
-        - `execute_js_in_browser` — test against live site (use selectively; best for live-state-dependent code like cookies/storage/dynamic DOM)
-
         ## Guidelines
 
         - Validate before submitting
@@ -98,24 +91,10 @@ class JSSpecialist(AbstractSpecialist):
         - Use `get_dom_snapshot` to understand page structure before writing code
     """)
 
-    _NETWORK_TRAFFIC_PROMPT_SECTION: str = dedent("""
-        ## Network Traffic Data
-
-        - `search_network_traffic` — filter captured HTTP requests by method, host, path, status, content type, or body text
-        - `get_network_entry` — full details of a request by ID (headers + body)
-    """)
-
-    _JS_FILES_PROMPT_SECTION: str = dedent("""
-        ## JavaScript Files (Use Sparingly)
-
-        Captured JS bundles from the web app (often large/minified). Most DOM tasks don't need these.
-        Useful for: finding hardcoded API endpoints, understanding client-side auth, checking token references.
-
-        - `search_js_files` — keyword search (fast)
-        - `search_js_files_regex` — regex search with context (15s timeout, use sparingly)
-        - `get_js_file_content` — file content by request_id
-        - `list_js_files` — list all captured JS files
-    """)
+    # These conditional prompt sections are no longer needed — AbstractAgent._call_llm()
+    # auto-injects a "## Tools" section listing all available/unavailable tools.
+    _NETWORK_TRAFFIC_PROMPT_SECTION: str = ""
+    _JS_FILES_PROMPT_SECTION: str = ""
 
     AUTONOMOUS_SYSTEM_PROMPT: str = dedent("""\
         You are a JavaScript expert that autonomously writes browser DOM manipulation code.

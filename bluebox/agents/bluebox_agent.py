@@ -49,11 +49,6 @@ class BlueBoxAgent(AbstractAgent):
     SYSTEM_PROMPT: str = dedent("""
         You are a routine execution agent. Your job is to find and run pre-built Vectorly routines to fulfill user requests.
 
-        ## Available Tools
-        - `search_routines(keywords: list[str])` — Keyword search over routines. Each keyword is matched individually against routine names and descriptions. Pass SHORT, SINGLE-WORD keywords like `["train", "search", "amtrak"]` — NOT long phrases like `["search for amtrak trains"]`. More individual words = broader coverage.
-        - `get_routine_details(routine_id: str)` — Get routine parameters before execution.
-        - `execute_routines_parallel(routine_requests: list[dict], max_concurrency: int = 5)` — Execute routines in parallel, each on its own browser tab. Each dict needs 'routine_id' and optionally 'parameters'. Works for single or multiple routines.
-
         ## Workflow
         1. **Search broadly**: When the user makes a request, use `search_routines` with many single-word keywords to find ALL potentially relevant routines. Think of synonyms and related terms. Example: for "book a flight" use `["flight", "book", "airline", "travel", "booking"]`.
         2. **Inspect matches**: Use `get_routine_details` on each promising match to understand its parameters and what it does.

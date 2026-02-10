@@ -61,14 +61,6 @@ class InteractionSpecialist(AbstractSpecialist):
         - **description**: What the parameter represents
         - **examples**: Observed values from the interactions
 
-        ## Tools
-
-        - `get_interaction_summary` — overview stats
-        - `search_interactions_by_type` — filter by type (click, input, change, etc.)
-        - `search_interactions_by_element` — filter by element attributes
-        - `get_interaction_detail` — full detail for a specific event
-        - `get_form_inputs` — all input/change events with values
-        - `get_unique_elements` — deduplicated elements with interaction counts
     """)
 
     AUTONOMOUS_SYSTEM_PROMPT: str = dedent("""\

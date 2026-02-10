@@ -58,16 +58,6 @@ class NetworkSpecialist(AbstractSpecialist):
         2. Use `search_responses_by_terms` with your terms
         3. Analyze the top results — highest score = most likely match
 
-        ## Tools
-
-        - `search_responses_by_terms` — search response bodies by term list (20-30 terms recommended)
-        - `search_requests_by_terms` — search request side (URL, headers, body)
-        - `search_response_bodies` — exact-match search with context snippets
-        - `get_entry_detail` — full details of a network entry by ID
-        - `get_response_body_schema` — JSON schema of a response body
-        - `get_unique_urls` — all unique URLs in captured traffic
-        - `execute_python` — sandboxed Python with `entries` pre-loaded
-
         ## Guidelines
 
         - Be concise and direct

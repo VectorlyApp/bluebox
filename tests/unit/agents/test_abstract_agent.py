@@ -891,14 +891,17 @@ class TestCallLLM:
     """Tests for _call_llm system prompt injection."""
 
     def test_no_docs_section_without_loader(self, agent: ConcreteAgent) -> None:
-        """System prompt is unmodified when no documentation loader is present."""
+        """System prompt has tool section but no docs section when no documentation loader is present."""
         mock_response = LLMChatResponse(content="hello", response_id="r1")
         agent.llm_client.call_sync = MagicMock(return_value=mock_response)
 
         agent._call_llm([], "base prompt")
 
         call_args = agent.llm_client.call_sync.call_args
-        assert call_args.kwargs["system_prompt"] == "base prompt"
+        system_prompt = call_args.kwargs["system_prompt"]
+        assert system_prompt.startswith("base prompt")
+        assert "## Tools" in system_prompt  # tool availability section always injected
+        assert "Documentation Tools" not in system_prompt  # no docs without loader
 
     def test_docs_section_appended_with_loader(self, agent_with_docs: ConcreteAgent) -> None:
         """System prompt has documentation section appended when loader is present."""

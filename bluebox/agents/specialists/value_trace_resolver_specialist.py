@@ -62,18 +62,6 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         3. Determine the ORIGINAL source (where it first appeared)
         4. Trace propagation (e.g., response -> cookie -> request header)
 
-        ## Tools
-
-        - `search_everywhere` — search ALL data stores at once (start here)
-        - `search_in_network` — search network response bodies
-        - `search_in_storage` — search cookies, localStorage, sessionStorage, IndexedDB
-        - `search_in_window_props` — search window object properties
-        - `get_network_entry` — full details of a network entry
-        - `get_storage_entry` — full details of a storage entry
-        - `get_window_prop_changes` — change history for a window property path
-        - `get_storage_by_key` — storage entries by key name
-        - `execute_python` — sandboxed Python with pre-loaded data
-
         ## Guidelines
 
         - Always start with `search_everywhere`

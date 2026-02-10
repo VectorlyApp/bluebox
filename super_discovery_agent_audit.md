@@ -72,27 +72,6 @@ When `source_type='transaction'` is used, the tool auto-adds the source transact
 
 ## 6. Remaining Improvements
 
-### 1. Fix JSSpecialist data loader wiring **[HIGH IMPACT]**
-
-**Problem:** JSSpecialist is created without `network_data_store`, `js_data_store`, or `dom_snapshots`, disabling most of its tools.
-
-**Fix:** In `_create_specialist()` (line 523), pass the available data loaders:
-
-```python
-return JSSpecialist(
-    emit_message_callable=self._emit_message_callable,
-    llm_model=self._subagent_llm_model,
-    network_data_store=self._network_data_loader,
-    js_data_store=self._js_data_loader,
-    remote_debugging_address=self._remote_debugging_address,
-    run_mode=RunMode.AUTONOMOUS,
-)
-```
-
-Also fix the phantom `submit_js_code` tool reference in the JSSpecialist system prompt (line 91).
-
-**Files:** `super_discovery_agent.py` lines 523-529, `js_specialist.py` line 91
-
 ### 2. Add `construct_routine` schema documentation or a schema-check tool **[MEDIUM IMPACT]**
 
 **Problem:** The `construct_routine` tool accepts `"items": {"type": "object"}` for both parameters and operations arrays — essentially no schema validation from the tool definition. The LLM must guess the correct operation structure from a terse description string.
