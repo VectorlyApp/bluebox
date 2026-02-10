@@ -8,14 +8,6 @@
 
 ## 1. System Prompt Issues
 
-### 1.1. Prompt is excessively long and repetitive **[CODE]**
-
-The `SYSTEM_PROMPT` constant (lines 102-236) is ~135 lines of dense instructions, plus `PLACEHOLDER_INSTRUCTIONS` (lines 81-100) — all injected into every single LLM call alongside dynamic state sections. Key problems:
-
-- **Variable classification rules** are stated three times: in the main workflow text (Phase 2, step 2), in the dedicated "Variable Classification Rules" section (lines 182-198), and again in the "Important Notes" section (lines 226-234 re: "prefer network sources").
-- The **placeholder syntax** section (lines 81-100) is 20 lines of dense examples. It's critical for routine construction but irrelevant during earlier phases (PLANNING, DISCOVERING). Every iteration pays the token cost regardless.
-- **Phase-specific instructions** are all presented upfront even though only one phase is active at a time. The LLM in PLANNING phase has to mentally filter out CONSTRUCTING and VALIDATING instructions.
-
 ### 1.6. `construct_routine` tool schema is too sparse **[CODE]**
 
 The tool's JSON Schema for `operations` (lines 1683-1694) uses `"items": {"type": "object"}` with no property constraints. The description crams the entire operation schema into a single string: `"navigate|fetch|return|sleep|click|input_text|press|..."`. This means the LLM must reconstruct the full schema from a terse description string, increasing the chance of malformed routines. Compare this to the documentation files which contain detailed schemas — but the LLM doesn't know to consult those unless it happens to call `search_docs`.
@@ -43,27 +35,9 @@ It **does not search request headers or request bodies**. If a dynamic token app
 
 The orchestrator (`SuperDiscoveryAgent`) has `get_transaction` which returns the full request details, and `scan_for_value` which searches responses and storage. But there's no direct tool for the orchestrator to do a bulk search across all request bodies or headers. It must delegate to `NetworkSpecialist` for that.
 
-### 2.5. Response body truncation at 5000 chars without indication of loss **[CODE]**
-
-`get_transaction` (line 1047) truncates `response_body` to 5000 chars without telling the LLM how much was lost or offering pagination. For large JSON responses (common with API calls), the truncation could cut off critical fields. Compare to `NetworkSpecialist._get_entry_detail` which adds a truncation message -> Should indicate truncation.
-
 ---
 
 ## 3. Orchestration and Coordination Problems
-
-### 3.1. Availability gating creates an invisible tool problem **[BOTH]**
-
-The SuperDiscoveryAgent confirmed in interview that it sees only 14 tools initially. Tools like `record_extracted_variable`, `record_resolved_variable`, `mark_transaction_processed`, `construct_routine`, `validate_routine`, `analyze_validation`, and `done` are **gated behind availability lambdas** that require state changes (e.g., `root_transaction is not None`).
-
-The problem: The system prompt's workflow instructions reference these tools extensively, but the LLM **cannot see them in its tool list** until preconditions are met. This creates confusion — the agent described some tools as "conceptual steps" it couldn't actually invoke. The `_sync_tools()` call before each LLM call does re-register tools, so they appear after state changes, but:
-
-- The LLM doesn't know tools will appear later
-- The workflow text assumes all tools exist from the start
-- There's no mechanism to tell the LLM "these tools will become available after you do X"
-
-### 3.2. Sequential task execution bottleneck **[CODE]**
-
-`_run_pending_tasks()` (lines 900-980) executes tasks **sequentially** in a for loop. If the orchestrator creates multiple independent tasks (e.g., a NetworkSpecialist search and a ValueTraceResolver trace), they run one after another despite being independent. This doubles latency needlessly.
 
 ### 3.5. Phase transitions are implicit and fragile **[CODE]**
 
@@ -96,17 +70,9 @@ When `source_type='transaction'` is used, the tool auto-adds the source transact
 
 ---
 
-## 6. Top 5 Concrete Improvements
+## 6. Remaining Improvements
 
-### 1. Phase-scoped system prompts **[HIGH IMPACT]**
-
-**Problem:** The 135-line system prompt includes instructions for all phases, wasting tokens and confusing the LLM.
-
-**Fix:** Split the system prompt into phase-specific sections. `_get_system_prompt()` should include only the instructions relevant to the current `DiscoveryPhase`. Placeholder syntax instructions should only appear during CONSTRUCTING phase. Variable classification rules only during DISCOVERING. This would reduce prompt size by ~50% in most iterations and make instructions more focused.
-
-**Files:** `super_discovery_agent.py` lines 102-236, 315-370
-
-### 2. Fix JSSpecialist data loader wiring **[HIGH IMPACT]**
+### 1. Fix JSSpecialist data loader wiring **[HIGH IMPACT]**
 
 **Problem:** JSSpecialist is created without `network_data_store`, `js_data_store`, or `dom_snapshots`, disabling most of its tools.
 
@@ -127,34 +93,7 @@ Also fix the phantom `submit_js_code` tool reference in the JSSpecialist system 
 
 **Files:** `super_discovery_agent.py` lines 523-529, `js_specialist.py` line 91
 
-### 3. Make hidden tools visible via documentation in the prompt **[HIGH IMPACT]**
-
-**Problem:** Availability-gated tools are invisible to the LLM but referenced in workflow instructions.
-
-**Fix:** Add a "Tools by Phase" section to the system prompt that lists all tools and their activation conditions. For example:
-
-```text
-## Tools Available by Phase
-- PLANNING: create_task, run_pending_tasks, list_transactions, scan_for_value, ...
-- DISCOVERING (after record_identified_endpoint): + record_extracted_variable, record_resolved_variable, mark_transaction_processed
-- CONSTRUCTING (after all transactions processed): + construct_routine, get_discovery_context
-- VALIDATING (after construct_routine): + validate_routine, analyze_validation
-- Any time after routine constructed: + done
-```
-
-This lets the LLM plan ahead knowing what tools will appear when.
-
-**Files:** `super_discovery_agent.py` lines 102-236
-
-### 4. Parallel task execution **[MEDIUM IMPACT]**
-
-**Problem:** `_run_pending_tasks()` executes tasks sequentially. Two independent specialist tasks take 2x the time they should.
-
-**Fix:** Use `ThreadPoolExecutor` (already imported in `abstract_agent.py`) to execute independent tasks concurrently. The infrastructure for parallel execution already exists in `_process_tool_calls`.
-
-**Files:** `super_discovery_agent.py` lines 900-980
-
-### 5. Add `construct_routine` schema documentation or a schema-check tool **[MEDIUM IMPACT]**
+### 2. Add `construct_routine` schema documentation or a schema-check tool **[MEDIUM IMPACT]**
 
 **Problem:** The `construct_routine` tool accepts `"items": {"type": "object"}` for both parameters and operations arrays — essentially no schema validation from the tool definition. The LLM must guess the correct operation structure from a terse description string.
 
@@ -166,6 +105,5 @@ This lets the LLM plan ahead knowing what tools will appear when.
 
 ### Honorable Mentions
 
-- **Response body truncation**: `get_transaction` should indicate truncation length like `get_entry_detail` does (`super_discovery_agent.py:1047`)
 - **No request-side search on orchestrator**: Add request header/body search to `scan_for_value`, or document that delegation to NetworkSpecialist is required
 - **ValueTraceResolver doesn't know the "prefer transaction over storage" rule**: Add it to its system prompt (`value_trace_resolver_specialist.py:AUTONOMOUS_SYSTEM_PROMPT`)

@@ -18,6 +18,7 @@ The agent inherits from AbstractAgent for LLM/chat/tool infrastructure.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from textwrap import dedent
 from typing import Any, Callable
@@ -76,10 +77,125 @@ class SuperDiscoveryAgent(AbstractAgent):
     - Uses results to construct routines
     """
 
-    ## System prompts
+    ## System prompts — phase-scoped sections
+
+    # Core identity + delegation rules (included in every phase)
+    PROMPT_CORE: str = dedent("""\
+        You are an expert at analyzing network traffic and building web automation routines.
+        You coordinate specialist agents to discover and construct routines.
+
+        ## Your Task
+        Analyze captured browser network data to create a reusable routine that accomplishes the user's task.
+
+        ## CRITICAL: You MUST Delegate to Specialists
+
+        **DO NOT** try to do everything yourself with direct tools. You are an ORCHESTRATOR.
+        Your job is to coordinate specialists, not to manually inspect every transaction.
+
+        **ALWAYS delegate to specialists for:**
+        - Finding the right endpoint → use `network_specialist`
+        - Tracing dynamic token origins → use `value_trace_resolver`
+        - Browser JavaScript needs → use `js_specialist`
+        - UI interactions → use `interaction_specialist`
+
+        **How to delegate:**
+        1. `create_task(agent_type="network_specialist", prompt="...")`
+        2. `run_pending_tasks()`
+        3. `get_task_result(task_id)` to review findings
+
+        ## Important Notes
+        - Focus on the user's INTENT, not literal wording
+        - Keep parameters MINIMAL - only what the user MUST provide
+        - If only one value was observed and it could be hardcoded, hardcode it
+        - Credentials for fetch operations: same-origin > include > omit
+
+        ## Tools Available by Phase
+        Some tools are gated — they appear only after preconditions are met.
+
+        - **PLANNING** (initial): create_task, run_pending_tasks, list_tasks, get_task_result, list_transactions, get_transaction, scan_for_value, search_documentation
+        - **DISCOVERING** (after `record_identified_endpoint`): *above* + record_extracted_variable, record_resolved_variable, mark_transaction_processed, get_discovery_context
+        - **CONSTRUCTING** (after all transactions processed): *above* + construct_routine
+        - **VALIDATING** (after `construct_routine`, browser connected): *above* + validate_routine, analyze_validation
+        - **Any time after routine constructed**: done
+        - **If no root transaction or 5+ construction attempts**: fail
+    """)
+
+    # Phase-specific instructions (only the active phase's block is included)
+    PROMPT_PLANNING: str = dedent("""\
+        ## Current Phase: PLANNING — Identify the Target Endpoint
+
+        1. **REQUIRED**: Create a task for network_specialist to find the endpoint:
+           ```
+           create_task(
+               agent_type="network_specialist",
+               prompt="Find the API endpoint that accomplishes: <user's task>. Search for relevant keywords."
+           )
+           ```
+        2. Call `run_pending_tasks()` to execute
+        3. Review results with `get_task_result(task_id)`
+        4. Use `record_identified_endpoint` with the specialist's findings
+    """)
+
+    PROMPT_DISCOVERING: str = dedent("""\
+        ## Current Phase: DISCOVERING — Process Transactions (BFS Queue)
+
+        For each transaction in the queue:
+        1. Use `get_transaction` to see full details
+        2. Use `record_extracted_variable` to log variables found in the request
+        3. **For DYNAMIC_TOKENs — DELEGATE TO value_trace_resolver**:
+           ```
+           create_task(
+               agent_type="value_trace_resolver",
+               prompt="Trace the origin of value '<observed_value>' (variable: <name>). Find where it comes from."
+           )
+           ```
+        4. Call `run_pending_tasks()` then `get_task_result(task_id)` to get findings
+        5. Use `record_resolved_variable` to record where each token comes from
+           - If source is another transaction, it will be auto-added to the queue
+           - PREFER NETWORK SOURCES: When a value appears in both session storage AND a prior
+             transaction response, use source_type='transaction' as the PRIMARY source.
+             Session storage may be empty in a fresh session.
+        6. Use `mark_transaction_processed` when done with a transaction
+        7. Continue until queue is empty
+
+        ## Variable Classification Rules
+
+        **PARAMETER** (requires_dynamic_resolution=false):
+        - Values the user explicitly provides as input
+        - Examples: search_query, item_id, page_number, username
+        - Rule: If the user wouldn't directly provide this value, it's NOT a parameter
+
+        **DYNAMIC_TOKEN** (requires_dynamic_resolution=true):
+        - Auth/session values that change per session
+        - Examples: CSRF tokens, JWTs, session_id, visitorData, auth headers
+        - Also: trace IDs, request IDs, correlation IDs
+        - Rule: If it looks like a generated ID or security token, it's a DYNAMIC_TOKEN
+
+        **STATIC_VALUE** (requires_dynamic_resolution=false):
+        - Constants that don't change between sessions
+        - Examples: App version, User-Agent, clientName, timeZone, language codes
+        - Rule: If you can hardcode it and it will work across sessions, it's STATIC
+    """)
+
+    PROMPT_CONSTRUCTING: str = dedent("""\
+        ## Current Phase: CONSTRUCTING — Build the Routine
+
+        1. Use `get_discovery_context` to see all processed data (includes CRITICAL_OBSERVED_VALUES)
+        2. **IMPORTANT**: If you need help with routine structure, check the documentation:
+           - Use search_documentation to find examples and schemas for routine construction
+        3. Use `construct_routine` with the routine definition:
+           - `routine`: the routine definition (name, description, parameters, operations)
+
+        **If browser is connected (validation available):**
+        4. After constructing, use `validate_routine` with test_parameters (observed values)
+        5. Use `analyze_validation` to reflect on results (REQUIRED before done)
+
+        **If NO browser connected:**
+        4. Call `done` directly after construct_routine
+    """)
 
     PLACEHOLDER_INSTRUCTIONS: str = (
-        "PLACEHOLDER SYNTAX:\n"
+        "## Placeholder Syntax\n"
         "- PARAMS: {{param_name}} (NO prefix, name matches parameter definition)\n"
         "- SOURCES (use dot paths): {{cookie:name}}, {{sessionStorage:path.to.value}}, "
         "{{localStorage:key}}, {{windowProperty:obj.key}}\n\n"
@@ -99,140 +215,17 @@ class SuperDiscoveryAgent(AbstractAgent):
         "IMPORTANT: YOU MUST ENSURE THAT EACH PLACEHOLDER IS SURROUNDED BY QUOTES OR ESCAPED QUOTES!"
     )
 
-    SYSTEM_PROMPT: str = dedent("""\
-        You are an expert at analyzing network traffic and building web automation routines.
-        You coordinate specialist agents to discover and construct routines.
+    PROMPT_VALIDATING: str = dedent("""\
+        ## Current Phase: VALIDATING — Test the Routine
 
-        ## Your Task
-        Analyze captured browser network data to create a reusable routine that accomplishes the user's task.
-
-        ## CRITICAL: You MUST Delegate to Specialists
-
-        **DO NOT** try to do everything yourself with direct tools. You are an ORCHESTRATOR.
-        Your job is to coordinate specialists, not to manually inspect every transaction.
-
-        **ALWAYS delegate to specialists for:**
-        - Finding the right endpoint → use `network_specialist`
-        - Tracing dynamic token origins → use `value_trace_resolver`
-        - Browser JavaScript needs → use `js_specialist`
-        - UI interactions → use `interaction_specialist`
-
-        ## Workflow
-        Follow these phases in order:
-
-        ### Phase 1: Identify Transaction (DELEGATE TO network_specialist)
-        1. **REQUIRED**: Create a task for network_specialist to find the endpoint:
-           ```
-           create_task(
-               agent_type="network_specialist",
-               prompt="Find the API endpoint that accomplishes: <user's task>. Search for relevant keywords."
-           )
-           ```
-        2. Call `run_pending_tasks()` to execute
-        3. Review results with `get_task_result(task_id)`
-        4. Use `record_identified_endpoint` with the specialist's findings
-
-        ### Phase 2: Process Transactions (BFS Queue)
-        For each transaction in the queue:
-        1. Use `get_transaction` to see full details
-        2. Use `record_extracted_variable` to log variables found in the request:
-           - PARAMETER: User input (search_query, item_id) - things the user explicitly provides
-           - DYNAMIC_TOKEN: Auth/session values (CSRF, JWT, session_id) - require resolution
-           - STATIC_VALUE: Constants (app version, User-Agent) - can be hardcoded
-        3. **For DYNAMIC_TOKENs - DELEGATE TO value_trace_resolver**:
-           ```
-           create_task(
-               agent_type="value_trace_resolver",
-               prompt="Trace the origin of value '<observed_value>' (variable: <name>). Find where it comes from."
-           )
-           ```
-        4. Call `run_pending_tasks()` then `get_task_result(task_id)` to get findings
-        5. Use `record_resolved_variable` to record where each token comes from
-           - If source is another transaction, it will be auto-added to the queue
-           - IMPORTANT: If value is found in BOTH storage AND a prior transaction,
-             use source_type='transaction' as the primary source. Session storage may
-             be empty in a fresh session - prefer network sources for reliability.
-        6. Use `mark_transaction_processed` when done with a transaction (all variables extracted/resolved)
-        7. Continue until queue is empty
-
-        ### Phase 3: Construct and Finalize Routine
-        1. Use `get_discovery_context` to see all processed data (includes CRITICAL_OBSERVED_VALUES)
-        2. **IMPORTANT**: If you need help with routine structure, check the documentation:
-           - Use search_documentation to find examples and schemas for routine construction
-        3. Use `construct_routine` with the routine definition:
-           - `routine`: the routine definition (name, description, parameters, operations)
-
-        **If browser is connected (validation available):**
-        4. Use `validate_routine` with test parameters to execute:
-           - `test_parameters`: dict mapping parameter names to observed values
-           - Example: test_parameters={{"origin": "NYC", "destination": "BOS"}}
-           - Get these values from extracted variables' observed_value fields (see CRITICAL_OBSERVED_VALUES)
-        5. Use `analyze_validation` to reflect on results (REQUIRED before done):
+        1. Review the `validate_routine` execution results
+        2. Use `analyze_validation` to reflect:
            - `analysis`: What worked and what failed
            - `data_matches_task`: Does the returned data accomplish the user's original task?
            - `next_action`: "done" | "fix_routine" | "retry_validation"
-        6. Based on your analysis:
+        3. Based on your analysis:
            - If data_matches_task=True and next_action="done": call `done`
            - If data_matches_task=False: set next_action="fix_routine", then use construct_routine to fix and re-validate
-
-        **If NO browser connected (validation NOT available):**
-        4. Call `done` directly after construct_routine (routine cannot be validated without browser)
-
-        ## Variable Classification Rules
-
-        **PARAMETER** (requires_dynamic_resolution=false):
-        - Values the user explicitly provides as input
-        - Examples: search_query, item_id, page_number, username
-        - Rule: If the user wouldn't directly provide this value, it's NOT a parameter
-
-        **DYNAMIC_TOKEN** (requires_dynamic_resolution=true):
-        - Auth/session values that change per session
-        - Examples: CSRF tokens, JWTs, session_id, visitorData, auth headers
-        - Also: trace IDs, request IDs, correlation IDs
-        - Rule: If it looks like a generated ID or security token, it's a DYNAMIC_TOKEN
-
-        **STATIC_VALUE** (requires_dynamic_resolution=false):
-        - Constants that don't change between sessions
-        - Examples: App version, User-Agent, clientName, timeZone, language codes
-        - Rule: If you can hardcode it and it will work across sessions, it's STATIC
-
-        ## Specialist Agents (REQUIRED for Discovery)
-
-        You MUST use these specialists - they have specialized tools and context you don't have direct access to:
-
-        ### 1. network_specialist - Endpoint Discovery Expert (REQUIRED for Phase 1)
-        - Has specialized search tools for network traffic analysis
-        - Can find endpoints by semantic meaning, not just keyword matching
-        - **ALWAYS use for initial endpoint identification**
-
-        ### 2. value_trace_resolver - Value Origin Detective (REQUIRED for DYNAMIC_TOKENs)
-        - Traces value origins across ALL data sources simultaneously
-        - Has deep analysis capabilities beyond simple scan_for_value
-        - **ALWAYS use for resolving dynamic tokens**
-
-        ### 3. js_specialist - Browser JavaScript Expert
-        - Writes IIFE JavaScript for DOM manipulation and extraction
-        - Use when routine needs browser-side JavaScript execution
-
-        ### 4. interaction_specialist - UI Interaction Expert
-        - Handles browser UI interactions (clicks, typing, etc.)
-        - Use when routine needs to interact with page elements
-
-        **How to delegate:**
-        1. `create_task(agent_type="network_specialist", prompt="...")`
-        2. `run_pending_tasks()`
-        3. `get_task_result(task_id)` to review findings
-
-        ## Important Notes
-        - Focus on the user's INTENT, not literal wording
-        - Keep parameters MINIMAL - only what the user MUST provide
-        - If only one value was observed and it could be hardcoded, hardcode it
-        - Credentials for fetch operations: same-origin > include > omit
-        - PREFER NETWORK SOURCES: When a value appears in both session storage AND a prior
-          transaction response, use source_type='transaction' as the PRIMARY source, not storage.
-          Session storage may be empty in a fresh session, so the routine must fetch via network.
-
-        {placeholder_instructions}
     """)
 
     ## Magic methods
@@ -313,10 +306,23 @@ class SuperDiscoveryAgent(AbstractAgent):
     ## Abstract method implementations
 
     def _get_system_prompt(self) -> str:
-        """Build the complete system prompt with current state."""
-        prompt_parts = [self.SYSTEM_PROMPT.format(
-            placeholder_instructions=self.PLACEHOLDER_INSTRUCTIONS
-        )]
+        """Build the system prompt scoped to the current phase."""
+        phase = self._discovery_state.phase
+
+        # Core identity + delegation rules (always included)
+        prompt_parts = [self.PROMPT_CORE]
+
+        # Phase-specific instructions
+        if phase == DiscoveryPhase.PLANNING:
+            prompt_parts.append(self.PROMPT_PLANNING)
+        elif phase == DiscoveryPhase.DISCOVERING:
+            prompt_parts.append(self.PROMPT_DISCOVERING)
+        elif phase == DiscoveryPhase.CONSTRUCTING:
+            prompt_parts.append(self.PROMPT_CONSTRUCTING)
+            prompt_parts.append(self.PLACEHOLDER_INSTRUCTIONS)
+        elif phase == DiscoveryPhase.VALIDATING:
+            prompt_parts.append(self.PROMPT_VALIDATING)
+            prompt_parts.append(self.PLACEHOLDER_INSTRUCTIONS)  # needed if fix_routine
 
         # Add data store summaries
         data_store_info = []
@@ -901,20 +907,41 @@ class SuperDiscoveryAgent(AbstractAgent):
         availability=True,
     )
     def _run_pending_tasks(self) -> dict[str, Any]:
-        """Execute all pending tasks and return their results."""
-        # TODO: parallelize this
+        """Execute all pending tasks concurrently and return their results."""
         pending = self._orchestration_state.get_pending_tasks()
         if not pending:
             return {"message": "No pending tasks", "results": []}
 
-        results = []
-        for task in pending:
+        if len(pending) == 1:
+            # Single task — no threading overhead
+            task = pending[0]
             result = self._execute_task(task)
-            results.append({
-                "task_id": task.id,
-                "agent_type": task.agent_type,
-                **result,
-            })
+            results = [{"task_id": task.id, "agent_type": task.agent_type, **result}]
+        else:
+            # Multiple independent tasks — run in parallel
+            results = []
+            with ThreadPoolExecutor(max_workers=len(pending)) as executor:
+                future_to_task = {
+                    executor.submit(self._execute_task, task): task
+                    for task in pending
+                }
+                for future in as_completed(future_to_task):
+                    task = future_to_task[future]
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        logger.error("Task %s raised exception: %s", task.id, e)
+                        result = {"success": False, "error": str(e)}
+                    results.append({
+                        "task_id": task.id,
+                        "agent_type": task.agent_type,
+                        **result,
+                    })
+            # Preserve original task order for deterministic output
+            task_order = {task.id: i for i, task in enumerate(pending)}
+            results.sort(
+                key=lambda r: task_order.get(r["task_id"], 0)
+            )
 
         # Check if all tasks are done and update phase
         phase_message = None
@@ -1040,7 +1067,17 @@ class SuperDiscoveryAgent(AbstractAgent):
             available = [e.request_id for e in self._network_data_loader.entries[:10]]
             return {"error": f"Transaction {transaction_id} not found. Sample IDs: {available}"}
 
-        return {
+        max_body_len = 5_000
+        response_body = entry.response_body
+        truncated = False
+        original_length = 0
+        if response_body:
+            original_length = len(response_body)
+            if original_length > max_body_len:
+                response_body = response_body[:max_body_len]
+                truncated = True
+
+        result: dict[str, Any] = {
             "transaction_id": transaction_id,
             "method": entry.method,
             "url": entry.url,
@@ -1048,11 +1085,23 @@ class SuperDiscoveryAgent(AbstractAgent):
             "request_headers": entry.request_headers,
             "post_data": entry.post_data,
             "response_headers": entry.response_headers,
-            "response_body": entry.response_body[:5000] if entry.response_body else None,  # Truncate large bodies
+            "response_body": response_body,
         }
+        if truncated:
+            result["response_body_truncated"] = True
+            result["response_body_full_length"] = original_length
+            result["response_body_note"] = (
+                f"Response body truncated to {max_body_len} chars "
+                f"(full length: {original_length}). "
+                f"Delegate to network_specialist for full body search."
+            )
+        return result
 
     @agent_tool(
-        description="[PREFER value_trace_resolver SPECIALIST] Basic value search. For DYNAMIC_TOKENs, delegate to value_trace_resolver instead - it has deeper analysis capabilities.",
+        description=(
+            "[PREFER value_trace_resolver SPECIALIST] Basic value search. "
+            "For DYNAMIC_TOKENs, delegate to value_trace_resolver instead - it has deeper analysis capabilities."
+        ),
         parameters={
             "type": "object",
             "properties": {
