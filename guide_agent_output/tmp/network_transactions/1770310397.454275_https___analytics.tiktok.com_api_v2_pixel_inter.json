@@ -1,0 +1,33 @@
+{
+ "timestamp": 1770310397.454275,
+ "request_id": "interception-job-25641.0",
+ "request": {
+  "url": "https://analytics.tiktok.com/api/v2/pixel/inter",
+  "method": "POST",
+  "type": "Ping",
+  "headers": {
+   "Accept": "*/*",
+   "Content-Type": "text/plain;charset=UTF-8",
+   "Cookie": "_ttp=39G77nJwryA523wwW1QwYob9bkr",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": "{\"event_id\":\"\",\"message_id\":\"messageId-1770310397372-9772082221088\",\"is_onsite\":false,\"timestamp\":\"2026-02-05T16:53:17.372Z\",\"context\":{\"ad\":{\"sdk_env\":\"external\",\"jsb_status\":2},\"device\":{\"platform\":\"pc\"},\"user\":{\"anonymous_id\":\"01KGQBHKDM2E18C5GEA8A3Z7AM_.tt.1\"},\"pixel\":{\"code\":\"CQTPD5JC77U6D8VT2IE0\",\"runtime\":\"1\",\"codes\":\"CQTPD5JC77U6D8VT2IE0\"},\"page\":{\"url\":\"https://www.premierleague.com/en/tables/premier-league/2025-26\",\"referrer\":\"https://www.premierleague.com/en/tables/premier-league\",\"load_progress\":\"2\"},\"library\":{\"name\":\"pixel.js\",\"version\":\"2.2.1\"},\"session_id\":\"25f5733f-02b3-11f1-8568-ea3ab8caf4b4::n_O7Da7hGiUjs9Dslrc6\",\"pageview_id\":\"25f5733f-02b3-11f1-8568-ea3ab8caf4b4-Uilk-.1.1::28aab0f0-02b3-11f1-bd94-b83fd2912b22\",\"variation_id\":\"traffic_2::default\",\"userAgent\":\"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\",\"index\":2},\"_inspection\":{\"vids\":\"75350340\",\"inter_id\":\"1.4361.4260::8110.4.202.428::6846.8.0\"},\"properties\":{},\"signal_diagnostic_labels\":{\"raw_email\":{\"label\":\"missing\"},\"raw_auto_email\":{\"label\":\"missing\"},\"raw_phone\":{\"label\":\"missing\"},\"raw_auto_phone\":{\"label\":\"missing\"},\"hashed_email\":{\"label\":\"missing\"},\"hashed_phone\":{\"label\":\"missing\"},\"raw_eb_email\":{\"label\":\"missing\"},\"raw_eb_phone\":{\"label\":\"missing\"},\"hashed_eb_email\":{\"label\":\"missing\"},\"hashed_eb_phone\":{\"label\":\"missing\"}},\"action\":\"Pf\",\"auto_collected_properties\":{\"action_event\":\"pl\",\"inter\":{\"ct\":1,\"st\":3,\"pl\":5301},\"page_inter\":{\"metrics_type\":\"ct|st|pl\",\"ct\":1,\"st\":3,\"pl\":5301}}}"
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {},
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

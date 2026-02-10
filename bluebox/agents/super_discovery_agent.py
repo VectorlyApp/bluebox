@@ -19,13 +19,14 @@ The agent inherits from AbstractAgent for LLM/chat/tool infrastructure.
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from textwrap import dedent
 from typing import Any, Callable
 
 from pydantic import BaseModel
 
-from bluebox.agents.abstract_agent import AbstractAgent, agent_tool
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, AutonomousConfig, RunMode
 from bluebox.agents.specialists.js_specialist import JSSpecialist
 from bluebox.agents.specialists.network_specialist import NetworkSpecialist
@@ -43,6 +44,8 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus, SpecialistAgentType
 from bluebox.data_models.orchestration.state import AgentOrchestrationState
 from bluebox.data_models.routine.endpoint import HTTPMethod
+from bluebox.data_models.routine.parameter import VALID_PLACEHOLDER_PREFIXES, BUILTIN_PARAMETERS, ParameterType
+from bluebox.data_models.routine.placeholder import extract_placeholders_from_json_str, PlaceholderQuoteType
 from bluebox.data_models.routine.routine import Routine
 from bluebox.data_models.routine_discovery.state import RoutineDiscoveryState, DiscoveryPhase
 from bluebox.data_models.routine_discovery.llm_responses import (
@@ -62,6 +65,7 @@ from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
 from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
+from bluebox.utils.data_utils import resolve_dotted_path
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -77,10 +81,129 @@ class SuperDiscoveryAgent(AbstractAgent):
     - Uses results to construct routines
     """
 
-    ## System prompts
+    AGENT_CARD = AgentCard(
+        description=(
+            "Orchestrates routine discovery by coordinating specialist subagents. "
+            "Delegates network analysis, value tracing, JS generation, and interaction "
+            "analysis to specialists, then assembles the results into a routine."
+        ),
+    )
+
+    ## System prompts — phase-scoped sections
+
+    # Core identity + delegation rules (included in every phase)
+    PROMPT_CORE: str = dedent("""\
+        You are an expert at analyzing network traffic and building web automation routines.
+        You coordinate specialist agents to discover and construct routines.
+
+        ## Your Task
+        Analyze captured browser network data to create a reusable routine that accomplishes the user's task.
+
+        ## CRITICAL: You MUST Delegate to Specialists
+
+        **DO NOT** try to do everything yourself with direct tools. You are an ORCHESTRATOR.
+        Your job is to coordinate specialists, not to manually inspect every transaction.
+
+        **How to delegate:**
+        1. `create_task(agent_type="network_specialist", prompt="...")`
+        2. `run_pending_tasks()`
+        3. `get_task_result(task_id)` to review findings
+
+        ## Important Notes
+        - Focus on the user's INTENT, not literal wording
+        - Keep parameters MINIMAL - only what the user MUST provide
+        - If only one value was observed and it could be hardcoded, hardcode it
+        - Credentials for fetch operations: same-origin > include > omit
+    """)
+
+    # Phase-specific instructions (only the active phase's block is included)
+    PROMPT_PLANNING: str = dedent("""\
+        ## Current Phase: PLANNING — Identify the Target Endpoint
+
+        1. **REQUIRED**: Create a task for network_specialist to find the endpoint:
+           ```
+           create_task(
+               agent_type="network_specialist",
+               prompt="Find the API endpoint that accomplishes: <user's task>. Search for relevant keywords."
+           )
+           ```
+        2. Call `run_pending_tasks()` to execute
+        3. Review results with `get_task_result(task_id)`
+        4. Use `record_identified_endpoint` with the specialist's findings
+    """)
+
+    PROMPT_DISCOVERING: str = dedent("""\
+        ## Current Phase: DISCOVERING — Process Transactions (BFS Queue)
+
+        For each transaction in the queue:
+        1. Use `get_transaction` to see full details
+        2. Use `record_extracted_variable` to log variables found in the request
+        3. **For DYNAMIC_TOKENs — DELEGATE TO value_trace_resolver**:
+           ```
+           create_task(
+               agent_type="value_trace_resolver",
+               prompt="Trace the origin of value '<observed_value>' (variable: <name>). Find where it comes from."
+           )
+           ```
+        4. Call `run_pending_tasks()` then `get_task_result(task_id)` to get findings
+        5. Use `record_resolved_variable` to record where each token comes from
+           - If source is another transaction, it will be auto-added to the queue
+           - PREFER NETWORK SOURCES: When a value appears in both session storage AND a prior
+             transaction response, use source_type='transaction' as the PRIMARY source.
+             Session storage may be empty in a fresh session.
+        6. Use `mark_transaction_processed` when done with a transaction
+        7. Continue until queue is empty
+
+        ## Variable Classification Rules
+
+        **PARAMETER** (requires_dynamic_resolution=false):
+        - Values the user explicitly provides as input
+        - Examples: search_query, item_id, page_number, username
+        - Rule: If the user wouldn't directly provide this value, it's NOT a parameter
+
+        **DYNAMIC_TOKEN** (requires_dynamic_resolution=true):
+        - Auth/session values that change per session
+        - Examples: CSRF tokens, JWTs, session_id, visitorData, auth headers
+        - Also: trace IDs, request IDs, correlation IDs
+        - Rule: If it looks like a generated ID or security token, it's a DYNAMIC_TOKEN
+
+        **STATIC_VALUE** (requires_dynamic_resolution=false):
+        - Constants that don't change between sessions
+        - Examples: App version, User-Agent, clientName, timeZone, language codes
+        - Rule: If you can hardcode it and it will work across sessions, it's STATIC
+    """)
+
+    PROMPT_CONSTRUCTING: str = dedent("""\
+        ## Current Phase: CONSTRUCTING — Build the Routine
+
+        1. Use `get_discovery_context` to see all processed data (includes CRITICAL_OBSERVED_VALUES)
+        2. Review the **Routine Schema Reference** below for required fields and operation types
+        3. Use `validate_placeholders` on your fetch bodies/headers to catch quoting errors early
+        4. Use `construct_routine` with the routine definition:
+           - `routine`: the routine definition (name, description, parameters, operations)
+
+        **If browser is connected (validation available):**
+        4. After constructing, use `validate_routine` with test_parameters (observed values)
+        5. Use `analyze_validation` to reflect on results (REQUIRED before done)
+
+        **If NO browser connected:**
+        4. Call `done` directly after construct_routine
+
+        ## Operation Ordering
+
+        Routines typically start with a `navigate` operation to load the target page before
+        performing any other operations. This is important because:
+        - `fetch` operations run in the page's JS context — without navigating first, the
+          browser has no origin, so requests fail with CORS errors.
+        - Similar situations apply to `js_evaluate`. 
+        - Click/input/scroll operations need a loaded DOM to interact with.
+
+        Look at the root transaction's URL to determine the base URL to navigate to (usually
+        the origin, e.g. `https://example.com`).
+    """)
 
     PLACEHOLDER_INSTRUCTIONS: str = (
-        "PLACEHOLDER SYNTAX:\n"
+        "## Placeholder Syntax\n"
         "- PARAMS: {{param_name}} (NO prefix, name matches parameter definition)\n"
         "- SOURCES (use dot paths): {{cookie:name}}, {{sessionStorage:path.to.value}}, "
         "{{localStorage:key}}, {{windowProperty:obj.key}}\n\n"
@@ -100,140 +223,17 @@ class SuperDiscoveryAgent(AbstractAgent):
         "IMPORTANT: YOU MUST ENSURE THAT EACH PLACEHOLDER IS SURROUNDED BY QUOTES OR ESCAPED QUOTES!"
     )
 
-    SYSTEM_PROMPT: str = dedent("""\
-        You are an expert at analyzing network traffic and building web automation routines.
-        You coordinate specialist agents to discover and construct routines.
+    PROMPT_VALIDATING: str = dedent("""\
+        ## Current Phase: VALIDATING — Test the Routine
 
-        ## Your Task
-        Analyze captured browser network data to create a reusable routine that accomplishes the user's task.
-
-        ## CRITICAL: You MUST Delegate to Specialists
-
-        **DO NOT** try to do everything yourself with direct tools. You are an ORCHESTRATOR.
-        Your job is to coordinate specialists, not to manually inspect every transaction.
-
-        **ALWAYS delegate to specialists for:**
-        - Finding the right endpoint → use `network_specialist`
-        - Tracing dynamic token origins → use `value_trace_resolver`
-        - Browser JavaScript needs → use `js_specialist`
-        - UI interactions → use `interaction_specialist`
-
-        ## Workflow
-        Follow these phases in order:
-
-        ### Phase 1: Identify Transaction (DELEGATE TO network_specialist)
-        1. **REQUIRED**: Create a task for network_specialist to find the endpoint:
-           ```
-           create_task(
-               agent_type="network_specialist",
-               prompt="Find the API endpoint that accomplishes: <user's task>. Search for relevant keywords."
-           )
-           ```
-        2. Call `run_pending_tasks()` to execute
-        3. Review results with `get_task_result(task_id)`
-        4. Use `record_identified_endpoint` with the specialist's findings
-
-        ### Phase 2: Process Transactions (BFS Queue)
-        For each transaction in the queue:
-        1. Use `get_transaction` to see full details
-        2. Use `record_extracted_variable` to log variables found in the request:
-           - PARAMETER: User input (search_query, item_id) - things the user explicitly provides
-           - DYNAMIC_TOKEN: Auth/session values (CSRF, JWT, session_id) - require resolution
-           - STATIC_VALUE: Constants (app version, User-Agent) - can be hardcoded
-        3. **For DYNAMIC_TOKENs - DELEGATE TO value_trace_resolver**:
-           ```
-           create_task(
-               agent_type="value_trace_resolver",
-               prompt="Trace the origin of value '<observed_value>' (variable: <name>). Find where it comes from."
-           )
-           ```
-        4. Call `run_pending_tasks()` then `get_task_result(task_id)` to get findings
-        5. Use `record_resolved_variable` to record where each token comes from
-           - If source is another transaction, it will be auto-added to the queue
-           - IMPORTANT: If value is found in BOTH storage AND a prior transaction,
-             use source_type='transaction' as the primary source. Session storage may
-             be empty in a fresh session - prefer network sources for reliability.
-        6. Use `mark_transaction_processed` when done with a transaction (all variables extracted/resolved)
-        7. Continue until queue is empty
-
-        ### Phase 3: Construct and Finalize Routine
-        1. Use `get_discovery_context` to see all processed data (includes CRITICAL_OBSERVED_VALUES)
-        2. **IMPORTANT**: If you need help with routine structure, check the documentation:
-           - Use search_documentation to find examples and schemas for routine construction
-        3. Use `construct_routine` with the routine definition:
-           - `routine`: the routine definition (name, description, parameters, operations)
-
-        **If browser is connected (validation available):**
-        4. Use `validate_routine` with test parameters to execute:
-           - `test_parameters`: dict mapping parameter names to observed values
-           - Example: test_parameters={{"origin": "NYC", "destination": "BOS"}}
-           - Get these values from extracted variables' observed_value fields (see CRITICAL_OBSERVED_VALUES)
-        5. Use `analyze_validation` to reflect on results (REQUIRED before done):
+        1. Review the `validate_routine` execution results
+        2. Use `analyze_validation` to reflect:
            - `analysis`: What worked and what failed
            - `data_matches_task`: Does the returned data accomplish the user's original task?
            - `next_action`: "done" | "fix_routine" | "retry_validation"
-        6. Based on your analysis:
+        3. Based on your analysis:
            - If data_matches_task=True and next_action="done": call `done`
            - If data_matches_task=False: set next_action="fix_routine", then use construct_routine to fix and re-validate
-
-        **If NO browser connected (validation NOT available):**
-        4. Call `done` directly after construct_routine (routine cannot be validated without browser)
-
-        ## Variable Classification Rules
-
-        **PARAMETER** (requires_dynamic_resolution=false):
-        - Values the user explicitly provides as input
-        - Examples: search_query, item_id, page_number, username
-        - Rule: If the user wouldn't directly provide this value, it's NOT a parameter
-
-        **DYNAMIC_TOKEN** (requires_dynamic_resolution=true):
-        - Auth/session values that change per session
-        - Examples: CSRF tokens, JWTs, session_id, visitorData, auth headers
-        - Also: trace IDs, request IDs, correlation IDs
-        - Rule: If it looks like a generated ID or security token, it's a DYNAMIC_TOKEN
-
-        **STATIC_VALUE** (requires_dynamic_resolution=false):
-        - Constants that don't change between sessions
-        - Examples: App version, User-Agent, clientName, timeZone, language codes
-        - Rule: If you can hardcode it and it will work across sessions, it's STATIC
-
-        ## Specialist Agents (REQUIRED for Discovery)
-
-        You MUST use these specialists - they have specialized tools and context you don't have direct access to:
-
-        ### 1. network_specialist - Endpoint Discovery Expert (REQUIRED for Phase 1)
-        - Has specialized search tools for network traffic analysis
-        - Can find endpoints by semantic meaning, not just keyword matching
-        - **ALWAYS use for initial endpoint identification**
-
-        ### 2. value_trace_resolver - Value Origin Detective (REQUIRED for DYNAMIC_TOKENs)
-        - Traces value origins across ALL data sources simultaneously
-        - Has deep analysis capabilities beyond simple scan_for_value
-        - **ALWAYS use for resolving dynamic tokens**
-
-        ### 3. js_specialist - Browser JavaScript Expert
-        - Writes IIFE JavaScript for DOM manipulation and extraction
-        - Use when routine needs browser-side JavaScript execution
-
-        ### 4. interaction_specialist - UI Interaction Expert
-        - Handles browser UI interactions (clicks, typing, etc.)
-        - Use when routine needs to interact with page elements
-
-        **How to delegate:**
-        1. `create_task(agent_type="network_specialist", prompt="...")`
-        2. `run_pending_tasks()`
-        3. `get_task_result(task_id)` to review findings
-
-        ## Important Notes
-        - Focus on the user's INTENT, not literal wording
-        - Keep parameters MINIMAL - only what the user MUST provide
-        - If only one value was observed and it could be hardcoded, hardcode it
-        - Credentials for fetch operations: same-origin > include > omit
-        - PREFER NETWORK SOURCES: When a value appears in both session storage AND a prior
-          transaction response, use source_type='transaction' as the PRIMARY source, not storage.
-          Session storage may be empty in a fresh session, so the routine must fetch via network.
-
-        {placeholder_instructions}
     """)
 
     ## Magic methods
@@ -314,10 +314,37 @@ class SuperDiscoveryAgent(AbstractAgent):
     ## Abstract method implementations
 
     def _get_system_prompt(self) -> str:
-        """Build the complete system prompt with current state."""
-        prompt_parts = [self.SYSTEM_PROMPT.format(
-            placeholder_instructions=self.PLACEHOLDER_INSTRUCTIONS
-        )]
+        """Build the system prompt scoped to the current phase."""
+        phase = self._discovery_state.phase
+
+        # Core identity + delegation rules (always included)
+        prompt_parts = [self.PROMPT_CORE]
+
+        # Inject specialist descriptions from AgentCard metadata
+        specialist_lines = [
+            f"- `{agent_type.value}`: {cls.AGENT_CARD.description}"
+            for agent_type, cls in (
+                (SpecialistAgentType.NETWORK_SPECIALIST, NetworkSpecialist),
+                (SpecialistAgentType.VALUE_TRACE_RESOLVER, ValueTraceResolverSpecialist),
+                (SpecialistAgentType.JS_SPECIALIST, JSSpecialist),
+                (SpecialistAgentType.INTERACTION_SPECIALIST, InteractionSpecialist),
+            )
+        ]
+        prompt_parts.append("\n\n**Available specialists:**\n" + "\n".join(specialist_lines))
+
+        # Phase-specific instructions
+        if phase == DiscoveryPhase.PLANNING:
+            prompt_parts.append(self.PROMPT_PLANNING)
+        elif phase == DiscoveryPhase.DISCOVERING:
+            prompt_parts.append(self.PROMPT_DISCOVERING)
+        elif phase == DiscoveryPhase.CONSTRUCTING:
+            prompt_parts.append(self.PROMPT_CONSTRUCTING)
+            prompt_parts.append(self.PLACEHOLDER_INSTRUCTIONS)
+            prompt_parts.append(Routine.model_schema_markdown())
+        elif phase == DiscoveryPhase.VALIDATING:
+            prompt_parts.append(self.PROMPT_VALIDATING)
+            prompt_parts.append(self.PLACEHOLDER_INSTRUCTIONS)  # needed if fix_routine
+            prompt_parts.append(Routine.model_schema_markdown())  # needed if fix_routine
 
         # Add data store summaries
         data_store_info = []
@@ -525,6 +552,9 @@ class SuperDiscoveryAgent(AbstractAgent):
             return JSSpecialist(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
+                documentation_data_loader=self._documentation_data_loader,
+                network_data_store=self._network_data_loader,
+                js_data_store=None,  # NOTE: this is intentionally left None for now
                 remote_debugging_address=self._remote_debugging_address,
                 run_mode=RunMode.AUTONOMOUS,
             )
@@ -532,10 +562,11 @@ class SuperDiscoveryAgent(AbstractAgent):
         elif agent_type == SpecialistAgentType.VALUE_TRACE_RESOLVER:
             return ValueTraceResolverSpecialist(
                 emit_message_callable=self._emit_message_callable,
-                llm_model=self._subagent_llm_model,
+                documentation_data_loader=self._documentation_data_loader,
                 network_data_store=self._network_data_loader,
                 storage_data_store=self._storage_data_loader,
                 window_property_data_store=self._window_property_data_loader,
+                llm_model=self._subagent_llm_model,
                 run_mode=RunMode.AUTONOMOUS,
             )
 
@@ -549,6 +580,7 @@ class SuperDiscoveryAgent(AbstractAgent):
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
                 network_data_store=self._network_data_loader,
+                documentation_data_loader=self._documentation_data_loader,
                 run_mode=RunMode.AUTONOMOUS,
             )
 
@@ -560,7 +592,8 @@ class SuperDiscoveryAgent(AbstractAgent):
                 )
             return InteractionSpecialist(
                 emit_message_callable=self._emit_message_callable,
-                interaction_data_store=self._interaction_data_loader,
+                interaction_data_loader=self._interaction_data_loader,
+                documentation_data_loader=self._documentation_data_loader,
                 llm_model=self._subagent_llm_model,
                 run_mode=RunMode.AUTONOMOUS,
             )
@@ -899,19 +932,41 @@ class SuperDiscoveryAgent(AbstractAgent):
         availability=True,
     )
     def _run_pending_tasks(self) -> dict[str, Any]:
-        """Execute all pending tasks and return their results."""
+        """Execute all pending tasks concurrently and return their results."""
         pending = self._orchestration_state.get_pending_tasks()
         if not pending:
             return {"message": "No pending tasks", "results": []}
 
-        results = []
-        for task in pending:
+        if len(pending) == 1:
+            # Single task — no threading overhead
+            task = pending[0]
             result = self._execute_task(task)
-            results.append({
-                "task_id": task.id,
-                "agent_type": task.agent_type,
-                **result,
-            })
+            results = [{"task_id": task.id, "agent_type": task.agent_type, **result}]
+        else:
+            # Multiple independent tasks — run in parallel
+            results = []
+            with ThreadPoolExecutor(max_workers=len(pending)) as executor:
+                future_to_task = {
+                    executor.submit(self._execute_task, task): task
+                    for task in pending
+                }
+                for future in as_completed(future_to_task):
+                    task = future_to_task[future]
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        logger.error("Task %s raised exception: %s", task.id, e)
+                        result = {"success": False, "error": str(e)}
+                    results.append({
+                        "task_id": task.id,
+                        "agent_type": task.agent_type,
+                        **result,
+                    })
+            # Preserve original task order for deterministic output
+            task_order = {task.id: i for i, task in enumerate(pending)}
+            results.sort(
+                key=lambda r: task_order.get(r["task_id"], 0)
+            )
 
         # Check if all tasks are done and update phase
         phase_message = None
@@ -1037,7 +1092,17 @@ class SuperDiscoveryAgent(AbstractAgent):
             available = [e.request_id for e in self._network_data_loader.entries[:10]]
             return {"error": f"Transaction {transaction_id} not found. Sample IDs: {available}"}
 
-        return {
+        max_body_len = 5_000
+        response_body = entry.response_body
+        truncated = False
+        original_length = 0
+        if response_body:
+            original_length = len(response_body)
+            if original_length > max_body_len:
+                response_body = response_body[:max_body_len]
+                truncated = True
+
+        result: dict[str, Any] = {
             "transaction_id": transaction_id,
             "method": entry.method,
             "url": entry.url,
@@ -1045,11 +1110,23 @@ class SuperDiscoveryAgent(AbstractAgent):
             "request_headers": entry.request_headers,
             "post_data": entry.post_data,
             "response_headers": entry.response_headers,
-            "response_body": entry.response_body[:5000] if entry.response_body else None,  # Truncate large bodies
+            "response_body": response_body,
         }
+        if truncated:
+            result["response_body_truncated"] = True
+            result["response_body_full_length"] = original_length
+            result["response_body_note"] = (
+                f"Response body truncated to {max_body_len} chars "
+                f"(full length: {original_length}). "
+                f"Delegate to network_specialist for full body search."
+            )
+        return result
 
     @agent_tool(
-        description="[PREFER value_trace_resolver SPECIALIST] Basic value search. For DYNAMIC_TOKENs, delegate to value_trace_resolver instead - it has deeper analysis capabilities.",
+        description=(
+            "[PREFER value_trace_resolver SPECIALIST] Basic value search. "
+            "For DYNAMIC_TOKENs, delegate to value_trace_resolver instead - it has deeper analysis capabilities."
+        ),
         parameters={
             "type": "object",
             "properties": {
@@ -1108,6 +1185,28 @@ class SuperDiscoveryAgent(AbstractAgent):
                                 "location": f"response_header:{header_name}",
                                 "url": entry.url[:100],
                             })
+
+                # Search request headers
+                if entry.request_headers:
+                    for header_name, header_value in entry.request_headers.items():
+                        if value in str(header_value):
+                            results["found_in"].append({
+                                "source_type": "transaction",
+                                "transaction_id": entry.request_id,
+                                "location": f"request_header:{header_name}",
+                                "url": entry.url[:100],
+                            })
+
+                # Search request body (post_data)
+                if entry.post_data:
+                    post_data_str = entry.post_data if isinstance(entry.post_data, str) else json.dumps(entry.post_data)
+                    if value in post_data_str:
+                        results["found_in"].append({
+                            "source_type": "transaction",
+                            "transaction_id": entry.request_id,
+                            "location": "request_body",
+                            "url": entry.url[:100],
+                        })
 
         # Search storage
         if self._storage_data_loader:
@@ -1452,9 +1551,24 @@ class SuperDiscoveryAgent(AbstractAgent):
             if not source_tx_id:
                 return {"error": "transaction_source must have 'transaction_id' and 'dot_path'"}
 
+            dot_path = transaction_source.get("dot_path", "")
+
+            # Validate that dot_path resolves in the source transaction's response
+            if dot_path and self._network_data_loader:
+                source_entry = self._network_data_loader.get_entry(source_tx_id)
+                if source_entry and source_entry.response_body:
+                    resolved_value = resolve_dotted_path(logger, source_entry.response_body, dot_path)
+                    if resolved_value is None:
+                        return {
+                            "error": (
+                                f"dot_path '{dot_path}' does not resolve to a value in transaction {source_tx_id}'s "
+                                "response body. Verify the path is correct."
+                            )
+                        }
+
             source = TransactionSource(
                 transaction_id=source_tx_id,
-                dot_path=transaction_source.get("dot_path", "")
+                dot_path=dot_path,
             )
 
             # Auto-add dependency transaction to queue
@@ -1666,6 +1780,145 @@ class SuperDiscoveryAgent(AbstractAgent):
     ## Tools - Routine Construction
 
     @agent_tool(
+        description=(
+            "Validate placeholder syntax in a JSON string before constructing a routine. "
+            "Checks quoting, prefixes, and parameter type compatibility. "
+            "Pass the JSON body/headers you plan to use and the parameter definitions."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "json_string": {
+                    "type": "string",
+                    "description": (
+                        "The JSON string containing placeholders to validate. "
+                        "Example: '{\"query\": \\\"{{search_term}}\\\", \"page\": \"{{page_number}}\"}'"
+                    ),
+                },
+                "parameters": {
+                    "type": "array",
+                    "description": (
+                        "Parameter definitions. Each needs 'name' and 'type'. "
+                        "Example: [{\"name\": \"search_term\", \"type\": \"string\"}, {\"name\": \"page_number\", \"type\": \"integer\"}]"
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "type": {"type": "string"},
+                        },
+                        "required": ["name", "type"],
+                    },
+                },
+            },
+            "required": ["json_string"],
+        },
+        availability=lambda self: self._discovery_state.root_transaction is not None,
+    )
+    def _validate_placeholders(
+        self,
+        json_string: str,
+        parameters: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Validate placeholder syntax in a JSON string before routine construction.
+
+        Checks that placeholders are properly quoted, prefixes are valid, and
+        quoting matches the parameter type (string params need escape-quoted).
+
+        Args:
+            json_string: JSON string containing {{...}} placeholders to validate.
+            parameters: Optional parameter definitions with 'name' and 'type' fields.
+        """
+        placeholders = extract_placeholders_from_json_str(json_string)
+
+        if not placeholders:
+            return {"valid": True, "placeholders_found": 0, "message": "No placeholders found in string."}
+
+        # Build param type map from provided definitions
+        param_type_map: dict[str, ParameterType] = {}
+        if parameters:
+            for p in parameters:
+                try:
+                    param_type_map[p["name"]] = ParameterType(p["type"])
+                except (KeyError, ValueError):
+                    pass  # skip malformed entries
+
+        builtin_names = {bp.name for bp in BUILTIN_PARAMETERS}
+        non_string_types = {ParameterType.INTEGER, ParameterType.NUMBER, ParameterType.BOOLEAN}
+        errors: list[str] = []
+        validated: list[dict[str, str]] = []
+
+        for ph in placeholders:
+            content = ph.content
+            quote_type = ph.quote_type
+
+            # Storage/meta/window prefix check
+            if ":" in content:
+                prefix, path = [s.strip() for s in content.split(":", 1)]
+                if prefix not in VALID_PLACEHOLDER_PREFIXES:
+                    errors.append(
+                        f"Invalid prefix '{prefix}' in placeholder '{{{{{content}}}}}'. "
+                        f"Valid: {sorted(VALID_PLACEHOLDER_PREFIXES)}"
+                    )
+                elif not path:
+                    errors.append(f"Path is required after '{prefix}:' in placeholder '{{{{{content}}}}}'.")
+                else:
+                    validated.append(
+                        {
+                            "placeholder": content,
+                            "type": "storage/meta",
+                            "quoting": quote_type.value,
+                            "status": "ok",
+                        }
+                    )
+                continue
+
+            # Builtin check
+            if content in builtin_names:
+                validated.append({"placeholder": content, "type": "builtin", "quoting": quote_type.value, "status": "ok"})
+                continue
+
+            # User-defined parameter
+            param_type = param_type_map.get(content)
+            if param_type is None and parameters is not None:
+                errors.append(f"Placeholder '{{{{{content}}}}}' not found in parameter definitions.")
+                continue
+
+            if param_type is not None and param_type not in non_string_types:
+                # String-like types must use escape-quoted
+                if quote_type != PlaceholderQuoteType.ESCAPE_QUOTED:
+                    errors.append(
+                        f"String parameter '{{{{{content}}}}}' must use escape-quoted format: "
+                        f'\\"{{{{{content}}}}}\\" instead of "{{{{{content}}}}}".'
+                    )
+                else:
+                    validated.append(
+                        {
+                            "placeholder": content,
+                            "type": f"param ({param_type.value})",
+                            "quoting": quote_type.value,
+                            "status": "ok",
+                        }
+                    )
+            else:
+                validated.append(
+                    {
+                        "placeholder": content,
+                        "type": f"param ({param_type.value if param_type else 'unknown'})",
+                        "quoting": quote_type.value,
+                        "status": "ok",
+                    }
+                )
+
+        return {
+            "valid": len(errors) == 0,
+            "placeholders_found": len(placeholders),
+            "validated": validated,
+            "errors": errors,
+        }
+
+    @agent_tool(
         description="Construct a routine from discovered data. After constructing, use validate_routine to test it.",
         parameters={
             "type": "object",
@@ -1755,7 +2008,10 @@ class SuperDiscoveryAgent(AbstractAgent):
             }
 
     @agent_tool(
-        description="Execute the constructed routine with test parameters to validate it works. Only available when browser is connected.",
+        description=(
+            "Execute the constructed routine with test parameters to validate it works. "
+            "Only available when browser is connected."
+        ),
         parameters={
             "type": "object",
             "properties": {
@@ -1838,7 +2094,10 @@ class SuperDiscoveryAgent(AbstractAgent):
                     "execution_success": True,
                     "data_returned": False,
                     "exec_result": exec_result.model_dump() if exec_result else None,
-                    "message": "Routine executed but 'data' field is missing or empty. Use analyze_validation to decide next steps.",
+                    "message": (
+                        "Routine executed but 'data' field is missing or empty. "
+                        "Use analyze_validation to decide next steps."
+                    ),
                 }
         else:
             self._discovery_state.last_validation_result = {
@@ -1868,7 +2127,10 @@ class SuperDiscoveryAgent(AbstractAgent):
                 "next_action": {
                     "type": "string",
                     "enum": ["done", "fix_routine", "retry_validation"],
-                    "description": "What to do next: 'done' if successful, 'fix_routine' to modify routine, 'retry_validation' to re-run.",
+                    "description": (
+                        "What to do next: 'done' if successful, 'fix_routine' to modify routine, "
+                        "'retry_validation' to re-run."
+                    ),
                 },
             },
             "required": ["analysis", "data_matches_task", "next_action"],

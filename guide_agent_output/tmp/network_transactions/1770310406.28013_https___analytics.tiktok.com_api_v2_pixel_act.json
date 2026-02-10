@@ -1,0 +1,49 @@
+{
+ "timestamp": 1770310406.28013,
+ "request_id": "59735.3096",
+ "request": {
+  "url": "https://analytics.tiktok.com/api/v2/pixel/act",
+  "method": "POST",
+  "type": "Ping",
+  "headers": {
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "Content-Type": "text/plain;charset=UTF-8",
+   "sec-ch-ua-mobile": "?0"
+  },
+  "post_data": "{\"event_id\":\"\",\"message_id\":\"messageId-1770310406200-7732761813270\",\"is_onsite\":false,\"timestamp\":\"2026-02-05T16:53:26.200Z\",\"context\":{\"ad\":{\"sdk_env\":\"external\",\"jsb_status\":2},\"device\":{\"platform\":\"pc\"},\"user\":{\"anonymous_id\":\"01KGQBHKDM2E18C5GEA8A3Z7AM_.tt.1\"},\"pixel\":{\"code\":\"CQTPD5JC77U6D8VT2IE0\",\"runtime\":\"1\",\"codes\":\"CQTPD5JC77U6D8VT2IE0\"},\"page\":{\"url\":\"https://www.premierleague.com/en/tables/uefa-champions-league/2025-26\",\"referrer\":\"https://www.premierleague.com/en/tables/efl-cup/2025-26?round=K_6\",\"load_progress\":\"1\"},\"library\":{\"name\":\"pixel.js\",\"version\":\"2.2.1\"},\"session_id\":\"25f5733f-02b3-11f1-8568-ea3ab8caf4b4::n_O7Da7hGiUjs9Dslrc6\",\"pageview_id\":\"25f5733f-02b3-11f1-8568-ea3ab8caf4b4-Y_BdP.4.0::3023b0e0-02b3-11f1-9e04-b83fd2f52e0e\",\"variation_id\":\"traffic_2::default\",\"userAgent\":\"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\",\"index\":9,\"sessions\":[{\"csid\":\"1770310389174::aqRAp2tLTZ-NxZpMAkJU\",\"page_csid\":\"1770310389174::aSYk8PLt0GgwNXZnXD5N\",\"csct\":1,\"pixel_code\":\"CQTPD5JC77U6D8VT2IE0\"}]},\"_inspection\":{\"vids\":\"75350340\",\"inter_id\":\"1.15451.16813::15445.6.444.322::11198.14.1\"},\"properties\":{},\"signal_diagnostic_labels\":{\"raw_email\":{\"label\":\"missing\"},\"raw_auto_email\":{\"label\":\"missing\"},\"raw_phone\":{\"label\":\"missing\"},\"raw_auto_phone\":{\"label\":\"missing\"},\"hashed_email\":{\"label\":\"missing\"},\"hashed_phone\":{\"label\":\"missing\"},\"raw_eb_email\":{\"label\":\"missing\"},\"raw_eb_phone\":{\"label\":\"missing\"},\"hashed_eb_email\":{\"label\":\"missing\"},\"hashed_eb_phone\":{\"label\":\"missing\"}},\"action\":\"Metadata\",\"auto_collected_properties\":{\"page_trigger\":\"PageView\",\"form_details\":\"[]\"}}"
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "access-control-expose-headers": "x-tt-traceflag,x-tt-logid",
+   "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS,UPDATE",
+   "expires": "Thu, 05 Feb 2026 16:53:26 GMT",
+   "server-timing": "inner; dur=14, cdn-cache; desc=MISS, edge; dur=6, origin; dur=31",
+   "x-cache": "TCP_MISS from a184-25-148-21.deploy.akamaitechnologies.com (AkamaiGHost/22.4.1-457a7ac92aced575f7fafeb6146c6a89) (-)",
+   "date": "Thu, 05 Feb 2026 16:53:26 GMT",
+   "x-akamai-request-id": "1218c390",
+   "x-tt-trace-host": "01f769e2594cf93c3a25413de0fa9f43423af317a599c466f078a695c65896f2f6f2fcf6c4741e1823ecda4bf8655dcb39ae6433a049527284776f7f3f581d4bcf5d745f9a56af8d4e3f3d440003235a597d9e080f4d7882e257e51224b6645502",
+   "access-control-allow-headers": "Authorization,*",
+   "x-origin-response-time": "32,184.25.148.21",
+   "cache-control": "max-age=0, no-cache, no-store",
+   "pragma": "no-cache",
+   "x-tt-trace-tag": "id=16;cdn-cache=miss;type=dyn",
+   "access-control-allow-origin": "*",
+   "x-tt-trace-id": "00-260205165326318BB73A7C4256E2DBDA-31FA7B44660D0D9F-00",
+   "content-length": "0",
+   "x-tt-logid": "20260205165326318BB73A7C4256E2DBDA",
+   "server": "nginx"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "text/plain",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

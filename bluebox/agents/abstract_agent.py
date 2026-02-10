@@ -17,13 +17,13 @@ Subclasses implement domain-specific behavior by:
 
 from __future__ import annotations
 
-import functools
 import json
+import functools
 from abc import ABC, abstractmethod
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, get_type_hints
+from typing import Any, Callable, ClassVar, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -49,6 +49,18 @@ from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
+
+
+@dataclass(frozen=True)
+class AgentCard:
+    """
+    Self-describing metadata for an agent.
+
+    Every concrete (non-abstract) AbstractAgent subclass must define an AGENT_CARD
+    class variable. Orchestrator agents use these cards to discover subagent
+    capabilities at runtime — e.g. to auto-generate delegation prompts.
+    """
+    description: str  # 1-2 sentence summary for orchestrator prompts
 
 
 @dataclass(frozen=True)
@@ -147,6 +159,19 @@ class AbstractAgent(ABC):
 
     # Class-level configuration (can be overridden by subclasses)
     AGENT_LOOP_MAX_ITERATIONS: int = 10
+    AGENT_CARD: ClassVar[AgentCard]  # must be defined by every concrete subclass
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Validate that concrete subclasses define AGENT_CARD."""
+        super().__init_subclass__(**kwargs)
+        # skip abstract classes (matches existing naming convention in AbstractSpecialist)
+        if cls.__name__.startswith("Abstract"):
+            return
+        # validate that the subclass defines an AGENT_CARD class variable of type AgentCard
+        if not hasattr(cls, "AGENT_CARD") or not isinstance(cls.AGENT_CARD, AgentCard):
+            raise TypeError(
+                f"{cls.__name__} must define an AGENT_CARD class variable of type AgentCard"
+            )
 
     ## Abstract methods
 
@@ -351,19 +376,19 @@ class AbstractAgent(ABC):
 
     def _get_documentation_prompt_section(self) -> str:
         """
-        Build a light system prompt addendum describing available documentation tools and file index.
+        Build a system prompt addendum describing available documentation files.
 
+        Lists the indexed file inventory so the LLM knows what docs/code are searchable.
+        Tool names are NOT listed here — they come from _get_tool_availability_prompt_section().
         Appended automatically to system prompts when a documentation_data_loader is present.
-        Cannot be overridden by subclasses since it's injected in _call_llm.
         """
         if not self._documentation_data_loader:
             return ""
 
         stats = self._documentation_data_loader.stats
         lines = [
-            "\n\n## Documentation Tools",
+            "\n\n## Documentation",
             f"You have {stats.total_files} indexed files ({stats.total_docs} docs, {stats.total_code} code, {format_bytes(stats.total_bytes)}).",
-            "Use `search_docs`, `get_doc_file`, `search_docs_by_terms`, or `search_docs_by_regex` to query them.",
         ]
 
         doc_index = self._documentation_data_loader.get_documentation_index()
@@ -576,6 +601,32 @@ class AbstractAgent(ABC):
 
         return self._documentation_data_loader.search_by_regex(pattern=pattern, top_n=top_n)
 
+    ## Tool availability prompt section
+
+    def _get_tool_availability_prompt_section(self) -> str:
+        """
+        Build a system prompt section listing currently available tools.
+
+        Only lists tools whose availability evaluates to True right now.
+        Called automatically after _sync_tools() so the tool set is current.
+        Injected in _call_llm() so tools are automatically listed in the system prompt.
+        """
+        if not self._registered_tool_names:
+            return ""
+
+        collected = self._collect_tools()
+        if not collected:
+            return ""
+
+        lines = ["\n\n## Tools"]
+        for tool_meta, _ in collected:
+            if tool_meta.name in self._registered_tool_names:
+                # Truncate long descriptions to first sentence
+                short = tool_meta.description.split(". ")[0].split("\n")[0]
+                lines.append(f"- `{tool_meta.name}` — {short}")
+
+        return "\n".join(lines)
+
     ## LLMs and streaming
 
     def _call_llm(
@@ -595,9 +646,13 @@ class AbstractAgent(ABC):
                 - "required": Force the model to use at least one tool
                 - Tool name string: Force the model to use a specific tool
         """
-        self._sync_tools()  # ensure tool availability reflects current state
+        # ensure tool availability reflects current state
+        self._sync_tools()
+    
+        # append tool availability (injected here so subclasses can't accidentally omit it)
+        system_prompt = system_prompt + self._get_tool_availability_prompt_section()
 
-        # Append documentation context (injected here so subclasses can't accidentally omit it)
+        # append documentation context (injected here so subclasses can't accidentally omit it)
         docs_section = self._get_documentation_prompt_section()
         if docs_section:
             system_prompt = system_prompt + docs_section

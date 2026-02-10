@@ -1,0 +1,46 @@
+{
+ "timestamp": 1770310389.001658,
+ "request_id": "interception-job-25103.0",
+ "request": {
+  "url": "https://api.premierleague.com/content/premierleague/VIDEO/en/4580726?detail=DETAILED",
+  "method": "GET",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "application/json;charset=UTF-8",
+   "date": "Thu, 05 Feb 2026 16:52:43 GMT",
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "content-encoding": "br",
+   "cache-control": "max-age=30, stale-while-revalidate=600, stale-if-error=86400",
+   "etag": "W/\"0c83d4c43ebc7e984c71f17717a4e3d0a\"",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 0854f146df243db4c3bbb6ababb1772a.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P6",
+   "x-amz-cf-id": "aBr_r1nxWMkNRtsFl8G2UhpNPXYnjW7yKy9ZlmChB8zO7-3hBLkSlA==",
+   "age": "25",
+   "access-control-allow-credentials": "true",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "vary": "Origin"
+  },
+  "body": "{\"id\":4580726,\"accountId\":10,\"type\":\"video\",\"title\":\"Watch: Rugby star Marcus Smith makes his MW25 predictions\",\"description\":\"Take on England rugby team's Marcus Smith, and see if you can beat his  2025/26 Matchweek 25 predictions\",\"date\":\"2026-01-04T12:36:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1770208579787,\"publishTo\":0,\"tags\":[{\"id\":12186,\"label\":\"content-type:video\"},{\"id\":12184,\"label\":\"video-type:vod\"},{\"id\":12438,\"label\":\"VOD\"},{\"id\":5269,\"label\":\"video playlist\"},{\"id\":12432,\"label\":\"free\"}],\"platform\":\"MEDIA_KIND\",\"language\":\"en\",\"additionalInfo\":{\"mediaKindStreamingUrl\":\"https://uksouth-2.av.mk.io/epl-vod-a/hls-itc/premierleague.com_06a77b2e-c55b-4b9d-84d2-39d3281380c0/index.m3u8\"},\"canonicalUrl\":\"\",\"references\":[{\"label\":null,\"id\":2,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"2\"},{\"label\":null,\"id\":8,\"type\":\"SDP_FOOTBALL_COMPETITION\",\"sid\":\"8\"},{\"label\":null,\"id\":2562144,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562144\"},{\"label\":null,\"id\":6,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"6\"},{\"label\":null,\"id\":2562135,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562135\"},{\"label\":null,\"id\":2562137,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562137\"},{\"label\":null,\"id\":54,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"54\"},{\"label\":null,\"id\":21,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"21\"},{\"label\":null,\"id\":2,\"type\":\"FOOTBALL_CLUB\",\"sid\":\"2\"},{\"label\":null,\"id\":3,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"3\"},{\"label\":null,\"id\":2025,\"type\":\"SDP_FOOTBALL_SEASON\",\"sid\":\"2025\"},{\"label\":null,\"id\":1,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"1\"},{\"label\":null,\"id\":91,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"91\"},{\"label\":null,\"id\":90,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"90\"},{\"label\":null,\"id\":43,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"43\"},{\"label\":null,\"id\":2562143,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562143\"},{\"label\":null,\"id\":11,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"11\"},{\"label\":null,\"id\":2562138,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562138\"},{\"label\":null,\"id\":31,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"31\"},{\"label\":null,\"id\":8,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"8\"},{\"label\":null,\"id\":94,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"94\"},{\"label\":null,\"id\":2562139,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562139\"},{\"label\":null,\"id\":14,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"14\"},{\"label\":null,\"id\":2562136,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562136\"},{\"label\":null,\"id\":2562140,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562140\"},{\"label\":null,\"id\":39,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"39\"},{\"label\":null,\"id\":7,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"7\"},{\"label\":null,\"id\":2562142,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562142\"},{\"label\":null,\"id\":56,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"56\"},{\"label\":null,\"id\":36,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"36\"},{\"label\":null,\"id\":2562141,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562141\"},{\"label\":null,\"id\":17,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"17\"},{\"label\":null,\"id\":4,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"4\"}],\"related\":[],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1770286633876,\"titleUrlSegment\":\"watch-marcus-smith-makes-his-mw25-predictions\",\"visibilityOrder\":[],\"thumbnailUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/04/6d7cc837-931a-4c69-929a-bb015b66d50c/U8s2IOQC.jpg?width=1280\",\"duration\":84,\"variants\":[{\"aspectRatio\":0.0,\"displayAspectRatio\":null,\"bitRate\":0,\"codec\":null,\"duration\":84,\"format\":null,\"frameRate\":0.0,\"height\":0,\"mediaId\":\"premierleague.com_06a77b2e-c55b-4b9d-84d2-39d3281380c0\",\"tags\":[],\"width\":0}],\"thumbnail\":{\"id\":4580725,\"accountId\":10,\"type\":\"photo\",\"title\":\"PLD_25_26_MW25_PREDICTIONS_16X9.mp4\",\"description\":\"\",\"date\":\"2026-02-04T12:36:19Z\",\"location\":\"\",\"coordinates\":null,\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1770208579787,\"publishTo\":0,\"tags\":[],\"platform\":\"MEDIA_KIND\",\"language\":\"en\",\"additionalInfo\":{},\"canonicalUrl\":\"\",\"references\":[],\"related\":[],\"metadata\":null,\"titleTranslations\":null,\"lastModified\":1770208608600,\"titleUrlSegment\":\"pld_25_26_mw25_predictions_16x9mp4\",\"subtitle\":null,\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/04/6d7cc837-931a-4c69-929a-bb015b66d50c/U8s2IOQC.jpg\",\"originalDetails\":{\"width\":1400,\"height\":788,\"aspectRatio\":1.7766497},\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/04/6d7cc837-931a-4c69-929a-bb015b66d50c/U8s2IOQC.jpg\"},\"mediaId\":\"premierleague.com_06a77b2e-c55b-4b9d-84d2-39d3281380c0\",\"mediaGuid\":\"premierleague.com_06a77b2e-c55b-4b9d-84d2-39d3281380c0\",\"subtitle\":null,\"closedCaptioned\":false,\"hotlinkUrl\":null,\"views\":0,\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/04/6d7cc837-931a-4c69-929a-bb015b66d50c/U8s2IOQC.jpg\",\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/04/6d7cc837-931a-4c69-929a-bb015b66d50c/U8s2IOQC.jpg\"}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json;charset=UTF-8",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

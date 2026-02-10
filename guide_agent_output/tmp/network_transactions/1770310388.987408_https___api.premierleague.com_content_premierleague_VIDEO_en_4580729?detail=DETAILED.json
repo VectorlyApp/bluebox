@@ -1,0 +1,46 @@
+{
+ "timestamp": 1770310388.987408,
+ "request_id": "interception-job-25102.0",
+ "request": {
+  "url": "https://api.premierleague.com/content/premierleague/VIDEO/en/4580729?detail=DETAILED",
+  "method": "GET",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "application/json;charset=UTF-8",
+   "date": "Thu, 05 Feb 2026 16:51:15 GMT",
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "content-encoding": "br",
+   "cache-control": "max-age=30, stale-while-revalidate=600, stale-if-error=86400",
+   "etag": "W/\"0847b1b724d5c643c39278d61c1a1b00a\"",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 0854f146df243db4c3bbb6ababb1772a.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P6",
+   "x-amz-cf-id": "z7R1W5ueYO4eQuvXeOuO8wY2yULiNeDpmexA_SKIOZqhoNr7wSN2wg==",
+   "age": "113",
+   "access-control-allow-credentials": "true",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "vary": "Origin"
+  },
+  "body": "{\"id\":4580729,\"accountId\":10,\"type\":\"video\",\"title\":\"Things you may have missed in Matchweek 24\",\"description\":\"How many of these moments did you spot from the latest Premier League matches?\",\"date\":\"2026-02-04T12:45:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1770209119644,\"publishTo\":0,\"tags\":[{\"id\":12186,\"label\":\"content-type:video\"},{\"id\":12184,\"label\":\"video-type:vod\"},{\"id\":12438,\"label\":\"VOD\"},{\"id\":13570,\"label\":\"label:Video\"},{\"id\":5269,\"label\":\"video playlist\"},{\"id\":12432,\"label\":\"free\"}],\"platform\":\"MEDIA_KIND\",\"language\":\"en\",\"additionalInfo\":{\"mediaKindStreamingUrl\":\"https://uksouth-2.av.mk.io/epl-vod-a/hls-itc/premierleague.com_fdd33664-fddc-4ce7-b4c1-06188e827839/index.m3u8\"},\"canonicalUrl\":\"\",\"references\":[{\"label\":null,\"id\":2562126,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562126\"},{\"label\":null,\"id\":2562125,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562125\"},{\"label\":null,\"id\":8,\"type\":\"SDP_FOOTBALL_COMPETITION\",\"sid\":\"8\"},{\"label\":null,\"id\":2562129,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562129\"},{\"label\":null,\"id\":2562127,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562127\"},{\"label\":null,\"id\":2562130,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562130\"},{\"label\":null,\"id\":2025,\"type\":\"SDP_FOOTBALL_SEASON\",\"sid\":\"2025\"},{\"label\":null,\"id\":2562131,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562131\"},{\"label\":null,\"id\":2562133,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562133\"}],\"related\":[],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1770225005563,\"titleUrlSegment\":\"things-you-may-have-missed-in-matchweek-24\",\"visibilityOrder\":[],\"thumbnailUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/04/caa266aa-846a-4e28-9634-23c1d2599ab4/TYMHM-MW24-16X9-THUMB-2025.png?width=1280\",\"duration\":197,\"variants\":[{\"aspectRatio\":0.0,\"displayAspectRatio\":null,\"bitRate\":0,\"codec\":null,\"duration\":197,\"format\":null,\"frameRate\":0.0,\"height\":0,\"mediaId\":\"premierleague.com_fdd33664-fddc-4ce7-b4c1-06188e827839\",\"tags\":[],\"width\":0}],\"thumbnail\":{\"id\":4580756,\"accountId\":10,\"type\":\"photo\",\"title\":\"TYMHM MW24 16X9 THUMB 2025\",\"description\":null,\"date\":\"2026-02-04T14:49:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1770216598567,\"publishTo\":0,\"tags\":[],\"platform\":\"PULSE_CMS\",\"language\":\"en\",\"additionalInfo\":{},\"canonicalUrl\":\"\",\"references\":[],\"related\":[],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1770217031765,\"titleUrlSegment\":\"tymhm-mw24-16x9-thumb-2025\",\"subtitle\":null,\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/04/caa266aa-846a-4e28-9634-23c1d2599ab4/TYMHM-MW24-16X9-THUMB-2025.png\",\"originalDetails\":{\"width\":1920,\"height\":1080,\"aspectRatio\":1.7777778},\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/04/caa266aa-846a-4e28-9634-23c1d2599ab4/TYMHM-MW24-16X9-THUMB-2025.png\"},\"mediaId\":\"premierleague.com_fdd33664-fddc-4ce7-b4c1-06188e827839\",\"mediaGuid\":\"premierleague.com_fdd33664-fddc-4ce7-b4c1-06188e827839\",\"subtitle\":null,\"closedCaptioned\":false,\"hotlinkUrl\":null,\"views\":0,\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/04/caa266aa-846a-4e28-9634-23c1d2599ab4/TYMHM-MW24-16X9-THUMB-2025.png\",\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/04/caa266aa-846a-4e28-9634-23c1d2599ab4/TYMHM-MW24-16X9-THUMB-2025.png\"}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json;charset=UTF-8",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

@@ -1,0 +1,53 @@
+{
+ "timestamp": 1770310388.635979,
+ "request_id": "interception-job-24956.0",
+ "request": {
+  "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v2/matches?competition=8&season=2025&_limit=50&matchweek=25",
+  "method": "GET",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "application/json",
+   "permissions-policy": "accelerometer=(), autoplay=(), camera=(), ch-dpr=(), ch-save-data=(), ch-viewport-width=(), ch-width=(), clipboard-read=(), clipboard-write=(), cross-origin-isolated=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), idle-detection=(), keyboard-map=(), local-fonts=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), sync-xhr=(), usb=(), window-placement=(), xr-spatial-tracking=()",
+   "date": "Thu, 05 Feb 2026 16:51:28 GMT",
+   "x-cache-server": "norp",
+   "content-encoding": "br",
+   "x-pulse-sdp-endpoint": "/v2/matches",
+   "cache-control": "max-age=5, stale-while-revalidate=120, stale-if-error=86400",
+   "x-cache-status": "HIT",
+   "vary": "Origin",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 747d47277bb55e9ca12ebb92db620d58.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P4",
+   "alt-svc": "h3=\":443\"; ma=86400",
+   "access-control-allow-origin": "*",
+   "age": "103",
+   "x-frame-options": "DENY",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "content-security-policy": "frame-ancestors 'none'; default-src 'self'; script-src 'self'; script-src-elem 'self'; script-src-attr 'self'; style-src 'self'; style-src-elem 'self'; style-src-attr 'self'; img-src 'self'; connect-src 'self'; frame-src 'self'; font-src 'self'; media-src 'self'; object-src 'self'; manifest-src 'self'; worker-src 'self'; prefetch-src 'self'; form-action 'self';",
+   "x-content-type-options": "nosniff",
+   "strict-transport-security": "max-age=31536000; includeSubDomains",
+   "x-amz-cf-id": "Szro9FOey2QR19SqAKw_cnHNH5qxahRflfk4vUizeSxBhnb8hOJsDA=="
+  },
+  "body": "{\"pagination\":{\"_limit\":50,\"_prev\":null,\"_next\":null},\"data\":[{\"phase\":\"1\",\"kickoffTimezone\":\"GMT\",\"competitionId\":\"8\",\"period\":\"PreMatch\",\"matchWeek\":25,\"kickoff\":\"2026-02-07 15:00:00\",\"awayTeam\":{\"name\":\"Aston Villa\",\"id\":\"7\",\"shortName\":\"Aston Villa\",\"abbr\":\"AVL\"},\"competition\":\"Premier League\",\"kickoffTimezoneString\":\"Europe/London\",\"homeTeam\":{\"name\":\"Bournemouth\",\"id\":\"91\",\"shortName\":\"Bournemouth\",\"abbr\":\"BOU\"},\"season\":\"2025\",\"ground\":\"Vitality Stadium, Bournemouth\",\"matchId\":\"2562135\"},{\"phase\":\"1\",\"kickoffTimezone\":\"GMT\",\"competitionId\":\"8\",\"period\":\"PreMatch\",\"matchWeek\":25,\"kickoff\":\"2026-02-07 15:00:00\",\"awayTeam\":{\"name\":\"Sunderland\",\"id\":\"56\",\"shortName\":\"Sunderland\",\"abbr\":\"SUN\"},\"competition\":\"Premier League\",\"kickoffTimezoneString\":\"Europe/London\",\"homeTeam\":{\"name\":\"Arsenal\",\"id\":\"3\",\"shortName\":\"Arsenal\",\"abbr\":\"ARS\"},\"season\":\"2025\",\"ground\":\"Emirates Stadium, London\",\"matchId\":\"2562136\"},{\"phase\":\"1\",\"kickoffTimezone\":\"GMT\",\"competitionId\":\"8\",\"period\":\"PreMatch\",\"matchWeek\":25,\"kickoff\":\"2026-02-08 14:00:00\",\"awayTeam\":{\"name\":\"Crystal Palace\",\"id\":\"31\",\"shortName\":\"Crystal Palace\",\"abbr\":\"CRY\"},\"competition\":\"Premier League\",\"kickoffTimezoneString\":\"Europe/London\",\"homeTeam\":{\"name\":\"Brighton and Hove Albion\",\"id\":\"36\",\"shortName\":\"Brighton\",\"abbr\":\"BHA\"},\"season\":\"2025\",\"ground\":\"American Express Stadium, Falmer\",\"matchId\":\"2562137\"},{\"phase\":\"1\",\"kickoffTimezone\":\"GMT\",\"competitionId\":\"8\",\"period\":\"PreMatch\",\"matchWeek\":25,\"kickoff\":\"2026-02-07 15:00:00\",\"awayTeam\":{\"name\":\"West Ham United\",\"id\":\"21\",\"shortName\":\"West Ham\",\"abbr\":\"WHU\"},\"competition\":\"Premier League\",\"kickoffTimezoneString\":\"Europe/London\",\"homeTeam\":{\"name\":\"Burnley\",\"id\":\"90\",\"shortName\":\"Burnley\",\"abbr\":\"BUR\"},\"season\":\"2025\",\"ground\":\"Turf Moor, Burnley\",\"matchId\":\"2562138\"},{\"phase\":\"1\",\"kickoffTimezone\":\"GMT\",\"competitionId\":\"8\",\"period\":\"PreMatch\",\"matchWeek\":25,\"kickoff\":\"2026-02-07 15:00:00\",\"awayTeam\":{\"name\":\"Everton\",\"id\":\"11\",\"shortName\":\"Everton\",\"abbr\":\"EVE\"},\"competition\":\"Premier League\",\"kickoffTimezoneString\":\"Europe/London\",\"homeTeam\":{\"name\":\"Fulham\",\"id\":\"54\",\"shortName\":\"Fulham\",\"abbr\":\"FUL\"},\"season\":\"2025\",\"ground\":\"Craven Cottage, London\",\"matchId\":\"2562139\"},{\"phase\":\"1\",\"kickoffTimezone\":\"GMT\",\"competitionId\":\"8\",\"period\":\"PreMatch\",\"matchWeek\":25,\"kickoff\":\"2026-02-06 20:00:00\",\"awayTeam\":{\"name\":\"Nottingham Forest\",\"id\":\"17\",\"shortName\":\"Nott'm Forest\",\"abbr\":\"NFO\"},\"competition\":\"Premier League\",\"kickoffTimezoneString\":\"Europe/London\",\"homeTeam\":{\"name\":\"Leeds United\",\"id\":\"2\",\"shortName\":\"Leeds\",\"abbr\":\"LEE\"},\"season\":\"2025\",\"ground\":\"Elland Road, Leeds\",\"matchId\":\"2562140\"},{\"phase\":\"1\",\"kickoffTimezone\":\"GMT\",\"competitionId\":\"8\",\"period\":\"PreMatch\",\"matchWeek\":25,\"kickoff\":\"2026-02-08 16:30:00\",\"awayTeam\":{\"name\":\"Manchester City\",\"id\":\"43\",\"shortName\":\"Man City\",\"abbr\":\"MCI\"},\"competition\":\"Premier League\",\"kickoffTimezoneString\":\"Europe/London\",\"homeTeam\":{\"name\":\"Liverpool\",\"id\":\"14\",\"shortName\":\"Liverpool\",\"abbr\":\"LIV\"},\"season\":\"2025\",\"ground\":\"Anfield, Liverpool\",\"matchId\":\"2562141\"},{\"phase\":\"1\",\"kickoffTimezone\":\"GMT\",\"competitionId\":\"8\",\"period\":\"PreMatch\",\"matchWeek\":25,\"kickoff\":\"2026-02-07 12:30:00\",\"awayTeam\":{\"name\":\"Tottenham Hotspur\",\"id\":\"6\",\"shortName\":\"Spurs\",\"abbr\":\"TOT\"},\"competition\":\"Premier League\",\"kickoffTimezoneString\":\"Europe/London\",\"homeTeam\":{\"name\":\"Manchester United\",\"id\":\"1\",\"shortName\":\"Man Utd\",\"abbr\":\"MUN\"},\"season\":\"2025\",\"ground\":\"Old Trafford, Manchester\",\"matchId\":\"2562142\"},{\"phase\":\"1\",\"kickoffTimezone\":\"GMT\",\"competitionId\":\"8\",\"period\":\"PreMatch\",\"matchWeek\":25,\"kickoff\":\"2026-02-07 17:30:00\",\"awayTeam\":{\"name\":\"Brentford\",\"id\":\"94\",\"shortName\":\"Brentford\",\"abbr\":\"BRE\"},\"competition\":\"Premier League\",\"kickoffTimezoneString\":\"Europe/London\",\"homeTeam\":{\"name\":\"Newcastle United\",\"id\":\"4\",\"shortName\":\"Newcastle\",\"abbr\":\"NEW\"},\"season\":\"2025\",\"ground\":\"St. James' Park, Newcastle\",\"matchId\":\"2562143\"},{\"phase\":\"1\",\"kickoffTimezone\":\"GMT\",\"competitionId\":\"8\",\"period\":\"PreMatch\",\"matchWeek\":25,\"kickoff\":\"2026-02-07 15:00:00\",\"awayTeam\":{\"name\":\"Chelsea\",\"id\":\"8\",\"shortName\":\"Chelsea\",\"abbr\":\"CHE\"},\"competition\":\"Premier League\",\"kickoffTimezoneString\":\"Europe/London\",\"homeTeam\":{\"name\":\"Wolverhampton Wanderers\",\"id\":\"39\",\"shortName\":\"Wolves\",\"abbr\":\"WOL\"},\"season\":\"2025\",\"ground\":\"Molineux Stadium, Wolverhampton\",\"matchId\":\"2562144\"}]}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

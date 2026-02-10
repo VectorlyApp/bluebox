@@ -1,0 +1,40 @@
+{
+ "timestamp": 1770310403.496673,
+ "request_id": "59735.2508",
+ "request": {
+  "url": "https://resources.premierleague.com/premierleague25/config/season-config/competitions/2.json",
+  "method": "GET",
+  "type": "Fetch",
+  "headers": {
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 403,
+  "status_text": "",
+  "headers": {
+   "access-control-allow-credentials": "true",
+   "via": "1.1 68794724cce9f2f9839810e506581c8c.cloudfront.net (CloudFront)",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "x-cache": "Error from cloudfront",
+   "x-amz-cf-id": "769pWlJ0WoiA89_b9ce2k4tUVdDCIoLftrkqKGZPT5YDVhBHvdgKMw==",
+   "date": "Thu, 05 Feb 2026 16:53:22 GMT",
+   "content-type": "application/xml",
+   "x-amz-cf-pop": "BOS50-P1",
+   "server": "AmazonS3",
+   "vary": "Origin"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/xml",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

@@ -4,8 +4,6 @@ tests/unit/llms/test_abstract_llm_vendor_client.py
 Unit tests for AbstractLLMVendorClient, including vendor discovery and client factory.
 """
 
-import pytest
-
 from bluebox.data_models.llms.vendors import (
     AnthropicModel,
     LLMVendor,

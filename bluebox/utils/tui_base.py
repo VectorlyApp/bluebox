@@ -705,6 +705,12 @@ class AbstractAgentTUI(App):
         user_input = event.value.strip()
         if not user_input:
             return
+
+        # Always allow exit, even while agent is processing
+        if user_input.lower() in ("/quit", "/exit", "/q"):
+            self.exit()
+            return
+
         if self._processing:
             return
 
@@ -725,9 +731,6 @@ class AbstractAgentTUI(App):
         cmd = user_input.lower()
 
         # ── Common commands ──
-        if cmd in ("/quit", "/exit", "/q"):
-            self.exit()
-            return
         if cmd in ("/help", "/commands", "/h", "/?"):
             chat.write(Text.from_markup(self.HELP_TEXT))
             return

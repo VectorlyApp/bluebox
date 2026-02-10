@@ -1,171 +1,176 @@
 """
 bluebox/scripts/run_bluebox_agent.py
 
-Interactive CLI for the BlueBoxAgent.
+Multi-pane terminal UI for the BlueBoxAgent using Textual.
+
+Layout:
+  ┌─────────────────────────────┬──────────────────────┐
+  │                             │  Tool Calls History   │
+  │       Chat (scrolling)      │                       │
+  │                             ├──────────────────────┤
+  │  ┌────────────────────────┐ │  Status / Stats       │
+  │  │ Input                  │ │                       │
+  │  └────────────────────────┘ │                       │
+  └─────────────────────────────┴──────────────────────┘
 
 Usage:
     bluebox-agent
     bluebox-agent --model gpt-5.1
-    bluebox-agent --remote-debugging-address http://127.0.0.1:9222
+    bluebox-agent --model gpt-5.2 --remote-debugging-address http://127.0.0.1:9222
 """
+
+from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
-from rich import box
 from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
+from rich.text import Text
+from textual.widgets import RichLog
 
 from bluebox.agents.bluebox_agent import BlueBoxAgent
 from bluebox.config import Config
-from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
+from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
-from bluebox.agents.terminal_agent_base import AbstractTerminalAgentChat
-from bluebox.utils.logger import get_logger
+from bluebox.utils.logger import enable_tui_logging
+from bluebox.utils.tui_base import AbstractAgentTUI, BASE_SLASH_COMMANDS, BASE_HELP_TEXT
+
+if TYPE_CHECKING:
+    from bluebox.agents.abstract_agent import AbstractAgent
 
 
-logger = get_logger(name=__name__)
-console = Console()
+class BlueBoxAgentTUI(AbstractAgentTUI):
+    """Multi-pane TUI for the BlueBox Agent."""
 
-SLASH_COMMANDS = [
-    ("/reset", "Start a new conversation"),
-    ("/help", "Show help"),
-    ("/quit", "Exit"),
-]
-
-
-BANNER = """\
-[bold green]
-██╗   ██╗███████╗ ██████╗████████╗ ██████╗ ██████╗ ██╗  ██╗   ██╗
-██║   ██║██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██╔══██╗██║  ╚██╗ ██╔╝
-██║   ██║█████╗  ██║        ██║   ██║   ██║██████╔╝██║   ╚████╔╝
-╚██╗ ██╔╝██╔══╝  ██║        ██║   ██║   ██║██╔══██╗██║    ╚██╔╝
- ╚████╔╝ ███████╗╚██████╗   ██║   ╚██████╔╝██║  ██║███████╗██║
-  ╚═══╝  ╚══════╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝
-
-██████╗ ██████╗  ██████╗ ██╗    ██╗███████╗███████╗██████╗      █████╗  ██████╗ ███████╗███╗   ██╗████████╗
-██╔══██╗██╔══██╗██╔═══██╗██║    ██║██╔════╝██╔════╝██╔══██╗    ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝
-██████╔╝██████╔╝██║   ██║██║ █╗ ██║███████╗█████╗  ██████╔╝    ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║
-██╔══██╗██╔══██╗██║   ██║██║███╗██║╚════██║██╔══╝  ██╔══██╗    ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║
-██████╔╝██║  ██║╚██████╔╝╚███╔███╔╝███████║███████╗██║  ██║    ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║
-╚═════╝ ╚═╝  ╚═╝ ╚═════╝  ╚══╝╚══╝ ╚══════╝╚══════╝╚═╝  ╚═╝    ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝
-[/bold green]"""
-
-
-class TerminalVectorlyBrowserChat(AbstractTerminalAgentChat):
-    """Interactive terminal chat interface for the BlueBox Agent."""
-
-    autonomous_command_name = "run"  # Not used for now, but required by base class
+    TITLE = "BlueBox Agent"
+    SLASH_COMMANDS = BASE_SLASH_COMMANDS
+    HELP_TEXT = BASE_HELP_TEXT
+    SHOW_SAVED_FILES_PANE = True
 
     def __init__(
         self,
-        llm_model: LLMModel = OpenAIModel.GPT_5_1,
+        llm_model: LLMModel,
         remote_debugging_address: str = "http://127.0.0.1:9222",
-        routine_output_dir: str | None = None,
+        routine_output_dir: str = "./routine_output",
     ) -> None:
-        """Initialize the terminal chat interface."""
-        self.llm_model = llm_model
-        self.remote_debugging_address = remote_debugging_address
-        self.routine_output_dir = routine_output_dir
-        super().__init__(console=console, agent_color="green")
+        super().__init__(llm_model, working_dir=routine_output_dir)
+        self._remote_debugging_address = remote_debugging_address
+        self._routine_output_dir = routine_output_dir
 
-    def _create_agent(self) -> BlueBoxAgent:
-        """Create the BlueBox Agent instance."""
+    # ── Abstract implementations ─────────────────────────────────────────
+
+    def _create_agent(self) -> AbstractAgent:
         return BlueBoxAgent(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
-            llm_model=self.llm_model,
-            remote_debugging_address=self.remote_debugging_address,
-            routine_output_dir=self.routine_output_dir,
+            llm_model=self._llm_model,
+            remote_debugging_address=self._remote_debugging_address,
+            routine_output_dir=self._routine_output_dir,
         )
 
-    def get_slash_commands(self) -> list[tuple[str, str]]:
-        """Return list of slash commands."""
-        return SLASH_COMMANDS
-
-    def print_welcome(self) -> None:
-        """Print welcome message with connection info."""
-        self.console.print(BANNER)
-        self.console.print()
-
-        # Build config table
-        config_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
-        config_table.add_column("Label", style="dim")
-        config_table.add_column("Value", style="white")
-
-        config_table.add_row("Remote Debug", self.remote_debugging_address)
-        config_table.add_row("Model", self.llm_model.value)
-
-        self.console.print(Panel(
-            config_table,
-            title="[bold green]Configuration[/bold green]",
-            border_style="green",
-            box=box.ROUNDED,
+    def _print_welcome(self) -> None:
+        chat = self.query_one("#chat-log", RichLog)
+        chat.write(Text.from_markup(
+            "[bold green]BlueBox Agent[/bold green]  "
+            "[dim]powered by Vectorly[/dim]"
         ))
-        self.console.print()
+        chat.write("")
 
-        self.console.print(Panel(
-            """[bold]Commands:[/bold]
-  [green]/reset[/green]  Start a new conversation
-  [green]/help[/green]   Show help
-  [green]/quit[/green]   Exit
+        lines = [
+            f"[dim]Model:[/dim]       {self._llm_model.value}",
+            f"[dim]Remote:[/dim]      {self._remote_debugging_address}",
+        ]
+        chat.write(Text.from_markup("\n".join(lines)))
+        chat.write("")
 
-Ask me to execute a routine or help you find the right one!""",
-            title="[bold green]BlueBox Agent[/bold green]",
-            subtitle=f"[dim]Model: {self.llm_model.value}[/dim]",
-            border_style="green",
-            box=box.ROUNDED,
+        chat.write(Text.from_markup(
+            "Type [cyan]/help[/cyan] for commands, or ask me to browse the web "
+            "or execute a routine."
         ))
-        self.console.print()
+        chat.write("")
 
-    def handle_autonomous_command(self, task: str) -> None:
-        """Handle autonomous command (not implemented for this agent)."""
-        self.console.print()
-        self.console.print("[yellow]Autonomous mode is not available for this agent.[/yellow]")
-        self.console.print("[dim]Use natural language to ask about or execute routines.[/dim]")
-        self.console.print()
+    def _build_status_text(self) -> str:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        msg_count = len(self._agent.get_chats()) if self._agent else 0
+        tokens_used, ctx_pct = self._estimate_context_usage()
+        ctx_bar = self._context_bar(ctx_pct)
+        return (
+            f"[bold green]BlueBox Agent[/bold green]\n"
+            f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
+            f"[dim]Model:[/dim]     {self._llm_model.value}\n"
+            f"[dim]Messages:[/dim]  {msg_count}\n"
+            f"[dim]Tools:[/dim]     {self._tool_call_count}\n"
+            f"[dim]Context:[/dim]   {ctx_bar}\n"
+            f"[dim](est.)      ~{tokens_used:,} / {self._context_window_size:,}[/dim]\n"
+            f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
+            f"[dim]Remote:[/dim]    {self._remote_debugging_address}\n"
+            f"[dim]Time:[/dim]      {now}\n"
+        )
 
+    def _extract_tool_result_prefix_lines(self, tool_name: str, tool_result: Any) -> list[str]:
+        """Surface output_file paths at the top of RESULT nodes."""
+        if not isinstance(tool_result, dict):
+            return []
+        paths: list[str] = []
+        # Top-level output_file
+        if tool_result.get("output_file"):
+            paths.append(f"📄 {tool_result['output_file']}")
+        # Nested results (e.g. execute_routines_parallel)
+        for r in tool_result.get("results", []):
+            if isinstance(r, dict) and r.get("output_file"):
+                paths.append(f"📄 {r['output_file']}")
+        return paths
+
+
+# ─── Entry point ─────────────────────────────────────────────────────────────
 
 def main() -> None:
-    """Run the BlueBox Agent interactively."""
-    parser = argparse.ArgumentParser(
-        description="BlueBox Agent - Execute web automation routines"
-    )
+    """Entry point for the BlueBox Agent TUI."""
+    parser = argparse.ArgumentParser(description="BlueBox Agent \u2014 Multi-pane TUI")
     parser.add_argument(
         "--remote-debugging-address",
         type=str,
         default="http://127.0.0.1:9222",
         help="Chrome remote debugging address (default: http://127.0.0.1:9222)",
     )
+    add_model_argument(parser)
     parser.add_argument(
         "--routine-output-dir",
         type=str,
         default="./routine_output",
         help="Directory to save routine execution results as JSON files (default: ./routine_output)",
     )
-    add_model_argument(parser)
+    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
+    parser.add_argument("--log-file", type=str, default=None, help="Log to file")
     args = parser.parse_args()
 
-    # Check required API configuration
+    console = Console()
+
+    # Validate required config
     if not Config.VECTORLY_API_KEY:
-        console.print("[bold red]Error:[/bold red] VECTORLY_API_KEY is not set")
+        console.print("[bold red]Error: VECTORLY_API_KEY is not set[/bold red]")
         sys.exit(1)
     if not Config.VECTORLY_API_BASE:
-        console.print("[bold red]Error:[/bold red] VECTORLY_API_BASE is not set")
+        console.print("[bold red]Error: VECTORLY_API_BASE is not set[/bold red]")
         sys.exit(1)
 
-    # Resolve model
     llm_model = resolve_model(args.model, console)
 
-    # Create and run chat
-    chat = TerminalVectorlyBrowserChat(
+    console.print(f"[dim]Remote debugging: {args.remote_debugging_address}[/dim]")
+    console.print(f"[dim]Model: {llm_model.value}[/dim]")
+    console.print()
+
+    # Redirect logging + stderr AFTER all console output, right before TUI takes over.
+    enable_tui_logging(log_file=args.log_file or ".bluebox_browser_tui.log", quiet=args.quiet)
+
+    app = BlueBoxAgentTUI(
         llm_model=llm_model,
         remote_debugging_address=args.remote_debugging_address,
         routine_output_dir=args.routine_output_dir,
     )
-    chat.print_welcome()
-    chat.run()
+    app.run()
 
 
 if __name__ == "__main__":

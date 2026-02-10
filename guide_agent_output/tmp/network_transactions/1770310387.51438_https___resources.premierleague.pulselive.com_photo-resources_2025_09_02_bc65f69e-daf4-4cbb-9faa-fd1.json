@@ -1,0 +1,43 @@
+{
+ "timestamp": 1770310387.51438,
+ "request_id": "interception-job-24766.0",
+ "request": {
+  "url": "https://resources.premierleague.pulselive.com/photo-resources/2025/09/02/bc65f69e-daf4-4cbb-9faa-fd161e5cc12e/PL2526-Adobe-Promos-Desktop-2.png?width=946&height=116",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "image/webp",
+   "content-length": "20812",
+   "date": "Tue, 02 Sep 2025 11:29:43 GMT",
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "cache-control": "public, max-age=31536000, s-maxage=31536000",
+   "etag": "58e01f32ebb274c21d89c68919cc81fbd8c25dac",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 37d94e77ea5ef204701fb119d20b69fe.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P3",
+   "x-amz-cf-id": "njL35tWHfh3KwiF3seaL_xkdO3gf1zIY8tK1gVppU2bQt5FO9zBODw==",
+   "age": "13497804",
+   "vary": "Origin"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/webp",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

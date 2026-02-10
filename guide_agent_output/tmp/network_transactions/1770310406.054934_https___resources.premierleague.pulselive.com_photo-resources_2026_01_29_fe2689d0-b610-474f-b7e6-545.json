@@ -1,0 +1,43 @@
+{
+ "timestamp": 1770310406.054934,
+ "request_id": "interception-job-26576.0",
+ "request": {
+  "url": "https://resources.premierleague.pulselive.com/photo-resources/2026/01/29/fe2689d0-b610-474f-b7e6-5457a2e10627/A-composite-image-of-Bruno-Fernandes-Hugo-Ekitike-Joao-Pedro-and-Harry-Wilson-all-celebrating-with-the-Champions-League-trophy-in-the-centre.jpg?height=186&width=332",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "image/webp",
+   "content-length": "15022",
+   "date": "Thu, 29 Jan 2026 17:44:18 GMT",
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "cache-control": "public, max-age=31536000, s-maxage=31536000",
+   "etag": "749b2c1e0e56caa487d964b5227dd0c57f76b6aa",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 37d94e77ea5ef204701fb119d20b69fe.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P3",
+   "x-amz-cf-id": "dy913yuswm7EXUUwrs5biJXo96WgGYhnyGnaNykT0QzBPsa84EBq2w==",
+   "age": "601747",
+   "vary": "Origin"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/webp",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

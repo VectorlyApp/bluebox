@@ -1,0 +1,53 @@
+{
+ "timestamp": 1770310398.953392,
+ "request_id": "59735.1896",
+ "request": {
+  "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v2/matches?competition=8&season=2025&kickoff%3E2026-02-05&kickoff%3C2026-02-06",
+  "method": "GET",
+  "type": "Fetch",
+  "headers": {
+   "x-pulse-application-version": "v1.38.15",
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "x-pulse-application-name": "web",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-encoding": "br",
+   "age": "4",
+   "x-content-type-options": "nosniff",
+   "x-pulse-sdp-endpoint": "/v2/matches",
+   "alt-svc": "h3=\":443\"; ma=86400",
+   "x-cache": "Hit from cloudfront",
+   "x-amz-cf-id": "ICWv2v3U_fWSVRTiBVJpUt4DVCIX-7glYm8_B2fI3SNgFqvuuPbkGQ==",
+   "date": "Thu, 05 Feb 2026 16:53:14 GMT",
+   "content-type": "application/json",
+   "vary": "Origin",
+   "x-frame-options": "DENY",
+   "x-cache-status": "HIT",
+   "strict-transport-security": "max-age=31536000; includeSubDomains",
+   "content-security-policy": "frame-ancestors 'none'; default-src 'self'; script-src 'self'; script-src-elem 'self'; script-src-attr 'self'; style-src 'self'; style-src-elem 'self'; style-src-attr 'self'; img-src 'self'; connect-src 'self'; frame-src 'self'; font-src 'self'; media-src 'self'; object-src 'self'; manifest-src 'self'; worker-src 'self'; prefetch-src 'self'; form-action 'self';",
+   "cache-control": "max-age=5, stale-while-revalidate=120, stale-if-error=86400",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "via": "1.1 747d47277bb55e9ca12ebb92db620d58.cloudfront.net (CloudFront)",
+   "permissions-policy": "accelerometer=(), autoplay=(), camera=(), ch-dpr=(), ch-save-data=(), ch-viewport-width=(), ch-width=(), clipboard-read=(), clipboard-write=(), cross-origin-isolated=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), idle-detection=(), keyboard-map=(), local-fonts=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), sync-xhr=(), usb=(), window-placement=(), xr-spatial-tracking=()",
+   "access-control-allow-origin": "*",
+   "x-amz-cf-pop": "BOS50-P4",
+   "x-cache-server": "norp"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

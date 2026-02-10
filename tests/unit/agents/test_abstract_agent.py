@@ -23,7 +23,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel, Field
 
-from bluebox.agents.abstract_agent import AbstractAgent, agent_tool, _ToolMeta
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool, _ToolMeta
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatRole,
@@ -52,6 +52,8 @@ class SearchParams(BaseModel):
 
 class ConcreteAgent(AbstractAgent):
     """Minimal concrete AbstractAgent for testing."""
+
+    AGENT_CARD = AgentCard(description="Test agent for unit tests.")
 
     def _get_system_prompt(self) -> str:
         return "You are a test agent."
@@ -847,7 +849,7 @@ class TestDocumentationPromptSection:
 
     def test_contains_stats(self, agent_with_docs: ConcreteAgent) -> None:
         section = agent_with_docs._get_documentation_prompt_section()
-        assert "Documentation Tools" in section
+        assert "## Documentation" in section
         assert "indexed files" in section
 
     def test_contains_doc_file_names(self, agent_with_docs: ConcreteAgent) -> None:
@@ -891,14 +893,17 @@ class TestCallLLM:
     """Tests for _call_llm system prompt injection."""
 
     def test_no_docs_section_without_loader(self, agent: ConcreteAgent) -> None:
-        """System prompt is unmodified when no documentation loader is present."""
+        """System prompt has tool section but no docs section when no documentation loader is present."""
         mock_response = LLMChatResponse(content="hello", response_id="r1")
         agent.llm_client.call_sync = MagicMock(return_value=mock_response)
 
         agent._call_llm([], "base prompt")
 
         call_args = agent.llm_client.call_sync.call_args
-        assert call_args.kwargs["system_prompt"] == "base prompt"
+        system_prompt = call_args.kwargs["system_prompt"]
+        assert system_prompt.startswith("base prompt")
+        assert "## Tools" in system_prompt  # tool availability section always injected
+        assert "## Documentation" not in system_prompt  # no docs without loader
 
     def test_docs_section_appended_with_loader(self, agent_with_docs: ConcreteAgent) -> None:
         """System prompt has documentation section appended when loader is present."""
@@ -910,7 +915,7 @@ class TestCallLLM:
         call_args = agent_with_docs.llm_client.call_sync.call_args
         system_prompt = call_args.kwargs["system_prompt"]
         assert system_prompt.startswith("base prompt")
-        assert "Documentation Tools" in system_prompt
+        assert "## Documentation" in system_prompt
         assert "guide.md" in system_prompt
 
     def test_streaming_also_gets_docs_section(self, agent_with_docs: ConcreteAgent) -> None:
@@ -928,7 +933,7 @@ class TestCallLLM:
 
         call_args = agent_with_docs.llm_client.call_stream_sync.call_args
         system_prompt = call_args.kwargs["system_prompt"]
-        assert "Documentation Tools" in system_prompt
+        assert "## Documentation" in system_prompt
 
 
 # =============================================================================

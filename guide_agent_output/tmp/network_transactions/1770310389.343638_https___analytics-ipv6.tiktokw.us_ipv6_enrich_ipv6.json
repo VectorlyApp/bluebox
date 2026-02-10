@@ -1,0 +1,54 @@
+{
+ "timestamp": 1770310389.343638,
+ "request_id": "interception-job-25143.0",
+ "request": {
+  "url": "https://analytics-ipv6.tiktokw.us/ipv6/enrich_ipv6",
+  "method": "POST",
+  "type": "Ping",
+  "headers": {
+   "Accept": "*/*",
+   "Content-Type": "text/plain;charset=UTF-8",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": "{\"event\":\"EnrichIpv6\",\"event_id\":\"\",\"message_id\":\"messageId-1770310389175-4239127442076-CQTPD5JC77U6D8VT2IE0#source=2\",\"is_onsite\":false,\"timestamp\":\"2026-02-05T16:53:09.175Z\",\"context\":{\"ad\":{\"sdk_env\":\"external\",\"jsb_status\":2},\"device\":{\"platform\":\"pc\"},\"user\":{\"anonymous_id\":\"01KGQBHKDM2E18C5GEA8A3Z7AM_.tt.1\"},\"pixel\":{\"code\":\"CQTPD5JC77U6D8VT2IE0\",\"runtime\":\"1\"},\"page\":{\"url\":\"https://www.premierleague.com/en/\",\"referrer\":\"https://www.premierleague.com/\",\"load_progress\":\"1\"},\"library\":{\"name\":\"pixel.js\",\"version\":\"2.2.1\"},\"session_id\":\"25f5733f-02b3-11f1-8568-ea3ab8caf4b4::n_O7Da7hGiUjs9Dslrc6-CQTPD5JC77U6D8VT2IE0\",\"pageview_id\":\"25f5733f-02b3-11f1-8568-ea3ab8caf4b4-ynqu9.0.0::25f544e5-02b3-11f1-8568-ea3ab8caf4b4-CQTPD5JC77U6D8VT2IE0\",\"variation_id\":\"traffic_2::default\",\"csid\":\"1770310389174::aqRAp2tLTZ-NxZpMAkJU\",\"page_csid\":\"1770310389174::aSYk8PLt0GgwNXZnXD5N\",\"csct\":1,\"css\":1,\"userAgent\":\"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36\"},\"_inspection\":{\"vids\":\"75350340\",\"inter_id\":\"1.-1725.0::0.0.0.0::0.0.0\"},\"properties\":{},\"signal_diagnostic_labels\":{\"raw_email\":{\"label\":\"missing\"},\"raw_auto_email\":{\"label\":\"missing\"},\"raw_phone\":{\"label\":\"missing\"},\"raw_auto_phone\":{\"label\":\"missing\"},\"hashed_email\":{\"label\":\"missing\"},\"hashed_phone\":{\"label\":\"missing\"},\"raw_eb_email\":{\"label\":\"missing\"},\"raw_eb_phone\":{\"label\":\"missing\"},\"hashed_eb_email\":{\"label\":\"missing\"},\"hashed_eb_phone\":{\"label\":\"missing\"}},\"trigger_event\":\"Pageview\"}"
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "server": "nginx",
+   "content-length": "0",
+   "access-control-allow-headers": "Authorization,*",
+   "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS,UPDATE",
+   "access-control-allow-origin": "*",
+   "x-tt-logid": "2026020516530978723E0BAC33ECF2ED23",
+   "access-control-expose-headers": "x-tt-traceflag,x-tt-logid",
+   "x-tt-trace-host": "01f769e2594cf93c3a25413de0fa9f434224e5cdc96c4017e40a4a879f42c4edec8d1d010fbbb9c748fd8367d2fddc85afaf33c6b9cea24db61e7313ac7100ababf542e3c5f73cc4bcf9bf5d5ac102a7643a7507498c428191a5611b648d8ec97087b00df1161fd782770b852dad06ed0c",
+   "x-tt-trace-id": "00-26020516530978723E0BAC33ECF2ED23-62E31CDD35C12BC3-00",
+   "x-origin-response-time": "36,23.52.15.231",
+   "x-akamai-request-id": "df48783f.d7b6f0a",
+   "expires": "Thu, 05 Feb 2026 16:53:09 GMT",
+   "cache-control": "max-age=0, no-cache, no-store",
+   "pragma": "no-cache",
+   "date": "Thu, 05 Feb 2026 16:53:09 GMT",
+   "x-cache": "TCP_MISS from a23-210-4-76.deploy.akamaitechnologies.com (AkamaiGHost/22.4.1-ff83a5b59fde7575ebd888dc6cc3a79b) (-)",
+   "x-cache-remote": "TCP_MISS from a23-52-15-231.deploy.akamaitechnologies.com (AkamaiGHost/22.4.1-ff83a5b59fde7575ebd888dc6cc3a79b) (-)",
+   "strict-transport-security": "max-age=31536000 ; includeSubDomains",
+   "x-tt-trace-tag": "id=16;cdn-cache=miss;type=dyn",
+   "server-timing": "inner; dur=16",
+   "x-parent-response-time": "44,23.210.4.76"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

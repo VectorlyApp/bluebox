@@ -1,0 +1,43 @@
+{
+ "timestamp": 1770310386.695599,
+ "request_id": "interception-job-24706.0",
+ "request": {
+  "url": "https://resources.premierleague.pulselive.com/photo-resources/2023/01/26/11fe030b-2b2e-41ed-8f34-be72a8403ea0/Barclays_Sponsor.png?width=230&height=80",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "image/webp",
+   "content-length": "2476",
+   "date": "Wed, 04 Jun 2025 02:14:34 GMT",
+   "cache-control": "public, max-age=31536000, s-maxage=31536000",
+   "etag": "8ffc3ecd4aed120517d17cd812619d2a267d3258",
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 37d94e77ea5ef204701fb119d20b69fe.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P3",
+   "x-amz-cf-id": "CehLoDExr8dW52bCeOl-ruwdWGweJx1D50Pm9Bzg7L-Po_wCUxKfNg==",
+   "age": "21307112",
+   "vary": "Origin"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/webp",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

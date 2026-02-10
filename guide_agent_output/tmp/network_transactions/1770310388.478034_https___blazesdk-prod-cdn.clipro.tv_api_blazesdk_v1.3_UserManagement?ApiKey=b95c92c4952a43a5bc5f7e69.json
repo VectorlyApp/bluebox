@@ -1,0 +1,46 @@
+{
+ "timestamp": 1770310388.478034,
+ "request_id": "interception-job-24859.0",
+ "request": {
+  "url": "https://blazesdk-prod-cdn.clipro.tv/api/blazesdk/v1.3/UserManagement?ApiKey=b95c92c4952a43a5bc5f7e692c1e3636&clientPlatform=Web",
+  "method": "POST",
+  "type": "XHR",
+  "headers": {
+   "Accept": "application/json",
+   "Content-Type": "application/json",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": "{\"externalId\":null}"
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "application/json; charset=utf-8; x-api-version=1.3",
+   "date": "Thu, 05 Feb 2026 16:53:08 GMT",
+   "vary": "Origin",
+   "api-supported-versions": "1.3",
+   "server": "Kestrel",
+   "access-control-allow-credentials": "true",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "access-control-expose-headers": "x-wsc-ttl",
+   "content-encoding": "gzip",
+   "x-cache": "Miss from cloudfront",
+   "via": "1.1 2032fc652efa8b24e72db743fa879d26.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P3",
+   "x-amz-cf-id": "3LNvAECzEQF1hmxB7SFVoM2GX2V294wJfN8TddbUJ5Krnch5JNwA2w=="
+  },
+  "body": "{\"accessToken\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOiI2OTg0Y2FmNDA4M2E3NTZmMjZkZmNhZWUiLCJJc0Fub255bW91cyI6IlRydWUiLCJFeHRlcm5hbElkIjoiYW5vbnltb3VzODgwNDQwOGQtOTEwNS00ZTFhLTljYmItZmRiZGY0MzE0ZGU3IiwiSXNUZW1wIjoiVHJ1ZSIsIk9yaWdpbmFsQW5vbnltb3VzVXNlcklkIjoiNjk4NGNhZjQwODNhNzU2ZjI2ZGZjYWVlIiwibmJmIjoxNzcwMzEwMzg4LCJleHAiOjE3NzAzOTY3ODgsImlhdCI6MTc3MDMxMDM4OCwiaXNzIjoiV1NDIn0.lMlOJsdgZETE63kYPEqMiEIdZP1KN9nCZc9ZvoZg8S0\",\"refreshToken\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOiI2OTg0Y2FmNDA4M2E3NTZmMjZkZmNhZWUiLCJuYmYiOjE3NzAzMTAzODgsImV4cCI6MTc3MjkzODM4OCwiaWF0IjoxNzcwMzEwMzg4LCJpc3MiOiJXU0MifQ.-ZnC2WueHOG7qAwKC1Cm4KZRQVg3zXMJhVM2eAEOXb0\",\"userId\":\"6984caf4083a756f26dfcaee\"}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json; charset=utf-8; x-api-version=1.3",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

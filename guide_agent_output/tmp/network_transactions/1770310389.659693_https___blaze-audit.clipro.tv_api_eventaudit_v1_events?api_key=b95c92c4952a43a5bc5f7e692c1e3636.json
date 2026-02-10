@@ -1,0 +1,42 @@
+{
+ "timestamp": 1770310389.659693,
+ "request_id": "interception-job-25160.0",
+ "request": {
+  "url": "https://blaze-audit.clipro.tv/api/eventaudit/v1/events?api_key=b95c92c4952a43a5bc5f7e692c1e3636",
+  "method": "OPTIONS",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Access-Control-Request-Headers": "content-type",
+   "Access-Control-Request-Method": "POST",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "Sec-Fetch-Mode": "cors",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "OK",
+  "headers": {
+   "Date": "Thu, 05 Feb 2026 16:53:09 GMT",
+   "Content-Type": "text/plain; charset=utf-8",
+   "Content-Length": "2",
+   "Connection": "keep-alive",
+   "Server": "uvicorn",
+   "Access-Control-Allow-Credentials": "true",
+   "Access-Control-Allow-Headers": "content-type",
+   "Access-Control-Allow-Methods": "DELETE, GET, OPTIONS, PATCH, POST, PUT",
+   "Access-Control-Allow-Origin": "*",
+   "Access-Control-Max-Age": "600"
+  },
+  "body": "OK",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

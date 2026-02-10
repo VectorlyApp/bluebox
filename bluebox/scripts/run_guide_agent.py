@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 bluebox/scripts/run_guide_agent.py
 

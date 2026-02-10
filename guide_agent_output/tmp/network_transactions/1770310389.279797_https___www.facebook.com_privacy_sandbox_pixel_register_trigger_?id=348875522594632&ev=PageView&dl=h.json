@@ -1,0 +1,53 @@
+{
+ "timestamp": 1770310389.279797,
+ "request_id": "59735.676",
+ "request": {
+  "url": "https://www.facebook.com/privacy_sandbox/pixel/register/trigger/?id=348875522594632&ev=PageView&dl=https%3A%2F%2Fwww.premierleague.com%2Fen%2F&rl=https%3A%2F%2Fwww.premierleague.com%2F&if=false&ts=1770310389055&sw=1512&sh=982&v=2.9.256&r=stable&ec=0&o=12318&fbp=fb.1.1770310389052.67472678181097655&cdl=API_unavailable&pmd[title]=Premier%20League%20Football%20News%2C%20Fixtures%2C%20Scores%20%26%20Results&pmd[description]=Visit%20the%20official%20website%20of%20the%C2%A0Premier%20League%2C%20for%20all%20the%20latest%C2%A0Premier%20League%C2%A0news%20and%20features.&plt=589.3999999761581&it=1770310388448&coo=false&expv2[0]=pl0&expv2[1]=el3&expv2[2]=bc1&expv2[3]=ra0&expv2[4]=rp0&expv2[5]=im1&expv2[6]=hf2&rqm=FGET",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-encoding": "zstd",
+   "report-to": "{\"max_age\":2592000,\"endpoints\":[{\"url\":\"https:\\/\\/www.facebook.com\\/browser_reporting\\/coop\\/?minimize=0\"}],\"group\":\"coop_report\",\"include_subdomains\":true}, {\"max_age\":259200,\"endpoints\":[{\"url\":\"https:\\/\\/www.facebook.com\\/ajax\\/browser_error_reports\\/?device_level=unknown&brsid=7603425224907255434&cpp=C3&cv=1032981794&st=1770310389178\"}]}, {\"max_age\":21600,\"endpoints\":[{\"url\":\"https:\\/\\/www.facebook.com\\/ajax\\/browser_error_reports\\/\"}],\"group\":\"permissions_policy\"}",
+   "x-content-type-options": "nosniff",
+   "expires": "Sat, 01 Jan 2000 00:00:00 GMT",
+   "alt-svc": "h3=\":443\"; ma=86400",
+   "date": "Thu, 05 Feb 2026 16:53:09 GMT",
+   "content-type": "image/png",
+   "vary": "Accept-Encoding",
+   "x-fb-debug": "/SwYXUwrRCYdi+tY26lPLQSf3UueJMZV0v6Dt6J6cf/n6/+SWZSZXfLmzDPilx1arpevIAXKDln5Ks9W3soIXA==",
+   "priority": "u=3,i",
+   "x-frame-options": "DENY",
+   "strict-transport-security": "max-age=15552000; preload",
+   "reporting-endpoints": "coop_report=\"https://www.facebook.com/browser_reporting/coop/?minimize=0\", default=\"https://www.facebook.com/ajax/browser_error_reports/?device_level=unknown&brsid=7603425224907255434&cpp=C3&cv=1032981794&st=1770310389178\", permissions_policy=\"https://www.facebook.com/ajax/browser_error_reports/\"",
+   "content-security-policy": "default-src blob: 'self' https://*.fbsbx.com *.facebook.com *.fbcdn.net;script-src *.facebook.com *.fbcdn.net *.facebook.net 127.0.0.1:* 'nonce-tIax0jFS' blob: 'self' connect.facebook.net 'wasm-unsafe-eval' https://*.google-analytics.com *.google.com;style-src *.fbcdn.net data: *.facebook.com 'unsafe-inline' https://fonts.googleapis.com;connect-src *.facebook.com facebook.com *.fbcdn.net *.facebook.net wss://*.facebook.com:* wss://*.whatsapp.com:* wss://*.fbcdn.net attachment.fbsbx.com ws://localhost:* blob: *.cdninstagram.com 'self' http://localhost:3103 wss://gateway.facebook.com wss://edge-chat.facebook.com wss://snaptu-d.facebook.com wss://kaios-d.facebook.com/ v.whatsapp.net *.fbsbx.com *.fb.com *.instagram.com https://*.google-analytics.com;font-src data: *.facebook.com *.fbcdn.net *.fbsbx.com https://fonts.gstatic.com;img-src *.fbcdn.net *.facebook.com data: https://*.fbsbx.com facebook.com *.cdninstagram.com fbsbx.com fbcdn.net connect.facebook.net blob: android-webview-video-poster: *.whatsapp.net *.fb.com *.oculuscdn.com *.tenor.co *.tenor.com *.giphy.com https://trustly.one/ https://*.trustly.one/ https://paywithmybank.com/ https://*.paywithmybank.com/ https://www.googleadservices.com https://googleads.g.doubleclick.net https://*.google-analytics.com;media-src *.cdninstagram.com blob: *.fbcdn.net *.fbsbx.com www.facebook.com *.facebook.com data: *.tenor.co *.tenor.com https://*.giphy.com;child-src data: blob: 'self' https://*.fbsbx.com *.facebook.com *.fbcdn.net;frame-src *.facebook.com *.fbsbx.com fbsbx.com data: www.instagram.com *.fbcdn.net accounts.meta.com *.accounts.meta.com https://trustly.one/ https://*.trustly.one/ https://paywithmybank.com/ https://*.paywithmybank.com/ https://www.googleadservices.com https://googleads.g.doubleclick.net https://www.google.com https://td.doubleclick.net *.google.com *.doubleclick.net;manifest-src data: blob: 'self' https://*.fbsbx.com *.facebook.com *.fbcdn.net;object-src data: blob: 'self' https://*.fbsbx.com *.facebook.com *.fbcdn.net;worker-src blob: *.facebook.com data:;block-all-mixed-content;upgrade-insecure-requests;",
+   "cache-control": "private, no-store, no-cache, must-revalidate",
+   "x-fb-connection-quality": "GOOD; q=0.7, rtt=52, rtx=0, c=24, mss=1232, tbw=5644, tp=17, tpl=0, uplat=131, ullat=0",
+   "cross-origin-opener-policy": "same-origin-allow-popups",
+   "pragma": "no-cache",
+   "cross-origin-resource-policy": "cross-origin",
+   "permissions-policy": "accelerometer=(), attribution-reporting=(self), autoplay=(), bluetooth=(), browsing-topics=(self), camera=(self \"https://www.fbsbx.com\"), ch-device-memory=(), ch-downlink=(), ch-dpr=(), ch-ect=(), ch-rtt=(), ch-save-data=(), ch-ua-arch=(), ch-ua-bitness=(), ch-viewport-height=(), ch-viewport-width=(), ch-width=(), clipboard-read=(self), clipboard-write=(self), compute-pressure=(), display-capture=(self), encrypted-media=(self), fullscreen=(self), gamepad=*, geolocation=(self), gyroscope=(), hid=(), idle-detection=(), interest-cohort=(self), keyboard-map=(), local-fonts=(), magnetometer=(), microphone=(self), midi=(), otp-credentials=(), payment=(), picture-in-picture=(self), private-state-token-issuance=(), publickey-credentials-get=(self), screen-wake-lock=(), serial=(), shared-storage=(), shared-storage-select-url=(), private-state-token-redemption=(), usb=(), unload=(self), window-management=(), xr-spatial-tracking=(self);report-to=\"permissions_policy\"",
+   "document-policy": "force-load-at-top, include-js-call-stacks-in-crash-reports",
+   "x-xss-protection": "0",
+   "origin-agent-cluster": "?1"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/png",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

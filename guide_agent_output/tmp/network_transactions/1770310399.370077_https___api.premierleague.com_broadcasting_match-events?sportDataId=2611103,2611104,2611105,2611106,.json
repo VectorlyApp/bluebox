@@ -1,0 +1,45 @@
+{
+ "timestamp": 1770310399.370077,
+ "request_id": "interception-job-25989.0",
+ "request": {
+  "url": "https://api.premierleague.com/broadcasting/match-events?sportDataId=2611103,2611104,2611105,2611106,2611107,2611108,2611109,2611110,2611111,2611112,2611113,2611114,2611115,2611116,2611117,2611118,2611119,2611120,2611121,2611122,2611123,2611124,2611125,2611126,2611127,2611128,2611129,2611130,2611131,2611132,2611133,2611134",
+  "method": "OPTIONS",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Access-Control-Request-Headers": "x-pulse-application-name,x-pulse-application-version",
+   "Access-Control-Request-Method": "GET",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "Sec-Fetch-Mode": "cors",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 403,
+  "status_text": "",
+  "headers": {
+   "server": "CloudFront",
+   "date": "Thu, 05 Feb 2026 16:53:19 GMT",
+   "content-length": "0",
+   "x-cache": "FunctionGeneratedResponse from cloudfront",
+   "via": "1.1 0854f146df243db4c3bbb6ababb1772a.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P6",
+   "x-amz-cf-id": "uS08By68-NkGHTAR3KzhY3Wx8t5jnOp0ZfLe5vUAxhc5epS8QHKbFA==",
+   "access-control-allow-credentials": "true",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "access-control-allow-methods": "GET,HEAD,PUT,POST,PATCH,DELETE,OPTIONS",
+   "vary": "Access-Control-Request-Headers",
+   "access-control-max-age": "600",
+   "access-control-allow-headers": "x-pulse-application-name,x-pulse-application-version"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

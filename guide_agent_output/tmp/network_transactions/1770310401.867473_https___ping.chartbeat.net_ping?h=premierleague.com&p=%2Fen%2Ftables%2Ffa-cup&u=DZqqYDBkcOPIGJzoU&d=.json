@@ -1,0 +1,37 @@
+{
+ "timestamp": 1770310401.867473,
+ "request_id": "59735.2310",
+ "request": {
+  "url": "https://ping.chartbeat.net/ping?h=premierleague.com&p=%2Fen%2Ftables%2Ffa-cup&u=DZqqYDBkcOPIGJzoU&d=premierleague.com&g=67021&g0=No%20Section&g1=No%20Author&n=1&f=00001&c=0.06&x=1&m=414&y=3276&o=1512&w=862&j=45&R=1&W=0&I=0&E=3&e=3&v=%2Fen%2Ftables%2Fpremier-league&K=169::404::DPhh_6qSxg1ZdKLkDzISj4CELL_b::::c::https%3A%2F%2Fwww.premierleague.com%2Fen%2Ftables%2Ffa-cup::BoEiAyDONfk9C_sUAJDYTy00FkTia::::&l1=2&KK=231::290::BTnkLEDpWsu-nGuhaDmsWku2zLP::::c::https%3A%2F%2Fwww.premierleague.com%2Fen%2Ftables%2Fefl-cup::C0SPDB1ZwZNDkV3r5Bma9BoBB6IBN::::&PA=https%3A%2F%2Fwww.premierleague.com%2Fen%2Ftables%2Ffa-cup%2F2025-26%3Fround%3DK_3&b=906&t=CpL4UzBoQdo5BENWcKCET6Y9C_O88J&V=150&tz=300&sn=2&sv=DSG0okCbNBPFBH8JTpDdc0vTCGc-iU&sr=external&sd=4&im=0602000f&_",
+  "method": "GET",
+  "type": "Image",
+  "headers": {
+   "sec-ch-ua-platform": "\"macOS\"",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "expires": "0",
+   "cache-control": "no-cache, no-store, must-revalidate",
+   "content-length": "43",
+   "date": "Thu, 05 Feb 2026 16:53:21 GMT",
+   "pragma": "no-cache",
+   "content-type": "image/gif",
+   "cross-origin-resource-policy": "cross-origin"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "image/gif",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

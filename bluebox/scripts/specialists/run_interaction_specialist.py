@@ -1,224 +1,261 @@
-#!/usr/bin/env python3
 """
 bluebox/scripts/specialists/run_interaction_specialist.py
 
-Interactive CLI for the Interaction Specialist agent.
+Multi-pane terminal UI for the InteractionSpecialist using Textual.
+
+Layout:
+  +-----------------------------+----------------------+
+  |                             |  Tool Calls History   |
+  |       Chat (scrolling)      |                       |
+  |                             +----------------------+
+  |  +------------------------+ |  Status / Stats       |
+  |  | Input                  | |                       |
+  |  +------------------------+ |                       |
+  +-----------------------------+----------------------+
 
 Usage:
     bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl
     bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl --model gpt-5.1
 """
 
+from __future__ import annotations
+
 import argparse
+import json
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
-from textwrap import dedent
+from typing import TYPE_CHECKING
 
-from rich import box
 from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
+from rich.markup import escape
+from rich.text import Text
+from textual import work
+from textual.widgets import RichLog
 
-from bluebox.agents.specialists.abstract_specialist import RunMode
-from bluebox.agents.specialists.interaction_specialist import (
-    InteractionSpecialist,
-    ParameterDiscoveryResult,
-    ParameterDiscoveryFailureResult,
-)
+from bluebox.agents.specialists.interaction_specialist import InteractionSpecialist
+from bluebox.data_models.llms.vendors import LLMModel
+from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.llms.data_loaders.interactions_data_loader import InteractionsDataLoader
-from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
-from bluebox.agents.terminal_agent_base import AbstractTerminalAgentChat
-from bluebox.utils.logger import get_logger
+from bluebox.utils.logger import enable_tui_logging
+from bluebox.utils.tui_base import AbstractAgentTUI, BASE_SLASH_COMMANDS
+
+if TYPE_CHECKING:
+    from bluebox.agents.abstract_agent import AbstractAgent
 
 
-logger = get_logger(name=__name__)
-console = Console()
+# --- Slash commands -----------------------------------------------------------
 
-SLASH_COMMANDS = [
-    ("/autonomous", "Run autonomous parameter discovery; /autonomous <task>"),
-    ("/reset", "Start a new conversation"),
-    ("/help", "Show help"),
-    ("/quit", "Exit"),
-]
+SLASH_COMMANDS: dict[str, str] = {
+    "/discover": "Run autonomous parameter discovery for a task",
+    **BASE_SLASH_COMMANDS,
+}
 
-
-BANNER = """\
-[bold magenta]╔════════════════════════════════════════════════════════════════════════════════════════╗
-║                                                                                        ║
-║  ██╗███╗   ██╗████████╗███████╗██████╗  █████╗  ██████╗████████╗██╗ ██████╗ ███╗   ██╗ ║
-║  ██║████╗  ██║╚══██╔══╝██╔════╝██╔══██╗██╔══██╗██╔════╝╚══██╔══╝██║██╔═══██╗████╗  ██║ ║
-║  ██║██╔██╗ ██║   ██║   █████╗  ██████╔╝███████║██║        ██║   ██║██║   ██║██╔██╗ ██║ ║
-║  ██║██║╚██╗██║   ██║   ██╔══╝  ██╔══██╗██╔══██║██║        ██║   ██║██║   ██║██║╚██╗██║ ║
-║  ██║██║ ╚████║   ██║   ███████╗██║  ██║██║  ██║╚██████╗   ██║   ██║╚██████╔╝██║ ╚████║ ║
-║  ╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝ ║
-║  ███████╗██████╗ ███████╗ ██████╗██╗ █████╗ ██╗     ██╗███████╗████████╗               ║
-║  ██╔════╝██╔══██╗██╔════╝██╔════╝██║██╔══██╗██║     ██║██╔════╝╚══██╔══╝               ║
-║  ███████╗██████╔╝█████╗  ██║     ██║███████║██║     ██║███████╗   ██║                  ║
-║  ╚════██║██╔═══╝ ██╔══╝  ██║     ██║██╔══██║██║     ██║╚════██║   ██║                  ║
-║  ███████║██║     ███████╗╚██████╗██║██║  ██║███████╗██║███████║   ██║                  ║
-║  ╚══════╝╚═╝     ╚══════╝ ╚═════╝╚═╝╚═╝  ╚═╝╚══════╝╚═╝╚══════╝   ╚═╝                  ║
-║                                                                                        ║
-╚════════════════════════════════════════(BETA)══════════════════════════════════════════╝[/bold magenta]
+HELP_TEXT = """\
+[bold]Commands:[/bold]
+  [cyan]/discover <task>[/cyan]  Run autonomous parameter discovery
+  [cyan]/status[/cyan]           Show current state
+  [cyan]/chats[/cyan]            Show message history
+  [cyan]/clear[/cyan]            Clear the chat display
+  [cyan]/reset[/cyan]            Start new conversation
+  [cyan]/help[/cyan]             Show this help
+  [cyan]/quit[/cyan]             Exit
 """
 
 
-class TerminalInteractionSpecialistChat(AbstractTerminalAgentChat):
-    """Interactive terminal chat interface for the Interaction Specialist Agent."""
+# --- Textual App --------------------------------------------------------------
 
-    autonomous_command_name = "autonomous"
+class InteractionSpecialistTUI(AbstractAgentTUI):
+    """Multi-pane TUI for the Interaction Specialist."""
+
+    TITLE = "Interaction Specialist"
+    SLASH_COMMANDS = SLASH_COMMANDS
+    HELP_TEXT = HELP_TEXT
 
     def __init__(
         self,
+        llm_model: LLMModel,
         interaction_store: InteractionsDataLoader,
-        llm_model: LLMModel = OpenAIModel.GPT_5_1,
         data_path: str = "",
     ) -> None:
-        """Initialize the terminal chat interface."""
-        self.interaction_store = interaction_store
-        self.llm_model = llm_model
-        self.data_path = data_path
-        super().__init__(console=console, agent_color="magenta")
+        super().__init__(llm_model)
+        self._interaction_store = interaction_store
+        self._data_path = data_path
 
-    def _create_agent(self) -> InteractionSpecialist:
-        """Create the Interaction Specialist agent instance."""
+    # -- Abstract implementations ----------------------------------------------
+
+    def _create_agent(self) -> AbstractAgent:
         return InteractionSpecialist(
             emit_message_callable=self._handle_message,
-            interaction_data_store=self.interaction_store,
             stream_chunk_callable=self._handle_stream_chunk,
-            llm_model=self.llm_model,
-            run_mode=RunMode.CONVERSATIONAL,
+            interaction_data_loader=self._interaction_store,
+            llm_model=self._llm_model,
         )
 
-    def get_slash_commands(self) -> list[tuple[str, str]]:
-        """Return list of slash commands."""
-        return SLASH_COMMANDS
+    def _print_welcome(self) -> None:
+        chat = self.query_one("#chat-log", RichLog)
+        chat.write(Text.from_markup(
+            "[bold magenta]Interaction Specialist[/bold magenta]  "
+            "[dim]powered by Vectorly[/dim]"
+        ))
+        chat.write("")
 
-    def print_welcome(self) -> None:
-        """Print welcome message with interaction stats."""
-        self.console.print(BANNER)
-        self.console.print()
+        stats = self._interaction_store.stats
 
-        stats = self.interaction_store.stats
+        lines = [
+            f"[dim]Total Events:[/dim]     {stats.total_events}",
+            f"[dim]Unique URLs:[/dim]      {stats.unique_urls}",
+            f"[dim]Unique Elements:[/dim]  {stats.unique_elements}",
+        ]
 
-        # Build stats table
-        stats_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
-        stats_table.add_column("Label", style="dim")
-        stats_table.add_column("Value", style="white")
-
-        stats_table.add_row("Total Events", str(stats.total_events))
-        stats_table.add_row("Unique URLs", str(stats.unique_urls))
-        stats_table.add_row("Unique Elements", str(stats.unique_elements))
-
-        # Events by type breakdown
         if stats.events_by_type:
-            types_str = ", ".join(f"{t}: {c}" for t, c in sorted(stats.events_by_type.items(), key=lambda x: -x[1]))
-            stats_table.add_row("Events by Type", types_str)
+            types_str = ", ".join(
+                f"{t}: {c}" for t, c in sorted(stats.events_by_type.items(), key=lambda x: -x[1])
+            )
+            lines.append(f"[dim]Events by Type:[/dim]  {types_str}")
 
-        self.console.print(Panel(
-            stats_table,
-            title=f"[bold magenta]Interaction Stats[/bold magenta] [dim]({self.data_path})[/dim]",
-            border_style="magenta",
-            box=box.ROUNDED,
+        if self._data_path:
+            lines.append(f"[dim]File:[/dim]            {self._data_path}")
+
+        chat.write(Text.from_markup("\n".join(lines)))
+        chat.write("")
+
+        chat.write(Text.from_markup(
+            "Type [cyan]/help[/cyan] for commands, or ask questions about the user interactions."
         ))
-        self.console.print()
+        chat.write("")
 
-        self.console.print(Panel(
-            dedent("""\
-                [bold]Commands:[/bold]
-                  [cyan]/autonomous <task>[/cyan]  Run autonomous parameter discovery
-                  [cyan]/reset[/cyan]              Start a new conversation
-                  [cyan]/help[/cyan]               Show help
-                  [cyan]/quit[/cyan]               Exit
+    def _build_status_text(self) -> str:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        msg_count = len(self._agent.get_chats()) if self._agent else 0
+        tokens_used, ctx_pct = self._estimate_context_usage()
+        ctx_bar = self._context_bar(ctx_pct)
+        stats = self._interaction_store.stats
 
-                Just ask questions about the user interactions!"""),
-            title="[bold magenta]Interaction Specialist[/bold magenta]",
-            subtitle=f"[dim]Model: {self.llm_model.value}[/dim]",
-            border_style="magenta",
-            box=box.ROUNDED,
-        ))
-        self.console.print()
+        return (
+            f"[bold magenta]INTERACTION[/bold magenta]\n"
+            f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
+            f"[dim]Model:[/dim]     {self._llm_model.value}\n"
+            f"[dim]Messages:[/dim]  {msg_count}\n"
+            f"[dim]Tools:[/dim]     {self._tool_call_count}\n"
+            f"[dim]Context:[/dim]   {ctx_bar}\n"
+            f"[dim](est.)      ~{tokens_used:,} / {self._context_window_size:,}[/dim]\n"
+            f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
+            f"[dim]Events:[/dim]    {stats.total_events}\n"
+            f"[dim]URLs:[/dim]      {stats.unique_urls}\n"
+            f"[dim]Elements:[/dim]  {stats.unique_elements}\n"
+            f"[dim]Time:[/dim]      {now}\n"
+        )
 
-    def handle_autonomous_command(self, task: str) -> None:
-        """Run autonomous parameter discovery for a given task."""
-        self.console.print()
-        self.console.print(Panel(
-            f"[bold]Task:[/bold] {task}",
-            title="[bold magenta]Starting Autonomous Parameter Discovery[/bold magenta]",
-            border_style="magenta",
-            box=box.ROUNDED,
-        ))
-        self.console.print()
+    # -- Custom commands -------------------------------------------------------
+
+    def _handle_custom_command(self, cmd: str, raw_input: str) -> bool:
+        if raw_input.lower().startswith("/discover"):
+            task = raw_input[9:].strip()
+            chat = self.query_one("#chat-log", RichLog)
+            if not task:
+                chat.write(Text.from_markup("[yellow]Usage: /discover <task>[/yellow]"))
+            else:
+                self._run_discovery(task)
+            return True
+        return False
+
+    # -- Autonomous discovery --------------------------------------------------
+
+    @work(thread=True)
+    def _run_discovery(self, task: str) -> None:
+        """Run autonomous parameter discovery in a background thread."""
+        chat = self.query_one("#chat-log", RichLog)
+
+        self.call_from_thread(
+            lambda: chat.write(Text.from_markup(
+                f"\n[bold magenta]Starting Autonomous Parameter Discovery[/bold magenta]\n"
+                f"[dim]Task:[/dim] {escape(task)}"
+            ))
+        )
 
         self._agent.reset()
+        self._last_seen_chat_count = 0
 
         start_time = time.perf_counter()
         result = self._agent.run_autonomous(task)
-        elapsed_time = time.perf_counter() - start_time
+        elapsed = time.perf_counter() - start_time
         iterations = self._agent.autonomous_iteration
 
-        self.console.print()
+        def _show_result() -> None:
+            chat.write("")
 
-        if isinstance(result, ParameterDiscoveryResult):
-            param_count = len(result.parameters)
+            if isinstance(result, SpecialistResultWrapper) and result.success and result.output:
+                output_str = json.dumps(result.output, indent=2)
+                chat.write(Text.from_markup(
+                    f"[bold green]\u2713 Parameter Discovery Complete[/bold green] "
+                    f"[dim]({iterations} iterations, {elapsed:.1f}s)[/dim]"
+                ))
+                output_lines = output_str.split("\n")
+                if len(output_lines) > 40:
+                    output_str = "\n".join(output_lines[:40]) + f"\n... ({len(output_lines) - 40} more lines)"
+                chat.write(output_str)
 
-            for i, param in enumerate(result.parameters, 1):
-                param_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
-                param_table.add_column("Field", style="bold green")
-                param_table.add_column("Value", style="white")
+                self._add_tool_node(
+                    Text.assemble(
+                        ("DISCOVERY RESULT", "green"),
+                        " ",
+                        (f"({iterations} iter, {elapsed:.1f}s)", "dim"),
+                    ),
+                    output_str.split("\n"),
+                )
 
-                param_table.add_row("Name", param.name)
-                param_table.add_row("Type", param.type)
-                param_table.add_row("Description", param.description)
-                if param.examples:
-                    param_table.add_row("Examples", ", ".join(param.examples[:5]))
-                if param.source_element_css_path:
-                    param_table.add_row("CSS Path", param.source_element_css_path)
-                if param.source_element_tag:
-                    param_table.add_row("Element Tag", param.source_element_tag)
+            elif isinstance(result, SpecialistResultWrapper) and not result.success:
+                reason = result.failure_reason or "Unknown"
+                chat.write(Text.from_markup(
+                    f"[bold red]\u2717 Parameter Discovery Failed[/bold red] "
+                    f"[dim]({iterations} iterations, {elapsed:.1f}s)[/dim]\n"
+                    f"[red]Reason:[/red] {escape(reason)}"
+                ))
+                if result.notes:
+                    notes_str = "\n".join(f"  - {n}" for n in result.notes[:10])
+                    chat.write(Text.from_markup(f"[dim]Notes:[/dim]\n{notes_str}"))
 
-                self.console.print(Panel(
-                    param_table,
-                    title=f"[bold green]Parameter {i}/{param_count}[/bold green]",
-                    border_style="green",
-                    box=box.ROUNDED,
+            else:
+                chat.write(Text.from_markup(
+                    f"[bold yellow]\u26a0 Discovery Incomplete[/bold yellow] "
+                    f"[dim]({iterations} iterations, {elapsed:.1f}s)[/dim]\n"
+                    "[yellow]Agent reached max iterations without finalizing.[/yellow]"
                 ))
 
-            self.console.print(f"[bold green]Found {param_count} parameters[/bold green] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]")
+            chat.write("")
+            self._update_status()
 
-        elif isinstance(result, ParameterDiscoveryFailureResult):
-            failure_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
-            failure_table.add_column("Field", style="bold red")
-            failure_table.add_column("Value", style="white")
+        self.call_from_thread(_show_result)
 
-            failure_table.add_row("Reason", result.reason)
-            failure_table.add_row("Interaction Summary", result.interaction_summary)
+    # -- Overrides -------------------------------------------------------------
 
-            self.console.print(Panel(
-                failure_table,
-                title=f"[bold red]Parameter Discovery Failed[/bold red] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]",
-                border_style="red",
-                box=box.ROUNDED,
-            ))
+    def _show_status_in_chat(self) -> None:
+        """Show a compact status summary in the chat pane."""
+        chat = self.query_one("#chat-log", RichLog)
+        stats = self._interaction_store.stats
+        msg_count = len(self._agent.get_chats()) if self._agent else 0
+        tokens_used, ctx_pct = self._estimate_context_usage()
 
-        else:
-            self.console.print(Panel(
-                "[yellow]Could not finalize parameter discovery. "
-                "The agent reached max iterations without calling finalize_result or finalize_failure.[/yellow]",
-                title=f"[bold yellow]Discovery Incomplete[/bold yellow] [dim]({iterations} iterations, {elapsed_time:.1f}s)[/dim]",
-                border_style="yellow",
-                box=box.ROUNDED,
-            ))
+        chat.write(Text.from_markup(
+            f"[bold magenta]Status[/bold magenta]\n"
+            f"  Model: {self._llm_model.value}\n"
+            f"  Messages: {msg_count}\n"
+            f"  Context: ~{tokens_used:,}t ({ctx_pct:.0f}%)\n"
+            f"  Events: {stats.total_events}\n"
+            f"  URLs: {stats.unique_urls}\n"
+            f"  Elements: {stats.unique_elements}\n"
+            f"  File: {self._data_path or 'N/A'}"
+        ))
 
-        self.console.print()
 
+# --- Entry point --------------------------------------------------------------
 
 def main() -> None:
-    """Run the Interaction Specialist agent interactively."""
-    parser = argparse.ArgumentParser(
-        description="Interaction Specialist - Interactive user interaction analyzer"
-    )
+    """Entry point for the interaction specialist TUI."""
+    parser = argparse.ArgumentParser(description="Interaction Specialist \u2014 Multi-pane TUI")
     parser.add_argument(
         "--jsonl-path",
         type=str,
@@ -226,7 +263,11 @@ def main() -> None:
         help="Path to the JSONL file containing interaction events",
     )
     add_model_argument(parser)
+    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
+    parser.add_argument("--log-file", type=str, default=None, help="Log to file")
     args = parser.parse_args()
+
+    console = Console()
 
     # Load JSONL file
     jsonl_path = Path(args.jsonl_path)
@@ -242,17 +283,20 @@ def main() -> None:
         console.print(f"[bold red]Error parsing JSONL file: {e}[/bold red]")
         sys.exit(1)
 
-    # Resolve model
     llm_model = resolve_model(args.model, console)
 
-    # Create and run chat
-    chat = TerminalInteractionSpecialistChat(
-        interaction_store=interaction_store,
+    console.print(f"[green]\u2713 Loaded {interaction_store.stats.total_events} interaction events[/green]")
+    console.print()
+
+    # Redirect logging + stderr right before TUI takes over
+    enable_tui_logging(log_file=args.log_file or ".bluebox_interaction_tui.log", quiet=args.quiet)
+
+    app = InteractionSpecialistTUI(
         llm_model=llm_model,
+        interaction_store=interaction_store,
         data_path=str(jsonl_path),
     )
-    chat.print_welcome()
-    chat.run()
+    app.run()
 
 
 if __name__ == "__main__":

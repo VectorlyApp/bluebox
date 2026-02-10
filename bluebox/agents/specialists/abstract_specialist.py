@@ -283,18 +283,6 @@ class AbstractSpecialist(AbstractAgent):
         self._task_output_schema = schema
         self._task_output_description = description
 
-    def add_note(self, note: str) -> None:
-        """
-        Add a note to the result wrapper.
-
-        Use this for notes, complaints, warnings, or errors encountered during execution.
-        These are passed back to the orchestrator along with the result.
-
-        Args:
-            note: The note/complaint/warning/error message.
-        """
-        self._notes.append(note)
-
     def _get_output_schema_prompt_section(self) -> str:
         """
         Get the output schema section to include in autonomous system prompt.
@@ -340,6 +328,20 @@ class AbstractSpecialist(AbstractAgent):
                 return f"\n\n## Finalize soon — {remaining} iterations remaining."
             return f"\n\n## `{finalize_tool}` is now available."
         return f"\n\n## Continue exploring (iteration {self._autonomous_iteration})."
+
+    @agent_tool
+    def add_note(self, note: str) -> dict[str, Any]:
+        """
+        Add a note to the result wrapper.
+
+        Use this for notes, complaints, warnings, or errors encountered during execution.
+        These are passed back to the orchestrator along with the result.
+
+        Args:
+            note: The note/complaint/warning/error message.
+        """
+        self._notes.append(note)
+        return {"status": "ok", "total_notes": len(self._notes)}
 
     ## Generic Finalize Tool (for orchestrator-defined schemas)
 

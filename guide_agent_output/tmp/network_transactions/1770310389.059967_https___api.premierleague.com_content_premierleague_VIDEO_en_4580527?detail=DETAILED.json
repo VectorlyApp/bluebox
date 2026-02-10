@@ -1,0 +1,46 @@
+{
+ "timestamp": 1770310389.059967,
+ "request_id": "interception-job-25104.0",
+ "request": {
+  "url": "https://api.premierleague.com/content/premierleague/VIDEO/en/4580527?detail=DETAILED",
+  "method": "GET",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+   "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+   "sec-ch-ua-mobile": "?0",
+   "sec-ch-ua-platform": "\"macOS\""
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "content-type": "application/json;charset=UTF-8",
+   "date": "Thu, 05 Feb 2026 16:52:43 GMT",
+   "strict-transport-security": "max-age=300; includeSubDomains",
+   "content-encoding": "br",
+   "cache-control": "max-age=30, stale-while-revalidate=600, stale-if-error=86400",
+   "etag": "W/\"0962ad8164e702f0415aef683510178cd\"",
+   "x-cache": "Hit from cloudfront",
+   "via": "1.1 0854f146df243db4c3bbb6ababb1772a.cloudfront.net (CloudFront)",
+   "x-amz-cf-pop": "BOS50-P6",
+   "x-amz-cf-id": "uO2rKF08xbCUVVzfc2N3wpIMqnRPkkxFwd_G1fwsbGzIaD0FDs7P3g==",
+   "age": "26",
+   "access-control-allow-credentials": "true",
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "vary": "Origin"
+  },
+  "body": "{\"id\":4580527,\"accountId\":10,\"type\":\"video\",\"title\":\"Watch: The BEST GOALS of Matchweek 24\",\"description\":\"Solanke, Kroupi, Kevin and more feature in this collection of top strikes\",\"date\":\"2026-02-03T15:28:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1770143520000,\"publishTo\":0,\"tags\":[{\"id\":13317,\"label\":\"label:Best Moments\"},{\"id\":12438,\"label\":\"VOD\"},{\"id\":13570,\"label\":\"label:Video\"},{\"id\":5269,\"label\":\"video playlist\"},{\"id\":12186,\"label\":\"content-type:video\"},{\"id\":12184,\"label\":\"video-type:vod\"},{\"id\":12432,\"label\":\"free\"}],\"platform\":\"MEDIA_KIND\",\"language\":\"en\",\"additionalInfo\":{\"mediaKindStreamingUrl\":\"https://uksouth-2.av.mk.io/epl-vod-a/hls-itc/premierleague.com_911a6f5f-106c-4d53-8937-3d9809fdee7b/index.m3u8\"},\"canonicalUrl\":\"\",\"references\":[{\"label\":null,\"id\":8,\"type\":\"SDP_FOOTBALL_COMPETITION\",\"sid\":\"8\"},{\"label\":null,\"id\":560552,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"560552\"},{\"label\":null,\"id\":2562134,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562134\"},{\"label\":null,\"id\":6,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"6\"},{\"label\":null,\"id\":2562130,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562130\"},{\"label\":null,\"id\":2025,\"type\":\"SDP_FOOTBALL_SEASON\",\"sid\":\"2025\"},{\"label\":null,\"id\":154566,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"154566\"},{\"label\":null,\"id\":560262,\"type\":\"SDP_FOOTBALL_PLAYER\",\"sid\":\"560262\"},{\"label\":null,\"id\":54,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"54\"},{\"label\":null,\"id\":2562133,\"type\":\"SDP_FOOTBALL_MATCH\",\"sid\":\"2562133\"},{\"label\":null,\"id\":91,\"type\":\"SDP_FOOTBALL_TEAM\",\"sid\":\"91\"}],\"related\":[],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1770134891717,\"titleUrlSegment\":\"watch-the-best-goals-from-matchweek-24\",\"visibilityOrder\":[],\"thumbnailUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/03/4e35e0ff-02f5-4d62-9b97-e1e167be17db/Solanke-Kevin-Junior-Kroupi-Goals-of-the-matchweek.jpeg?width=1280\",\"duration\":213,\"variants\":[{\"aspectRatio\":0.0,\"displayAspectRatio\":null,\"bitRate\":0,\"codec\":null,\"duration\":213,\"format\":null,\"frameRate\":0.0,\"height\":0,\"mediaId\":\"premierleague.com_911a6f5f-106c-4d53-8937-3d9809fdee7b\",\"tags\":[],\"width\":0}],\"thumbnail\":{\"id\":4580522,\"accountId\":10,\"type\":\"photo\",\"title\":\"Solanke, Kevin, Junior Kroupi - Goals of the matchweek\",\"description\":null,\"date\":\"2026-02-03T15:20:00Z\",\"location\":null,\"coordinates\":[0.0,0.0],\"commentsOn\":false,\"copyright\":null,\"publishFrom\":1770132003795,\"publishTo\":0,\"tags\":[],\"platform\":\"PULSE_CMS\",\"language\":\"en\",\"additionalInfo\":{},\"canonicalUrl\":\"\",\"references\":[],\"related\":[],\"metadata\":{},\"titleTranslations\":null,\"lastModified\":1770132009085,\"titleUrlSegment\":\"solanke-kevin-junior-kroupi-goals-of-the-matchweek\",\"subtitle\":null,\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/03/4e35e0ff-02f5-4d62-9b97-e1e167be17db/Solanke-Kevin-Junior-Kroupi-Goals-of-the-matchweek.jpeg\",\"originalDetails\":{\"width\":1920,\"height\":1080,\"aspectRatio\":1.7777778},\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/03/4e35e0ff-02f5-4d62-9b97-e1e167be17db/Solanke-Kevin-Junior-Kroupi-Goals-of-the-matchweek.jpeg\"},\"mediaId\":\"premierleague.com_911a6f5f-106c-4d53-8937-3d9809fdee7b\",\"mediaGuid\":\"premierleague.com_911a6f5f-106c-4d53-8937-3d9809fdee7b\",\"subtitle\":null,\"closedCaptioned\":false,\"hotlinkUrl\":null,\"views\":0,\"imageUrl\":\"https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/03/4e35e0ff-02f5-4d62-9b97-e1e167be17db/Solanke-Kevin-Junior-Kroupi-Goals-of-the-matchweek.jpeg\",\"onDemandUrl\":\"https://resources.premierleague.pulselive.com/photo-resources/2026/02/03/4e35e0ff-02f5-4d62-9b97-e1e167be17db/Solanke-Kevin-Junior-Kroupi-Goals-of-the-matchweek.jpeg\"}",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "application/json;charset=UTF-8",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}

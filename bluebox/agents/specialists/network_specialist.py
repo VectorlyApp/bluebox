@@ -16,7 +16,7 @@ from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlparse, parse_qs
 
-from bluebox.agents.abstract_agent import agent_tool
+from bluebox.agents.abstract_agent import AgentCard, agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -43,6 +43,13 @@ class NetworkSpecialist(AbstractSpecialist):
     and analyze network traffic data from JSONL captures.
     """
 
+    AGENT_CARD = AgentCard(
+        description=(
+            "Searches and analyzes HTTP network transactions. Use for finding endpoints, "
+            "inspecting request/response data, and semantic search across captured traffic."
+        ),
+    )
+
     SYSTEM_PROMPT: str = dedent("""
         You are a network traffic analyst specializing in captured browser network data.
 
@@ -57,16 +64,6 @@ class NetworkSpecialist(AbstractSpecialist):
         1. Generate 20-30 relevant search terms (variations, field names, domain-specific terms)
         2. Use `search_responses_by_terms` with your terms
         3. Analyze the top results — highest score = most likely match
-
-        ## Tools
-
-        - `search_responses_by_terms` — search response bodies by term list (20-30 terms recommended)
-        - `search_requests_by_terms` — search request side (URL, headers, body)
-        - `search_response_bodies` — exact-match search with context snippets
-        - `get_entry_detail` — full details of a network entry by ID
-        - `get_response_body_schema` — JSON schema of a response body
-        - `get_unique_urls` — all unique URLs in captured traffic
-        - `execute_python` — sandboxed Python with `entries` pre-loaded
 
         ## Guidelines
 
@@ -462,17 +459,23 @@ class NetworkSpecialist(AbstractSpecialist):
         self,
         value: str,
         case_sensitive: bool = False,
+        regex: bool = False,
     ) -> dict[str, Any]:
         """
         Search response bodies for a specific value and return matches with context.
 
         Unlike search_responses_by_terms which ranks by relevance across many terms,
-        this tool finds exact matches for a single value and shows surrounding context.
+        this tool finds matches for a single value and shows surrounding context.
         Useful for finding where specific data (IDs, tokens, values) appears.
 
+        Supports regex patterns for flexible matching — e.g. finding URL-encoded
+        variants, partial tokens, or values in different formats.
+
         Args:
-            value: The exact value to search for in response bodies.
+            value: The value to search for in response bodies. Treated as a regex
+                pattern when regex=True, otherwise as a literal substring.
             case_sensitive: Whether the search should be case-sensitive. Defaults to false.
+            regex: Whether to treat value as a regex pattern. Defaults to false.
         """
         if not value:
             return {"error": "value is required"}
@@ -480,17 +483,24 @@ class NetworkSpecialist(AbstractSpecialist):
         results = self._network_data_store.search_response_bodies(
             value=value,
             case_sensitive=case_sensitive,
+            regex=regex,
         )
+
+        # Regex compilation errors come back as a single-element list with "error" key
+        if results and "error" in results[0]:
+            return results[0]
 
         if not results:
             return {
                 "message": f"No matches found for '{value}'",
                 "case_sensitive": case_sensitive,
+                "regex": regex,
             }
 
         return {
             "value_searched": value,
             "case_sensitive": case_sensitive,
+            "regex": regex,
             "results_found": len(results),
             "results": results[:20],  # Top 20
         }

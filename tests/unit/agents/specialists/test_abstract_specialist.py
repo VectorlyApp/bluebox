@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel
 
-from bluebox.agents.abstract_agent import agent_tool, _ToolMeta
+from bluebox.agents.abstract_agent import AgentCard, agent_tool, _ToolMeta
 from bluebox.agents.specialists.abstract_specialist import (
     AbstractSpecialist,
     AutonomousConfig,
@@ -34,6 +34,8 @@ class ConcreteSpecialist(AbstractSpecialist):
 
     Has a mix of tools with different availability conditions and signatures.
     """
+
+    AGENT_CARD = AgentCard(description="Test specialist for unit tests.")
 
     def __init__(self, **kwargs: Any) -> None:
         self._autonomous_result: DummyResult | None = None
@@ -319,6 +321,7 @@ class TestCollectTools:
             "finalize_gated",
             "with_explicit_schema",
             "finalize",
+            "add_note",
             # Generic finalize tools from AbstractSpecialist (both with and without output schema)
             "finalize_with_output",
             "finalize_with_failure",

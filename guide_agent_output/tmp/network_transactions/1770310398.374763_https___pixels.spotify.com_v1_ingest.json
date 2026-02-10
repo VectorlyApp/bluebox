@@ -1,0 +1,40 @@
+{
+ "timestamp": 1770310398.374763,
+ "request_id": "interception-job-25699.0",
+ "request": {
+  "url": "https://pixels.spotify.com/v1/ingest",
+  "method": "OPTIONS",
+  "type": "XHR",
+  "headers": {
+   "Accept": "*/*",
+   "Access-Control-Request-Headers": "content-type",
+   "Access-Control-Request-Method": "POST",
+   "Origin": "https://www.premierleague.com",
+   "Referer": "https://www.premierleague.com/",
+   "Sec-Fetch-Mode": "cors",
+   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
+  },
+  "post_data": null
+ },
+ "response": {
+  "status": 200,
+  "status_text": "",
+  "headers": {
+   "access-control-allow-origin": "https://www.premierleague.com",
+   "access-control-allow-headers": "content-type",
+   "vary": "Accept-Encoding",
+   "date": "Thu, 05 Feb 2026 16:53:17 GMT",
+   "server": "envoy",
+   "via": "HTTP/2 edgeproxy, 1.1 google",
+   "content-length": "0",
+   "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+  },
+  "body": "",
+  "body_truncated": false,
+  "body_base64": false,
+  "mime_type": "",
+  "error_text": null,
+  "failed": false
+ },
+ "other": null
+}
