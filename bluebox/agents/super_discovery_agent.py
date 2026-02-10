@@ -171,8 +171,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         ## Current Phase: CONSTRUCTING — Build the Routine
 
         1. Use `get_discovery_context` to see all processed data (includes CRITICAL_OBSERVED_VALUES)
-        2. **IMPORTANT**: If you need help with routine structure, check the documentation:
-           - Use search_documentation to find examples and schemas for routine construction
+        2. Review the **Routine Schema Reference** below for required fields and operation types
         3. Use `construct_routine` with the routine definition:
            - `routine`: the routine definition (name, description, parameters, operations)
 
@@ -310,9 +309,11 @@ class SuperDiscoveryAgent(AbstractAgent):
         elif phase == DiscoveryPhase.CONSTRUCTING:
             prompt_parts.append(self.PROMPT_CONSTRUCTING)
             prompt_parts.append(self.PLACEHOLDER_INSTRUCTIONS)
+            prompt_parts.append(Routine.model_schema_markdown())
         elif phase == DiscoveryPhase.VALIDATING:
             prompt_parts.append(self.PROMPT_VALIDATING)
             prompt_parts.append(self.PLACEHOLDER_INSTRUCTIONS)  # needed if fix_routine
+            prompt_parts.append(Routine.model_schema_markdown())  # needed if fix_routine
 
         # Add data store summaries
         data_store_info = []

@@ -14,6 +14,7 @@ import ast
 import json
 import time
 from collections import defaultdict
+from typing import get_args
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -35,6 +36,8 @@ from bluebox.data_models.routine.parameter import (
     VALID_PLACEHOLDER_PREFIXES,
 )
 from bluebox.cdp.connection import cdp_new_tab, cdp_attach_to_existing_tab, dispose_context
+from bluebox.data_models.routine.endpoint import Endpoint
+from bluebox.utils.pydantic_utils import format_model_fields
 from bluebox.data_models.routine.placeholder import (
     PlaceholderQuoteType,
     extract_placeholders_from_json_str,
@@ -201,6 +204,47 @@ class Routine(BaseModel):
             raise ValueError(f"Routine '{self.name}' validation failed:\n- " + "\n- ".join(errors))
 
         return self
+
+    @staticmethod
+    def model_schema_markdown() -> str:
+        """
+        Generate a compact markdown schema reference from the Pydantic models.
+
+        Like model_json_schema() but formatted for LLM system prompts — compact,
+        readable, no $ref indirection. Auto-derived from Routine, Parameter,
+        Endpoint, and all operation models to stay in sync with the code.
+        """
+        lines: list[str] = ["## Routine Schema Reference", ""]
+
+        # Routine (top level)
+        lines.append("### Routine (top level)")
+        lines.extend(format_model_fields(Routine, skip_fields={"operations", "parameters"}))
+        lines.append("- operations: list[operation] (required) — ≥2, last must be return or return_html")
+        lines.append("- parameters: list[parameter] = []")
+        lines.append("")
+
+        # Parameter
+        lines.append("### Parameter")
+        lines.extend(format_model_fields(Parameter, skip_fields={"observed_value"}))
+        lines.append("")
+
+        # Endpoint (referenced by fetch and download)
+        lines.append("### Endpoint (used by fetch and download)")
+        lines.extend(format_model_fields(Endpoint, skip_fields={"description"}))
+        lines.append("")
+
+        # All operation types (auto-derived from RoutineOperationUnion)
+        union_inner = get_args(RoutineOperationUnion)[0]  # Unwrap Annotated
+        op_models: tuple[type, ...] = get_args(union_inner)  # Unwrap Union
+
+        for model_cls in op_models:
+            type_default = model_cls.model_fields["type"].default
+            op_name = type_default.value if hasattr(type_default, "value") else str(type_default)
+            lines.append(f"### Operation: {op_name}")
+            lines.extend(format_model_fields(model_cls, skip_fields={"type"}))
+            lines.append("")
+
+        return "\n".join(lines)
 
     def compute_base_urls_from_operations(self) -> str | None:
         """
@@ -417,5 +461,3 @@ class Routine(BaseModel):
                 browser_ws.close()
             except Exception:
                 pass
-
-

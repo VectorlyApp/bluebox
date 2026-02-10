@@ -20,10 +20,6 @@ Several tools have discouraging prefixes:
 
 These are soft warnings embedded in tool descriptions. The LLM may still use them directly, and the wording is awkward — tool descriptions should describe what the tool does, not nag the LLM about preferred alternatives.
 
-### 1.4. JSSpecialist system prompt references a nonexistent tool **[CODE]**
-
-`js_specialist.py` line 91: the `SYSTEM_PROMPT` lists `submit_js_code` as a tool ("submit final validated code"), but **no such tool exists** in the class. The LLM will try to call it and get an error. The actual finalization tools are the generic `finalize_result`/`finalize_with_output` from `AbstractSpecialist`.
-
 ---
 
 ## 2. Tool Gaps and Limitations
