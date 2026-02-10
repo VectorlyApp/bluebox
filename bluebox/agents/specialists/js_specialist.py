@@ -88,7 +88,7 @@ class JSSpecialist(AbstractSpecialist):
 
         - `get_dom_snapshot` — DOM snapshot (latest by default)
         - `validate_js_code` — dry-run validation
-        - `submit_js_code` — submit final validated code
+        - `finalize_result` — finalize with result
         - `execute_js_in_browser` — test against live site (use selectively; best for live-state-dependent code like cookies/storage/dynamic DOM)
 
         ## Guidelines

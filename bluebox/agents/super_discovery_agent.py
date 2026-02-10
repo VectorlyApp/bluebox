@@ -524,6 +524,9 @@ class SuperDiscoveryAgent(AbstractAgent):
             return JSSpecialist(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
+                documentation_data_loader=self._documentation_data_loader,
+                network_data_store=self._network_data_loader,
+                js_data_store=None,  # NOTE: this is intentionally left None for now
                 remote_debugging_address=self._remote_debugging_address,
                 run_mode=RunMode.AUTONOMOUS,
             )
@@ -899,6 +902,7 @@ class SuperDiscoveryAgent(AbstractAgent):
     )
     def _run_pending_tasks(self) -> dict[str, Any]:
         """Execute all pending tasks and return their results."""
+        # TODO: parallelize this
         pending = self._orchestration_state.get_pending_tasks()
         if not pending:
             return {"message": "No pending tasks", "results": []}
