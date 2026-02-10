@@ -18,6 +18,7 @@ The agent inherits from AbstractAgent for LLM/chat/tool infrastructure.
 
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from textwrap import dedent
@@ -62,6 +63,7 @@ from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
 from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
+from bluebox.utils.data_utils import resolve_dotted_path
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -1152,6 +1154,28 @@ class SuperDiscoveryAgent(AbstractAgent):
                                 "url": entry.url[:100],
                             })
 
+                # Search request headers
+                if entry.request_headers:
+                    for header_name, header_value in entry.request_headers.items():
+                        if value in str(header_value):
+                            results["found_in"].append({
+                                "source_type": "transaction",
+                                "transaction_id": entry.request_id,
+                                "location": f"request_header:{header_name}",
+                                "url": entry.url[:100],
+                            })
+
+                # Search request body (post_data)
+                if entry.post_data:
+                    post_data_str = entry.post_data if isinstance(entry.post_data, str) else json.dumps(entry.post_data)
+                    if value in post_data_str:
+                        results["found_in"].append({
+                            "source_type": "transaction",
+                            "transaction_id": entry.request_id,
+                            "location": "request_body",
+                            "url": entry.url[:100],
+                        })
+
         # Search storage
         if self._storage_data_loader:
             for event in self._storage_data_loader.entries:
@@ -1495,9 +1519,24 @@ class SuperDiscoveryAgent(AbstractAgent):
             if not source_tx_id:
                 return {"error": "transaction_source must have 'transaction_id' and 'dot_path'"}
 
+            dot_path = transaction_source.get("dot_path", "")
+
+            # Validate that dot_path resolves in the source transaction's response
+            if dot_path and self._network_data_loader:
+                source_entry = self._network_data_loader.get_entry(source_tx_id)
+                if source_entry and source_entry.response_body:
+                    resolved_value = resolve_dotted_path(logger, source_entry.response_body, dot_path)
+                    if resolved_value is None:
+                        return {
+                            "error": (
+                                f"dot_path '{dot_path}' does not resolve to a value in transaction {source_tx_id}'s "
+                                "response body. Verify the path is correct."
+                            )
+                        }
+
             source = TransactionSource(
                 transaction_id=source_tx_id,
-                dot_path=transaction_source.get("dot_path", "")
+                dot_path=dot_path,
             )
 
             # Auto-add dependency transaction to queue

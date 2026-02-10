@@ -8,24 +8,9 @@
 
 ## 2. Tool Gaps and Limitations
 
-### 2.2. No tool to search request headers specifically **[BOTH]**
-
-The `NetworkSpecialist` has `search_responses_by_terms` (searches response bodies) and `search_requests_by_terms` (searches URL + headers + body). But the SuperDiscoveryAgent's direct `scan_for_value` tool (lines 1068-1131) only searches:
-
-- Response bodies
-- Response headers
-- Storage events
-- Window properties
-
-It **does not search request headers or request bodies**. If a dynamic token appears in a request header (like `Authorization: Bearer ...`), `scan_for_value` won't find it in the request side — only in responses and storage. The NetworkSpecialist can search requests, but the orchestrator's direct tools can't.
-
 ### 2.3. `search_response_bodies` tool on NetworkSpecialist does exact match only **[CODE]**
 
 `_search_response_bodies` (network_specialist.py) does case-insensitive exact string matching. There's no fuzzy/partial matching, no regex support for response body search. For values that appear in slightly different forms (URL-encoded, base64-encoded, truncated), this won't find them.
-
-### 2.4. No tool for the orchestrator to search request bodies/headers directly **[CODE]**
-
-The orchestrator (`SuperDiscoveryAgent`) has `get_transaction` which returns the full request details, and `scan_for_value` which searches responses and storage. But there's no direct tool for the orchestrator to do a bulk search across all request bodies or headers. It must delegate to `NetworkSpecialist` for that.
 
 ---
 
@@ -52,12 +37,8 @@ There's no central state machine. The phase can be set from multiple code paths,
 
 Placeholder syntax errors (missing escaped quotes, wrong prefix) are only caught when `Routine.model_validate()` runs inside `_construct_routine`. There's no tool for the LLM to validate individual placeholder expressions before assembling the full routine. This means the LLM must get it right on the first try or iterate through construction failures.
 
-### 5.3. `record_resolved_variable` doesn't validate the source exists **[CODE]**
-
-When `source_type='transaction'` is used, the tool auto-adds the source transaction to the queue and initializes its data (lines 1459-1475). But it doesn't verify that the specified `dot_path` actually resolves to the expected value in the source transaction's response. The LLM could record an incorrect path and discover the error only during routine execution.
-
 ---
 
 ### Honorable Mentions
 
-- **No request-side search on orchestrator**: Add request header/body search to `scan_for_value`, or document that delegation to NetworkSpecialist is required
+(None remaining)
