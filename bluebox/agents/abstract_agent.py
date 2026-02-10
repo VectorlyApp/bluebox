@@ -351,19 +351,19 @@ class AbstractAgent(ABC):
 
     def _get_documentation_prompt_section(self) -> str:
         """
-        Build a light system prompt addendum describing available documentation tools and file index.
+        Build a system prompt addendum describing available documentation files.
 
+        Lists the indexed file inventory so the LLM knows what docs/code are searchable.
+        Tool names are NOT listed here — they come from _get_tool_availability_prompt_section().
         Appended automatically to system prompts when a documentation_data_loader is present.
-        Cannot be overridden by subclasses since it's injected in _call_llm.
         """
         if not self._documentation_data_loader:
             return ""
 
         stats = self._documentation_data_loader.stats
         lines = [
-            "\n\n## Documentation Tools",
+            "\n\n## Documentation",
             f"You have {stats.total_files} indexed files ({stats.total_docs} docs, {stats.total_code} code, {format_bytes(stats.total_bytes)}).",
-            "Use `search_docs`, `get_doc_file`, `search_docs_by_terms`, or `search_docs_by_regex` to query them.",
         ]
 
         doc_index = self._documentation_data_loader.get_documentation_index()
@@ -621,12 +621,13 @@ class AbstractAgent(ABC):
                 - "required": Force the model to use at least one tool
                 - Tool name string: Force the model to use a specific tool
         """
-        self._sync_tools()  # ensure tool availability reflects current state
-
-        # Append tool availability (injected here so subclasses can't accidentally omit it)
+        # ensure tool availability reflects current state
+        self._sync_tools()
+    
+        # append tool availability (injected here so subclasses can't accidentally omit it)
         system_prompt = system_prompt + self._get_tool_availability_prompt_section()
 
-        # Append documentation context (injected here so subclasses can't accidentally omit it)
+        # append documentation context (injected here so subclasses can't accidentally omit it)
         docs_section = self._get_documentation_prompt_section()
         if docs_section:
             system_prompt = system_prompt + docs_section

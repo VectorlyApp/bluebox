@@ -847,7 +847,7 @@ class TestDocumentationPromptSection:
 
     def test_contains_stats(self, agent_with_docs: ConcreteAgent) -> None:
         section = agent_with_docs._get_documentation_prompt_section()
-        assert "Documentation Tools" in section
+        assert "## Documentation" in section
         assert "indexed files" in section
 
     def test_contains_doc_file_names(self, agent_with_docs: ConcreteAgent) -> None:
@@ -901,7 +901,7 @@ class TestCallLLM:
         system_prompt = call_args.kwargs["system_prompt"]
         assert system_prompt.startswith("base prompt")
         assert "## Tools" in system_prompt  # tool availability section always injected
-        assert "Documentation Tools" not in system_prompt  # no docs without loader
+        assert "## Documentation" not in system_prompt  # no docs without loader
 
     def test_docs_section_appended_with_loader(self, agent_with_docs: ConcreteAgent) -> None:
         """System prompt has documentation section appended when loader is present."""
@@ -913,7 +913,7 @@ class TestCallLLM:
         call_args = agent_with_docs.llm_client.call_sync.call_args
         system_prompt = call_args.kwargs["system_prompt"]
         assert system_prompt.startswith("base prompt")
-        assert "Documentation Tools" in system_prompt
+        assert "## Documentation" in system_prompt
         assert "guide.md" in system_prompt
 
     def test_streaming_also_gets_docs_section(self, agent_with_docs: ConcreteAgent) -> None:
@@ -931,7 +931,7 @@ class TestCallLLM:
 
         call_args = agent_with_docs.llm_client.call_stream_sync.call_args
         system_prompt = call_args.kwargs["system_prompt"]
-        assert "Documentation Tools" in system_prompt
+        assert "## Documentation" in system_prompt
 
 
 # =============================================================================
