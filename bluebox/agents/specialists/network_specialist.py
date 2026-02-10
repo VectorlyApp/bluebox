@@ -452,17 +452,23 @@ class NetworkSpecialist(AbstractSpecialist):
         self,
         value: str,
         case_sensitive: bool = False,
+        regex: bool = False,
     ) -> dict[str, Any]:
         """
         Search response bodies for a specific value and return matches with context.
 
         Unlike search_responses_by_terms which ranks by relevance across many terms,
-        this tool finds exact matches for a single value and shows surrounding context.
+        this tool finds matches for a single value and shows surrounding context.
         Useful for finding where specific data (IDs, tokens, values) appears.
 
+        Supports regex patterns for flexible matching — e.g. finding URL-encoded
+        variants, partial tokens, or values in different formats.
+
         Args:
-            value: The exact value to search for in response bodies.
+            value: The value to search for in response bodies. Treated as a regex
+                pattern when regex=True, otherwise as a literal substring.
             case_sensitive: Whether the search should be case-sensitive. Defaults to false.
+            regex: Whether to treat value as a regex pattern. Defaults to false.
         """
         if not value:
             return {"error": "value is required"}
@@ -470,17 +476,24 @@ class NetworkSpecialist(AbstractSpecialist):
         results = self._network_data_store.search_response_bodies(
             value=value,
             case_sensitive=case_sensitive,
+            regex=regex,
         )
+
+        # Regex compilation errors come back as a single-element list with "error" key
+        if results and "error" in results[0]:
+            return results[0]
 
         if not results:
             return {
                 "message": f"No matches found for '{value}'",
                 "case_sensitive": case_sensitive,
+                "regex": regex,
             }
 
         return {
             "value_searched": value,
             "case_sensitive": case_sensitive,
+            "regex": regex,
             "results_found": len(results),
             "results": results[:20],  # Top 20
         }

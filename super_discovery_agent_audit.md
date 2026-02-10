@@ -6,14 +6,6 @@
 
 ---
 
-## 2. Tool Gaps and Limitations
-
-### 2.3. `search_response_bodies` tool on NetworkSpecialist does exact match only **[CODE]**
-
-`_search_response_bodies` (network_specialist.py) does case-insensitive exact string matching. There's no fuzzy/partial matching, no regex support for response body search. For values that appear in slightly different forms (URL-encoded, base64-encoded, truncated), this won't find them.
-
----
-
 ## 3. Orchestration and Coordination Problems
 
 ### 3.5. Phase transitions are implicit and fragile **[CODE]**

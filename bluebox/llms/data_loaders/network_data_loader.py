@@ -12,6 +12,7 @@ structured access to network traffic data.
 
 import fnmatch
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
@@ -460,44 +461,63 @@ class NetworkDataLoader(AbstractDataLoader[NetworkTransactionEvent, NetworkStats
         self,
         value: str,
         case_sensitive: bool = False,
+        regex: bool = False,
     ) -> list[dict[str, Any]]:
         """
         Search response bodies for a given value and return matches with context.
 
         Args:
-            value: The value to search for in response bodies.
+            value: The value to search for in response bodies. When regex=True,
+                this is treated as a regular expression pattern.
             case_sensitive: Whether the search should be case-sensitive.
+            regex: Whether to treat value as a regex pattern instead of a literal string.
 
         Returns:
             List of dicts sorted by ascending id, each containing:
             - id: Entry index
             - url: Request URL
             - count: Number of occurrences in the response body
-            - sample: Context string (50 chars before and after first occurrence)
+            - sample: Context string (50 chars before and after first match)
         """
         results: list[dict[str, Any]] = []
 
         if not value:
             return results
 
-        search_value = value if case_sensitive else value.lower()
+        if regex:
+            flags = 0 if case_sensitive else re.IGNORECASE
+            try:
+                pattern = re.compile(value, flags)
+            except re.error as e:
+                return [{"error": f"Invalid regex pattern: {e}"}]
+        else:
+            search_value = value if case_sensitive else value.lower()
 
         for entry in self._entries:
             if not entry.response_body:
                 continue
 
-            content = entry.response_body if case_sensitive else entry.response_body.lower()
             original_content = entry.response_body
 
-            # Count occurrences
-            count = content.count(search_value)
-            if count == 0:
-                continue
+            if regex:
+                matches = list(pattern.finditer(original_content))
+                if not matches:
+                    continue
+                count = len(matches)
+                first_match = matches[0]
+                pos = first_match.start()
+                match_len = first_match.end() - first_match.start()
+            else:
+                content = original_content if case_sensitive else original_content.lower()
+                count = content.count(search_value)
+                if count == 0:
+                    continue
+                pos = content.find(search_value)
+                match_len = len(value)
 
-            # Find first occurrence and extract context
-            pos = content.find(search_value)
+            # Extract context around first match
             context_start = max(0, pos - 50)
-            context_end = min(len(original_content), pos + len(value) + 50)
+            context_end = min(len(original_content), pos + match_len + 50)
 
             sample = original_content[context_start:context_end]
 

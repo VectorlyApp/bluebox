@@ -462,6 +462,46 @@ class TestSearchResponseBodies:
         for r in results:
             assert isinstance(r["sample"], str)
 
+    # --- Regex tests ---
+
+    def test_regex_finds_pattern(self, search_store: NetworkDataLoader) -> None:
+        """Regex pattern matches across response bodies."""
+        # Match price-like patterns: digits.digits
+        results = search_store.search_response_bodies(r"\d+\.\d{2}", regex=True)
+        assert len(results) > 0  # should match 49.99 etc.
+
+    def test_regex_no_match(self, search_store: NetworkDataLoader) -> None:
+        """Regex with no matches returns empty list."""
+        results = search_store.search_response_bodies(r"ZZZZ\d{10}ZZZZ", regex=True)
+        assert results == []
+
+    def test_regex_case_insensitive_default(self, search_store: NetworkDataLoader) -> None:
+        """Regex is case-insensitive by default."""
+        results = search_store.search_response_bodies(r"BOSTON", regex=True)
+        assert len(results) > 0  # "Boston" should match case-insensitively
+
+    def test_regex_case_sensitive(self, search_store: NetworkDataLoader) -> None:
+        """Regex respects case_sensitive flag."""
+        results_insensitive = search_store.search_response_bodies(r"BOSTON", regex=True)
+        results_sensitive = search_store.search_response_bodies(r"BOSTON", regex=True, case_sensitive=True)
+        # Case-insensitive should find at least as many as case-sensitive
+        assert len(results_insensitive) >= len(results_sensitive)
+
+    def test_regex_invalid_pattern_returns_error(self, search_store: NetworkDataLoader) -> None:
+        """Invalid regex returns error dict."""
+        results = search_store.search_response_bodies(r"[invalid", regex=True)
+        assert len(results) == 1
+        assert "error" in results[0]
+
+    def test_regex_returns_context(self, search_store: NetworkDataLoader) -> None:
+        """Regex results include sample context around the match."""
+        results = search_store.search_response_bodies(r"Boston", regex=True)
+        assert len(results) > 0
+        for r in results:
+            assert "sample" in r
+            assert "count" in r
+            assert r["count"] > 0
+
 
 # --- Schema Extraction Tests ---
 
