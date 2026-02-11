@@ -21,8 +21,11 @@ Usage:
 
 from __future__ import annotations
 
-import argparse
 import sys
+print("\n  \033[1;31mBlueBox Agent is still a work in progress. Please check back soon.\033[0m\n")
+sys.exit(0)
+
+import argparse
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
