@@ -16,7 +16,6 @@ Layout:
 Usage:
     bluebox-agent
     bluebox-agent --model gpt-5.1
-    bluebox-agent --model gpt-5.2 --remote-debugging-address http://127.0.0.1:9222
 """
 
 from __future__ import annotations
@@ -55,11 +54,9 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
     def __init__(
         self,
         llm_model: LLMModel,
-        remote_debugging_address: str = "http://127.0.0.1:9222",
         routine_output_dir: str = "./routine_output",
     ) -> None:
         super().__init__(llm_model, working_dir=routine_output_dir)
-        self._remote_debugging_address = remote_debugging_address
         self._routine_output_dir = routine_output_dir
 
     # ── Abstract implementations ─────────────────────────────────────────
@@ -69,7 +66,6 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
-            remote_debugging_address=self._remote_debugging_address,
             routine_output_dir=self._routine_output_dir,
         )
 
@@ -83,7 +79,6 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
 
         lines = [
             f"[dim]Model:[/dim]       {self._llm_model.value}",
-            f"[dim]Remote:[/dim]      {self._remote_debugging_address}",
         ]
         chat.write(Text.from_markup("\n".join(lines)))
         chat.write("")
@@ -108,7 +103,6 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
             f"[dim]Context:[/dim]   {ctx_bar}\n"
             f"[dim](est.)      ~{tokens_used:,} / {self._context_window_size:,}[/dim]\n"
             f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
-            f"[dim]Remote:[/dim]    {self._remote_debugging_address}\n"
             f"[dim]Time:[/dim]      {now}\n"
         )
 
@@ -117,10 +111,8 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
         if not isinstance(tool_result, dict):
             return []
         paths: list[str] = []
-        # Top-level output_file
         if tool_result.get("output_file"):
             paths.append(f"📄 {tool_result['output_file']}")
-        # Nested results (e.g. execute_routines_parallel)
         for r in tool_result.get("results", []):
             if isinstance(r, dict) and r.get("output_file"):
                 paths.append(f"📄 {r['output_file']}")
@@ -132,12 +124,6 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
 def main() -> None:
     """Entry point for the BlueBox Agent TUI."""
     parser = argparse.ArgumentParser(description="BlueBox Agent \u2014 Multi-pane TUI")
-    parser.add_argument(
-        "--remote-debugging-address",
-        type=str,
-        default="http://127.0.0.1:9222",
-        help="Chrome remote debugging address (default: http://127.0.0.1:9222)",
-    )
     add_model_argument(parser)
     parser.add_argument(
         "--routine-output-dir",
@@ -161,7 +147,6 @@ def main() -> None:
 
     llm_model = resolve_model(args.model, console)
 
-    console.print(f"[dim]Remote debugging: {args.remote_debugging_address}[/dim]")
     console.print(f"[dim]Model: {llm_model.value}[/dim]")
     console.print()
 
@@ -170,7 +155,6 @@ def main() -> None:
 
     app = BlueBoxAgentTUI(
         llm_model=llm_model,
-        remote_debugging_address=args.remote_debugging_address,
         routine_output_dir=args.routine_output_dir,
     )
     app.run()
