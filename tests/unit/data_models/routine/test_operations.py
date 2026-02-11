@@ -8,7 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from bluebox.data_models.routine.operation import RoutineJsEvaluateOperation, RoutineOperationTypes
-from bluebox.utils.data_utils import apply_params
+from bluebox.utils.data_utils import apply_params_to_str
 
 
 # TODO: Add validation for other operation types
@@ -591,7 +591,7 @@ class TestRoutineJsEvaluateOperationValidation:
         )
         
         # Simulate parameter interpolation that would inject eval
-        interpolated_js = apply_params(
+        interpolated_js = apply_params_to_str(
             operation.js,
             {"param": 'test"; eval("evil"); "'}
         )
@@ -611,7 +611,7 @@ class TestRoutineJsEvaluateOperationValidation:
         )
         
         # Simulate parameter interpolation that would inject fetch
-        interpolated_js = apply_params(
+        interpolated_js = apply_params_to_str(
             operation.js,
             {"code": 'test"; fetch("evil"); "'}
         )
@@ -627,15 +627,15 @@ class TestRoutineJsEvaluateOperationValidation:
         """Test that safe parameter interpolation still passes validation."""
         # Create valid operation with parameter placeholder
         operation = RoutineJsEvaluateOperation(
-            js='(function() { return "\"{{name}}\""; })()'
+            js='(function() { return "{{name}}"; })()'
         )
-        
+
         # Simulate safe parameter interpolation
-        interpolated_js = apply_params(
+        interpolated_js = apply_params_to_str(
             operation.js,
             {"name": "John"}
         )
-        
+
         # Validation should pass for safe interpolated code
         validated_js = RoutineJsEvaluateOperation.validate_js_code(interpolated_js)
         assert validated_js == '(function() { return "John"; })()'

@@ -216,8 +216,8 @@ class GuideAgent:
 
     _NOTES_SECTION: str = dedent("""\
         ## NOTES:
-        - Quotes or escaped quotes are ESSENTIAL AROUND {{{{parameter_name}}}} ALL parameters in routines!
-        - Before saying ANYTHING ABOUT QUOTES OR ESCAPED QUOTES, you MUST look through the docs!""")
+        - ALL placeholders use {{{{param_name}}}} format — the parameter's type field drives resolution.
+        - Before saying anything about placeholder syntax, you MUST look through the docs!""")
 
     _SYSTEM_ACTION_SECTION: str = dedent("""\
         ## System Action Messages
