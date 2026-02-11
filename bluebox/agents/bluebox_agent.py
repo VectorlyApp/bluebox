@@ -11,6 +11,7 @@ Contains:
 from __future__ import annotations
 
 import json
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +31,7 @@ from bluebox.data_models.llms.interaction import (
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.routine.routine import RoutineExecutionRequest, RoutineInfo
 from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
+from bluebox.utils.infra_utils import read_file_lines
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
@@ -71,7 +73,7 @@ class BlueBoxAgent(AbstractAgent):
 
         ## Inspecting the Workspace
         - Use `list_workspace_files` to see all files in the workspace (raw/, outputs/, etc.).
-        - Use `read_workspace_file` to read any file by relative path (e.g. "raw/routine_results_2024-01-15_143052_abc.json" or "outputs/results.csv"). Use optional start_line/end_line to read specific line ranges for large files.
+        - Use `read_workspace_file` to read any file by relative path (e.g. "raw/25-01-15-143052-routine_result_1.json" or "outputs/results.csv"). Use optional start_line/end_line to read specific line ranges for large files.
 
         ## Important Rules
         - You ONLY have routine tools, code execution, and file inspection tools. Do not tell the user you can browse, click, type, or interact with web pages directly.
@@ -117,6 +119,8 @@ class BlueBoxAgent(AbstractAgent):
         self._raw_dir = self._workspace_dir / "raw"
         self._outputs_dir = self._workspace_dir / "outputs"
         self._routine_cache: dict[str, RoutineInfo] = {}
+        self._execution_counter: int = 0
+        self._counter_lock = threading.Lock()
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -245,9 +249,11 @@ class BlueBoxAgent(AbstractAgent):
             """Save a single routine result to a JSON file in raw/."""
             try:
                 self._raw_dir.mkdir(parents=True, exist_ok=True)
-                rid = result.get("routine_id", "unknown")
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-                output_path = self._raw_dir / f"routine_results_{timestamp}_{rid}.json"
+                with self._counter_lock:
+                    self._execution_counter += 1
+                    idx = self._execution_counter
+                timestamp = datetime.now().strftime("%y-%m-%d-%H%M%S")
+                output_path = self._raw_dir / f"{timestamp}-routine_result_{idx}.json"
                 output_path.write_text(json.dumps(result, indent=2, default=str))
                 result["output_file"] = str(output_path)
                 logger.info("Routine result saved to %s", output_path)
@@ -445,37 +451,11 @@ class BlueBoxAgent(AbstractAgent):
         # Resolve and validate path stays within workspace
         resolved = (self._workspace_dir / path).resolve()
         workspace_resolved = self._workspace_dir.resolve()
-        if not str(resolved).startswith(str(workspace_resolved) + "/") and resolved != workspace_resolved:
+        try:
+            resolved.relative_to(workspace_resolved)
+        except ValueError:
             return {"error": f"Access denied: '{path}' is outside the workspace directory"}
 
-        if not resolved.exists():
-            return {"error": f"File not found: {path}"}
-        if not resolved.is_file():
-            return {"error": f"Not a file: {path}"}
-
-        try:
-            lines = resolved.read_text().splitlines()
-        except OSError as e:
-            return {"error": f"Failed to read file: {e}"}
-
-        total_lines = len(lines)
-
-        # Apply line range
-        if start_line is not None or end_line is not None:
-            s = (start_line or 1) - 1  # Convert to 0-based
-            e = end_line or total_lines
-            lines = lines[s:e]
-            line_range = f"lines {s + 1}-{min(e, total_lines)} of {total_lines}"
-        else:
-            # Cap output at 200 lines to avoid blowing up context
-            if total_lines > 200:
-                lines = lines[:200]
-                line_range = f"lines 1-200 of {total_lines} (truncated, use start_line/end_line for more)"
-            else:
-                line_range = f"all {total_lines} lines"
-
-        return {
-            "path": path,
-            "line_range": line_range,
-            "content": "\n".join(lines),
-        }
+        result = read_file_lines(resolved, start_line=start_line, end_line=end_line)
+        result["path"] = path
+        return result

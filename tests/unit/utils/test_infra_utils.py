@@ -9,7 +9,81 @@ from pathlib import Path
 
 import pytest
 
-from bluebox.utils.infra_utils import resolve_glob_patterns
+from bluebox.utils.infra_utils import read_file_lines, resolve_glob_patterns
+
+
+class TestReadFileLines:
+    """Tests for read_file_lines function."""
+
+    def _write(self, tmp_path: Path, name: str, content: str) -> Path:
+        f = tmp_path / name
+        f.write_text(content)
+        return f
+
+    def test_reads_small_file(self, tmp_path: Path) -> None:
+        f = self._write(tmp_path, "small.txt", "a\nb\nc")
+        result = read_file_lines(f)
+        assert result["content"] == "a\nb\nc"
+        assert "all 3 lines" in result["line_range"]
+
+    def test_truncates_at_max_lines(self, tmp_path: Path) -> None:
+        content = "\n".join(f"line{i}" for i in range(1, 301))
+        f = self._write(tmp_path, "big.txt", content)
+        result = read_file_lines(f, max_lines=200)
+        assert result["content"].count("\n") == 199  # 200 lines = 199 newlines
+        assert "truncated" in result["line_range"]
+        assert "of 300" in result["line_range"]
+
+    def test_custom_max_lines(self, tmp_path: Path) -> None:
+        content = "\n".join(f"line{i}" for i in range(1, 21))
+        f = self._write(tmp_path, "medium.txt", content)
+        result = read_file_lines(f, max_lines=5)
+        lines = result["content"].split("\n")
+        assert len(lines) == 5
+        assert lines[0] == "line1"
+        assert lines[4] == "line5"
+        assert "truncated" in result["line_range"]
+
+    def test_start_and_end_line(self, tmp_path: Path) -> None:
+        content = "\n".join(f"line{i}" for i in range(1, 11))
+        f = self._write(tmp_path, "ten.txt", content)
+        result = read_file_lines(f, start_line=3, end_line=5)
+        assert result["content"] == "line3\nline4\nline5"
+        assert "lines 3-5 of 10" in result["line_range"]
+
+    def test_start_line_only(self, tmp_path: Path) -> None:
+        content = "\n".join(f"line{i}" for i in range(1, 6))
+        f = self._write(tmp_path, "five.txt", content)
+        result = read_file_lines(f, start_line=4)
+        assert result["content"] == "line4\nline5"
+
+    def test_end_line_only(self, tmp_path: Path) -> None:
+        content = "\n".join(f"line{i}" for i in range(1, 6))
+        f = self._write(tmp_path, "five.txt", content)
+        result = read_file_lines(f, end_line=2)
+        assert result["content"] == "line1\nline2"
+
+    def test_file_not_found(self, tmp_path: Path) -> None:
+        result = read_file_lines(tmp_path / "nope.txt")
+        assert "error" in result
+        assert "File not found" in result["error"]
+
+    def test_not_a_file(self, tmp_path: Path) -> None:
+        result = read_file_lines(tmp_path)
+        assert "error" in result
+        assert "Not a file" in result["error"]
+
+    def test_empty_file(self, tmp_path: Path) -> None:
+        f = self._write(tmp_path, "empty.txt", "")
+        result = read_file_lines(f)
+        assert result["content"] == ""
+        assert "all" in result["line_range"]
+
+    def test_single_line_no_newline(self, tmp_path: Path) -> None:
+        f = self._write(tmp_path, "one.txt", "hello")
+        result = read_file_lines(f)
+        assert result["content"] == "hello"
+        assert "all 1 lines" in result["line_range"]
 
 
 class TestResolveGlobPatterns:

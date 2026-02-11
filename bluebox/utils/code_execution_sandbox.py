@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from typing import Any
 
 from bluebox.config import Config
@@ -108,6 +109,12 @@ BLOCKED_BUILTINS: tuple[str, ...] = (
     "open", "exec", "eval", "compile", "__import__",
     "globals", "locals", "vars", "getattr", "setattr",
     "delattr", "breakpoint", "input", "memoryview",
+)
+
+# Sensitive system paths that must never be used as work_dir
+SENSITIVE_PATH_PREFIXES: tuple[str, ...] = (
+    "/etc", "/var", "/usr", "/bin", "/sbin",
+    "/boot", "/proc", "/sys", "/dev",
 )
 
 
@@ -200,7 +207,7 @@ exec(code, exec_globals)
 """
 
     # Generate unique container name for cleanup on timeout
-    container_name = f"bluebox-sandbox-{os.getpid()}-{int(time.time() * 1000)}"
+    container_name = f"bluebox-sandbox-{os.getpid()}-{uuid.uuid4().hex[:8]}"
 
     docker_cmd = [
         "docker", "run",
@@ -429,6 +436,12 @@ def execute_python_sandboxed(
     """
     if not code:
         return {"error": "No code provided"}
+
+    # Validate work_dir before passing to any backend
+    if work_dir:
+        work_dir = os.path.abspath(work_dir)
+        if any(work_dir == p or work_dir.startswith(p + os.sep) for p in SENSITIVE_PATH_PREFIXES):
+            return {"error": f"work_dir points to a sensitive system path: {work_dir}"}
 
     # Check for blocked patterns (allow open() when work_dir is set)
     safety_error = check_code_safety(code, allow_file_io=bool(work_dir))

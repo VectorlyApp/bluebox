@@ -6,6 +6,7 @@ Unit tests for the sandboxed Python code execution utility.
 
 import os
 import subprocess
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -14,6 +15,7 @@ from bluebox.utils.code_execution_sandbox import (
     BLOCKED_MODULES,
     BLOCKED_PATTERNS,
     BLOCKED_BUILTINS,
+    SENSITIVE_PATH_PREFIXES,
     check_code_safety,
     create_safe_builtins,
     execute_python_sandboxed,
@@ -1257,6 +1259,42 @@ print("ok")
         finally:
             sandbox_module.SANDBOX_MODE = original_mode
             sandbox_module._docker_available = None
+
+
+class TestWorkDirValidation:
+    """Tests for work_dir validation in execute_python_sandboxed."""
+
+    @pytest.mark.parametrize("prefix", SENSITIVE_PATH_PREFIXES)
+    def test_rejects_sensitive_prefix_exact(self, prefix: str) -> None:
+        """Every entry in SENSITIVE_PATH_PREFIXES should be rejected as work_dir."""
+        result = execute_python_sandboxed("print('hi')", work_dir=prefix)
+        assert "error" in result
+        assert "sensitive system path" in result["error"]
+
+    @pytest.mark.parametrize("prefix", SENSITIVE_PATH_PREFIXES)
+    def test_rejects_sensitive_prefix_subdir(self, prefix: str) -> None:
+        """Subdirectories under sensitive prefixes should also be rejected."""
+        result = execute_python_sandboxed("print('hi')", work_dir=f"{prefix}/subdir")
+        assert "error" in result
+        assert "sensitive system path" in result["error"]
+
+    def test_normalizes_path_with_dotdot(self) -> None:
+        """Paths with '..' that resolve to a sensitive prefix should be rejected."""
+        result = execute_python_sandboxed("print('hi')", work_dir="/etc/../etc/nginx")
+        assert "error" in result
+        assert "sensitive system path" in result["error"]
+
+    def test_allows_tmp(self, tmp_path: Path) -> None:
+        """A normal temp directory should pass validation."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        original_mode = sandbox_module.SANDBOX_MODE
+        try:
+            sandbox_module.SANDBOX_MODE = "blocklist"
+            result = execute_python_sandboxed("print('ok')", work_dir=str(tmp_path))
+            assert "error" not in result
+            assert "ok" in result["output"]
+        finally:
+            sandbox_module.SANDBOX_MODE = original_mode
 
 
 class TestDockerExecutionWorkDir:
