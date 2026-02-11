@@ -69,7 +69,11 @@ Eliminate the escape-quoted convention (`\"{{param}}\"`) and use simple `{{param
   - For dict values: recurse `{k: _resolve_value(val) for k, val in v.items()}`
   - For list values: recurse `[_resolve_value(item) for item in v]`
   - Other types: return as-is
-- **Add** `_coerce_value(value, param_type)` helper
+- **Add** `_coerce_value(value, param_type)` helper:
+  - `boolean` accepts: `"true"/"1"/"yes"` → `True`, `"false"/"0"/"no"` → `False` (case-insensitive)
+  - Already-correct types pass through (e.g., `int` value with `integer` type → no-op)
+  - `None` passes through regardless of type
+- **Important**: `apply_params_to_json` returns a new copy, never mutates input
 - **Update** module docstring to reflect new function names
 
 ### Phase 2: Update Operation Execution
@@ -135,12 +139,12 @@ In `_get_placeholder_resolution_js_helpers()`:
   - Remove two-quote-set explanation
   - New: "ALL placeholders use `{{param}}` — type comes from parameter definition"
   - New examples showing simple format
-  - Emphasize: parameter `type` must match what the API actually expects
+  - **Critical CDP type-matching guidance**: "If the raw CDP request has `"adults": "5"` (a string), use `type=string`, NOT `type=integer`. Integer would produce `5` (unquoted) and may break the API. Always match the type observed in the actual request."
   - Remove "MUST ENSURE EACH PLACEHOLDER IS SURROUNDED BY QUOTES OR ESCAPED QUOTES"
 
 #### 8. `bluebox/agents/routine_discovery_agent_beta.py`
 
-- **Rewrite `PLACEHOLDER_INSTRUCTIONS`** (lines 205-224): Same as above
+- **Rewrite `PLACEHOLDER_INSTRUCTIONS`** (lines 205-224): Same as above, including the CDP type-matching guidance
 - **Rewrite `_validate_placeholder_syntax()`** (lines ~1820-1919):
   - Remove `PlaceholderQuoteType` import and usage
   - Iterate over `list[str]` from `extract_placeholders_from_json_str()`
@@ -160,6 +164,7 @@ In `_get_placeholder_resolution_js_helpers()`:
 - **Major rewrite.** Remove "The One Rule" about escape-quoted strings
 - All examples: `"\"{{x}}\""` → `"{{x}}"`
 - New type resolution table showing Parameter.type drives output
+- **Add CDP type-matching rule**: "Match the parameter type to what the raw CDP request actually sends. If `"count": "5"` is a string in the request, use `type=string`."
 - Simplify Quick Reference table
 
 #### 11. `bluebox/agent_docs/core/parameters.md`
@@ -182,6 +187,7 @@ In `_get_placeholder_resolution_js_helpers()`:
 #### 14. `bluebox/agent_docs/common-issues/placeholder-not-resolved.md`
 
 - Remove "String not escape-quoted" cause from table
+- **Add** "Parameter not defined" as a new cause in the troubleshooting table
 - Update symptom/fix descriptions
 
 ### Phase 6: Update Example Routines
