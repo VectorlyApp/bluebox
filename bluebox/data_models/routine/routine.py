@@ -49,15 +49,6 @@ from bluebox.utils.web_socket_utils import send_cmd, recv_until
 logger = get_logger(name=__name__)
 
 
-class RoutineExecutionRequest(BaseModel):
-    """A single routine to execute."""
-    routine_id: str = Field(..., description="The routine_id returned by search_routines")
-    parameters: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Parameters for the routine, keyed by parameter name. Example: {\"query\": \"California\"}",
-    )
-
-
 # Routine model ___________________________________________________________________________________
 
 class Routine(BaseModel):
@@ -471,10 +462,18 @@ class Routine(BaseModel):
             except Exception:
                 pass
 
-# TODO: Figure out if this is actually needed.
+# NOTE: Update server to use this model.
 class RoutineInfo(BaseModel):
     """Information about an available routine."""
     routine_id: str = Field(..., description="Unique identifier of the routine")
     name: str = Field(..., description="Routine name")
     description: str = Field(..., description="Routine description")
     parameters: list[Parameter] = Field(..., description="List of parameters for the routine")
+    
+class RoutineExecutionRequest(BaseModel):
+    """A single routine to execute."""
+    routine_id: str = Field(..., description="The routine_id returned by search_routines")
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Parameters for the routine, keyed by parameter name. Example: {\"origin \": \"California\"}",
+    )
