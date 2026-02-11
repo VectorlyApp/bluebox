@@ -28,6 +28,7 @@ from bluebox.data_models.llms.interaction import (
     EmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
+from bluebox.data_models.routine.routine import RoutineExecutionRequest, RoutineInfo
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
@@ -96,6 +97,7 @@ class BlueBoxAgent(AbstractAgent):
             raise ValueError("VECTORLY_API_BASE is not set")
 
         self._routine_output_dir = Path(routine_output_dir)
+        self._routine_cache: dict[str, RoutineInfo] = {}
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -122,7 +124,45 @@ class BlueBoxAgent(AbstractAgent):
         time_info = f"\n\n## Current Time\n{now.strftime('%Y-%m-%d %H:%M:%S %Z').strip()}"
         return self.SYSTEM_PROMPT + time_info
 
-    ## Routine fetching (instance-level cache)
+    ## Routine cache
+
+    def _cache_routines_from_response(self, response: dict[str, Any] | list[Any]) -> None:
+        """Parse search response and cache RoutineInfo objects for later validation."""
+        if isinstance(response, list):
+            items = response
+        else:
+            items = response.get("results", response.get("routines", []))
+        if not isinstance(items, list):
+            return
+        for item in items:
+            try:
+                if not isinstance(item, dict) or "routine_id" not in item:
+                    continue
+                info = RoutineInfo.model_validate(item)
+                self._routine_cache[info.routine_id] = info
+                logger.debug("Cached routine: %s (%s)", info.name, info.routine_id)
+            except Exception:
+                logger.debug("Skipped caching item: %s", item.get("routine_id", "unknown"))
+
+    def _validate_routine_params(self, routine_id: str, params: dict[str, Any]) -> str | None:
+        """Validate params against cached routine info. Returns error string or None."""
+        info = self._routine_cache.get(routine_id)
+        if not info:
+            return None  # Not cached, skip validation
+
+        required = {p.name for p in info.parameters if p.required}
+        provided = set(params.keys())
+        missing = required - provided
+        if missing:
+            param_summary = [
+                {"name": p.name, "type": p.type.value, "required": p.required, "description": p.description}
+                for p in info.parameters
+            ]
+            return (
+                f"Routine '{info.name}' ({routine_id}): missing required parameter(s) {sorted(missing)}. "
+                f"Expected parameters: {param_summary}"
+            )
+        return None
 
     ## Tool handlers
 
@@ -149,21 +189,33 @@ class BlueBoxAgent(AbstractAgent):
 
         response = requests.post(url, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        self._cache_routines_from_response(data)
+        return data
 
     @agent_tool()
     def _execute_routines_in_parallel(
         self,
-        routine_requests: list[dict[str, Any]],
+        routine_executions: list[RoutineExecutionRequest],
     ) -> dict[str, Any]:
         """
         Execute one or more routines in parallel via the Vectorly API.
 
         Args:
-            routine_requests: List of routine execution requests. Each dict must have 'routine_id' (str) and optionally 'parameters' (dict).
+            routine_executions: List of routines to execute. Each item needs routine_id and parameters.
         """
-        if not routine_requests:
-            return {"error": "No routine requests provided"}
+        if not routine_executions:
+            return {"error": "No routine executions provided"}
+
+        # Pre-flight validation against cached routine metadata
+        validation_errors: list[str] = []
+        for req in routine_executions:
+            error = self._validate_routine_params(req.routine_id, req.parameters)
+            if error:
+                validation_errors.append(error)
+
+        if validation_errors:
+            return {"error": "Parameter validation failed. Fix and retry.\n" + "\n".join(validation_errors)}
 
         headers = {
             "Content-Type": "application/json",
@@ -185,44 +237,39 @@ class BlueBoxAgent(AbstractAgent):
                 result["output_file_error"] = str(e)
             return result
 
-        def execute_one(req: dict[str, Any]) -> dict[str, Any]:
-            routine_id = req.get("routine_id")
-            parameters = req.get("parameters", {})
-
-            if not routine_id:
-                return {"success": False, "error": "Missing 'routine_id'"}
-
-            url = f"{Config.VECTORLY_API_BASE}/routines/{routine_id}/execute"
+        def execute_one(req: RoutineExecutionRequest) -> dict[str, Any]:
+            url = f"{Config.VECTORLY_API_BASE}/routines/{req.routine_id}/execute"
             try:
                 response = requests.post(
                     url,
                     headers=headers,
-                    json={"parameters": parameters},
+                    json={"parameters": req.parameters},
                     timeout=300,
                 )
                 response.raise_for_status()
-                return save_result({"success": True, "routine_id": routine_id, "data": response.json()})
+                return save_result({"success": True, "routine_id": req.routine_id, "data": response.json()})
             except requests.RequestException as e:
-                logger.error("Routine execution failed for %s: %s", routine_id, e)
-                return save_result({"success": False, "routine_id": routine_id, "error": str(e)})
+                logger.error("Routine execution failed for %s: %s", req.routine_id, e)
+                return save_result({"success": False, "routine_id": req.routine_id, "error": str(e)})
 
+        total = len(routine_executions)
         results: list[dict[str, Any]] = []
         with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {executor.submit(execute_one, req): req for req in routine_requests}
+            futures = {executor.submit(execute_one, req): req for req in routine_executions}
             for future in as_completed(futures):
                 result = future.result()
                 results.append(result)
 
                 status = "succeeded" if result.get("success") else "FAILED"
                 self._emit_message(ChatResponseEmittedMessage(
-                    content=f"[{len(results)}/{len(routine_requests)}] Routine '{result.get('routine_id')}' {status}.",
+                    content=f"[{len(results)}/{total}] Routine '{result.get('routine_id')}' {status}.",
                 ))
 
         succeeded = sum(1 for r in results if r.get("success"))
         return {
-            "success": succeeded == len(results),
-            "total_requested": len(routine_requests),
+            "success": succeeded == total,
+            "total_requested": total,
             "succeeded": succeeded,
-            "failed": len(results) - succeeded,
+            "failed": total - succeeded,
             "results": results,
         }
