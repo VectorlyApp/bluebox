@@ -69,11 +69,7 @@ Eliminate the escape-quoted convention (`\"{{param}}\"`) and use simple `{{param
   - For dict values: recurse `{k: _resolve_value(val) for k, val in v.items()}`
   - For list values: recurse `[_resolve_value(item) for item in v]`
   - Other types: return as-is
-- **Add** `_coerce_value(value, param_type)` helper:
-  - `boolean` accepts: `"true"/"1"/"yes"` → `True`, `"false"/"0"/"no"` → `False` (case-insensitive)
-  - Already-correct types pass through (e.g., `int` value with `integer` type → no-op)
-  - `None` passes through regardless of type
-- **Important**: `apply_params_to_json` returns a new copy, never mutates input
+- **Add** `_coerce_value(value, param_type)` helper
 - **Update** module docstring to reflect new function names
 
 ### Phase 2: Update Operation Execution
@@ -164,7 +160,6 @@ In `_get_placeholder_resolution_js_helpers()`:
 - **Major rewrite.** Remove "The One Rule" about escape-quoted strings
 - All examples: `"\"{{x}}\""` → `"{{x}}"`
 - New type resolution table showing Parameter.type drives output
-- **Add CDP type-matching rule**: "Match the parameter type to what the raw CDP request actually sends. If `"count": "5"` is a string in the request, use `type=string`."
 - Simplify Quick Reference table
 
 #### 11. `bluebox/agent_docs/core/parameters.md`

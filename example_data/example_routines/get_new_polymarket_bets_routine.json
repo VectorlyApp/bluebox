@@ -25,7 +25,7 @@
                 "method": "GET",
                 "body": {},
                 "credentials": "include",
-                "url": "https://gamma-api.polymarket.com/events/pagination?limit=\"{{limit}}\"&active=true&archived=false&closed=false&order=startDate&ascending=false&offset=\"{{offset}}\"&exclude_tag_id=100639&exclude_tag_id=102169"
+                "url": "https://gamma-api.polymarket.com/events/pagination?limit={{limit}}&active=true&archived=false&closed=false&order=startDate&ascending=false&offset={{offset}}&exclude_tag_id=100639&exclude_tag_id=102169"
             },
             "session_storage_key": "newest_polymarket_events"
         },

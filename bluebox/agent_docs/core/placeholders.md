@@ -12,23 +12,24 @@ Placeholders inject runtime values into routine operations: user parameters, bro
 {{source:path}}   or   {{param_name}}
 ```
 
-Two quote formats exist:
+ALL placeholders use the same `{{...}}` format. The parameter's `type` field drives type coercion at resolution time.
 
-- **Quoted**: `"{{param}}"` - standard JSON string
-- **Escape-quoted**: `"\"{{param}}\""` - backslash-escaped quotes inside string
+## Type Resolution
 
-## The One Rule
+When a standalone placeholder (the entire JSON value is `"{{key}}"`) is resolved, the parameter's `type` determines the output:
 
-**String parameters MUST use escape-quoted format.** Non-string types (int, number, bool) can use either.
+| Parameter Type | Input | Resolved Output |
+| -------------- | ----- | --------------- |
+| `string`       | `"{{x}}"` | `"john"` (string) |
+| `integer`      | `"{{x}}"` | `50` (int) |
+| `number`       | `"{{x}}"` | `19.99` (float) |
+| `boolean`      | `"{{x}}"` | `true` (bool) |
+| `date`         | `"{{x}}"` | `"2026-08-22"` (string) |
 
-| Type    | Standalone               | In String                                        |
-| ------- | ------------------------ | ------------------------------------------------ |
-| string  | `"\"{{x}}\""`          | `"...\"{{username}}\"..."` → `"...john..."` |
-| integer | `"{{x}}"` → `50`    | `"...\"{{limit}}\"..."` → `"...50..."`      |
-| number  | `"{{x}}"` → `19.99` | `"...\"{{price}}\"..."` → `"...19.99..."`   |
-| boolean | `"{{x}}"` → `true`  | `"...\"{{active}}\"..."` → `"...true..."`   |
+When a placeholder is part of a larger string (`"prefix {{key}} suffix"`), the value is always substituted as a string.
 
-**Why?** The escape-quoted format preserves the quotes after resolution, keeping the value as a JSON string.
+**CRITICAL — Match types to the raw CDP request:**
+If the raw CDP request has `"adults": "5"` (a string), use `type=string`, NOT `type=integer`. Integer would produce `5` (unquoted) and may break the API.
 
 ## Placeholder Types
 
@@ -37,7 +38,7 @@ Two quote formats exist:
 Direct reference to parameters defined in the routine:
 
 ```json
-"query": "\"{{search_term}}\"",
+"query": "{{search_term}}",
 "limit": "{{max_results}}"
 ```
 
@@ -46,21 +47,21 @@ Direct reference to parameters defined in the routine:
 Access values stored by previous operations (supports dot-path for nested objects):
 
 ```json
-"token": "\"{{sessionStorage:auth.access_token}}\"",
-"code": "\"{{sessionStorage:response.data.items.0.stationCode}}\""
+"token": "{{sessionStorage:auth.access_token}}",
+"code": "{{sessionStorage:response.data.items.0.stationCode}}"
 ```
 
 ### Local Storage
 
 ```json
-"theme": "\"{{localStorage:user.preferences.theme}}\""
+"theme": "{{localStorage:user.preferences.theme}}"
 ```
 
 ### Cookies
 
 ```json
-"session": "\"{{cookie:session_id}}\"",
-"csrf": "\"{{cookie:csrf_token}}\""
+"session": "{{cookie:session_id}}",
+"csrf": "{{cookie:csrf_token}}"
 ```
 
 ### Window Properties
@@ -68,8 +69,8 @@ Access values stored by previous operations (supports dot-path for nested object
 Access JavaScript `window` object properties:
 
 ```json
-"apiKey": "\"{{windowProperty:__CONFIG__.apiKey}}\"",
-"href": "\"{{windowProperty:location.href}}\""
+"apiKey": "{{windowProperty:__CONFIG__.apiKey}}",
+"href": "{{windowProperty:location.href}}"
 ```
 
 ### Meta Tags
@@ -77,7 +78,7 @@ Access JavaScript `window` object properties:
 Access HTML `<meta>` tag content:
 
 ```json
-"csrf": "\"{{meta:csrf-token}}\""
+"csrf": "{{meta:csrf-token}}"
 ```
 
 ### Builtins
@@ -90,24 +91,24 @@ Auto-generated values (no definition needed in `parameters`):
 | `{{epoch_milliseconds}}` | Current timestamp in ms via `Date.now()` |
 
 ```json
-"requestId": "\"{{uuid}}\"",
-"timestamp": "\"{{epoch_milliseconds}}\""
+"requestId": "{{uuid}}",
+"timestamp": "{{epoch_milliseconds}}"
 ```
 
 ## Hardcoded Values
 
-**Escape quotes are ONLY for placeholders.** Copy hardcoded values directly from network traffic:
+Copy hardcoded values directly from network traffic:
 
 ```json
 {
-  "origin": "\"{{origin}}\"",
+  "origin": "{{origin}}",
   "type": "OW",
   "active": true,
   "limit": 100
 }
 ```
 
-- `"\"{{origin}}\""` - placeholder, needs escape quotes
+- `"{{origin}}"` - placeholder, resolved based on parameter type
 - `"OW"` - hardcoded string, copy as-is
 - `true`, `100` - hardcoded primitives, copy as-is
 
@@ -153,7 +154,7 @@ Store a fetch response, then use values from it in the next operation:
   "endpoint": {
     "url": "https://api.example.com/data",
     "headers": {
-      "Authorization": "Bearer \"{{sessionStorage:auth_response.token}}\""
+      "Authorization": "Bearer {{sessionStorage:auth_response.token}}"
     }
   }
 }
@@ -164,12 +165,12 @@ Store a fetch response, then use values from it in the next operation:
 ```json
 {
   "headers": {
-    "Authorization": "Bearer \"{{sessionStorage:auth.token}}\"",
-    "X-Request-ID": "\"{{uuid}}\"",
+    "Authorization": "Bearer {{sessionStorage:auth.token}}",
+    "X-Request-ID": "{{uuid}}",
     "Content-Type": "application/json"
   },
   "body": {
-    "username": "\"{{username}}\"",
+    "username": "{{username}}",
     "limit": "{{limit}}",
     "active": "{{is_active}}",
     "stationCode": "{{sessionStorage:stations.0.code}}"
@@ -179,14 +180,13 @@ Store a fetch response, then use values from it in the next operation:
 
 ## Quick Reference
 
-| Source             | Syntax                            | Example                                     |
-| ------------------ | --------------------------------- | ------------------------------------------- |
-| Parameter (string) | `"\"{{name}}\""`                | `"\"{{username}}\""`                      |
-| Parameter (number) | `"{{name}}"`                    | `"{{limit}}"`                             |
-| Session storage    | `"\"{{sessionStorage:path}}\""` | `"\"{{sessionStorage:auth.token}}\""`     |
-| Local storage      | `"\"{{localStorage:path}}\""`   | `"\"{{localStorage:theme}}\""`            |
-| Cookie             | `"\"{{cookie:name}}\""`         | `"\"{{cookie:session_id}}\""`             |
-| Window property    | `"\"{{windowProperty:path}}\""` | `"\"{{windowProperty:__CONFIG__.key}}\""` |
-| Meta tag           | `"\"{{meta:name}}\""`           | `"\"{{meta:csrf-token}}\""`               |
-| UUID (builtin)     | `"\"{{uuid}}\""`                | generates random UUID                       |
-| Epoch ms (builtin) | `"\"{{epoch_milliseconds}}\""`  | generates timestamp                         |
+| Source             | Syntax                         | Example                                  |
+| ------------------ | ------------------------------ | ---------------------------------------- |
+| Parameter (any)    | `"{{name}}"`                 | `"{{username}}"`, `"{{limit}}"` |
+| Session storage    | `"{{sessionStorage:path}}"` | `"{{sessionStorage:auth.token}}"` |
+| Local storage      | `"{{localStorage:path}}"`   | `"{{localStorage:theme}}"` |
+| Cookie             | `"{{cookie:name}}"`         | `"{{cookie:session_id}}"` |
+| Window property    | `"{{windowProperty:path}}"` | `"{{windowProperty:__CONFIG__.key}}"` |
+| Meta tag           | `"{{meta:name}}"`           | `"{{meta:csrf-token}}"` |
+| UUID (builtin)     | `"{{uuid}}"`                | generates random UUID |
+| Epoch ms (builtin) | `"{{epoch_milliseconds}}"`  | generates timestamp |

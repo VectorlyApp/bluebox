@@ -8,9 +8,9 @@
                 "headers": {},
                 "method": "GET",
                 "credentials": "omit",
-                "url": "https://arxiv.org/pdf/\"{{paper_id}}\""
+                "url": "https://arxiv.org/pdf/{{paper_id}}"
             },
-            "filename": "\"{{paper_id}}\".pdf"
+            "filename": "{{paper_id}}.pdf"
         }
     ],
     "incognito": true,

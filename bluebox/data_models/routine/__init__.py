@@ -14,7 +14,7 @@ from .operation import (
     RoutineReturnOperation,
 )
 from .execution import RoutineExecutionContext, RoutineExecutionResult
-from .placeholder import PlaceholderQuoteType, ExtractedPlaceholder, extract_placeholders_from_json_str
+from .placeholder import extract_placeholders_from_json_str
 
 __all__ = [
     "Routine",
@@ -30,8 +30,6 @@ __all__ = [
     "RoutineReturnOperation",
     "RoutineExecutionContext",
     "RoutineExecutionResult",
-    "PlaceholderQuoteType",
-    "ExtractedPlaceholder",
     "extract_placeholders_from_json_str",
 ]
 
