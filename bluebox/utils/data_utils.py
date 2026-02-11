@@ -549,7 +549,10 @@ def extract_base_url_from_url(url: str) -> str | None:
     except Exception:
         # If URL parsing fails (e.g., contains placeholders), try to extract hostname manually
         # Match protocol://hostname pattern
-        match = re.match(r'^[^:]+://([^/\?\:]+)', url)
+        match = re.match(
+            pattern=r'^[^:]+://([^/\?\:]+)', 
+            string=url,
+        )
         if match and match.group(1):
             hostname = match.group(1)
             # Remove port if present
