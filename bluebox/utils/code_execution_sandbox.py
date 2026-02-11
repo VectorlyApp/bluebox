@@ -16,10 +16,12 @@ Security layers:
 
 import base64
 import builtins as real_builtins
+import csv
 import io
 import json
 import logging
 import os
+import pathlib
 import shutil
 import subprocess
 import sys
@@ -145,21 +147,23 @@ def _is_docker_available() -> bool:
 def _execute_in_docker(
     code: str,
     extra_globals: dict[str, Any] | None = None,
+    work_dir: str | None = None,
 ) -> dict[str, Any]:
     """
     Execute Python code in an isolated Docker container.
 
     Security measures:
     - No network access (--network none)
-    - Read-only filesystem (--read-only)
+    - Read-only filesystem (--read-only), except work_dir if mounted
     - Limited memory and CPU
     - No privilege escalation
     - Runs as non-root user
     - Automatic cleanup (--rm)
 
     Args:
-        code: Python source code to execute
-        extra_globals: Variables to inject (serialized as JSON)
+        code: Python source code to execute.
+        extra_globals: Variables to inject (serialized as JSON).
+        work_dir: Host directory to mount as /data with read-write access.
 
     Returns:
         Dict with 'output' and optionally 'error'.
@@ -174,7 +178,20 @@ def _execute_in_docker(
     code_b64 = base64.b64encode(code.encode()).decode()
     globals_b64 = base64.b64encode(globals_json.encode()).decode()
 
-    wrapper_script = f"""
+    if work_dir:
+        wrapper_script = f"""
+import json, csv, base64, sys, os
+from pathlib import Path
+os.chdir("/data")
+extra_globals = json.loads(base64.b64decode("{globals_b64}").decode())
+extra_globals["csv"] = csv
+extra_globals["Path"] = Path
+code = base64.b64decode("{code_b64}").decode()
+exec_globals = {{"json": json, "csv": csv, "Path": Path, **extra_globals}}
+exec(code, exec_globals)
+"""
+    else:
+        wrapper_script = f"""
 import json, base64, sys
 extra_globals = json.loads(base64.b64decode("{globals_b64}").decode())
 code = base64.b64decode("{code_b64}").decode()
@@ -198,9 +215,14 @@ exec(code, exec_globals)
         "--user", "nobody",              # Non-root user
         "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",  # Writable /tmp for Python
         "-i",                            # Accept stdin
-        DOCKER_IMAGE,
-        "python", "-",                   # Read script from stdin
     ]
+
+    # Mount work_dir as /data with read-write access
+    if work_dir:
+        abs_work_dir = os.path.abspath(work_dir)
+        docker_cmd.extend(["-v", f"{abs_work_dir}:/data:rw", "-w", "/data"])
+
+    docker_cmd.extend([DOCKER_IMAGE, "python", "-"])
 
     try:
         result = subprocess.run(
@@ -249,17 +271,20 @@ def _create_safe_import() -> Any:
     return safe_import
 
 
-def check_code_safety(code: str) -> str | None:
+def check_code_safety(code: str, allow_file_io: bool = False) -> str | None:
     """
     Check code for blocked patterns before execution.
 
     Args:
-        code: Python source code to check
+        code: Python source code to check.
+        allow_file_io: When True, skip the open() pattern check (used with work_dir).
 
     Returns:
         Error message if unsafe pattern found, None if safe.
     """
     for pattern, error_msg in BLOCKED_PATTERNS:
+        if allow_file_io and pattern == "open(":
+            continue
         if pattern in code:
             return error_msg
     return None
@@ -284,26 +309,73 @@ def create_safe_builtins() -> dict[str, Any]:
     return safe_builtins
 
 
+def _create_scoped_open(work_dir: str) -> Any:
+    """
+    Create an open() function that restricts file access to work_dir.
+
+    All paths are resolved relative to work_dir. Paths that escape
+    work_dir (e.g. via '..') are rejected.
+
+    Args:
+        work_dir: The directory to scope file access to.
+    """
+    abs_work_dir = os.path.abspath(work_dir)
+
+    def scoped_open(
+        file: str,
+        mode: str = "r",
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        resolved = os.path.abspath(os.path.join(abs_work_dir, file))
+        if not resolved.startswith(abs_work_dir + os.sep) and resolved != abs_work_dir:
+            raise PermissionError(f"Access denied: path '{file}' is outside the working directory")
+        return open(resolved, mode, *args, **kwargs)  # noqa: SIM115
+
+    return scoped_open
+
+
 def _execute_blocklist_sandbox(
     code: str,
     extra_globals: dict[str, Any] | None = None,
+    work_dir: str | None = None,
 ) -> dict[str, Any]:
     """
     Execute code using blocklist-based sandboxing (fallback method).
 
     WARNING: This method is not secure against adversarial input.
     Use only when Docker is unavailable.
+
+    Args:
+        code: Python source code to execute.
+        extra_globals: Variables to inject into the execution namespace.
+        work_dir: When set, allows scoped file access to this directory.
     """
     # Capture stdout
     old_stdout = sys.stdout
     sys.stdout = captured_output = io.StringIO()
 
+    old_cwd = os.getcwd()
+
     try:
         # Build execution globals with safe builtins
+        safe_builtins = create_safe_builtins()
+
+        if work_dir:
+            abs_work_dir = os.path.abspath(work_dir)
+            os.makedirs(abs_work_dir, exist_ok=True)
+            os.chdir(abs_work_dir)
+            # Restore open() scoped to work_dir
+            safe_builtins["open"] = _create_scoped_open(abs_work_dir)
+
         exec_globals: dict[str, Any] = {
-            "__builtins__": create_safe_builtins(),
+            "__builtins__": safe_builtins,
             "json": json,  # Always provide json for parsing
         }
+
+        if work_dir:
+            exec_globals["csv"] = csv
+            exec_globals["Path"] = pathlib.Path
 
         # Add any extra globals
         if extra_globals:
@@ -322,11 +394,13 @@ def _execute_blocklist_sandbox(
 
     finally:
         sys.stdout = old_stdout
+        os.chdir(old_cwd)
 
 
 def execute_python_sandboxed(
     code: str,
     extra_globals: dict[str, Any] | None = None,
+    work_dir: str | None = None,
 ) -> dict[str, Any]:
     """
     Execute Python code in a sandboxed environment.
@@ -344,8 +418,11 @@ def execute_python_sandboxed(
     - BLUEBOX_SANDBOX_MEMORY: Container memory limit (default: "128m")
 
     Args:
-        code: Python source code to execute
-        extra_globals: Additional variables to inject into the execution namespace
+        code: Python source code to execute.
+        extra_globals: Additional variables to inject into the execution namespace.
+        work_dir: When set, grants read/write file access scoped to this directory.
+            In Docker mode, the directory is mounted as /data. In blocklist mode,
+            open() is scoped to this directory. Not supported in Lambda mode.
 
     Returns:
         Dict with 'output' (stdout) and optionally 'error' if execution failed.
@@ -353,13 +430,15 @@ def execute_python_sandboxed(
     if not code:
         return {"error": "No code provided"}
 
-    # Always check for blocked patterns first (fast, catches obvious issues)
-    safety_error = check_code_safety(code)
+    # Check for blocked patterns (allow open() when work_dir is set)
+    safety_error = check_code_safety(code, allow_file_io=bool(work_dir))
     if safety_error:
         return {"error": f"Blocked: {safety_error}"}
 
     # Lambda mode: use registered Lambda executor (set via register_lambda_executor at startup)
     if SANDBOX_MODE == "lambda":
+        if work_dir:
+            return {"error": "work_dir is not supported with Lambda sandbox mode"}
         if _lambda_executor_fn is None:
             return {
                 "error": (
@@ -378,19 +457,19 @@ def execute_python_sandboxed(
             return {"error": "Docker sandbox requested but Docker is not available"}
     elif SANDBOX_MODE == "auto":
         # Priority: lambda > docker > blocklist
-        if _lambda_executor_fn is not None:
+        if _lambda_executor_fn is not None and not work_dir:
             logger.debug("Executing code via AWS Lambda sandbox (auto-selected)")
             return _lambda_executor_fn(code, extra_globals)
         use_docker = _is_docker_available()
     # else: SANDBOX_MODE == "blocklist" -> use_docker stays False
 
     if use_docker:
-        logger.debug("Executing code in Docker sandbox")
-        return _execute_in_docker(code, extra_globals)
+        logger.debug("Executing code in Docker sandbox (work_dir=%s)", work_dir)
+        return _execute_in_docker(code, extra_globals, work_dir=work_dir)
     else:
         if SANDBOX_MODE == "auto":
             logger.warning(
                 "Docker unavailable, using blocklist sandbox. "
                 "This is not secure against adversarial input."
             )
-        return _execute_blocklist_sandbox(code, extra_globals)
+        return _execute_blocklist_sandbox(code, extra_globals, work_dir=work_dir)
