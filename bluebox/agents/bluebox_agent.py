@@ -423,6 +423,7 @@ class BlueBoxAgent(AbstractAgent):
         Use this as a FALLBACK when no pre-built routine matches the user's request.
         The browser agent receives a natural language task and autonomously navigates
         the web to complete it. This is slower and more expensive than routines.
+        Progress is streamed in real time via SSE.
 
         Args:
             task: Detailed natural language instruction for the browser agent. Be specific and step-by-step.
@@ -450,35 +451,75 @@ class BlueBoxAgent(AbstractAgent):
         ))
 
         try:
-            response = requests.post(
-                f"{Config.VECTORLY_API_BASE}/buagent/execute",
+            with requests.post(
+                f"{Config.VECTORLY_API_BASE}/buagent/execute/stream",
                 headers=headers,
                 json=payload,
-                timeout=timeout_seconds + 30,  # HTTP timeout slightly beyond agent timeout
-            )
-            response.raise_for_status()
-            result = response.json()
-
-            status = "succeeded" if result.get("is_successful") else "completed (not confirmed successful)"
-            if not result.get("is_done"):
-                status = "did not finish"
-
-            self._emit_message(ChatResponseEmittedMessage(
-                content=f"Browser agent task {status} in {result.get('duration_seconds', 0):.1f}s ({result.get('n_steps', 0)} steps).",
-            ))
-
-            return {
-                "success": result.get("is_successful", False),
-                "is_done": result.get("is_done", False),
-                "final_result": result.get("final_result"),
-                "errors": result.get("errors", []),
-                "n_steps": result.get("n_steps", 0),
-                "duration_seconds": result.get("duration_seconds"),
-                "execution_id": result.get("execution_id"),
-            }
+                stream=True,
+                timeout=timeout_seconds + 30,
+            ) as response:
+                response.raise_for_status()
+                return self._consume_sse_stream(response)
 
         except requests.Timeout:
             return {"error": f"Browser agent timed out after {timeout_seconds}s"}
         except requests.RequestException as e:
             logger.error("Browser agent API call failed: %s", e)
             return {"error": f"Browser agent request failed: {e}"}
+
+    def _consume_sse_stream(self, response: requests.Response) -> dict[str, Any]:
+        """Parse an SSE stream from the BU agent and emit progress messages."""
+        current_event = ""
+        result: dict[str, Any] = {"error": "Stream ended without a terminal event"}
+
+        for line in response.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+
+            if line.startswith("event: "):
+                current_event = line[7:]
+                continue
+
+            if not line.startswith("data: "):
+                continue
+
+            try:
+                data = json.loads(line[6:])
+            except json.JSONDecodeError:
+                logger.warning("Malformed SSE data line: %s", line)
+                continue
+
+            if current_event == "step":
+                step_num = data.get("step_number", "?")
+                max_steps = data.get("max_steps", "?")
+                goal = data.get("next_goal", "")
+                msg = f"[Step {step_num}/{max_steps}]"
+                if goal:
+                    msg += f" {goal}"
+                self._emit_message(ChatResponseEmittedMessage(content=msg))
+
+            elif current_event == "done":
+                status = "succeeded" if data.get("is_successful") else "completed (not confirmed successful)"
+                if not data.get("is_done"):
+                    status = "did not finish"
+                self._emit_message(ChatResponseEmittedMessage(
+                    content=f"Browser agent task {status} in {data.get('duration_seconds', 0):.1f}s ({data.get('n_steps', 0)} steps).",
+                ))
+                result = {
+                    "success": data.get("is_successful", False),
+                    "is_done": data.get("is_done", False),
+                    "final_result": data.get("final_result"),
+                    "errors": data.get("errors", []),
+                    "n_steps": data.get("n_steps", 0),
+                    "duration_seconds": data.get("duration_seconds"),
+                    "execution_id": data.get("execution_id"),
+                }
+
+            elif current_event == "error":
+                error_msg = data.get("error", "Unknown error")
+                self._emit_message(ChatResponseEmittedMessage(
+                    content=f"Browser agent error: {error_msg}",
+                ))
+                result = {"error": error_msg, "execution_id": data.get("execution_id")}
+
+        return result
