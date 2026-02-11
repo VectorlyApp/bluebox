@@ -14,7 +14,7 @@ import ast
 import json
 import time
 from collections import defaultdict
-from typing import get_args
+from typing import Any, get_args
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -47,6 +47,15 @@ from bluebox.utils.logger import get_logger
 from bluebox.utils.web_socket_utils import send_cmd, recv_until
 
 logger = get_logger(name=__name__)
+
+
+class RoutineExecutionRequest(BaseModel):
+    """A single routine to execute."""
+    routine_id: str = Field(..., description="The routine_id returned by search_routines")
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Parameters for the routine, keyed by parameter name. Example: {\"query\": \"California\"}",
+    )
 
 
 # Routine model ___________________________________________________________________________________
