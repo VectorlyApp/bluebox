@@ -347,24 +347,24 @@ class SuperDiscoveryAgent(AbstractAgent):
             prompt_parts.append(Routine.model_schema_markdown())  # needed if fix_routine
 
         # Add data store summaries
-        data_store_info = []
+        data_loader_info = []
         if self._network_data_loader:
             stats = self._network_data_loader.stats
-            data_store_info.append(f"Network: {stats.total_requests} transactions")
+            data_loader_info.append(f"Network: {stats.total_requests} transactions")
         if self._storage_data_loader:
             stats = self._storage_data_loader.stats
-            data_store_info.append(f"Storage: {stats.total_events} events")
+            data_loader_info.append(f"Storage: {stats.total_events} events")
         if self._window_property_data_loader:
             stats = self._window_property_data_loader.stats
-            data_store_info.append(f"Window: {stats.total_events} events")
+            data_loader_info.append(f"Window: {stats.total_events} events")
         if self._js_data_loader:
-            data_store_info.append("JS files: available")
+            data_loader_info.append("JS files: available")
         if self._documentation_data_loader:
             summary = self._documentation_data_loader.stats.to_summary()
-            data_store_info.append(f"Documentation: {summary}")
+            data_loader_info.append(f"Documentation: {summary}")
 
-        if data_store_info:
-            prompt_parts.append(f"\n\n## Data Sources\n{', '.join(data_store_info)}")
+        if data_loader_info:
+            prompt_parts.append(f"\n\n## Data Sources\n{', '.join(data_loader_info)}")
 
         # Add current state
         status = self._orchestration_state.get_queue_status()
