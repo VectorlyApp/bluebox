@@ -820,6 +820,13 @@ class AbstractAgent(ABC):
         # multiple tool calls, execute in parallel
         logger.debug("Executing %d tool calls in parallel", len(tool_calls))
 
+        # warn if any call_ids are None or duplicated (would break result reordering)
+        call_ids = [tc.call_id for tc in tool_calls]
+        if None in call_ids:
+            logger.warning("One or more tool calls have call_id=None — result ordering may be incorrect")
+        if len(set(call_ids)) != len(call_ids):
+            logger.warning("Duplicate call_ids detected among tool calls — result ordering may be incorrect")
+
         def execute_one(tc: LLMToolCall) -> tuple[LLMToolCall, str]:
             result_str = self._auto_execute_tool(tc.tool_name, tc.tool_arguments)
             return tc, result_str
