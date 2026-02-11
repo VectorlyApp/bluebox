@@ -51,18 +51,19 @@ class BlueBoxAgent(AbstractAgent):
     AGENT_LOOP_MAX_ITERATIONS: int = 100
 
     SYSTEM_PROMPT: str = dedent("""
-        You are a routine execution agent. Your job is to find and run pre-built Vectorly routines to fulfill user requests.
+        You are a web automation agent. Your job is to fulfill user requests by running pre-built Vectorly routines, or falling back to the browser agent for free-form tasks.
 
         ## Workflow
         1. **Search broadly**: When the user makes a request, use `search_routines` with many single-word keywords to find ALL potentially relevant routines. Think of synonyms and related terms. Example: for "book a flight" use `["flight", "book", "airline", "travel", "booking"]`.
         2. **Inspect matches**: Use `get_routine_details` on each promising match to understand its parameters and what it does.
         3. **Execute all relevant routines**: Run ALL routines that could plausibly fulfill the user's request via `execute_routines_parallel`. When in doubt, include the routine — running an extra routine is cheap, missing a relevant one is costly.
-        4. **Report results**: Summarize what was executed and the results to the user.
+        4. **Fallback to browser agent**: If NO routines match after thorough searching, use `execute_browser_task` to perform the task via an AI-driven browser agent. Write a clear, detailed natural language instruction for the task.
+        5. **Report results**: Summarize what was executed and the results to the user.
 
         ## Important Rules
-        - You ONLY have routine tools. Do not tell the user you can browse, click, type, or interact with web pages directly.
-        - If no routines match, tell the user clearly that no matching routines were found.
+        - **Always prefer routines over `execute_browser_task`**. Routines are faster, cheaper, and more reliable. Only use the browser agent as a fallback when no suitable routine exists.
         - Keywords MUST be short single words. Never pass multi-word phrases as a single keyword. If your first search returns no results, try different synonyms and related single-word keywords before giving up.
+        - When using `execute_browser_task`, write a specific, step-by-step task description so the browser agent knows exactly what to do.
         - Be concise in responses.
     """).strip()
 
@@ -407,3 +408,77 @@ class BlueBoxAgent(AbstractAgent):
             "validation_errors": validation_errors or None,
             "results": results,
         }
+
+    @agent_tool()
+    @token_optimized
+    def _execute_browser_task(
+        self,
+        task: str,
+        timeout_seconds: int = 300,
+        use_vision: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Execute a free-form browser task using the AI browser agent.
+
+        Use this as a FALLBACK when no pre-built routine matches the user's request.
+        The browser agent receives a natural language task and autonomously navigates
+        the web to complete it. This is slower and more expensive than routines.
+
+        Args:
+            task: Detailed natural language instruction for the browser agent. Be specific and step-by-step.
+            timeout_seconds: Maximum execution time in seconds (30-1800). Defaults to 300.
+            use_vision: Whether the agent should use vision (screenshots). Defaults to True.
+        """
+        if not task or not task.strip():
+            return {"error": "Task description cannot be empty"}
+
+        timeout_seconds = max(30, min(timeout_seconds, 1800))
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Service-Token": Config.VECTORLY_API_KEY,
+        }
+
+        payload = {
+            "task": task,
+            "timeout_seconds": timeout_seconds,
+            "use_vision": use_vision,
+        }
+
+        self._emit_message(ChatResponseEmittedMessage(
+            content="Starting browser agent task... This may take a few minutes.",
+        ))
+
+        try:
+            response = requests.post(
+                f"{Config.VECTORLY_API_BASE}/buagent/execute",
+                headers=headers,
+                json=payload,
+                timeout=timeout_seconds + 30,  # HTTP timeout slightly beyond agent timeout
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            status = "succeeded" if result.get("is_successful") else "completed (not confirmed successful)"
+            if not result.get("is_done"):
+                status = "did not finish"
+
+            self._emit_message(ChatResponseEmittedMessage(
+                content=f"Browser agent task {status} in {result.get('duration_seconds', 0):.1f}s ({result.get('n_steps', 0)} steps).",
+            ))
+
+            return {
+                "success": result.get("is_successful", False),
+                "is_done": result.get("is_done", False),
+                "final_result": result.get("final_result"),
+                "errors": result.get("errors", []),
+                "n_steps": result.get("n_steps", 0),
+                "duration_seconds": result.get("duration_seconds"),
+                "execution_id": result.get("execution_id"),
+            }
+
+        except requests.Timeout:
+            return {"error": f"Browser agent timed out after {timeout_seconds}s"}
+        except requests.RequestException as e:
+            logger.error("Browser agent API call failed: %s", e)
+            return {"error": f"Browser agent request failed: {e}"}
