@@ -1,6 +1,6 @@
-# bluebox-sdk Development Guide
+# bluebox Development Guide
 
-This file provides context and guidelines for working with the bluebox-sdk codebase.
+This file provides context and guidelines for working with the bluebox codebase.
 
 ## Bash Commands
 
