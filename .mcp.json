@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "cursor-browser": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/home/ec2-user/cursor-browser-bridge/mcp-bridge.js"
+      ],
+      "env": {}
+    }
+  }
+}
