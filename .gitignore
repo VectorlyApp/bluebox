@@ -1,4 +1,5 @@
 guide_agent_output/
+.mcp.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
