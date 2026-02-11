@@ -29,6 +29,7 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.routine.routine import RoutineExecutionRequest, RoutineInfo
+from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
@@ -55,10 +56,25 @@ class BlueBoxAgent(AbstractAgent):
         ## Workflow
         1. **Search broadly**: When the user makes a request, use `search_routines` with a task description that describes what the user wants to do. This runs semantic search, so add some detail. You can run this multiple times if needed to get more results.
         2. **Execute all relevant routines**: Run ALL routines that could plausibly fulfill the user's request via `execute_routines_in_parallel`. When in doubt, include the routine — running an extra routine is cheap, missing a relevant one is costly.
-        4. **Report results**: Summarize what was executed and the results to the user.
+        3. **Post-process results**: Use `run_python_code` to transform routine results into clean output files (CSV, JSON, JSONL, etc.) for the user.
+        4. **Verify output**: After writing files, use `list_workspace_files` and `read_workspace_file` to verify the output looks correct. If it doesn't, fix the code and rerun.
+        5. **Report results**: Summarize what was executed and the output files to the user.
+
+        ## Post-Processing with Python
+        - After routines return results, ALWAYS use `run_python_code` to post-process data and generate clean output files.
+        - The variable `routine_results` is pre-loaded: a list of dicts, one per JSON file in the raw/ directory.
+        - You have full read/write file access to the workspace directory. Use open() to read/write files.
+        - `json`, `csv`, and `Path` (from pathlib) are pre-loaded.
+        - Output files are saved in the outputs/ subdirectory. Write there: `with open("outputs/results.csv", "w") as f: ...`
+        - **ALWAYS add debug print() statements** in your code so you can see what's happening: print key counts, data shapes, sample values, etc. stdout is captured and returned to you.
+        - **Be persistent**: If your code errors or produces unexpected results, read the error/output carefully, use `list_workspace_files` and `read_workspace_file` to inspect the data, fix the code, and try again. Keep iterating until you produce the correct output file. NEVER give up after one failed attempt — debug and retry.
+
+        ## Inspecting the Workspace
+        - Use `list_workspace_files` to see all files in the workspace (raw/, outputs/, etc.).
+        - Use `read_workspace_file` to read any file by relative path (e.g. "raw/routine_results_2024-01-15_143052_abc.json" or "outputs/results.csv"). Use optional start_line/end_line to read specific line ranges for large files.
 
         ## Important Rules
-        - You ONLY have routine tools. Do not tell the user you can browse, click, type, or interact with web pages directly.
+        - You ONLY have routine tools, code execution, and file inspection tools. Do not tell the user you can browse, click, type, or interact with web pages directly.
         - If no routines match, tell the user clearly that no matching routines were found.
         - Keywords MUST be short single words. Never pass multi-word phrases as a single keyword. If your first search returns no results, try different synonyms and related single-word keywords before giving up.
         - Be concise in responses.
@@ -75,7 +91,7 @@ class BlueBoxAgent(AbstractAgent):
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
-        routine_output_dir: str = "./routine_output",
+        workspace_dir: str = "./bluebox_workspace",
     ) -> None:
         """
         Initialize the BlueBox Agent.
@@ -88,7 +104,8 @@ class BlueBoxAgent(AbstractAgent):
             llm_model: The LLM model to use for conversation.
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
-            routine_output_dir: Directory to save routine execution results as JSON files.
+            workspace_dir: Root workspace directory. Raw routine results go in raw/,
+                agent-generated output files go in outputs/.
         """
         # Validate required config
         if not Config.VECTORLY_API_KEY:
@@ -96,7 +113,9 @@ class BlueBoxAgent(AbstractAgent):
         if not Config.VECTORLY_API_BASE:
             raise ValueError("VECTORLY_API_BASE is not set")
 
-        self._routine_output_dir = Path(routine_output_dir)
+        self._workspace_dir = Path(workspace_dir)
+        self._raw_dir = self._workspace_dir / "raw"
+        self._outputs_dir = self._workspace_dir / "outputs"
         self._routine_cache: dict[str, RoutineInfo] = {}
 
         super().__init__(
@@ -223,12 +242,12 @@ class BlueBoxAgent(AbstractAgent):
         }
 
         def save_result(result: dict[str, Any]) -> dict[str, Any]:
-            """Save a single routine result to a JSON file."""
+            """Save a single routine result to a JSON file in raw/."""
             try:
-                self._routine_output_dir.mkdir(parents=True, exist_ok=True)
+                self._raw_dir.mkdir(parents=True, exist_ok=True)
                 rid = result.get("routine_id", "unknown")
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-                output_path = self._routine_output_dir / f"routine_results_{timestamp}_{rid}.json"
+                output_path = self._raw_dir / f"routine_results_{timestamp}_{rid}.json"
                 output_path.write_text(json.dumps(result, indent=2, default=str))
                 result["output_file"] = str(output_path)
                 logger.info("Routine result saved to %s", output_path)
@@ -272,4 +291,191 @@ class BlueBoxAgent(AbstractAgent):
             "succeeded": succeeded,
             "failed": total - succeeded,
             "results": results,
+        }
+
+    @agent_tool()
+    def _run_python_code(self, code: str) -> dict[str, Any]:
+        """
+        Execute Python code to post-process routine results and generate output files.
+
+        The code runs with full read/write access to the workspace directory.
+        Pre-loaded variables: `routine_results` (list of dicts from all JSON files
+        in the raw/ directory), `json`, `csv`, and `Path` (pathlib.Path).
+
+        Write output files to the outputs/ subdirectory:
+            with open("outputs/results.csv", "w") as f: ...
+
+        IMPORTANT: Always include print() statements for debugging — print data shapes,
+        key names, row counts, sample values, etc. If the code fails, use the output
+        to diagnose and fix. Keep iterating until the output file is correct.
+
+        Args:
+            code: Python code to execute. Has full file access to the workspace.
+                Pre-loaded: routine_results (list[dict]), json, csv, Path.
+                Write output files to outputs/ subdirectory. Always add print()
+                statements for debugging.
+        """
+        # Ensure directories exist
+        self._raw_dir.mkdir(parents=True, exist_ok=True)
+        self._outputs_dir.mkdir(parents=True, exist_ok=True)
+        work_dir = str(self._workspace_dir.resolve())
+
+        # Snapshot files in outputs/ before execution
+        files_before: dict[str, float] = {}
+        for p in self._outputs_dir.iterdir():
+            if p.is_file():
+                files_before[str(p)] = p.stat().st_mtime
+
+        # Load all JSON files from raw/ as routine_results
+        routine_results: list[dict[str, Any]] = []
+        for json_file in sorted(self._raw_dir.glob("*.json")):
+            try:
+                data = json.loads(json_file.read_text())
+                routine_results.append(data)
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning("Failed to load %s: %s", json_file, e)
+
+        # Execute in sandbox with work_dir for file access
+        sandbox_result = execute_python_sandboxed(
+            code,
+            extra_globals={"routine_results": routine_results},
+            work_dir=work_dir,
+        )
+
+        # Diff files in outputs/ to find new/modified ones
+        files_created: list[str] = []
+        for p in self._outputs_dir.iterdir():
+            if not p.is_file():
+                continue
+            path_str = str(p)
+            mtime = p.stat().st_mtime
+            if path_str not in files_before or files_before[path_str] < mtime:
+                files_created.append(path_str)
+
+        # Build response
+        result: dict[str, Any] = {}
+
+        if "error" in sandbox_result:
+            result["error"] = sandbox_result["error"]
+            result["_hint"] = (
+                "Code failed. Read the error and stdout above carefully. "
+                "Use list_workspace_files and read_workspace_file to inspect the data, "
+                "then fix the code and call run_python_code again."
+            )
+
+        output = sandbox_result.get("output", "")
+        if output and output != "(no output)":
+            result["output"] = output
+
+        if files_created:
+            result["files_created"] = files_created
+            result["output_file"] = files_created[0]
+            result["_hint"] = (
+                "Files were created. Use read_workspace_file to verify the output "
+                "is correct (check first few lines). If not, fix the code and rerun."
+            )
+        elif "error" not in sandbox_result:
+            result["output"] = result.get("output", "") or "Code ran but produced no files."
+            result["_hint"] = (
+                "No files were created in outputs/. Make sure your code writes to "
+                "outputs/ (e.g. open('outputs/results.csv', 'w')). Fix and rerun."
+            )
+
+        return result
+
+    @agent_tool()
+    @token_optimized
+    def _list_workspace_files(self) -> dict[str, Any]:
+        """
+        List all files in the workspace directory as a tree.
+
+        Shows the full directory structure including raw/ (routine results)
+        and outputs/ (generated files).
+        """
+        self._workspace_dir.mkdir(parents=True, exist_ok=True)
+
+        tree_lines: list[str] = []
+        total_files = 0
+
+        for dirpath, dirnames, filenames in sorted(self._workspace_dir.walk()):
+            # Relative path from workspace root
+            rel_dir = dirpath.relative_to(self._workspace_dir)
+            depth = len(rel_dir.parts)
+            indent = "  " * depth
+            dir_name = rel_dir.name or str(self._workspace_dir.name)
+            tree_lines.append(f"{indent}{dir_name}/")
+
+            dirnames.sort()
+            for filename in sorted(filenames):
+                filepath = dirpath / filename
+                size = filepath.stat().st_size
+                if size < 1024:
+                    size_str = f"{size}B"
+                elif size < 1024 * 1024:
+                    size_str = f"{size / 1024:.1f}KB"
+                else:
+                    size_str = f"{size / (1024 * 1024):.1f}MB"
+                tree_lines.append(f"{indent}  {filename}  ({size_str})")
+                total_files += 1
+
+        return {
+            "tree": "\n".join(tree_lines),
+            "total_files": total_files,
+        }
+
+    @agent_tool()
+    def _read_workspace_file(
+        self,
+        path: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+    ) -> dict[str, Any]:
+        """
+        Read a file from the workspace by relative path.
+
+        Use this to inspect raw routine results, verify generated output files,
+        or debug data issues. Supports optional line ranges for large files.
+
+        Args:
+            path: Relative path within the workspace (e.g. "raw/routine_results_2024.json"
+                or "outputs/results.csv").
+            start_line: Optional 1-based start line number. Omit to read from the beginning.
+            end_line: Optional 1-based end line number (inclusive). Omit to read to the end.
+        """
+        # Resolve and validate path stays within workspace
+        resolved = (self._workspace_dir / path).resolve()
+        workspace_resolved = self._workspace_dir.resolve()
+        if not str(resolved).startswith(str(workspace_resolved) + "/") and resolved != workspace_resolved:
+            return {"error": f"Access denied: '{path}' is outside the workspace directory"}
+
+        if not resolved.exists():
+            return {"error": f"File not found: {path}"}
+        if not resolved.is_file():
+            return {"error": f"Not a file: {path}"}
+
+        try:
+            lines = resolved.read_text().splitlines()
+        except OSError as e:
+            return {"error": f"Failed to read file: {e}"}
+
+        total_lines = len(lines)
+
+        # Apply line range
+        if start_line is not None or end_line is not None:
+            s = (start_line or 1) - 1  # Convert to 0-based
+            e = end_line or total_lines
+            lines = lines[s:e]
+            line_range = f"lines {s + 1}-{min(e, total_lines)} of {total_lines}"
+        else:
+            # Cap output at 200 lines to avoid blowing up context
+            if total_lines > 200:
+                lines = lines[:200]
+                line_range = f"lines 1-200 of {total_lines} (truncated, use start_line/end_line for more)"
+            else:
+                line_range = f"all {total_lines} lines"
+
+        return {
+            "path": path,
+            "line_range": line_range,
+            "content": "\n".join(lines),
         }

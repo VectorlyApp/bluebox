@@ -21,9 +21,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import shutil
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 import sys
+
+from bluebox.utils.terminal_utils import ask_yes_no, print_colored, YELLOW
 
 from rich.console import Console
 from rich.text import Text
@@ -51,10 +55,10 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
     def __init__(
         self,
         llm_model: LLMModel,
-        routine_output_dir: str = "./routine_output",
+        workspace_dir: str = "./bluebox_workspace",
     ) -> None:
-        super().__init__(llm_model, working_dir=routine_output_dir)
-        self._routine_output_dir = routine_output_dir
+        super().__init__(llm_model, working_dir=workspace_dir)
+        self._workspace_dir = workspace_dir
 
     # ── Abstract implementations ─────────────────────────────────────────
 
@@ -63,7 +67,7 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
-            routine_output_dir=self._routine_output_dir,
+            workspace_dir=self._workspace_dir,
         )
 
     def _print_welcome(self) -> None:
@@ -123,10 +127,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="BlueBox Agent \u2014 Multi-pane TUI")
     add_model_argument(parser)
     parser.add_argument(
-        "--routine-output-dir",
+        "--workspace-dir",
         type=str,
-        default="./routine_output",
-        help="Directory to save routine execution results as JSON files (default: ./routine_output)",
+        default="./bluebox_workspace",
+        help="Workspace directory. Raw results in raw/, output files in outputs/ (default: ./bluebox_workspace)",
     )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")
@@ -144,6 +148,17 @@ def main() -> None:
 
     llm_model = resolve_model(args.model, console)
 
+    # Check if workspace directory exists and offer to clear it
+    workspace_path = Path(args.workspace_dir)
+    if workspace_path.exists() and any(workspace_path.iterdir()):
+        print_colored(f"Workspace directory already exists: {workspace_path.resolve()}", YELLOW)
+        if ask_yes_no("Clear workspace?"):
+            shutil.rmtree(workspace_path)
+            print_colored("Workspace cleared.", YELLOW)
+        else:
+            print_colored("Keeping existing workspace.", YELLOW)
+        print()
+
     console.print(f"[dim]Model: {llm_model.value}[/dim]")
     console.print()
 
@@ -152,7 +167,7 @@ def main() -> None:
 
     app = BlueBoxAgentTUI(
         llm_model=llm_model,
-        routine_output_dir=args.routine_output_dir,
+        workspace_dir=args.workspace_dir,
     )
     app.run()
 
