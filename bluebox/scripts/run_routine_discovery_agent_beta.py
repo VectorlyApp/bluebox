@@ -1,7 +1,7 @@
 """
-bluebox/scripts/run_super_discovery_agent.py
+bluebox/scripts/run_routine_discovery_agent_beta.py
 
-Multi-pane terminal UI for the SuperDiscoveryAgent using Textual.
+Multi-pane terminal UI for the RoutineDiscoveryAgentBeta using Textual.
 
 Layout:
   +-----------------------------+----------------------+
@@ -14,10 +14,10 @@ Layout:
   +-----------------------------+-----------------------+
 
 Usage:
-    bluebox-super-discovery --cdp-captures-dir ./cdp_captures
-    bluebox-super-discovery --cdp-captures-dir ./cdp_captures --task "Search for trains from NYC to Boston"
-    bluebox-super-discovery --cdp-captures-dir ./cdp_captures --model gpt-5.1
-    bluebox-super-discovery --cdp-captures-dir ./cdp_captures --remote-debugging-address http://127.0.0.1:9222
+    bluebox-routine-discovery-agent-beta --cdp-captures-dir ./cdp_captures
+    bluebox-routine-discovery-agent-beta --cdp-captures-dir ./cdp_captures --task "Search for trains from NYC to Boston"
+    bluebox-routine-discovery-agent-beta --cdp-captures-dir ./cdp_captures --model gpt-5.1
+    bluebox-routine-discovery-agent-beta --cdp-captures-dir ./cdp_captures --remote-debugging-address http://127.0.0.1:9222
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ from rich.text import Text
 from textual import work
 from textual.widgets import RichLog
 
-from bluebox.agents.super_discovery_agent import SuperDiscoveryAgent
+from bluebox.agents.routine_discovery_agent_beta import RoutineDiscoveryAgentBeta
 from bluebox.config import Config
 from bluebox.data_models.llms.interaction import BaseEmittedMessage
 from bluebox.data_models.llms.vendors import LLMModel
@@ -90,10 +90,10 @@ HELP_TEXT = """\
 
 # ─── Textual App ─────────────────────────────────────────────────────────────
 
-class SuperDiscoveryTUI(AbstractAgentTUI):
-    """Multi-pane TUI for the Super Discovery Agent."""
+class RotutineDiscoveryBetaTUI(AbstractAgentTUI):
+    """Multi-pane TUI for the Routine Discovery Beta Agent."""
 
-    TITLE = "Super Discovery"
+    TITLE = "Routine Discovery Beta"
     SLASH_COMMANDS = SLASH_COMMANDS
     HELP_TEXT = HELP_TEXT
     SHOW_SAVED_FILES_PANE = True
@@ -128,7 +128,7 @@ class SuperDiscoveryTUI(AbstractAgentTUI):
         self._initial_task = initial_task
 
         # Discovery state
-        self._discovery_agent: SuperDiscoveryAgent | None = None
+        self._discovery_agent: RoutineDiscoveryAgentBeta | None = None
         self._discovered_routine: Routine | None = None
         self._is_discovering: bool = False
         self._last_state_hash: str | None = None
@@ -137,7 +137,7 @@ class SuperDiscoveryTUI(AbstractAgentTUI):
 
     def _create_agent(self) -> AbstractAgent:
         """Create the chat-mode agent (placeholder task for conversational use)."""
-        return SuperDiscoveryAgent(
+        return RoutineDiscoveryAgentBeta(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
             network_data_loader=self._network_data_loader,
@@ -156,7 +156,7 @@ class SuperDiscoveryTUI(AbstractAgentTUI):
     def _print_welcome(self) -> None:
         chat = self.query_one("#chat-log", RichLog)
         chat.write(Text.from_markup(
-            "[bold cyan]Super Discovery Agent[/bold cyan]  "
+            "[bold cyan]Routine Discovery Beta Agent[/bold cyan]  "
             "[dim]powered by Vectorly[/dim]"
         ))
         chat.write("")
@@ -204,7 +204,7 @@ class SuperDiscoveryTUI(AbstractAgentTUI):
             discovery_status = "[dim]Ready[/dim]"
 
         return (
-            f"[bold cyan]SUPER DISCOVERY[/bold cyan]\n"
+            f"[bold cyan]Routine Discovery Beta[/bold cyan]\n"
             f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
             f"[dim]Model:[/dim]     {self._llm_model.value}\n"
             f"[dim]Messages:[/dim]  {msg_count}\n"
@@ -288,7 +288,7 @@ class SuperDiscoveryTUI(AbstractAgentTUI):
         self._processing = True
 
         try:
-            agent = SuperDiscoveryAgent(
+            agent = RoutineDiscoveryAgentBeta(
                 emit_message_callable=self._handle_message,
                 stream_chunk_callable=self._handle_stream_chunk,
                 network_data_loader=self._network_data_loader,
@@ -564,8 +564,8 @@ class SuperDiscoveryTUI(AbstractAgentTUI):
         self._dump_agent_thread(
             self._discovery_agent._thread,
             self._discovery_agent._chats,
-            chat_threads_dir / "super_agent.json",
-            agent_type="super_agent",
+            chat_threads_dir / "orchestration_agent.json",
+            agent_type="orchestration_agent",
         )
 
         for agent_id, agent_instance in self._discovery_agent._agent_instances.items():
@@ -687,8 +687,8 @@ class SuperDiscoveryTUI(AbstractAgentTUI):
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
 def main() -> None:
-    """Entry point for the super discovery agent TUI."""
-    parser = argparse.ArgumentParser(description="Super Discovery Agent \u2014 Multi-pane TUI")
+    """Entry point for the Routine Discovery Beta agent TUI."""
+    parser = argparse.ArgumentParser(description="Routine Discovery Beta Agent \u2014 Multi-pane TUI")
 
     # CDP captures directory
     parser.add_argument(
@@ -824,9 +824,9 @@ def main() -> None:
         console.print()
 
         # Redirect logging before TUI takes over
-        enable_tui_logging(log_file=args.log_file or ".bluebox_super_discovery_tui.log", quiet=args.quiet)
+        enable_tui_logging(log_file=args.log_file or ".bluebox_routine_discovery_agent_beta_tui.log", quiet=args.quiet)
 
-        app = SuperDiscoveryTUI(
+        app = RotutineDiscoveryBetaTUI(
             llm_model=llm_model,
             network_data_loader=network_data_loader,
             storage_data_loader=storage_data_loader,

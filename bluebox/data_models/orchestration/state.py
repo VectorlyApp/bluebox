@@ -1,7 +1,7 @@
 """
 bluebox/data_models/orchestration/state.py
 
-State management for the SuperDiscoveryAgent orchestrator.
+State management for the RoutineDiscoveryAgentBeta orchestrator.
 
 Tracks the discovery phase, delegated tasks, subagent instances,
 and the routine being constructed.

@@ -24,7 +24,7 @@ This file provides context and guidelines for working with the bluebox codebase.
 - `bluebox-monitor --host 127.0.0.1 --port 9222 --output-dir ./cdp_captures --url about:blank --incognito` - Start browser monitoring
 - `bluebox-discover --task "your task description" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5.1` - Discover routines from captures
 - `bluebox-execute --routine-path example_data/example_routines/amtrak_one_way_train_search_routine.json --parameters-path example_data/example_routines/amtrak_one_way_train_search_input.json` - Execute a routine
-- `bluebox-agent-adapter --agent SuperDiscoveryAgent --cdp-captures-dir ./cdp_captures` - Start HTTP adapter for programmatic agent interaction (see Agent HTTP Adapter section below)
+- `bluebox-agent-adapter --agent RoutineDiscoveryAgentBeta --cdp-captures-dir ./cdp_captures` - Start HTTP adapter for programmatic agent interaction (see Agent HTTP Adapter section below)
 - `bluebox-agent-adapter --list-agents` - List all available agents and their required data
 
 ### Chrome Debug Mode
@@ -120,7 +120,7 @@ AI agents that power routine discovery and conversational interactions:
 HTTP wrapper that exposes any `AbstractAgent` (or `AbstractSpecialist`) subclass as a JSON API, enabling programmatic interaction via curl. Agents are auto-discovered at runtime — adding a new `AbstractSpecialist` subclass makes it available with zero adapter changes.
 
 ```bash
-# Start adapter (default: SuperDiscoveryAgent)
+# Start adapter (default: RoutineDiscoveryAgentBeta)
 bluebox-agent-adapter --cdp-captures-dir ./cdp_captures --port 8765 -q
 
 # Or pick a specific agent
@@ -134,7 +134,7 @@ Endpoints:
 - `GET /health` — liveness check
 - `GET /status` — agent type, chat state, discovery support
 - `POST /chat {"message": "..."}` — send a chat message (all agents)
-- `POST /discover {"task": "..."}` — run discovery/autonomous mode (specialists + SuperDiscoveryAgent)
+- `POST /discover {"task": "..."}` — run discovery/autonomous mode (specialists + RoutineDiscoveryAgentBeta)
 - `GET /routine` — retrieve discovered routine JSON
 
 **Best practices when calling from Claude Code or scripts:**

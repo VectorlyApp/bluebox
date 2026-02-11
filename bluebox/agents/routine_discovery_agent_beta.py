@@ -1,7 +1,7 @@
 """
-bluebox/agents/super_discovery_agent.py
+bluebox/agents/routine_discovery_agent_beta.py
 
-SuperDiscoveryAgent - orchestrator for routine discovery.
+RoutineDiscoveryAgentBeta - orchestrator for routine discovery.
 
 This agent coordinates specialist subagents (JSSpecialist, NetworkSpecialist, etc.)
 to discover routines from CDP captures. It delegates specific tasks to specialists
@@ -71,7 +71,7 @@ from bluebox.utils.logger import get_logger
 logger = get_logger(name=__name__)
 
 
-class SuperDiscoveryAgent(AbstractAgent):
+class RoutineDiscoveryAgentBeta(AbstractAgent):
     """
     Orchestrator agent that coordinates specialist subagents for routine discovery.
 
@@ -259,7 +259,7 @@ class SuperDiscoveryAgent(AbstractAgent):
         existing_chats: list[Chat] | None = None,
     ) -> None:
         """
-        Initialize the SuperDiscoveryAgent.
+        Initialize the RoutineDiscoveryAgentBeta.
 
         Args:
             emit_message_callable: Callback to emit messages to the host.
@@ -417,7 +417,7 @@ class SuperDiscoveryAgent(AbstractAgent):
 
         # Run the main loop
         for iteration in range(self._max_iterations):
-            logger.debug("SuperDiscovery iteration %d/%d, phase: %s",
+            logger.debug("RotutineDiscoveryBeta iteration %d/%d, phase: %s",
                         iteration + 1, self._max_iterations, self._discovery_state.phase.value)
 
             # Check for completion
@@ -509,13 +509,13 @@ class SuperDiscoveryAgent(AbstractAgent):
                     self._add_chat(ChatRole.SYSTEM, f"[ACTION REQUIRED] {guidance}")
 
             except Exception as e:
-                logger.exception("Error in SuperDiscovery loop: %s", e)
+                logger.exception("Error in RotutineDiscoveryBeta loop: %s", e)
                 self._emit_message(ErrorEmittedMessage(error=str(e)))
                 self._discovery_state.phase = DiscoveryPhase.FAILED
                 self._failure_reason = str(e)
                 return None
 
-        logger.warning("SuperDiscovery hit max iterations (%d)", self._max_iterations)
+        logger.warning("RotutineDiscoveryBeta hit max iterations (%d)", self._max_iterations)
         self._discovery_state.phase = DiscoveryPhase.FAILED
         self._failure_reason = f"Max iterations ({self._max_iterations}) reached"
         return None
@@ -574,7 +574,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             if not self._network_data_loader:
                 raise ValueError(
                     "network_specialist requires network_data_loader, "
-                    "but it was not provided to SuperDiscoveryAgent"
+                    "but it was not provided to RoutineDiscoveryAgentBeta"
                 )
             return NetworkSpecialist(
                 emit_message_callable=self._emit_message_callable,
@@ -588,7 +588,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             if not self._interaction_data_loader:
                 raise ValueError(
                     "interaction_specialist requires interaction_data_loader, "
-                    "but it was not provided to SuperDiscoveryAgent"
+                    "but it was not provided to RoutineDiscoveryAgentBeta"
                 )
             return InteractionSpecialist(
                 emit_message_callable=self._emit_message_callable,

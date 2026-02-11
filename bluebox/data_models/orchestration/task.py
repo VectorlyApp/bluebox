@@ -1,7 +1,7 @@
 """
 bluebox/data_models/orchestration/task.py
 
-Task and SubAgent models for the SuperDiscoveryAgent orchestrator.
+Task and SubAgent models for the RoutineDiscoveryAgentBeta orchestrator.
 
 Tasks represent units of work delegated to specialist subagents.
 SubAgents are persistent specialist instances that can handle multiple tasks.

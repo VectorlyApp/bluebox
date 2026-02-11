@@ -19,7 +19,7 @@ from bluebox.data_models.routine.dev_routine import DevRoutine
 
 class DiscoveryPhase(StrEnum):
     """Current phase of the routine discovery process."""
-    # SuperDiscoveryAgent phases
+    # RoutineDiscoveryAgentBeta phases
     PLANNING = "planning"             # Analyzing task, planning approach
     DISCOVERING = "discovering"       # Delegating discovery tasks to specialists
     CONSTRUCTING = "constructing"     # Building the routine from discoveries

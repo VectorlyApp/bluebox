@@ -4,7 +4,7 @@ bluebox/data_models/orchestration/result.py
 Universal result wrapper for specialist agents.
 
 SpecialistResultWrapper is a standardized container for all specialist outputs,
-allowing the orchestrator (SuperDiscoveryAgent) to dynamically define what
+allowing the orchestrator (RoutineDiscoveryAgentBeta) to dynamically define what
 structure a specialist should return.
 """
 
