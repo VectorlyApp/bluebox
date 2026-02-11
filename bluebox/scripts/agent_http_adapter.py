@@ -78,7 +78,7 @@ _DATA_PARAM_TO_KEY: dict[str, str] = {
 
 def discover_agent_classes() -> dict[str, type]:
     """Build registry of all available AbstractAgent subclasses by class name."""
-    from bluebox.agents.super_discovery_agent import RoutineDiscoveryAgentBeta
+    from bluebox.agents.routine_discovery_agent_beta import RoutineDiscoveryAgentBeta
     from bluebox.agents.bluebox_agent import BlueBoxAgent
 
     # Import all specialist modules to trigger __init_subclass__ registration

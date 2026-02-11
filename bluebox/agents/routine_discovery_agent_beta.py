@@ -70,6 +70,19 @@ from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
 
+_DYNAMIC_HEADER_PATTERNS: dict[str, str] = {
+    "authorization": "Auth token (Bearer/Basic/etc.)",
+    "x-csrf-token": "CSRF protection token",
+    "x-xsrf-token": "XSRF protection token",
+    "x-request-id": "Request correlation ID",
+    "x-correlation-id": "Correlation ID",
+    "x-trace-id": "Trace ID",
+}
+
+_DYNAMIC_COOKIE_PATTERNS: list[str] = [
+    "session", "sid", "token", "csrf", "xsrf", "jwt", "auth",
+]
+
 
 class RoutineDiscoveryAgentBeta(AbstractAgent):
     """
@@ -124,7 +137,21 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
            ```
            create_task(
                agent_type="network_specialist",
-               prompt="Find the API endpoint that accomplishes: <user's task>. Search for relevant keywords."
+               prompt="Find the API endpoint that accomplishes: <user's task>. Search for relevant keywords.",
+               output_schema={
+                   "type": "object",
+                   "properties": {
+                       "request_id": {
+                           "type": "string",
+                           "description": "The EXACT request_id from the HAR data (e.g. 'interception-job-957.0'). Must match an actual entry ID."
+                       },
+                       "url": {"type": "string", "description": "The endpoint URL"},
+                       "method": {"type": "string", "description": "HTTP method"},
+                       "description": {"type": "string", "description": "What this endpoint does"}
+                   },
+                   "required": ["request_id", "url", "method", "description"]
+               },
+               output_description="Return the EXACT request_id from the HAR traffic data. Do NOT invent descriptive names."
            )
            ```
         2. Call `run_pending_tasks()` to execute
@@ -200,6 +227,16 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
 
         Look at the root transaction's URL to determine the base URL to navigate to (usually
         the origin, e.g. `https://example.com`).
+
+        ## CRITICAL: session_storage_key Rules
+
+        - Every `fetch` operation SHOULD have a `session_storage_key` field. This stores the
+          response in sessionStorage under that key.
+        - The `return` operation's `session_storage_key` MUST reference a key that was set by
+          a PRIOR `fetch` or `js_evaluate` operation. The validator checks this!
+        - Pattern: fetch sets key "api_response" -> return reads from "api_response"
+        - If you get a session_storage_key error, ensure the return operation's key matches
+          exactly one of the fetch operation's session_storage_key values.
     """)
 
     PLACEHOLDER_INSTRUCTIONS: str = (
@@ -1112,6 +1149,19 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
             "response_headers": entry.response_headers,
             "response_body": response_body,
         }
+
+        # Add suggested dynamic tokens from headers
+        suggested_tokens = self._detect_likely_dynamic_headers(entry.request_headers)
+        if suggested_tokens:
+            result["SUGGESTED_DYNAMIC_TOKENS"] = {
+                "message": (
+                    "These headers likely contain dynamic tokens that MUST be extracted as "
+                    "variables with type='dynamic_token' and requires_dynamic_resolution=true. "
+                    "Use record_extracted_variable for each one."
+                ),
+                "tokens": suggested_tokens,
+            }
+
         if truncated:
             result["response_body_truncated"] = True
             result["response_body_full_length"] = original_length
@@ -1121,6 +1171,54 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
                 f"Delegate to network_specialist for full body search."
             )
         return result
+
+    def _detect_likely_dynamic_headers(
+        self, headers: dict[str, str] | None
+    ) -> list[dict[str, str]]:
+        """
+        Scan request headers for likely dynamic tokens that need extraction.
+
+        Args:
+            headers: Request headers dict (header_name -> value).
+
+        Returns:
+            List of dicts with keys: header_name, description, observed_value.
+        """
+        if not headers:
+            return []
+
+        suggestions: list[dict[str, str]] = []
+        headers_lower = {k.lower(): (k, v) for k, v in headers.items()}
+
+        for pattern, desc in _DYNAMIC_HEADER_PATTERNS.items():
+            if pattern in headers_lower:
+                original_name, value = headers_lower[pattern]
+                suggestions.append({
+                    "header_name": original_name,
+                    "suggested_variable_name": original_name.lower().replace("-", "_"),
+                    "description": desc,
+                    "observed_value": value[:100] + "..." if len(value) > 100 else value,
+                    "suggested_type": "dynamic_token",
+                })
+
+        # Check Cookie header for session-like cookies
+        if "cookie" in headers_lower:
+            _, cookie_value = headers_lower["cookie"]
+            for cookie_part in cookie_value.split(";"):
+                cookie_part = cookie_part.strip()
+                if "=" in cookie_part:
+                    cookie_name, cookie_val = cookie_part.split("=", 1)
+                    cookie_name_lower = cookie_name.strip().lower()
+                    if any(p in cookie_name_lower for p in _DYNAMIC_COOKIE_PATTERNS):
+                        suggestions.append({
+                            "header_name": f"Cookie:{cookie_name.strip()}",
+                            "suggested_variable_name": cookie_name.strip().lower().replace("-", "_"),
+                            "description": f"Session cookie '{cookie_name.strip()}'",
+                            "observed_value": cookie_val.strip()[:100],
+                            "suggested_type": "dynamic_token",
+                        })
+
+        return suggestions
 
     @agent_tool(
         description=(
@@ -1282,11 +1380,37 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
 
         entry = self._network_data_loader.get_entry(request_id)
         if not entry:
-            available_ids = [e.request_id for e in self._network_data_loader.entries[:10]]
-            return {
-                "error": f"Request ID '{request_id}' not found",
-                "sample_ids": available_ids
-            }
+            # Fallback: try to find entry by URL match if request_id looks fabricated
+            fallback_entry = None
+            if url:
+                # Try exact URL match first
+                for e in self._network_data_loader.entries:
+                    if e.url == url and e.method.upper() == method.upper():
+                        fallback_entry = e
+                        break
+                # Try URL path match if exact fails
+                if not fallback_entry:
+                    from urllib.parse import urlparse
+                    target_path = urlparse(url).path
+                    for e in self._network_data_loader.entries:
+                        if urlparse(e.url).path == target_path and e.method.upper() == method.upper():
+                            fallback_entry = e
+                            break
+
+            if fallback_entry:
+                logger.warning(
+                    "Request ID '%s' not found, but found matching entry by URL: %s (actual ID: %s)",
+                    request_id, url, fallback_entry.request_id,
+                )
+                entry = fallback_entry
+                request_id = fallback_entry.request_id  # Use the real ID going forward
+            else:
+                available_ids = [e.request_id for e in self._network_data_loader.entries[:10]]
+                return {
+                    "error": f"Request ID '{request_id}' not found",
+                    "hint": "Use the EXACT request_id from the HAR data (e.g., 'interception-job-123.0'), not a descriptive name.",
+                    "sample_ids": available_ids,
+                }
 
         # Parse HTTP method
         try:
@@ -1662,6 +1786,27 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
                 "hint": "Use scan_for_value and record_resolved_variable for each token first"
             }
 
+        # Warn (non-blocking) about common auth headers that weren't extracted
+        warnings: list[str] = []
+        tx_request = tx_data.get("request", {})
+        if tx_request:
+            request_headers = tx_request.get("headers") or {}
+            likely_tokens = self._detect_likely_dynamic_headers(request_headers)
+            if likely_tokens:
+                extracted_names = set()
+                if tx_data.get("extracted_variables"):
+                    extracted_names = {var.name for var in tx_data["extracted_variables"].variables}
+
+                missed = [
+                    t["header_name"] for t in likely_tokens
+                    if t["suggested_variable_name"] not in extracted_names
+                ]
+                if missed:
+                    warnings.append(
+                        f"WARNING: Common auth/session headers not extracted: {missed}. "
+                        f"If these are dynamic tokens, the routine may fail in fresh sessions."
+                    )
+
         # Remove from queue if present
         if transaction_id in self._discovery_state.transaction_queue:
             self._discovery_state.transaction_queue.remove(transaction_id)
@@ -1672,13 +1817,16 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
         # Get next transaction in queue
         queue_status = self._discovery_state.get_queue_status()
 
-        return {
+        result: dict[str, Any] = {
             "success": True,
             "transaction_id": transaction_id,
             "message": f"Transaction {transaction_id} marked as processed",
             "remaining_queue": queue_status["pending"],
             "processed_count": queue_status["processed_count"],
         }
+        if warnings:
+            result["warnings"] = warnings
+        return result
 
     @agent_tool()
     def _get_discovery_context(self) -> dict[str, Any]:
@@ -1981,10 +2129,63 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
         try:
             routine_obj = Routine.model_validate(routine)
         except Exception as e:
+            error_str = str(e)
+            hints: list[str] = []
+
+            # Detect session_storage_key errors and provide actionable guidance
+            if "session_storage_key" in error_str:
+                available_keys = []
+                for op in routine.get("operations", []):
+                    if op.get("type") == "fetch" and op.get("session_storage_key"):
+                        available_keys.append(op["session_storage_key"])
+                    elif op.get("type") == "js_evaluate" and op.get("session_storage_key"):
+                        available_keys.append(op["session_storage_key"])
+
+                hints.append(
+                    f"The return operation references a session_storage_key that no prior "
+                    f"fetch/js_evaluate operation defines. "
+                    f"Keys set by fetch/js_evaluate in this routine: {available_keys or 'NONE'}. "
+                    f"Fix: add session_storage_key to your fetch operation, then use the SAME key "
+                    f"in the return operation."
+                )
+
+            # Detect parameter usage errors
+            if "not used in any operation" in error_str:
+                hints.append(
+                    "Remove unused parameters from the parameters list, or add "
+                    "{{param_name}} placeholders in your operation URLs/bodies/headers."
+                )
+
+            if "undefined parameter" in error_str.lower() or "not defined" in error_str:
+                hints.append(
+                    "Add missing parameter definitions to the parameters list, or "
+                    "check for typos in placeholder names."
+                )
+
             return {
                 "error": f"Invalid routine structure: {e}",
-                "message": "Failed to parse routine. Check schema in the docs and try again.",
+                "hints": hints if hints else ["Check the Routine Schema Reference and try again."],
+                "message": "Fix the issues above and call construct_routine again.",
             }
+
+        # Programmatically populate observed_value on parameters from discovery state
+        observed_values_map: dict[str, str] = {}
+        for tx_id, tx_data in self._discovery_state.transaction_data.items():
+            if tx_data.get("extracted_variables"):
+                for var in tx_data["extracted_variables"].variables:
+                    if var.type == VariableType.PARAMETER and var.observed_value:
+                        observed_values_map[var.name] = var.observed_value
+
+        if observed_values_map:
+            patched_count = 0
+            for param in routine_obj.parameters:
+                if param.name in observed_values_map and not param.observed_value:
+                    param.observed_value = observed_values_map[param.name]
+                    patched_count += 1
+            if patched_count:
+                logger.info(
+                    "Patched observed_value on %d parameters from discovery state", patched_count
+                )
 
         # Get structure warnings (errors are already caught by model validation above)
         structure_warnings = routine_obj.get_structure_warnings()
@@ -1998,6 +2199,11 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
                 "parameter_count": len(routine_obj.parameters),
                 "operation_count": len(routine_obj.operations),
                 "warnings": structure_warnings,
+                "observed_values_patched": {
+                    p.name: p.observed_value
+                    for p in routine_obj.parameters
+                    if p.observed_value
+                },
                 "message": "Routine constructed. Now use validate_routine with test_parameters to execute and verify it works.",
             }
 
