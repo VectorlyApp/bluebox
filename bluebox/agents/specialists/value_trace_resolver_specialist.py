@@ -113,9 +113,9 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
         documentation_data_loader: DocumentationDataLoader | None = None,
-        network_data_store: NetworkDataLoader | None = None,
-        storage_data_store: StorageDataLoader | None = None,
-        window_property_data_store: WindowPropertyDataLoader | None = None,
+        network_data_loader: NetworkDataLoader | None = None,
+        storage_data_loader: StorageDataLoader | None = None,
+        window_property_data_loader: WindowPropertyDataLoader | None = None,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -129,9 +129,9 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         Args:
             emit_message_callable: Callback function to emit messages to the host.
-            network_data_store: NetworkDataLoader for network traffic analysis.
-            storage_data_store: StorageDataLoader for browser storage analysis.
-            window_property_data_store: WindowPropertyDataLoader for window props analysis.
+            network_data_loader: NetworkDataLoader for network traffic analysis.
+            storage_data_loader: StorageDataLoader for browser storage analysis.
+            window_property_data_loader: WindowPropertyDataLoader for window props analysis.
             persist_chat_callable: Optional callback to persist Chat objects.
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
@@ -142,9 +142,9 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
         """
         # Data stores
-        self._network_data_store = network_data_store
-        self._storage_data_store = storage_data_store
-        self._window_property_data_store = window_property_data_store
+        self._network_data_loader = network_data_loader
+        self._storage_data_loader = storage_data_loader
+        self._window_property_data_loader = window_property_data_loader
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -170,16 +170,16 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         """Get system prompt with data store context."""
         context_parts = [self.SYSTEM_PROMPT, "\n\n## Data Store Context"]
 
-        if self._network_data_store:
-            stats = self._network_data_store.stats
+        if self._network_data_loader:
+            stats = self._network_data_loader.stats
             context_parts.append(
                 f"\n- Network: {stats.total_requests} requests, {stats.unique_urls} unique URLs"
             )
         else:
             context_parts.append("\n- Network: Not available")
 
-        if self._storage_data_store:
-            stats = self._storage_data_store.stats
+        if self._storage_data_loader:
+            stats = self._storage_data_loader.stats
             context_parts.append(
                 f"\n- Storage: {stats.total_events} events "
                 f"(cookies: {stats.cookie_events}, localStorage: {stats.local_storage_events}, "
@@ -188,8 +188,8 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         else:
             context_parts.append("\n- Storage: Not available")
 
-        if self._window_property_data_store:
-            stats = self._window_property_data_store.stats
+        if self._window_property_data_loader:
+            stats = self._window_property_data_loader.stats
             context_parts.append(
                 f"\n- Window Props: {stats.total_events} events, "
                 f"{stats.unique_property_paths} unique paths"
@@ -240,8 +240,8 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         results: dict[str, Any] = {"value_searched": value, "case_sensitive": case_sensitive}
 
         # Search network
-        if self._network_data_store:
-            network_results = self._network_data_store.search_response_bodies(
+        if self._network_data_loader:
+            network_results = self._network_data_loader.search_response_bodies(
                 value=value, case_sensitive=case_sensitive
             )
             results["network"] = {
@@ -253,8 +253,8 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             results["network"] = {"available": False}
 
         # Search storage
-        if self._storage_data_store:
-            storage_results = self._storage_data_store.search_values(
+        if self._storage_data_loader:
+            storage_results = self._storage_data_loader.search_values(
                 value=value, case_sensitive=case_sensitive
             )
             results["storage"] = {
@@ -266,8 +266,8 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             results["storage"] = {"available": False}
 
         # Search window properties
-        if self._window_property_data_store:
-            window_results = self._window_property_data_store.search_values(
+        if self._window_property_data_loader:
+            window_results = self._window_property_data_loader.search_values(
                 value=value, case_sensitive=case_sensitive
             )
             results["window_properties"] = {
@@ -293,7 +293,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         return results
 
-    @agent_tool(availability=lambda self: self._network_data_store is not None)
+    @agent_tool(availability=lambda self: self._network_data_loader is not None)
     @token_optimized
     def _search_in_network(
         self,
@@ -309,13 +309,13 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             value: The value to search for in response bodies.
             case_sensitive: Whether the search should be case-sensitive. Defaults to false.
         """
-        if not self._network_data_store:
+        if not self._network_data_loader:
             return {"error": "Network data store not available"}
 
         if not value:
             return {"error": "value is required"}
 
-        results = self._network_data_store.search_response_bodies(
+        results = self._network_data_loader.search_response_bodies(
             value=value, case_sensitive=case_sensitive
         )
 
@@ -325,7 +325,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "results": results[:20],
         }
 
-    @agent_tool(availability=lambda self: self._storage_data_store is not None)
+    @agent_tool(availability=lambda self: self._storage_data_loader is not None)
     @token_optimized
     def _search_in_storage(
         self,
@@ -341,13 +341,13 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             value: The value to search for in storage.
             case_sensitive: Whether the search should be case-sensitive. Defaults to false.
         """
-        if not self._storage_data_store:
+        if not self._storage_data_loader:
             return {"error": "Storage data store not available"}
 
         if not value:
             return {"error": "value is required"}
 
-        results = self._storage_data_store.search_values(
+        results = self._storage_data_loader.search_values(
             value=value, case_sensitive=case_sensitive
         )
 
@@ -357,7 +357,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "results": results[:20],
         }
 
-    @agent_tool(availability=lambda self: self._window_property_data_store is not None)
+    @agent_tool(availability=lambda self: self._window_property_data_loader is not None)
     @token_optimized
     def _search_in_window_props(
         self,
@@ -373,13 +373,13 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             value: The value to search for in window properties.
             case_sensitive: Whether the search should be case-sensitive. Defaults to false.
         """
-        if not self._window_property_data_store:
+        if not self._window_property_data_loader:
             return {"error": "Window property data store not available"}
 
         if not value:
             return {"error": "value is required"}
 
-        results = self._window_property_data_store.search_values(
+        results = self._window_property_data_loader.search_values(
             value=value, case_sensitive=case_sensitive
         )
 
@@ -389,7 +389,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "results": results[:20],
         }
 
-    @agent_tool(availability=lambda self: self._network_data_store is not None)
+    @agent_tool(availability=lambda self: self._network_data_loader is not None)
     @token_optimized
     def _get_network_entry(self, request_id: str) -> dict[str, Any]:
         """
@@ -398,13 +398,13 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         Args:
             request_id: The request_id of the network entry to retrieve.
         """
-        if not self._network_data_store:
+        if not self._network_data_loader:
             return {"error": "Network data store not available"}
 
         if not request_id:
             return {"error": "request_id is required"}
 
-        entry = self._network_data_store.get_entry(request_id)
+        entry = self._network_data_loader.get_entry(request_id)
         if not entry:
             return {"error": f"Entry {request_id} not found"}
 
@@ -426,7 +426,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "response_content": response_content,
         }
 
-    @agent_tool(availability=lambda self: self._storage_data_store is not None)
+    @agent_tool(availability=lambda self: self._storage_data_loader is not None)
     @token_optimized
     def _get_storage_entry(self, index: int) -> dict[str, Any]:
         """
@@ -435,10 +435,10 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         Args:
             index: The index of the storage entry to retrieve.
         """
-        if not self._storage_data_store:
+        if not self._storage_data_loader:
             return {"error": "Storage data store not available"}
 
-        entry = self._storage_data_store.get_entry(index)
+        entry = self._storage_data_loader.get_entry(index)
         if not entry:
             return {"error": f"Entry at index {index} not found"}
 
@@ -447,7 +447,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "entry": entry.model_dump(),
         }
 
-    @agent_tool(availability=lambda self: self._window_property_data_store is not None)
+    @agent_tool(availability=lambda self: self._window_property_data_loader is not None)
     @token_optimized
     def _get_window_prop_changes(
         self,
@@ -463,13 +463,13 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             path: The property path to get changes for (e.g., 'dataLayer.0.userId').
             exact: If true, match exactly. If false, match paths containing substring.
         """
-        if not self._window_property_data_store:
+        if not self._window_property_data_loader:
             return {"error": "Window property data store not available"}
 
         if not path:
             return {"error": "path is required"}
 
-        results = self._window_property_data_store.get_changes_by_path(path, exact=exact)
+        results = self._window_property_data_loader.get_changes_by_path(path, exact=exact)
 
         return {
             "path": path,
@@ -478,7 +478,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "changes": results[:20],
         }
 
-    @agent_tool(availability=lambda self: self._storage_data_store is not None)
+    @agent_tool(availability=lambda self: self._storage_data_loader is not None)
     @token_optimized
     def _get_storage_by_key(self, key: str) -> dict[str, Any]:
         """
@@ -491,13 +491,13 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         Args:
             key: The storage key name to look up.
         """
-        if not self._storage_data_store:
+        if not self._storage_data_loader:
             return {"error": "Storage data store not available"}
 
         if not key:
             return {"error": "key is required"}
 
-        entries = self._storage_data_store.get_entries_by_key(key)
+        entries = self._storage_data_loader.get_entries_by_key(key)
 
         return {
             "key": key,
@@ -526,23 +526,23 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         # Build extra globals with all available data stores
         extra_globals: dict[str, Any] = {}
 
-        if self._network_data_store:
+        if self._network_data_loader:
             extra_globals["network_entries"] = [
-                e.model_dump() for e in self._network_data_store.entries
+                e.model_dump() for e in self._network_data_loader.entries
             ]
         else:
             extra_globals["network_entries"] = []
 
-        if self._storage_data_store:
+        if self._storage_data_loader:
             extra_globals["storage_entries"] = [
-                e.model_dump() for e in self._storage_data_store.entries
+                e.model_dump() for e in self._storage_data_loader.entries
             ]
         else:
             extra_globals["storage_entries"] = []
 
-        if self._window_property_data_store:
+        if self._window_property_data_loader:
             extra_globals["window_prop_entries"] = [
-                e.model_dump() for e in self._window_property_data_store.entries
+                e.model_dump() for e in self._window_property_data_loader.entries
             ]
         else:
             extra_globals["window_prop_entries"] = []

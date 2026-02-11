@@ -98,9 +98,9 @@ class ValueTraceResolverTUI(AbstractAgentTUI):
         return ValueTraceResolverSpecialist(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
-            network_data_store=self._network_store,
-            storage_data_store=self._storage_store,
-            window_property_data_store=self._window_store,
+            network_data_loader=self._network_store,
+            storage_data_loader=self._storage_store,
+            window_property_data_loader=self._window_store,
             llm_model=self._llm_model,
         )
 

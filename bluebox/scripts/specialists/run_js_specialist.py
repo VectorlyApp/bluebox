@@ -15,9 +15,9 @@ Layout:
 
 Usage:
     bluebox-js-specialist
-    bluebox-js-specialist --dom-snapshots-dir ./cdp_captures/dom/
+    bluebox-js-specialist --dom-snapshots-path ./cdp_captures/dom/events.jsonl
     bluebox-js-specialist \
-        --dom-snapshots-dir ./cdp_captures/dom/ \
+        --dom-snapshots-path ./cdp_captures/dom/events.jsonl \
         --javascript-events-jsonl-path ./cdp_captures/network/javascript_events.jsonl \
         --network-events-jsonl-path ./cdp_captures/network/events.jsonl \
         --remote-debugging-address 127.0.0.1:9222
@@ -85,14 +85,14 @@ class JSSpecialistTUI(AbstractAgentTUI):
         self,
         llm_model: LLMModel,
         dom_snapshots: list[DOMSnapshotEvent] | None = None,
-        js_data_store: JSDataLoader | None = None,
-        network_data_store: NetworkDataLoader | None = None,
+        js_data_loader: JSDataLoader | None = None,
+        network_data_loader: NetworkDataLoader | None = None,
         remote_debugging_address: str | None = None,
     ) -> None:
         super().__init__(llm_model)
         self._dom_snapshots = dom_snapshots
-        self._js_data_store = js_data_store
-        self._network_data_store = network_data_store
+        self._js_data_loader = js_data_loader
+        self._network_data_loader = network_data_loader
         self._remote_debugging_address = remote_debugging_address
 
     # -- Abstract implementations ----------------------------------------------
@@ -102,8 +102,8 @@ class JSSpecialistTUI(AbstractAgentTUI):
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
             dom_snapshots=self._dom_snapshots,
-            js_data_store=self._js_data_store,
-            network_data_store=self._network_data_store,
+            js_data_loader=self._js_data_loader,
+            network_data_loader=self._network_data_loader,
             llm_model=self._llm_model,
             remote_debugging_address=self._remote_debugging_address,
         )
@@ -117,8 +117,8 @@ class JSSpecialistTUI(AbstractAgentTUI):
         chat.write("")
 
         dom_count = len(self._dom_snapshots) if self._dom_snapshots else 0
-        js_files_count = self._js_data_store.stats.total_files if self._js_data_store else 0
-        network_count = self._network_data_store.stats.total_requests if self._network_data_store else 0
+        js_files_count = self._js_data_loader.stats.total_files if self._js_data_loader else 0
+        network_count = self._network_data_loader.stats.total_requests if self._network_data_loader else 0
 
         lines: list[str] = []
         if dom_count > 0:
@@ -136,7 +136,7 @@ class JSSpecialistTUI(AbstractAgentTUI):
 
         if not any([dom_count, js_files_count, network_count, self._remote_debugging_address]):
             chat.write(Text.from_markup(
-                "[yellow]No data sources loaded. Use --dom-snapshots-dir, "
+                "[yellow]No data sources loaded. Use --dom-snapshots-path, "
                 "--javascript-events-jsonl-path, --network-events-jsonl-path, "
                 "or --remote-debugging-address to provide context.[/yellow]"
             ))
@@ -154,8 +154,8 @@ class JSSpecialistTUI(AbstractAgentTUI):
         ctx_bar = self._context_bar(ctx_pct)
 
         dom_count = len(self._dom_snapshots) if self._dom_snapshots else 0
-        js_count = self._js_data_store.stats.total_files if self._js_data_store else 0
-        net_count = self._network_data_store.stats.total_requests if self._network_data_store else 0
+        js_count = self._js_data_loader.stats.total_files if self._js_data_loader else 0
+        net_count = self._network_data_loader.stats.total_requests if self._network_data_loader else 0
 
         return (
             f"[bold green]JS SPECIALIST[/bold green]\n"
@@ -262,8 +262,8 @@ class JSSpecialistTUI(AbstractAgentTUI):
         tokens_used, ctx_pct = self._estimate_context_usage()
 
         dom_count = len(self._dom_snapshots) if self._dom_snapshots else 0
-        js_count = self._js_data_store.stats.total_files if self._js_data_store else 0
-        net_count = self._network_data_store.stats.total_requests if self._network_data_store else 0
+        js_count = self._js_data_loader.stats.total_files if self._js_data_loader else 0
+        net_count = self._network_data_loader.stats.total_requests if self._network_data_loader else 0
 
         chat.write(Text.from_markup(
             f"[bold green]Status[/bold green]\n"
@@ -289,10 +289,10 @@ def main() -> None:
         help="Chrome remote debugging address (e.g. 127.0.0.1:9222) for execute_js_in_browser tool",
     )
     parser.add_argument(
-        "--dom-snapshots-dir",
+        "--dom-snapshots-path",
         type=str,
         default=None,
-        help="Directory containing DOM snapshot JSON files",
+        help="Path to DOM snapshots events.jsonl file",
     )
     parser.add_argument(
         "--javascript-events-jsonl-path",
@@ -314,24 +314,27 @@ def main() -> None:
 
     # Load DOM snapshots if provided
     dom_snapshots: list[DOMSnapshotEvent] | None = None
-    if args.dom_snapshots_dir:
-        dom_dir = Path(args.dom_snapshots_dir)
-        if not dom_dir.is_dir():
-            console.print(f"[bold red]Error: DOM snapshots directory not found: {dom_dir}[/bold red]")
+    if args.dom_snapshots_path:
+        dom_path = Path(args.dom_snapshots_path)
+        if not dom_path.exists():
+            console.print(f"[bold red]Error: DOM snapshots file not found: {dom_path}[/bold red]")
             sys.exit(1)
 
         dom_snapshots = []
-        for snap_file in sorted(dom_dir.glob("*.json")):
+        for line_num, line in enumerate(dom_path.read_text().splitlines(), 1):
+            line = line.strip()
+            if not line:
+                continue
             try:
-                data = json.loads(snap_file.read_text())
+                data = json.loads(line)
                 dom_snapshots.append(DOMSnapshotEvent(**data))
             except Exception as e:
-                console.print(f"[yellow]Warning: Could not parse {snap_file.name}: {e}[/yellow]")
+                console.print(f"[yellow]Warning: Could not parse line {line_num}: {e}[/yellow]")
 
-        console.print(f"[green]\u2713 Loaded {len(dom_snapshots)} DOM snapshots from {dom_dir}[/green]")
+        console.print(f"[green]\u2713 Loaded {len(dom_snapshots)} DOM snapshots from {dom_path}[/green]")
 
     # Load JS data store if provided
-    js_data_store: JSDataLoader | None = None
+    js_data_loader: JSDataLoader | None = None
     if args.javascript_events_jsonl_path:
         js_path = Path(args.javascript_events_jsonl_path)
         if not js_path.exists():
@@ -339,14 +342,14 @@ def main() -> None:
             sys.exit(1)
 
         try:
-            js_data_store = JSDataLoader(str(js_path))
-            console.print(f"[green]\u2713 Loaded {js_data_store.stats.total_files} JS files from {js_path}[/green]")
+            js_data_loader = JSDataLoader(str(js_path))
+            console.print(f"[green]\u2713 Loaded {js_data_loader.stats.total_files} JS files from {js_path}[/green]")
         except Exception as e:
             console.print(f"[bold red]Error loading JS data store: {e}[/bold red]")
             sys.exit(1)
 
     # Load network data store if provided
-    network_data_store: NetworkDataLoader | None = None
+    network_data_loader: NetworkDataLoader | None = None
     if args.network_events_jsonl_path:
         network_path = Path(args.network_events_jsonl_path)
         if not network_path.exists():
@@ -354,8 +357,8 @@ def main() -> None:
             sys.exit(1)
 
         try:
-            network_data_store = NetworkDataLoader(str(network_path))
-            console.print(f"[green]\u2713 Loaded {network_data_store.stats.total_requests} network requests from {network_path}[/green]")
+            network_data_loader = NetworkDataLoader(str(network_path))
+            console.print(f"[green]\u2713 Loaded {network_data_loader.stats.total_requests} network requests from {network_path}[/green]")
         except Exception as e:
             console.print(f"[bold red]Error loading network data store: {e}[/bold red]")
             sys.exit(1)
@@ -369,8 +372,8 @@ def main() -> None:
     app = JSSpecialistTUI(
         llm_model=llm_model,
         dom_snapshots=dom_snapshots,
-        js_data_store=js_data_store,
-        network_data_store=network_data_store,
+        js_data_loader=js_data_loader,
+        network_data_loader=network_data_loader,
         remote_debugging_address=args.remote_debugging_address,
     )
     app.run()

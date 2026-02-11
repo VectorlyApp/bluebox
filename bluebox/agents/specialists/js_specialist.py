@@ -125,8 +125,8 @@ class JSSpecialist(AbstractSpecialist):
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
         dom_snapshots: list[DOMSnapshotEvent] | None = None,
-        network_data_store: NetworkDataLoader | None = None,
-        js_data_store: JSDataLoader | None = None,
+        network_data_loader: NetworkDataLoader | None = None,
+        js_data_loader: JSDataLoader | None = None,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -139,8 +139,8 @@ class JSSpecialist(AbstractSpecialist):
     ) -> None:
         self._dom_snapshots = dom_snapshots or []
         self._remote_debugging_address = remote_debugging_address
-        self._network_data_store = network_data_store
-        self._js_data_store = js_data_store
+        self._network_data_loader = network_data_loader
+        self._js_data_loader = js_data_loader
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -154,10 +154,10 @@ class JSSpecialist(AbstractSpecialist):
             documentation_data_loader=documentation_data_loader,
         )
         logger.debug(
-            "JSSpecialist initialized: dom_snapshots=%d, network_data_store=%s, js_data_store=%s, browser=%s",
+            "JSSpecialist initialized: dom_snapshots=%d, network_data_loader=%s, js_data_loader=%s, browser=%s",
             len(self._dom_snapshots),
-            "yes" if self._network_data_store is not None else "no",
-            "yes" if self._js_data_store is not None else "no",
+            "yes" if self._network_data_loader is not None else "no",
+            "yes" if self._js_data_loader is not None else "no",
             "yes" if remote_debugging_address else "no",
         )
 
@@ -175,10 +175,10 @@ class JSSpecialist(AbstractSpecialist):
                 f"- Latest title: {latest.title or 'N/A'}\n"
             )
 
-        if self._network_data_store is not None:
+        if self._network_data_loader is not None:
             context_parts.append(self._NETWORK_TRAFFIC_PROMPT_SECTION)
 
-        if self._js_data_store is not None:
+        if self._js_data_loader is not None:
             context_parts.append(self._JS_FILES_PROMPT_SECTION)
 
         return "".join(context_parts)
@@ -194,10 +194,10 @@ class JSSpecialist(AbstractSpecialist):
                 f"- Latest page: {latest.url}\n"
             )
 
-        if self._network_data_store is not None:
+        if self._network_data_loader is not None:
             context_parts.append(self._NETWORK_TRAFFIC_PROMPT_SECTION)
 
-        if self._js_data_store is not None:
+        if self._js_data_loader is not None:
             context_parts.append(self._JS_FILES_PROMPT_SECTION)
 
         context_parts.append(self._get_output_schema_prompt_section())
@@ -286,7 +286,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool(availability=lambda self: self._network_data_store is not None)
+    @agent_tool(availability=lambda self: self._network_data_loader is not None)
     @token_optimized
     def _search_network_traffic(
         self,
@@ -308,11 +308,11 @@ class JSSpecialist(AbstractSpecialist):
             content_type_contains: Substring match on response content type.
             response_body_contains: Search for text within response bodies.
         """
-        if self._network_data_store is None:
+        if self._network_data_loader is None:
             return {"error": "No network data store available"}
 
         # Use search_entries for structured filters
-        entries = self._network_data_store.search_entries(
+        entries = self._network_data_loader.search_entries(
             method=method,
             host_contains=host_contains,
             path_contains=path_contains,
@@ -322,7 +322,7 @@ class JSSpecialist(AbstractSpecialist):
 
         # If body text search requested, intersect with body search results
         if response_body_contains:
-            body_results = self._network_data_store.search_response_bodies(response_body_contains)
+            body_results = self._network_data_loader.search_response_bodies(response_body_contains)
             body_ids = {r["id"] for r in body_results}
             entries = [e for e in entries if e.request_id in body_ids]
 
@@ -343,7 +343,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool(availability=lambda self: self._network_data_store is not None)
+    @agent_tool(availability=lambda self: self._network_data_loader is not None)
     @token_optimized
     def _get_network_entry(
         self,
@@ -359,10 +359,10 @@ class JSSpecialist(AbstractSpecialist):
             include_response_body: Whether to include the response body (default true).
             max_body_length: Max characters for the response body (default 5000).
         """
-        if self._network_data_store is None:
+        if self._network_data_loader is None:
             return {"error": "No network data store available"}
 
-        entry = self._network_data_store.get_entry(request_id)
+        entry = self._network_data_loader.get_entry(request_id)
         if entry is None:
             return {"error": f"No entry found for request_id: {request_id}"}
 
@@ -390,7 +390,7 @@ class JSSpecialist(AbstractSpecialist):
         return result
 
 
-    @agent_tool(availability=lambda self: self._js_data_store is not None)
+    @agent_tool(availability=lambda self: self._js_data_loader is not None)
     @token_optimized
     def _search_js_files(self, terms: list[str], top_n: int = 10) -> dict[str, Any]:
         """
@@ -403,13 +403,13 @@ class JSSpecialist(AbstractSpecialist):
             terms: Search terms (case-insensitive). Ranked by match count and hits.
             top_n: Max results to return (default 10).
         """
-        if self._js_data_store is None:
+        if self._js_data_loader is None:
             return {"error": "No JS data store available"}
 
         if not terms:
             return {"error": "At least one search term is required"}
 
-        results = self._js_data_store.search_by_terms(terms, top_n=top_n)
+        results = self._js_data_loader.search_by_terms(terms, top_n=top_n)
 
         return {
             "count": len(results),
@@ -418,7 +418,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool(availability=lambda self: self._js_data_store is not None)
+    @agent_tool(availability=lambda self: self._js_data_loader is not None)
     @token_optimized
     def _search_js_files_regex(
         self,
@@ -440,13 +440,13 @@ class JSSpecialist(AbstractSpecialist):
             max_matches_per_file: Max matches per file (default 10).
             snippet_padding_chars: Characters of context around each match (default 80).
         """
-        if self._js_data_store is None:
+        if self._js_data_loader is None:
             return {"error": "No JS data store available"}
 
         if not pattern:
             return {"error": "pattern is required"}
 
-        result = self._js_data_store.search_by_regex(
+        result = self._js_data_loader.search_by_regex(
             pattern=pattern,
             top_n=top_n,
             max_matches_per_file=max_matches_per_file,
@@ -464,7 +464,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool(availability=lambda self: self._js_data_store is not None)
+    @agent_tool(availability=lambda self: self._js_data_loader is not None)
     @token_optimized
     def _get_js_file_content(self, request_id: str, max_chars: int = 10_000) -> dict[str, Any]:
         """
@@ -477,14 +477,14 @@ class JSSpecialist(AbstractSpecialist):
             request_id: The request_id from search_js_files or list_js_files results.
             max_chars: Max characters to return (default 10000). Large files truncated.
         """
-        if self._js_data_store is None:
+        if self._js_data_loader is None:
             return {"error": "No JS data store available"}
 
-        entry = self._js_data_store.get_file(request_id)
+        entry = self._js_data_loader.get_file(request_id)
         if entry is None:
             return {"error": f"No JS file found for request_id: {request_id}"}
 
-        content = self._js_data_store.get_file_content(request_id, max_chars=max_chars)
+        content = self._js_data_loader.get_file_content(request_id, max_chars=max_chars)
 
         return {
             "request_id": request_id,
@@ -494,7 +494,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool(availability=lambda self: self._js_data_store is not None)
+    @agent_tool(availability=lambda self: self._js_data_loader is not None)
     @token_optimized
     def _list_js_files(self) -> dict[str, Any]:
         """
@@ -502,11 +502,11 @@ class JSSpecialist(AbstractSpecialist):
 
         Use this to see what JS files are available before searching.
         """
-        if self._js_data_store is None:
+        if self._js_data_loader is None:
             return {"error": "No JS data store available"}
 
-        files = self._js_data_store.list_files()
-        stats = self._js_data_store.stats
+        files = self._js_data_loader.list_files()
+        stats = self._js_data_loader.stats
 
         return {
             "total_files": stats.total_files,

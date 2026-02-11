@@ -91,7 +91,7 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
         return NetworkSpecialist(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
-            network_data_store=self._network_store,
+            network_data_loader=self._network_store,
             llm_model=self._llm_model,
         )
 

@@ -553,8 +553,8 @@ class SuperDiscoveryAgent(AbstractAgent):
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
                 documentation_data_loader=self._documentation_data_loader,
-                network_data_store=self._network_data_loader,
-                js_data_store=None,  # NOTE: this is intentionally left None for now
+                network_data_loader=self._network_data_loader,
+                js_data_loader=None,  # NOTE: this is intentionally left None for now
                 remote_debugging_address=self._remote_debugging_address,
                 run_mode=RunMode.AUTONOMOUS,
             )
@@ -563,9 +563,9 @@ class SuperDiscoveryAgent(AbstractAgent):
             return ValueTraceResolverSpecialist(
                 emit_message_callable=self._emit_message_callable,
                 documentation_data_loader=self._documentation_data_loader,
-                network_data_store=self._network_data_loader,
-                storage_data_store=self._storage_data_loader,
-                window_property_data_store=self._window_property_data_loader,
+                network_data_loader=self._network_data_loader,
+                storage_data_loader=self._storage_data_loader,
+                window_property_data_loader=self._window_property_data_loader,
                 llm_model=self._subagent_llm_model,
                 run_mode=RunMode.AUTONOMOUS,
             )
@@ -579,7 +579,7 @@ class SuperDiscoveryAgent(AbstractAgent):
             return NetworkSpecialist(
                 emit_message_callable=self._emit_message_callable,
                 llm_model=self._subagent_llm_model,
-                network_data_store=self._network_data_loader,
+                network_data_loader=self._network_data_loader,
                 documentation_data_loader=self._documentation_data_loader,
                 run_mode=RunMode.AUTONOMOUS,
             )

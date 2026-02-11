@@ -63,17 +63,11 @@ BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 logger = get_logger(__name__)
 
 # Maps constructor param names → canonical data loader keys.
-# Handles the _loader/_store naming split between agents and specialists.
 _DATA_PARAM_TO_KEY: dict[str, str] = {
     "network_data_loader": "network",
-    "network_data_store": "network",
     "storage_data_loader": "storage",
-    "storage_data_store": "storage",
     "window_property_data_loader": "window_property",
-    "window_property_data_store": "window_property",
     "js_data_loader": "js",
-    "js_data_store": "js",
-    "interaction_data_loader": "interaction",
     "interaction_data_loader": "interaction",
     "documentation_data_loader": "documentation",
 }

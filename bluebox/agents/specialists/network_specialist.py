@@ -98,7 +98,7 @@ class NetworkSpecialist(AbstractSpecialist):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
-        network_data_store: NetworkDataLoader,
+        network_data_loader: NetworkDataLoader,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -113,7 +113,7 @@ class NetworkSpecialist(AbstractSpecialist):
 
         Args:
             emit_message_callable: Callback function to emit messages to the host.
-            network_data_store: NetworkDataLoader containing parsed network traffic data (NetworkTransactionEvent objects).
+            network_data_loader: NetworkDataLoader containing parsed network traffic data (NetworkTransactionEvent objects).
             persist_chat_callable: Optional callback to persist Chat objects.
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
@@ -123,7 +123,7 @@ class NetworkSpecialist(AbstractSpecialist):
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
         """
-        self._network_data_store = network_data_store
+        self._network_data_loader = network_data_loader
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -140,14 +140,14 @@ class NetworkSpecialist(AbstractSpecialist):
             "NetworkSpecialist initialized with model: %s, chat_thread_id: %s, entries: %d",
             llm_model,
             self._thread.id,
-            len(network_data_store.entries),
+            len(network_data_loader.entries),
         )
 
     ## Abstract method implementations
 
     def _get_system_prompt(self) -> str:
         """Get system prompt with traffic stats context, host stats, and likely API URLs."""
-        stats = self._network_data_store.stats
+        stats = self._network_data_loader.stats
         stats_context = (
             f"\n\n## Network Traffic Context\n"
             f"- Total Requests: {stats.total_requests}\n"
@@ -156,7 +156,7 @@ class NetworkSpecialist(AbstractSpecialist):
         )
 
         # Add likely API URLs
-        likely_urls = self._network_data_store.api_urls
+        likely_urls = self._network_data_loader.api_urls
         if likely_urls:
             urls_list = "\n".join(f"- {url}" for url in likely_urls[:50])  # Limit to 50
             urls_context = (
@@ -172,7 +172,7 @@ class NetworkSpecialist(AbstractSpecialist):
             )
 
         # Add per-host stats
-        host_stats = self._network_data_store.get_host_stats()
+        host_stats = self._network_data_loader.get_host_stats()
         if host_stats:
             host_lines = []
             for hs in host_stats[:15]:  # Top 15 hosts
@@ -191,7 +191,7 @@ class NetworkSpecialist(AbstractSpecialist):
 
     def _get_autonomous_system_prompt(self) -> str:
         """Get system prompt for autonomous mode with traffic context."""
-        stats = self._network_data_store.stats
+        stats = self._network_data_loader.stats
         stats_context = (
             f"\n\n## Network Traffic Context\n"
             f"- Total Requests: {stats.total_requests}\n"
@@ -200,7 +200,7 @@ class NetworkSpecialist(AbstractSpecialist):
         )
 
         # Add likely API URLs
-        likely_urls = self._network_data_store.api_urls
+        likely_urls = self._network_data_loader.api_urls
         if likely_urls:
             urls_list = "\n".join(f"- {url}" for url in likely_urls[:30])
             urls_context = f"\n\n## Likely API Endpoints\n{urls_list}"
@@ -250,7 +250,7 @@ class NetworkSpecialist(AbstractSpecialist):
         if not terms:
             return {"error": "No search terms provided"}
 
-        results = self._network_data_store.search_entries_by_terms(terms, top_n=20)
+        results = self._network_data_loader.search_entries_by_terms(terms, top_n=20)
 
         if not results:
             return {
@@ -275,7 +275,7 @@ class NetworkSpecialist(AbstractSpecialist):
         Args:
             request_id: The request_id of the network entry to retrieve.
         """
-        entry = self._network_data_store.get_entry(request_id)
+        entry = self._network_data_loader.get_entry(request_id)
         if entry is None:
             return {"error": f"Entry {request_id} not found"}
 
@@ -285,7 +285,7 @@ class NetworkSpecialist(AbstractSpecialist):
             response_content = response_content[:5000] + f"\n... (truncated, {len(entry.response_body)} total chars)"
 
         # Get schema for JSON responses
-        key_structure = self._network_data_store.get_response_body_schema(request_id)
+        key_structure = self._network_data_loader.get_response_body_schema(request_id)
 
         # Parse query params from URL
         parsed_url = urlparse(entry.url)
@@ -318,9 +318,9 @@ class NetworkSpecialist(AbstractSpecialist):
         Args:
             request_id: The request_id of the network entry to get schema for.
         """
-        key_structure = self._network_data_store.get_response_body_schema(request_id)
+        key_structure = self._network_data_loader.get_response_body_schema(request_id)
         if key_structure is None:
-            entry = self._network_data_store.get_entry(request_id)
+            entry = self._network_data_loader.get_entry(request_id)
             if entry is None:
                 return {"error": f"Entry {request_id} not found"}
             return {"error": f"Entry {request_id} does not have valid JSON response content"}
@@ -338,7 +338,7 @@ class NetworkSpecialist(AbstractSpecialist):
 
         Returns a sorted list of all unique URLs observed in the traffic.
         """
-        url_counts = self._network_data_store.url_counts
+        url_counts = self._network_data_loader.url_counts
         return {
             "total_unique_urls": len(url_counts),
             "url_counts": url_counts,
@@ -358,7 +358,7 @@ class NetworkSpecialist(AbstractSpecialist):
             code: Python code to execute. `entries` is a list of network entry dicts.
                 `json` module is available. Use print() for output. Imports are disabled.
         """
-        entries = [e.model_dump() for e in self._network_data_store.entries]
+        entries = [e.model_dump() for e in self._network_data_loader.entries]
         return execute_python_sandboxed(code, extra_globals={"entries": entries})
 
     @agent_tool()
@@ -387,7 +387,7 @@ class NetworkSpecialist(AbstractSpecialist):
         terms_lower = [t.lower() for t in terms]
         results: list[dict[str, Any]] = []
 
-        for entry in self._network_data_store.entries:
+        for entry in self._network_data_loader.entries:
             found_terms: set[str] = set()
             total_hits = 0
             matched_in: list[str] = []
@@ -480,7 +480,7 @@ class NetworkSpecialist(AbstractSpecialist):
         if not value:
             return {"error": "value is required"}
 
-        results = self._network_data_store.search_response_bodies(
+        results = self._network_data_loader.search_response_bodies(
             value=value,
             case_sensitive=case_sensitive,
             regex=regex,
