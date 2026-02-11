@@ -21,13 +21,13 @@ Navigates to a URL and waits for page load.
 | `sleep_after_navigation_seconds` | float | No | 3.0 | Wait time after navigation |
 
 **Placeholder support:**
-- User parameters: **Yes** - `"url": "https://example.com/\"{{page_id}}\""`
+- User parameters: **Yes** - `"url": "https://example.com/{{page_id}}"`
 - Storage/cookie/meta: **No** - not supported in navigate URLs
 
 **Examples:**
 ```json
 {"type": "navigate", "url": "https://example.com"}
-{"type": "navigate", "url": "https://api.example.com/page/\"{{page_id}}\""}
+{"type": "navigate", "url": "https://api.example.com/page/{{page_id}}"}
 {"type": "navigate", "url": "https://example.com", "sleep_after_navigation_seconds": 5.0}
 ```
 
@@ -100,7 +100,7 @@ Waits for the current URL to match a regex pattern. Useful after clicks that tri
 ### Navigate with parameter
 ```json
 [
-  {"type": "navigate", "url": "https://example.com/users/\"{{user_id}}\""}
+  {"type": "navigate", "url": "https://example.com/users/{{user_id}}"}
 ]
 ```
 

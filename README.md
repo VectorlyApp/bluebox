@@ -57,7 +57,7 @@ Example:
 
 - Defined as typed inputs (see [`Parameter`](https://github.com/VectorlyApp/bluebox/blob/main/src/data_models/production_routine.py) class).
 - Each parameter has required `name` and `description` fields. Optional fields include `type` (defaults to `string`), `required` (defaults to `true`), `default`, and `examples`.
-- Parameters are referenced inside `operations` using placeholder tokens like `"{{paramName}}"` or `\"{{paramName}}\"` (see [Placeholder Interpolation](#placeholder-interpolation-) below).
+- Parameters are referenced inside `operations` using `"{{paramName}}"` placeholder tokens (see [Placeholder Interpolation](#placeholder-interpolation-) below). `Parameter.type` drives coercion at runtime.
 - **Parameter Types**: Supported types include `string`, `integer`, `number`, `boolean`, `date`, `datetime`, `email`, `url`, and `enum`.
 - **Parameter Validation**: Parameters support validation constraints such as `min_length`, `max_length`, `min_value`, `max_value`, `pattern` (regex), `enum_values`, and `format`.
 - **Reserved Prefixes**: Parameter names cannot start with reserved prefixes: `sessionStorage`, `localStorage`, `cookie`, `meta`, `uuid`, `epoch_milliseconds`.
@@ -125,7 +125,7 @@ Each operation specifies a `type` and its parameters:
   ```
 - **input_text** — type text into an input element. Validates visibility before typing.
   ```json
-  { "type": "input_text", "selector": "#username", "text": "\"{{username}}\"", "clear": false }
+  { "type": "input_text", "selector": "#username", "text": "{{username}}", "clear": false }
   ```
 - **press** — press a keyboard key (enter, tab, escape, etc.).
   ```json
@@ -170,7 +170,7 @@ Example sequence:
     "endpoint": { 
       "method": "POST", 
       "url": "/auth", 
-      "body": { "username": "\"{{user}}\"", "password": "\"{{pass}}\"" } 
+      "body": { "username": "{{user}}", "password": "{{pass}}" }
     }, 
     "session_storage_key": "token" 
   },
@@ -184,7 +184,7 @@ This defines a deterministic flow: open → wait → authenticate → return a s
 
 Placeholders inside operation fields are resolved at runtime:
 
-- **Parameter placeholders**: `"{{paramName}}"` or `\"{{paramName}}\"` → substituted from routine parameters
+- **Parameter placeholders**: `"{{paramName}}"` → substituted from routine parameters. `Parameter.type` drives coercion (standalone `"{{param}}"` → typed value; substring `"prefix {{param}}"` → string)
 - **Storage placeholders** (read values from the current session):
   - `{{sessionStorage:myKey.path.to.value}}` — access nested values in sessionStorage
   - `{{localStorage:myKey}}` — access localStorage values
@@ -200,7 +200,7 @@ Interpolation occurs before an operation executes. For example, a fetch endpoint
   "type": "fetch",
   "endpoint": {
     "method": "GET",
-    "url": "https://api.example.com/search?paramName1=\"{{paramName1}}\"&paramName2=\"{{paramName1}}\"",
+    "url": "https://api.example.com/search?paramName1={{paramName1}}&paramName2={{paramName1}}",
     "headers": {
       "Authorization": "Bearer {{cookie:auth_token}}"
     },
@@ -548,21 +548,7 @@ routine_discovery_output/
 
 ⚠️ **Prerequisite:** Make sure Chrome is still running in debug mode (see [Launch Chrome in Debug Mode](#launch-chrome-in-debug-mode-🐞) above). The routine execution script connects to the same Chrome debug session on `127.0.0.1:9222`.
 
-⚠️ **Important:** If you have a string-typed parameter used in a JSON body field, it may need to be escaped. When the agent generates routines, string parameters are sometimes placed as `"{{PARAM}}"` when they should be `"\"{{PARAM}}\""` to ensure proper JSON string escaping.
-
-**Example:** If you see:
-
-```json
-"field": "{{paramName}}"
-```
-
-And `paramName` is a string parameter, manually change it to:
-
-```json
-"field": "\"{{paramName}}\""
-```
-
-This ensures the parameter value is properly quoted as a JSON string when substituted.
+All parameter types use the same `"{{paramName}}"` format. `Parameter.type` drives coercion at runtime — standalone placeholders are coerced to the declared type (int, float, bool, or string), while substring placeholders are always string substitution.
 
 Run the example routine:
 
