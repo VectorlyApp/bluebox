@@ -461,3 +461,11 @@ class Routine(BaseModel):
                 browser_ws.close()
             except Exception:
                 pass
+
+# TODO: Figure out if this is actually needed.
+class RoutineInfo(BaseModel):
+    """Information about an available routine."""
+    routine_id: str = Field(..., description="Unique identifier of the routine")
+    name: str = Field(..., description="Routine name")
+    description: str = Field(..., description="Routine description")
+    parameters: list[Parameter] = Field(..., description="List of parameters for the routine")
