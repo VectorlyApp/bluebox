@@ -1789,7 +1789,7 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
                     "type": "string",
                     "description": (
                         "The JSON string containing placeholders to validate. "
-                        "Example: '{\"query\": \\\"{{search_term}}\\\", \"page\": \"{{page_number}}\"}'"
+                        "Example: '{\"query\": \"{{search_term}}\", \"page\": \"{{page_number}}\"}'"
                     ),
                 },
                 "parameters": {
