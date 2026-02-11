@@ -35,10 +35,11 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 dependencies = [
+    "anthropic>=0.77.1",
     "beautifulsoup4>=4.14.2",
     "ipykernel>=6.29.5",
     "jmespath>=1.0.1,<2",
-    "anthropic>=0.77.1",
+    "jsonschema>=4.20.0",
     "openai>=2.6.1",
     "prompt_toolkit>=3.0.0",
     "pydantic>=2.11.4",
@@ -50,6 +51,7 @@ dependencies = [
     "regex>=2024.0.0",
     "requests>=2.31.0",
     "rich>=13.0.0",
+    "textual>=1.0.0",
     "tldextract>=5.1.0",
     "toonify[pydantic]>=1.5.1",
     "websocket-client>=1.6.0",
@@ -65,17 +67,19 @@ dev = [
 # Core commands
 bluebox-monitor = "bluebox.scripts.browser_monitor:main"
 bluebox-discover = "bluebox.scripts.discover_routine:main"
+bluebox-routine-discovery-agent-beta = "bluebox.scripts.run_routine_discovery_agent_beta:main"
+bluebox-agent-adapter = "bluebox.scripts.agent_http_adapter:main"
 bluebox-execute = "bluebox.scripts.execute_routine:main"
 
 # Guide agent
 bluebox-guide = "bluebox.scripts.run_guide_agent:main"
 
 # Specialist agents
-bluebox-network-spy = "bluebox.scripts.specialists.run_network_spy:main"
-bluebox-trace-hound = "bluebox.scripts.specialists.run_trace_hound:main"
+bluebox-agent = "bluebox.scripts.run_bluebox_agent:main"
+bluebox-network-specialist = "bluebox.scripts.specialists.run_network_specialist:main"
 bluebox-js-specialist = "bluebox.scripts.specialists.run_js_specialist:main"
 bluebox-interaction-specialist = "bluebox.scripts.specialists.run_interaction_specialist:main"
-bluebox-docs-digger = "bluebox.scripts.specialists.run_docs_digger:main"
+bluebox-value-trace-resolver-specialist = "bluebox.scripts.specialists.run_value_trace_resolver_specialist:main"
 
 # Dev tools
 bluebox-benchmarks = "bluebox.scripts.run_benchmarks:main"

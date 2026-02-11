@@ -19,11 +19,19 @@ from bluebox.data_models.routine.dev_routine import DevRoutine
 
 class DiscoveryPhase(StrEnum):
     """Current phase of the routine discovery process."""
+    # RoutineDiscoveryAgentBeta phases
+    PLANNING = "planning"             # Analyzing task, planning approach
+    DISCOVERING = "discovering"       # Delegating discovery tasks to specialists
+    CONSTRUCTING = "constructing"     # Building the routine from discoveries
+    VALIDATING = "validating"         # Testing the constructed routine
+    COMPLETE = "complete"             # Discovery finished successfully
+    FAILED = "failed"                 # Discovery failed
+
+    # RoutineDiscoveryAgent phases (legacy)
     IDENTIFY_TRANSACTION = "identify_transaction"
     PROCESS_QUEUE = "process_queue"
     CONSTRUCT_ROUTINE = "construct_routine"
     VALIDATE_ROUTINE = "validate_routine"
-    COMPLETE = "complete"
 
 
 class RoutineDiscoveryState(BaseModel):
@@ -77,6 +85,10 @@ class RoutineDiscoveryState(BaseModel):
         default=None,
         description="Final production routine"
     )
+    test_parameters: dict[str, str] = Field(
+        default_factory=dict,
+        description="Test parameter values (observed values) for routine execution"
+    )
 
     # Progress tracking
     phase: DiscoveryPhase = Field(
@@ -88,6 +100,20 @@ class RoutineDiscoveryState(BaseModel):
     identification_attempts: int = Field(default=0)
     construction_attempts: int = Field(default=0)
     validation_attempts: int = Field(default=0)
+
+    # Validation tracking (for construct → validate → analyze workflow)
+    last_validation_result: dict | None = Field(
+        default=None,
+        description="Full result from last validation execution"
+    )
+    validation_analyzed: bool = Field(
+        default=False,
+        description="Whether the agent has analyzed the last validation result"
+    )
+    last_analysis: dict | None = Field(
+        default=None,
+        description="The agent's analysis of the last validation result"
+    )
 
     def add_to_queue(self, transaction_id: str) -> tuple[bool, int]:
         """
@@ -187,7 +213,11 @@ class RoutineDiscoveryState(BaseModel):
         self.all_resolved_variables = []
         self.dev_routine = None
         self.production_routine = None
-        self.phase = DiscoveryPhase.IDENTIFY_TRANSACTION
+        self.test_parameters = {}
+        self.phase = DiscoveryPhase.PLANNING
         self.identification_attempts = 0
         self.construction_attempts = 0
         self.validation_attempts = 0
+        self.last_validation_result = None
+        self.validation_analyzed = False
+        self.last_analysis = None

@@ -1,0 +1,5 @@
+{"request_id": "url-001", "url": "https://example.com/bundle.js", "method": "GET", "status": 200, "mime_type": "application/javascript", "response_body": "// bundle code"}
+{"request_id": "url-002", "url": "https://example.com/vendor/lodash.js", "method": "GET", "status": 200, "mime_type": "application/javascript", "response_body": "// lodash code"}
+{"request_id": "url-003", "url": "https://cdn.example.com/bundle.min.js", "method": "GET", "status": 200, "mime_type": "application/javascript", "response_body": "// minified bundle"}
+{"request_id": "url-004", "url": "https://example.com/vendor/react.min.js", "method": "GET", "status": 200, "mime_type": "application/javascript", "response_body": "// react code"}
+{"request_id": "url-005", "url": "https://analytics.example.com/tracker.js", "method": "GET", "status": 200, "mime_type": "application/javascript", "response_body": "// analytics code"}

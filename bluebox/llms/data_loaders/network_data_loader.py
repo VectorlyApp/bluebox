@@ -1,10 +1,10 @@
 """
-bluebox/llms/infra/network_data_store.py
+bluebox/llms/data_loaders/network_data_loader.py
 
-# NOTE: This data store is coming to production soon!
+# NOTE: This data loader is coming to production soon!
 # NOTE: This replaces the vectorstore for network traffic analysis.
 
-Data store for network traffic analysis.
+Data loader for network traffic analysis.
 
 Parses JSONL files with NetworkTransactionEvent entries and provides
 structured access to network traffic data.
@@ -12,6 +12,7 @@ structured access to network traffic data.
 
 import fnmatch
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
@@ -26,16 +27,16 @@ from bluebox.constants.network import (
     SKIP_FILE_EXTENSIONS,
 )
 from bluebox.data_models.cdp import NetworkTransactionEvent
+from bluebox.llms.data_loaders.abstract_data_loader import AbstractDataLoader
 from bluebox.utils.data_utils import extract_object_schema, format_bytes, read_jsonl
 from bluebox.utils.logger import get_logger
-
 
 logger = get_logger(name=__name__)
 
 
 @dataclass
 class NetworkStats:
-    """Summary statistics for a HAR file."""
+    """Summary statistics for network traffic data."""
 
     total_requests: int = 0
     total_request_bytes: int = 0
@@ -100,12 +101,13 @@ class NetworkStats:
         return "\n".join(lines)
 
 
-class NetworkDataStore:
+class NetworkDataLoader(AbstractDataLoader[NetworkTransactionEvent, NetworkStats]):
     """
-    Data store for HAR file analysis.
+    Data loader for network traffic analysis.
 
-    Parses HAR content and provides structured access to network traffic data
-    including entries, statistics, and search capabilities.
+    Parses JSONL files with NetworkTransactionEvent entries and provides
+    structured access to network traffic data including entries, statistics,
+    and search capabilities.
     """
 
     @staticmethod
@@ -137,7 +139,7 @@ class NetworkDataStore:
 
     def __init__(self, jsonl_path: str) -> None:
         """
-        Initialize the NetworkDataStore from a JSONL file.
+        Initialize the NetworkDataLoader from a JSONL file.
 
         Args:
             jsonl_path: Path to JSONL file containing NetworkTransactionEvent entries.
@@ -161,22 +163,25 @@ class NetworkDataStore:
                 continue
 
         self._compute_stats()
-
-        logger.info(
-            "NetworkDataStore initialized with %d entries (skipped %d non-relevant)",
+        logger.debug(
+            "NetworkDataLoader initialized with %d entries (skipped %d non-relevant)",
             len(self._entries),
             skipped,
         )
 
-    @property
-    def entries(self) -> list[NetworkTransactionEvent]:
-        """Return all network transaction events."""
-        return self._entries
+    ## Abstract method implementations
 
-    @property
-    def stats(self) -> NetworkStats:
-        """Return computed statistics."""
-        return self._stats
+    def get_entry_id(self, entry: NetworkTransactionEvent) -> str:
+        """Get unique identifier for a network entry (uses request_id)."""
+        return entry.request_id
+
+    def get_searchable_content(self, entry: NetworkTransactionEvent) -> str | None:
+        """Get searchable content from a network entry (response body)."""
+        return entry.response_body
+
+    def get_entry_url(self, entry: NetworkTransactionEvent) -> str | None:
+        """Get URL associated with a network entry."""
+        return entry.url
 
     @property
     def raw_data(self) -> dict[str, Any]:
@@ -456,44 +461,63 @@ class NetworkDataStore:
         self,
         value: str,
         case_sensitive: bool = False,
+        regex: bool = False,
     ) -> list[dict[str, Any]]:
         """
         Search response bodies for a given value and return matches with context.
 
         Args:
-            value: The value to search for in response bodies.
+            value: The value to search for in response bodies. When regex=True,
+                this is treated as a regular expression pattern.
             case_sensitive: Whether the search should be case-sensitive.
+            regex: Whether to treat value as a regex pattern instead of a literal string.
 
         Returns:
             List of dicts sorted by ascending id, each containing:
             - id: Entry index
             - url: Request URL
             - count: Number of occurrences in the response body
-            - sample: Context string (50 chars before and after first occurrence)
+            - sample: Context string (50 chars before and after first match)
         """
         results: list[dict[str, Any]] = []
 
         if not value:
             return results
 
-        search_value = value if case_sensitive else value.lower()
+        if regex:
+            flags = 0 if case_sensitive else re.IGNORECASE
+            try:
+                pattern = re.compile(value, flags)
+            except re.error as e:
+                return [{"error": f"Invalid regex pattern: {e}"}]
+        else:
+            search_value = value if case_sensitive else value.lower()
 
         for entry in self._entries:
             if not entry.response_body:
                 continue
 
-            content = entry.response_body if case_sensitive else entry.response_body.lower()
             original_content = entry.response_body
 
-            # Count occurrences
-            count = content.count(search_value)
-            if count == 0:
-                continue
+            if regex:
+                matches = list(pattern.finditer(original_content))
+                if not matches:
+                    continue
+                count = len(matches)
+                first_match = matches[0]
+                pos = first_match.start()
+                match_len = first_match.end() - first_match.start()
+            else:
+                content = original_content if case_sensitive else original_content.lower()
+                count = content.count(search_value)
+                if count == 0:
+                    continue
+                pos = content.find(search_value)
+                match_len = len(value)
 
-            # Find first occurrence and extract context
-            pos = content.find(search_value)
+            # Extract context around first match
             context_start = max(0, pos - 50)
-            context_end = min(len(original_content), pos + len(value) + 50)
+            context_end = min(len(original_content), pos + match_len + 50)
 
             sample = original_content[context_start:context_end]
 

@@ -1,0 +1,8 @@
+{"type": "click", "url": "https://example.com/", "element": {"tag_name": "button", "id": "btn-1", "text": "Button 1", "css_path": "button#btn-1"}}
+{"type": "click", "url": "https://example.com/", "element": {"tag_name": "a", "id": "link-1", "text": "Link 1", "href": "/page1", "css_path": "a#link-1"}}
+{"type": "input", "url": "https://example.com/form", "element": {"tag_name": "input", "id": "input-text", "type_attr": "text", "value": "some text", "class_names": ["form-control"], "css_path": "input#input-text"}}
+{"type": "input", "url": "https://example.com/form", "element": {"tag_name": "input", "id": "input-email", "type_attr": "email", "value": "test@test.com", "class_names": ["form-control", "email-field"], "css_path": "input#input-email"}}
+{"type": "change", "url": "https://example.com/form", "element": {"tag_name": "select", "id": "dropdown", "value": "option2", "class_names": ["form-select"], "css_path": "select#dropdown"}}
+{"type": "focus", "url": "https://example.com/form", "element": {"tag_name": "textarea", "id": "comments", "css_path": "textarea#comments"}}
+{"type": "keydown", "url": "https://example.com/form", "element": {"tag_name": "input", "id": "input-text", "type_attr": "text", "css_path": "input#input-text"}, "interaction": {"key_value": "a", "key_code": "KeyA"}}
+{"type": "blur", "url": "https://example.com/form", "element": {"tag_name": "input", "id": "input-text", "type_attr": "text", "css_path": "input#input-text"}}

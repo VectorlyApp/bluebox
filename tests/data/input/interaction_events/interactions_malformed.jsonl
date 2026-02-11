@@ -1,0 +1,5 @@
+{"type": "click", "url": "https://example.com/", "element": {"tag_name": "button", "id": "good-btn-1", "text": "Good Button 1", "css_path": "button#good-btn-1"}}
+this is not json
+{"type": "input", "url": "https://example.com/", "element": {"tag_name": "input", "id": "good-input-2", "value": "good value 2", "css_path": "input#good-input-2"}}
+{"missing": "required type field", "element": {"tag_name": "div"}}
+{"type": "click", "url": "https://example.com/", "element": {"tag_name": "button", "id": "good-btn-3", "text": "Good Button 3", "css_path": "button#good-btn-3"}}

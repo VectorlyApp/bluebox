@@ -1,19 +1,19 @@
 """
-bluebox/llms/infra/storage_data_store.py
+bluebox/llms/data_loaders/storage_data_loader.py
 
-Data store for browser storage event analysis.
+Data loader for browser storage event analysis.
 
 Parses JSONL files with StorageEvent entries and provides
 methods for token tracing - finding where values originated from.
 """
 
 import json
-from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from bluebox.data_models.cdp import StorageEvent, StorageEventType
+from bluebox.llms.data_loaders.abstract_data_loader import AbstractDataLoader
 from bluebox.utils.data_utils import read_jsonl
 from bluebox.utils.logger import get_logger
 
@@ -46,9 +46,9 @@ class StorageStats:
         ])
 
 
-class StorageDataStore:
+class StorageDataLoader(AbstractDataLoader[StorageEvent, StorageStats]):
     """
-    Data store for browser storage events.
+    Data loader for browser storage events.
 
     Focused on token tracing - finding where values came from
     across cookies, localStorage, sessionStorage, and IndexedDB.
@@ -56,7 +56,7 @@ class StorageDataStore:
 
     def __init__(self, jsonl_path: str) -> None:
         """
-        Initialize the StorageDataStore from a JSONL file.
+        Initialize the StorageDataLoader from a JSONL file.
 
         Args:
             jsonl_path: Path to JSONL file containing StorageEvent entries.
@@ -79,14 +79,31 @@ class StorageDataStore:
                 logger.warning("Failed to validate line %d: %s", line_num + 1, e)
                 continue
 
-        self._stats = self._compute_stats()
+        self._compute_stats()
 
-        logger.info(
-            "StorageDataStore initialized with %d events",
+        logger.debug(
+            "StorageDataLoader initialized with %d events",
             len(self._entries),
         )
 
-    def _compute_stats(self) -> StorageStats:
+    ## Abstract method implementations
+
+    def get_entry_id(self, entry: StorageEvent) -> str:
+        """Get unique identifier for a storage event (uses index)."""
+        return str(self._entries.index(entry))
+
+    def get_searchable_content(self, entry: StorageEvent) -> str | None:
+        """Get searchable content from a storage event."""
+        parts = []
+        for field in StorageEvent.SEARCHABLE_FIELDS:
+            val = getattr(entry, field)
+            if val is not None:
+                parts.append(val if isinstance(val, str) else json.dumps(val))
+        return " ".join(parts) if parts else None
+
+    ## Private methods
+
+    def _compute_stats(self) -> None:
         """Compute summary statistics."""
         origins: set[str] = set()
         keys: set[str] = set()
@@ -110,7 +127,7 @@ class StorageDataStore:
             elif entry.type in StorageEventType.indexed_db_types():
                 indexeddb_count += 1
 
-        return StorageStats(
+        self._stats = StorageStats(
             total_events=len(self._entries),
             cookie_events=cookie_count,
             local_storage_events=local_count,
@@ -120,15 +137,7 @@ class StorageDataStore:
             unique_keys=len(keys),
         )
 
-    @property
-    def entries(self) -> list[StorageEvent]:
-        """Return all storage events."""
-        return self._entries
-
-    @property
-    def stats(self) -> StorageStats:
-        """Return computed statistics."""
-        return self._stats
+    ## Public methods
 
     def get_entry(self, index: int) -> StorageEvent | None:
         """Get entry by index."""

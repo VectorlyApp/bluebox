@@ -13,6 +13,8 @@ Contains:
 import ast
 import json
 import time
+from collections import defaultdict
+from typing import get_args
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -20,8 +22,12 @@ from bluebox.data_models.routine.execution import RoutineExecutionContext, Routi
 from bluebox.data_models.routine.operation import (
     RoutineDownloadOperation,
     RoutineFetchOperation,
+    RoutineJsEvaluateOperation,
     RoutineNavigateOperation,
     RoutineOperationUnion,
+    RoutineReturnHTMLOperation,
+    RoutineReturnOperation,
+    RoutineSleepOperation,
 )
 from bluebox.data_models.routine.parameter import (
     Parameter,
@@ -30,6 +36,8 @@ from bluebox.data_models.routine.parameter import (
     VALID_PLACEHOLDER_PREFIXES,
 )
 from bluebox.cdp.connection import cdp_new_tab, cdp_attach_to_existing_tab, dispose_context
+from bluebox.data_models.routine.endpoint import Endpoint
+from bluebox.utils.pydantic_utils import format_model_fields
 from bluebox.data_models.routine.placeholder import (
     PlaceholderQuoteType,
     extract_placeholders_from_json_str,
@@ -61,13 +69,57 @@ class Routine(BaseModel):
     )
 
     @model_validator(mode='after')
-    def validate_parameter_usage(self) -> 'Routine':
+    def validate_routine_structure(self) -> 'Routine':
         """
-        Pydantic model validator to ensure all defined parameters are used in the routine
-        and no undefined parameters are used.
-        Raises ValueError if unused parameters are found or undefined parameters are used.
-        Also automatically computes base_urls from operations.
+        Pydantic model validator for routine structure and parameter usage.
+
+        Validates:
+        - Routine must have at least 2 operations
+        - Last operation must be 'return' or 'return_html'
+        - Return operation's session_storage_key must be set by a prior fetch or js_evaluate
+        - All defined parameters must be used
+        - No undefined parameters should be used
+
+        Raises ValueError with all errors collected together.
         """
+        errors: list[str] = []
+
+        # === STRUCTURAL VALIDATION ===
+
+        # Check 1: Must have at least 2 operations
+        if len(self.operations) < 2:
+            errors.append(
+                f"Routine must have at least 2 operations, found {len(self.operations)}"
+            )
+
+        # Check 2: Last operation must be return or return_html
+        if self.operations:
+            last_op = self.operations[-1]
+            if not isinstance(last_op, (RoutineReturnOperation, RoutineReturnHTMLOperation)):
+                last_op_type = last_op.type if hasattr(last_op, 'type') else type(last_op).__name__
+                errors.append(
+                    f"Last operation must be 'return' or 'return_html', found '{last_op_type}'"
+                )
+            else:
+                # Check 3: Return's session_storage_key must be set by prior fetch or js_evaluate
+                return_key = last_op.session_storage_key
+                if return_key:
+                    # Collect all session_storage_keys set by fetch or js_evaluate operations
+                    available_keys: set[str] = set()
+                    for op in self.operations[:-1]:  # Exclude the return operation
+                        if isinstance(op, RoutineFetchOperation) and op.session_storage_key:
+                            available_keys.add(op.session_storage_key)
+                        elif isinstance(op, RoutineJsEvaluateOperation) and op.session_storage_key:
+                            available_keys.add(op.session_storage_key)
+
+                    if return_key not in available_keys:
+                        errors.append(
+                            f"Return operation uses session_storage_key '{return_key}' but it was not set by any prior fetch or js_evaluate operation. "
+                            f"Available keys: {sorted(available_keys) if available_keys else 'none'}"
+                        )
+
+        # === PARAMETER VALIDATION ===
+
         # Convert the entire routine to JSON string for searching
         routine_json = self.model_dump_json()
 
@@ -98,9 +150,9 @@ class Routine(BaseModel):
             if ":" in content:
                 prefix, path = [p.strip() for p in content.split(":", 1)]
                 if prefix not in VALID_PLACEHOLDER_PREFIXES:
-                    raise ValueError(f"Invalid prefix in placeholder: {prefix}")
+                    errors.append(f"Invalid prefix in placeholder: {prefix}")
                 if not path:
-                    raise ValueError(f"Path is required for {prefix}: placeholder")
+                    errors.append(f"Path is required for {prefix}: placeholder")
                 # Storage/meta/window placeholders can use either QUOTED or ESCAPE_QUOTED - valid
                 continue
 
@@ -123,33 +175,76 @@ class Routine(BaseModel):
                 else:
                     # string types: MUST use escape-quoted \"{{...}}\"
                     if quote_type != PlaceholderQuoteType.ESCAPE_QUOTED:
-                        raise ValueError(
-                            f"String parameter '{{{{{content}}}}}' in routine '{self.name}' must use escape-quoted format. "
+                        errors.append(
+                            f"String parameter '{{{{{content}}}}}' must use escape-quoted format. "
                             f"Use '\\\"{{{{content}}}}\\\"' instead of '\"{{{{content}}}}\"'."
                         )
 
-        # Check 1: All defined parameters must be used
+        # Check: All defined parameters must be used
         unused_parameters = defined_parameters - used_parameters
         if unused_parameters:
-            
-            error_message = f"Unused parameters found in routine '{self.name}': {list(unused_parameters)}. "
+            error_message = f"Unused parameters: {list(unused_parameters)}. "
             for unused_parameter in unused_parameters:
                 # scan for unquoted placeholders in the routine...
                 if f"{{{{{unused_parameter}}}}}" in routine_json:
-                    error_message += f"Unquoted placeholder '{{{{{unused_parameter}}}}}' found in routine '{self.name}'"
-                    error_message += "Ensure that all placeholders are surrounded by quotes or escaped quotes."     
-            raise ValueError(error_message)
+                    error_message += f"Unquoted placeholder '{{{{{unused_parameter}}}}}' found. "
+                    error_message += "Ensure all placeholders are surrounded by quotes or escaped quotes."
+            errors.append(error_message)
 
-        # Check 2: No undefined parameters should be used
+        # Check: No undefined parameters should be used
         undefined_parameters = used_parameters - defined_parameters
         if undefined_parameters:
-            raise ValueError(
-                f"Undefined parameters found in routine '{self.name}': {list(undefined_parameters)}. "
-                f"All parameters used in the routine must be defined in parameters."
+            errors.append(
+                f"Undefined parameters: {list(undefined_parameters)}. "
+                f"All parameters used must be defined in parameters list."
             )
 
+        # Raise all errors together
+        if errors:
+            raise ValueError(f"Routine '{self.name}' validation failed:\n- " + "\n- ".join(errors))
 
         return self
+
+    @staticmethod
+    def model_schema_markdown() -> str:
+        """
+        Generate a compact markdown schema reference from the Pydantic models.
+
+        Like model_json_schema() but formatted for LLM system prompts — compact,
+        readable, no $ref indirection. Auto-derived from Routine, Parameter,
+        Endpoint, and all operation models to stay in sync with the code.
+        """
+        lines: list[str] = ["## Routine Schema Reference", ""]
+
+        # Routine (top level)
+        lines.append("### Routine (top level)")
+        lines.extend(format_model_fields(Routine, skip_fields={"operations", "parameters"}))
+        lines.append("- operations: list[operation] (required) — ≥2, last must be return or return_html")
+        lines.append("- parameters: list[parameter] = []")
+        lines.append("")
+
+        # Parameter
+        lines.append("### Parameter")
+        lines.extend(format_model_fields(Parameter, skip_fields={"observed_value"}))
+        lines.append("")
+
+        # Endpoint (referenced by fetch and download)
+        lines.append("### Endpoint (used by fetch and download)")
+        lines.extend(format_model_fields(Endpoint, skip_fields={"description"}))
+        lines.append("")
+
+        # All operation types (auto-derived from RoutineOperationUnion)
+        union_inner = get_args(RoutineOperationUnion)[0]  # Unwrap Annotated
+        op_models: tuple[type, ...] = get_args(union_inner)  # Unwrap Union
+
+        for model_cls in op_models:
+            type_default = model_cls.model_fields["type"].default
+            op_name = type_default.value if hasattr(type_default, "value") else str(type_default)
+            lines.append(f"### Operation: {op_name}")
+            lines.extend(format_model_fields(model_cls, skip_fields={"type"}))
+            lines.append("")
+
+        return "\n".join(lines)
 
     def compute_base_urls_from_operations(self) -> str | None:
         """
@@ -185,6 +280,77 @@ class Routine(BaseModel):
 
         # Return comma-separated unique base URLs (sorted for consistency)
         return ','.join(sorted(base_urls))
+
+    def get_structure_warnings(self) -> list[str]:
+        """
+        Check routine structure and return warnings for potential issues.
+
+        Note: Critical errors (missing return, invalid structure, placeholder issues)
+        are caught by the model validator. This method returns non-blocking warnings only.
+
+        Checks:
+        - First operation should be navigate
+        - Second-to-last should be fetch or js_evaluate
+        - Routine should have at least one navigate operation
+        - Fetch operations should have session_storage_key set
+        - Multiple fetches should not overwrite the same session_storage_key
+        - Sleep operations should not be excessively long (> 30s)
+        - POST/PUT/PATCH requests should have a body
+
+        Returns:
+            List of warning messages for potential issues.
+        """
+        warnings: list[str] = []
+
+        if not self.operations:
+            return warnings  # Can't check further without operations
+
+        # 1. First operation should be navigate
+        first_op = self.operations[0]
+        if not isinstance(first_op, RoutineNavigateOperation):
+            first_op_type = first_op.type if hasattr(first_op, 'type') else type(first_op).__name__
+            warnings.append(f"First operation is '{first_op_type}', expected 'navigate'")
+
+        # 2. Second-to-last should be fetch or js_evaluate
+        if len(self.operations) >= 2:
+            second_last_op = self.operations[-2]
+            if not isinstance(second_last_op, (RoutineFetchOperation, RoutineJsEvaluateOperation)):
+                second_last_type = second_last_op.type if hasattr(second_last_op, 'type') else type(second_last_op).__name__
+                warnings.append(f"Second-to-last operation is '{second_last_type}', expected 'fetch' or 'js_evaluate'")
+
+        # 3. Check if routine has any navigate operation
+        has_navigate = any(isinstance(op, RoutineNavigateOperation) for op in self.operations)
+        if not has_navigate:
+            warnings.append("Routine has no 'navigate' operation - browser may not load the target page")
+
+        # 4. Check fetch operations for missing session_storage_key
+        session_storage_keys_seen: defaultdict[str, int] = defaultdict(int)
+        for i, op in enumerate(self.operations):
+            if isinstance(op, RoutineFetchOperation):
+                if not op.session_storage_key:
+                    warnings.append(f"Fetch operation at index {i} has no session_storage_key - response data will be lost")
+                else:
+                    session_storage_keys_seen[op.session_storage_key] += 1
+
+        # 5. Check for duplicate session_storage_keys (overwrites)
+        for key, count in session_storage_keys_seen.items():
+            if count > 1:
+                warnings.append(f"session_storage_key '{key}' is set by {count} fetch operations - later fetches will overwrite earlier data")
+
+        # 6. Check for excessively long sleep durations
+        for i, op in enumerate(self.operations):
+            if isinstance(op, RoutineSleepOperation):
+                if op.timeout_seconds > 30:
+                    warnings.append(f"Sleep operation at index {i} has long duration ({op.timeout_seconds}s) - consider if this is intentional")
+
+        # 7. Check POST/PUT/PATCH requests have body
+        for i, op in enumerate(self.operations):
+            if isinstance(op, (RoutineFetchOperation, RoutineDownloadOperation)):
+                if op.endpoint and op.endpoint.method in ("POST", "PUT", "PATCH"):
+                    if not op.endpoint.body:
+                        warnings.append(f"{op.endpoint.method} request at index {i} has empty body - this may be unintentional")
+
+        return warnings
 
     def execute(
         self,
@@ -295,5 +461,3 @@ class Routine(BaseModel):
                 browser_ws.close()
             except Exception:
                 pass
-
-

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 bluebox/scripts/run_guide_agent.py
 
@@ -155,7 +154,7 @@ BANNER = """
 ║  ╚██████╔╝╚██████╔╝██║██████╔╝███████╗    ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║      ║
 ║   ╚═════╝  ╚═════╝ ╚═╝╚═════╝ ╚══════╝    ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝      ║
 ║                                                                                          ║
-║[/bold magenta][dim]                                  powered by vectorly                                     [/dim][bold magenta]║
+║[/bold magenta][dim]                                  powered by Vectorly                                     [/dim][bold magenta]║
 ╚══════════════════════════════════════════════════════════════════════════════════════════╝[/bold magenta]
 """
 

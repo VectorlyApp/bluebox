@@ -1,3 +1,6 @@
+guide_agent_output/
+.mcp.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -217,3 +220,4 @@ routine_discovery_output/
 routine_discovery_output*/
 downloads/
 benchmarks/
+routine_output/

@@ -152,7 +152,7 @@ class LLMClient:
             tool_choice: Tool choice for the API call. Can be:
                 - "auto": Let the model decide (default)
                 - "required": Force the model to use at least one tool
-                - Tool name string: Force the model to use a specific tool (e.g., "get_weather")
+                - Tool name string: Force the model to use a specific tool
 
         Returns:
             LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
@@ -196,7 +196,7 @@ class LLMClient:
             tool_choice: Tool choice for the API call. Can be:
                 - "auto": Let the model decide (default)
                 - "required": Force the model to use at least one tool
-                - Tool name string: Force the model to use a specific tool (e.g., "get_weather")
+                - Tool name string: Force the model to use a specific tool
 
         Returns:
             LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
@@ -240,7 +240,7 @@ class LLMClient:
             tool_choice: Tool choice for the API call. Can be:
                 - "auto": Let the model decide (default)
                 - "required": Force the model to use at least one tool
-                - Tool name string: Force the model to use a specific tool (e.g., "get_weather")
+                - Tool name string: Force the model to use a specific tool
 
         Yields:
             str: Text chunks as they arrive.

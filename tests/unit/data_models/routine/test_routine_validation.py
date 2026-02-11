@@ -147,11 +147,11 @@ class TestRoutineParameterValidation:
             operations=[RoutineNavigateOperation(url="https://example.com/\"{{user_id}}\"/\"{{page}}\"")],
             parameters=parameters
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_validate_parameter_usage_undefined_parameter_raises_error(self, make_routine) -> None:
         """Test that using undefined parameters raises validation error."""
-        with pytest.raises(ValueError, match="Undefined parameters found in routine"):
+        with pytest.raises(ValueError, match="Undefined parameters"):
             make_routine(
                 operations=[RoutineNavigateOperation(url="https://example.com/\"{{undefined_param}}\"")]
             )
@@ -165,7 +165,7 @@ class TestRoutineParameterValidation:
                 RoutineReturnOperation(session_storage_key="selectors.button")
             ]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_validate_parameter_usage_invalid_storage_prefix_raises_error(self, make_routine) -> None:
         """Test that invalid storage prefixes raise validation error."""
@@ -179,7 +179,7 @@ class TestRoutineParameterValidation:
         routine = make_routine(
             operations=[RoutineNavigateOperation(url="https://example.com/\"{{meta:timestamp}}\"")]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_validate_parameter_usage_mixed_usage(self, make_routine) -> None:
         """Test validation with mixed parameter types."""
@@ -192,7 +192,7 @@ class TestRoutineParameterValidation:
             ],
             parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_validate_parameter_usage_fetch_operation(self, make_routine) -> None:
         """Test parameter validation in fetch operations."""
@@ -206,7 +206,7 @@ class TestRoutineParameterValidation:
             operations=[RoutineFetchOperation(endpoint=endpoint)],
             parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_validate_parameter_usage_nested_json_parameters(self, make_routine) -> None:
         """Test parameter validation in nested JSON structures."""
@@ -218,7 +218,7 @@ class TestRoutineParameterValidation:
             ],
             parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_validate_parameter_usage_whitespace_handling(self, make_routine) -> None:
         """Test that whitespace in parameter patterns is handled correctly."""
@@ -230,14 +230,14 @@ class TestRoutineParameterValidation:
             ],
             parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_validate_parameter_usage_empty_parameters_list(self, make_routine) -> None:
         """Test validation with empty parameters list."""
         routine = make_routine(
             operations=[RoutineNavigateOperation(url="https://example.com/{{sessionStorage:user.id}}")]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_validate_parameter_usage_no_interpolation(self, make_routine) -> None:
         """Test validation when no parameter interpolation is used."""
@@ -248,7 +248,7 @@ class TestRoutineParameterValidation:
                 RoutineReturnOperation(session_storage_key="static_data")
             ]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_validate_parameter_usage_jseval_op_with_valid_param(self, make_routine) -> None:
         """Test validation with valid parameter in JS evaluation operation."""
@@ -256,11 +256,11 @@ class TestRoutineParameterValidation:
             operations=[RoutineJsEvaluateOperation(js='(function() { return "{{user_name}}"; })()')],
             parameters=[Parameter(name="user_name", type=ParameterType.STRING, description="User name", required=True)]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_validate_parameter_usage_jseval_op_with_undefined_param_raises_error(self, make_routine) -> None:
         """Test that undefined parameter in JS evaluation operation raises validation error."""
-        with pytest.raises(ValueError, match="Undefined parameters found in routine"):
+        with pytest.raises(ValueError, match="Undefined parameters"):
             make_routine(
                 operations=[RoutineJsEvaluateOperation(js='(function() { return "{{undefined_param}}"; })()')]
             )
@@ -280,7 +280,7 @@ class TestRoutineParameterValidation:
                 Parameter(name="user_email", type=ParameterType.STRING, description="User email")
             ]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
 
 class TestRoutineValidationErrorMessages:
@@ -292,7 +292,7 @@ class TestRoutineValidationErrorMessages:
             make_routine(
                 operations=[RoutineNavigateOperation(url="https://example.com/\"{{undefined_param}}\"")]
             )
-        assert "Undefined parameters found in routine" in str(exc_info.value)
+        assert "Undefined parameters" in str(exc_info.value)
 
     def test_invalid_storage_prefix_error_message(self, make_routine) -> None:
         """Test that invalid storage prefix error message is clear."""
@@ -439,21 +439,21 @@ class TestParameterUsageValidation:
                 RoutineSleepOperation(timeout_seconds=1.0),
             ]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_builtin_parameters_uuid_not_tracked(self, make_routine) -> None:
         """Test that uuid builtin parameter is not tracked as used_parameters."""
         routine = make_routine(
             operations=[RoutineNavigateOperation(url="https://example.com/\"{{uuid}}\"")]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_builtin_parameters_epoch_milliseconds_not_tracked(self, make_routine) -> None:
         """Test that epoch_milliseconds builtin parameter is not tracked as used_parameters."""
         routine = make_routine(
             operations=[RoutineNavigateOperation(url="https://example.com/\"{{epoch_milliseconds}}\"")]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_placeholder_params_with_colon_are_not_tracked(self, make_routine) -> None:
         """Test that placeholder params with ':' (sessionStorage, localStorage, etc.) are not tracked."""
@@ -463,7 +463,7 @@ class TestParameterUsageValidation:
                 RoutineSleepOperation(timeout_seconds=1.0),
             ]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_all_placeholder_prefixes_are_not_tracked(self, make_routine) -> None:
         """Test that all valid placeholder prefixes are not tracked as used_parameters."""
@@ -472,27 +472,27 @@ class TestParameterUsageValidation:
                 RoutineNavigateOperation(url="https://example.com/\"{{sessionStorage:token}}\""),
                 RoutineSleepOperation(timeout_seconds=1.0),
             ]
-        ).validate_parameter_usage()
+        )  # Validation is automatic
         
         make_routine(
             name="test_routine2",
             operations=[RoutineNavigateOperation(url="https://example.com/\"{{localStorage:pref}}\"")]
-        ).validate_parameter_usage()
+        )  # Validation is automatic
         
         make_routine(
             name="test_routine3",
             operations=[RoutineNavigateOperation(url="https://example.com/\"{{cookie:session}}\"")]
-        ).validate_parameter_usage()
+        )  # Validation is automatic
         
         make_routine(
             name="test_routine4",
             operations=[RoutineNavigateOperation(url="https://example.com/\"{{meta:csrf}}\"")]
-        ).validate_parameter_usage()
+        )  # Validation is automatic
         
         make_routine(
             name="test_routine5",
             operations=[RoutineNavigateOperation(url="https://example.com/\"{{windowProperty:app.config}}\"")]
-        ).validate_parameter_usage()
+        )  # Validation is automatic
 
     def test_regular_parameters_are_tracked(self, make_routine) -> None:
         """Test that regular parameters (without ':') are tracked as used_parameters."""
@@ -500,7 +500,7 @@ class TestParameterUsageValidation:
             operations=[RoutineNavigateOperation(url="https://example.com/\"{{user_id}}\"")],
             parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_mixed_builtin_and_regular_parameters(self, make_routine) -> None:
         """Test that builtin parameters don't interfere with regular parameter tracking."""
@@ -508,7 +508,7 @@ class TestParameterUsageValidation:
             operations=[RoutineNavigateOperation(url="https://example.com/\"{{uuid}}\"/\"{{user_id}}\"")],
             parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_mixed_placeholder_and_regular_parameters(self, make_routine) -> None:
         """Test that placeholder parameters don't interfere with regular parameter tracking."""
@@ -523,7 +523,7 @@ class TestParameterUsageValidation:
             operations=[RoutineFetchOperation(endpoint=endpoint)],
             parameters=[Parameter(name="user_id", type=ParameterType.STRING, description="User ID")]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_placeholder_param_with_empty_path_raises_error(self, make_routine) -> None:
         """Test that placeholder params with empty path after ':' raise an error."""
@@ -554,7 +554,7 @@ class TestParameterUsageValidation:
         routine = make_routine(
             operations=[RoutineNavigateOperation(url="https://example.com/\"{{sessionStorage: user . token }}\"")]
         )
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
 
 class TestBaseUrlExtraction:
@@ -638,11 +638,18 @@ class TestBaseUrlExtraction:
         )
         assert routine.compute_base_urls_from_operations() == "example.com,otherdomain.com"
 
-    def test_routine_base_urls_auto_populated_no_urls(self, make_routine) -> None:
+    def test_routine_base_urls_auto_populated_no_urls(self) -> None:
         """Test that compute_base_urls_from_operations returns None when no URL operations exist."""
-        routine = make_routine(
+        # Use explicit Routine construction to avoid fixture adding URL operations
+        routine = Routine(
+            name="test_routine",
+            description="Test routine",
             operations=[
-                RoutineSleepOperation(timeout_seconds=1.0),
+                # js_evaluate sets the session_storage_key (no URL involved)
+                RoutineJsEvaluateOperation(
+                    js='(function() { return "test"; })()',
+                    session_storage_key="test"
+                ),
                 RoutineReturnOperation(session_storage_key="test"),
             ]
         )
@@ -664,14 +671,19 @@ class TestBaseUrlExtraction:
         )
         assert routine.compute_base_urls_from_operations() == "example.com"
 
-    def test_routine_base_urls_special_tlds(self, make_routine) -> None:
+    def test_routine_base_urls_special_tlds(self) -> None:
         """Test that compute_base_urls_from_operations handles special TLDs correctly."""
-        routine = make_routine(
+        # Use explicit Routine construction to avoid fixture adding extra URL operations
+        routine = Routine(
+            name="test_routine",
+            description="Test routine",
             operations=[
                 RoutineNavigateOperation(url="https://www.example.co.uk"),
                 RoutineFetchOperation(
-                    endpoint=Endpoint(url="https://api.example.co.uk/data", method=HTTPMethod.GET, headers={}, body={})
+                    endpoint=Endpoint(url="https://api.example.co.uk/data", method=HTTPMethod.GET, headers={}, body={}),
+                    session_storage_key="result"
                 ),
+                RoutineReturnOperation(session_storage_key="result")
             ]
         )
         assert routine.compute_base_urls_from_operations() == "example.co.uk"
@@ -755,7 +767,7 @@ class TestPremierLeagueRoutineValidation:
         )
         
         # Should not raise any validation errors
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_premier_league_routine_base_url_extraction(self) -> None:
         """Test that compute_base_urls_from_operations correctly extracts base URL for Premier League routine."""
@@ -803,7 +815,7 @@ class TestPremierLeagueRoutineValidation:
 
     def test_premier_league_routine_missing_parameter_raises_error(self) -> None:
         """Test that using undefined parameters raises validation error."""
-        with pytest.raises(ValueError, match="Undefined parameters found in routine"):
+        with pytest.raises(ValueError, match="Undefined parameters"):
             Routine(
                 name="Premier League Get Matchweek Games",
                 description="Get all matchweek games for the EPL.",
@@ -949,7 +961,7 @@ class TestParameterTypeQuoteValidation:
             project_id="test_project"
         )
         # Should not raise - INTEGER can use "{{...}}" format
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_number_param_in_body_quoted_format_valid(self) -> None:
         """Test NUMBER param using quoted format "{{param}}" in body is valid."""
@@ -980,7 +992,7 @@ class TestParameterTypeQuoteValidation:
             project_id="test_project"
         )
         # Should not raise - NUMBER can use "{{...}}" format
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_boolean_param_in_body_quoted_format_valid(self) -> None:
         """Test BOOLEAN param using quoted format "{{param}}" in body is valid."""
@@ -1017,7 +1029,7 @@ class TestParameterTypeQuoteValidation:
             project_id="test_project"
         )
         # Should not raise - BOOLEAN can use "{{...}}" format
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_string_param_in_body_quoted_format_raises_error(self) -> None:
         """Test STRING param using quoted format "{{param}}" in body raises error."""
@@ -1080,7 +1092,7 @@ class TestParameterTypeQuoteValidation:
             project_id="test_project"
         )
         # Should not raise - STRING using \"{{...}}\" is valid
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_integer_param_escape_quoted_also_valid(self) -> None:
         """Test INTEGER param using escape-quoted format is also valid."""
@@ -1111,7 +1123,7 @@ class TestParameterTypeQuoteValidation:
             project_id="test_project"
         )
         # Should not raise - INTEGER can use \"{{...}}\" too
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_mixed_param_types_in_body(self) -> None:
         """Test mixing different param types in body with appropriate quote formats."""
@@ -1149,7 +1161,7 @@ class TestParameterTypeQuoteValidation:
             project_id="test_project"
         )
         # Should not raise - all params use correct quote format for their type
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_storage_placeholder_in_header_quoted_valid(self) -> None:
         """Test storage placeholder using quoted format in header is valid."""
@@ -1176,7 +1188,7 @@ class TestParameterTypeQuoteValidation:
         # Update headers after creation since Endpoint validation might be strict
         routine.operations[0].endpoint.headers = {"X-API-Key": "{{sessionStorage:api_key}}"}
         # Should not raise - storage can use "{{...}}" format
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_routine_with_session_storage_in_endpoint_header_quoted(self) -> None:
         """Test routine using quoted sessionStorage placeholder in endpoint header."""
@@ -1206,7 +1218,7 @@ class TestParameterTypeQuoteValidation:
         }
         
         # Should not raise any validation errors
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_routine_with_session_storage_in_endpoint_header_unquoted(self) -> None:
         """Test routine using unquoted sessionStorage placeholder in endpoint header.
@@ -1242,7 +1254,7 @@ class TestParameterTypeQuoteValidation:
         }
         
         # Should not raise any validation errors - storage placeholders don't need quotes
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 
     def test_routine_with_mixed_quoted_unquoted_storage_placeholders(self) -> None:
         """Test routine mixing quoted and unquoted storage placeholders."""
@@ -1279,5 +1291,5 @@ class TestParameterTypeQuoteValidation:
         }
         
         # Should not raise any validation errors
-        routine.validate_parameter_usage()
+        # Validation is automatic via model_validator
 

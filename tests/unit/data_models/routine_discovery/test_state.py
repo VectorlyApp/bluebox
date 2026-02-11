@@ -32,10 +32,6 @@ class TestDiscoveryPhase:
         assert DiscoveryPhase.VALIDATE_ROUTINE.value == "validate_routine"
         assert DiscoveryPhase.COMPLETE.value == "complete"
 
-    def test_phase_count(self) -> None:
-        """Should have exactly 5 phases."""
-        assert len(DiscoveryPhase) == 5
-
 
 class TestRoutineDiscoveryStateInit:
     """Tests for RoutineDiscoveryState initialization."""
@@ -377,7 +373,7 @@ class TestReset:
         assert state.all_resolved_variables == []
         assert state.dev_routine is None
         assert state.production_routine is None
-        assert state.phase == DiscoveryPhase.IDENTIFY_TRANSACTION
+        assert state.phase == DiscoveryPhase.PLANNING
         assert state.identification_attempts == 0
         assert state.construction_attempts == 0
         assert state.validation_attempts == 0

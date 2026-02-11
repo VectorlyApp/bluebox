@@ -1,15 +1,15 @@
 """
-tests/unit/test_documentation_data_store.py
+tests/unit/data_loaders/test_documentation_data_loader.py
 
-Comprehensive unit tests for DocumentationDataStore and related classes.
+Comprehensive unit tests for DocumentationDataLoader and related classes.
 """
 
 from pathlib import Path
 
 import pytest
 
-from bluebox.llms.infra.documentation_data_store import (
-    DocumentationDataStore,
+from bluebox.llms.data_loaders.documentation_data_loader import (
+    DocumentationDataLoader,
     DocumentationStats,
     FileEntry,
     FileType,
@@ -25,34 +25,34 @@ def documentation_files_dir(tests_root: Path) -> Path:
 
 
 @pytest.fixture
-def basic_store(documentation_files_dir: Path) -> DocumentationDataStore:
-    """DocumentationDataStore loaded with all test files."""
-    return DocumentationDataStore(
+def basic_store(documentation_files_dir: Path) -> DocumentationDataLoader:
+    """DocumentationDataLoader loaded with all test files."""
+    return DocumentationDataLoader(
         documentation_paths=[str(documentation_files_dir / "*.md")],
         code_paths=[str(documentation_files_dir / "*.py")],
     )
 
 
 @pytest.fixture
-def docs_only_store(documentation_files_dir: Path) -> DocumentationDataStore:
-    """DocumentationDataStore loaded with only documentation files."""
-    return DocumentationDataStore(
+def docs_only_store(documentation_files_dir: Path) -> DocumentationDataLoader:
+    """DocumentationDataLoader loaded with only documentation files."""
+    return DocumentationDataLoader(
         documentation_paths=[str(documentation_files_dir / "*.md")],
     )
 
 
 @pytest.fixture
-def code_only_store(documentation_files_dir: Path) -> DocumentationDataStore:
-    """DocumentationDataStore loaded with only code files."""
-    return DocumentationDataStore(
+def code_only_store(documentation_files_dir: Path) -> DocumentationDataLoader:
+    """DocumentationDataLoader loaded with only code files."""
+    return DocumentationDataLoader(
         code_paths=[str(documentation_files_dir / "*.py")],
     )
 
 
 @pytest.fixture
-def empty_store() -> DocumentationDataStore:
-    """Empty DocumentationDataStore with no files."""
-    return DocumentationDataStore()
+def empty_store() -> DocumentationDataLoader:
+    """Empty DocumentationDataLoader with no files."""
+    return DocumentationDataLoader()
 
 
 # --- DocumentationStats Tests ---
@@ -128,37 +128,37 @@ class TestFileEntry:
         assert d["title"] is None
 
 
-# --- DocumentationDataStore Initialization Tests ---
+# --- DocumentationDataLoader Initialization Tests ---
 
-class TestDocumentationDataStoreInit:
-    """Tests for DocumentationDataStore initialization."""
+class TestDocumentationDataLoaderInit:
+    """Tests for DocumentationDataLoader initialization."""
 
-    def test_init_with_docs_and_code(self, basic_store: DocumentationDataStore) -> None:
+    def test_init_with_docs_and_code(self, basic_store: DocumentationDataLoader) -> None:
         """Initialize with both documentation and code paths."""
         assert len(basic_store.entries) > 0
         assert basic_store.stats.total_docs > 0
         assert basic_store.stats.total_code > 0
 
-    def test_init_docs_only(self, docs_only_store: DocumentationDataStore) -> None:
+    def test_init_docs_only(self, docs_only_store: DocumentationDataLoader) -> None:
         """Initialize with only documentation paths."""
         assert len(docs_only_store.entries) > 0
         assert docs_only_store.stats.total_docs > 0
         assert docs_only_store.stats.total_code == 0
 
-    def test_init_code_only(self, code_only_store: DocumentationDataStore) -> None:
+    def test_init_code_only(self, code_only_store: DocumentationDataLoader) -> None:
         """Initialize with only code paths."""
         assert len(code_only_store.entries) > 0
         assert code_only_store.stats.total_code > 0
         assert code_only_store.stats.total_docs == 0
 
-    def test_init_empty(self, empty_store: DocumentationDataStore) -> None:
+    def test_init_empty(self, empty_store: DocumentationDataLoader) -> None:
         """Initialize with no paths produces empty store."""
         assert len(empty_store.entries) == 0
         assert empty_store.stats.total_files == 0
 
     def test_init_nonexistent_path(self) -> None:
         """Non-existent paths are handled gracefully (no error)."""
-        store = DocumentationDataStore(
+        store = DocumentationDataLoader(
             documentation_paths=["/nonexistent/path/*.md"],
         )
         assert len(store.entries) == 0
@@ -166,27 +166,27 @@ class TestDocumentationDataStoreInit:
 
 # --- Properties Tests ---
 
-class TestDocumentationDataStoreProperties:
-    """Tests for DocumentationDataStore properties."""
+class TestDocumentationDataLoaderProperties:
+    """Tests for DocumentationDataLoader properties."""
 
-    def test_entries_returns_list(self, basic_store: DocumentationDataStore) -> None:
+    def test_entries_returns_list(self, basic_store: DocumentationDataLoader) -> None:
         """entries property returns list of FileEntry."""
         entries = basic_store.entries
         assert isinstance(entries, list)
         assert all(isinstance(e, FileEntry) for e in entries)
 
-    def test_stats_returns_documentation_stats(self, basic_store: DocumentationDataStore) -> None:
+    def test_stats_returns_documentation_stats(self, basic_store: DocumentationDataLoader) -> None:
         """stats property returns DocumentationStats instance."""
         stats = basic_store.stats
         assert isinstance(stats, DocumentationStats)
         assert stats.total_files == len(basic_store.entries)
 
-    def test_documentation_files_property(self, basic_store: DocumentationDataStore) -> None:
+    def test_documentation_files_property(self, basic_store: DocumentationDataLoader) -> None:
         """documentation_files returns only doc entries."""
         docs = basic_store.documentation_files
         assert all(e.file_type == FileType.DOCUMENTATION for e in docs)
 
-    def test_code_files_property(self, basic_store: DocumentationDataStore) -> None:
+    def test_code_files_property(self, basic_store: DocumentationDataLoader) -> None:
         """code_files returns only code entries."""
         code = basic_store.code_files
         assert all(e.file_type == FileType.CODE for e in code)
@@ -197,27 +197,27 @@ class TestDocumentationDataStoreProperties:
 class TestTitleSummaryParsing:
     """Tests for title and summary parsing."""
 
-    def test_doc_with_title_and_summary(self, basic_store: DocumentationDataStore) -> None:
+    def test_doc_with_title_and_summary(self, basic_store: DocumentationDataLoader) -> None:
         """Parse title and summary from markdown with both."""
         entry = basic_store.get_file_by_path("doc_with_title_and_summary.md")
         assert entry is not None
         assert entry.title == "Getting Started Guide"
         assert entry.summary == "A comprehensive guide for getting started with the framework."
 
-    def test_doc_with_title_only(self, basic_store: DocumentationDataStore) -> None:
+    def test_doc_with_title_only(self, basic_store: DocumentationDataLoader) -> None:
         """Parse title from markdown without summary."""
         entry = basic_store.get_file_by_path("doc_with_title_only.md")
         assert entry is not None
         assert entry.title == "API Reference"
         assert entry.summary is None
 
-    def test_doc_without_title(self, basic_store: DocumentationDataStore) -> None:
+    def test_doc_without_title(self, basic_store: DocumentationDataLoader) -> None:
         """Handle markdown without title."""
         entry = basic_store.get_file_by_path("doc_no_title.md")
         assert entry is not None
         assert entry.title is None
 
-    def test_code_with_docstring(self, basic_store: DocumentationDataStore) -> None:
+    def test_code_with_docstring(self, basic_store: DocumentationDataLoader) -> None:
         """Extract docstring from Python file."""
         entry = basic_store.get_file_by_path("code_with_docstring.py")
         assert entry is not None
@@ -225,7 +225,7 @@ class TestTitleSummaryParsing:
         assert "code_with_docstring.py" in entry.summary
         assert "module-level docstring" in entry.summary
 
-    def test_code_without_docstring(self, basic_store: DocumentationDataStore) -> None:
+    def test_code_without_docstring(self, basic_store: DocumentationDataLoader) -> None:
         """Handle Python file without docstring."""
         entry = basic_store.get_file_by_path("code_no_docstring.py")
         assert entry is not None
@@ -237,7 +237,7 @@ class TestTitleSummaryParsing:
 class TestFileRetrieval:
     """Tests for file retrieval methods."""
 
-    def test_get_file_by_path_exact(self, basic_store: DocumentationDataStore) -> None:
+    def test_get_file_by_path_exact(self, basic_store: DocumentationDataLoader) -> None:
         """Get file by exact path match."""
         # Get any entry and use its full path
         entry = basic_store.entries[0]
@@ -245,24 +245,24 @@ class TestFileRetrieval:
         assert result is not None
         assert result.path == entry.path
 
-    def test_get_file_by_path_partial(self, basic_store: DocumentationDataStore) -> None:
+    def test_get_file_by_path_partial(self, basic_store: DocumentationDataLoader) -> None:
         """Get file by partial path (filename)."""
         entry = basic_store.get_file_by_path("doc_with_title_and_summary.md")
         assert entry is not None
         assert "doc_with_title_and_summary.md" in str(entry.path)
 
-    def test_get_file_by_path_not_found(self, basic_store: DocumentationDataStore) -> None:
+    def test_get_file_by_path_not_found(self, basic_store: DocumentationDataLoader) -> None:
         """Return None for non-existent file."""
         entry = basic_store.get_file_by_path("nonexistent_file.md")
         assert entry is None
 
-    def test_get_file_content(self, basic_store: DocumentationDataStore) -> None:
+    def test_get_file_content(self, basic_store: DocumentationDataLoader) -> None:
         """Get file content by path."""
         content = basic_store.get_file_content("doc_with_title_and_summary.md")
         assert content is not None
         assert "# Getting Started Guide" in content
 
-    def test_get_file_content_not_found(self, basic_store: DocumentationDataStore) -> None:
+    def test_get_file_content_not_found(self, basic_store: DocumentationDataLoader) -> None:
         """Return None for non-existent file content."""
         content = basic_store.get_file_content("nonexistent_file.md")
         assert content is None
@@ -273,12 +273,12 @@ class TestFileRetrieval:
 class TestSearchContent:
     """Tests for search_content method."""
 
-    def test_search_finds_matches(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_finds_matches(self, basic_store: DocumentationDataLoader) -> None:
         """Search finds entries containing query."""
         results = basic_store.search_content("placeholder")
         assert len(results) > 0
 
-    def test_search_returns_count(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_returns_count(self, basic_store: DocumentationDataLoader) -> None:
         """Results include occurrence count."""
         results = basic_store.search_content("placeholder")
         assert len(results) > 0
@@ -286,7 +286,7 @@ class TestSearchContent:
             assert "count" in r
             assert r["count"] > 0
 
-    def test_search_returns_sample(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_returns_sample(self, basic_store: DocumentationDataLoader) -> None:
         """Results include sample context."""
         results = basic_store.search_content("placeholder")
         assert len(results) > 0
@@ -294,37 +294,37 @@ class TestSearchContent:
             assert "sample" in r
             assert isinstance(r["sample"], str)
 
-    def test_search_case_insensitive_default(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_case_insensitive_default(self, basic_store: DocumentationDataLoader) -> None:
         """Search is case-insensitive by default."""
         results_lower = basic_store.search_content("placeholder")
         results_upper = basic_store.search_content("PLACEHOLDER")
         assert len(results_lower) == len(results_upper)
 
-    def test_search_case_sensitive(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_case_sensitive(self, basic_store: DocumentationDataLoader) -> None:
         """Case-sensitive search when specified."""
         results_sensitive = basic_store.search_content("UPPERCASE", case_sensitive=True)
         results_wrong_case = basic_store.search_content("uppercase", case_sensitive=True)
         # Results should differ based on case
         assert len(results_sensitive) != len(results_wrong_case) or len(results_sensitive) == 0
 
-    def test_search_filter_by_file_type(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_filter_by_file_type(self, basic_store: DocumentationDataLoader) -> None:
         """Filter search results by file type."""
         results = basic_store.search_content("def", file_type=FileType.CODE)
         assert len(results) > 0
         for r in results:
             assert r["file_type"] == FileType.CODE
 
-    def test_search_no_matches(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_no_matches(self, basic_store: DocumentationDataLoader) -> None:
         """Return empty list when no matches."""
         results = basic_store.search_content("xyznonexistent123")
         assert results == []
 
-    def test_search_empty_query(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_empty_query(self, basic_store: DocumentationDataLoader) -> None:
         """Return empty list for empty query."""
         results = basic_store.search_content("")
         assert results == []
 
-    def test_search_sorted_by_count(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_sorted_by_count(self, basic_store: DocumentationDataLoader) -> None:
         """Results sorted by count descending."""
         results = basic_store.search_content("the")
         if len(results) > 1:
@@ -337,7 +337,7 @@ class TestSearchContent:
 class TestSearchContentWithLines:
     """Tests for search_content_with_lines method."""
 
-    def test_search_returns_line_numbers(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_returns_line_numbers(self, basic_store: DocumentationDataLoader) -> None:
         """Search returns line numbers for matches."""
         results = basic_store.search_content_with_lines("placeholder")
         assert len(results) > 0
@@ -349,7 +349,7 @@ class TestSearchContentWithLines:
                 assert isinstance(match["line_number"], int)
                 assert match["line_number"] > 0
 
-    def test_search_line_numbers_are_1_indexed(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_line_numbers_are_1_indexed(self, basic_store: DocumentationDataLoader) -> None:
         """Line numbers are 1-indexed (not 0-indexed)."""
         results = basic_store.search_content_with_lines("# Getting Started")
         assert len(results) > 0
@@ -358,25 +358,25 @@ class TestSearchContentWithLines:
             if "doc_with_title_and_summary" in r["path"]:
                 assert r["matches"][0]["line_number"] == 1
 
-    def test_search_limits_matches_per_file(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_limits_matches_per_file(self, basic_store: DocumentationDataLoader) -> None:
         """Respects max_matches_per_file limit."""
         results = basic_store.search_content_with_lines("the", max_matches_per_file=2)
         for r in results:
             assert len(r["matches"]) <= 2
 
-    def test_search_filter_by_file_type(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_filter_by_file_type(self, basic_store: DocumentationDataLoader) -> None:
         """Filter by file type."""
         results = basic_store.search_content_with_lines("def", file_type=FileType.CODE)
         for r in results:
             assert r["file_type"] == FileType.CODE
 
-    def test_search_case_sensitive(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_case_sensitive(self, basic_store: DocumentationDataLoader) -> None:
         """Case-sensitive search."""
         results = basic_store.search_content_with_lines("UPPERCASE", case_sensitive=True)
         # Should find matches for exact case
         assert len(results) > 0
 
-    def test_search_sorted_by_matches(self, basic_store: DocumentationDataStore) -> None:
+    def test_search_sorted_by_matches(self, basic_store: DocumentationDataLoader) -> None:
         """Results sorted by total matches descending."""
         results = basic_store.search_content_with_lines("the")
         if len(results) > 1:
@@ -389,7 +389,7 @@ class TestSearchContentWithLines:
 class TestGetFileLines:
     """Tests for get_file_lines method."""
 
-    def test_get_all_lines(self, basic_store: DocumentationDataStore) -> None:
+    def test_get_all_lines(self, basic_store: DocumentationDataLoader) -> None:
         """Get all lines when no range specified."""
         result = basic_store.get_file_lines("doc_with_title_and_summary.md")
         assert result is not None
@@ -397,7 +397,7 @@ class TestGetFileLines:
         assert total_lines > 0
         assert "# Getting Started Guide" in content
 
-    def test_get_specific_range(self, basic_store: DocumentationDataStore) -> None:
+    def test_get_specific_range(self, basic_store: DocumentationDataLoader) -> None:
         """Get specific line range."""
         result = basic_store.get_file_lines(
             "doc_with_title_and_summary.md",
@@ -411,7 +411,7 @@ class TestGetFileLines:
         assert len(lines) == 3
         assert "# Getting Started Guide" in lines[0]
 
-    def test_get_lines_from_start(self, basic_store: DocumentationDataStore) -> None:
+    def test_get_lines_from_start(self, basic_store: DocumentationDataLoader) -> None:
         """Get lines from start when only end_line specified."""
         result = basic_store.get_file_lines(
             "doc_with_title_and_summary.md",
@@ -422,7 +422,7 @@ class TestGetFileLines:
         lines = content.split("\n")
         assert len(lines) == 5
 
-    def test_get_lines_to_end(self, basic_store: DocumentationDataStore) -> None:
+    def test_get_lines_to_end(self, basic_store: DocumentationDataLoader) -> None:
         """Get lines to end when only start_line specified."""
         result_all = basic_store.get_file_lines("doc_with_title_and_summary.md")
         result_partial = basic_store.get_file_lines(
@@ -438,12 +438,12 @@ class TestGetFileLines:
         lines = content_partial.split("\n")
         assert len(lines) == total_all - 4  # Lines 5 to end
 
-    def test_get_lines_file_not_found(self, basic_store: DocumentationDataStore) -> None:
+    def test_get_lines_file_not_found(self, basic_store: DocumentationDataLoader) -> None:
         """Return None for non-existent file."""
         result = basic_store.get_file_lines("nonexistent.md")
         assert result is None
 
-    def test_get_lines_clamps_range(self, basic_store: DocumentationDataStore) -> None:
+    def test_get_lines_clamps_range(self, basic_store: DocumentationDataLoader) -> None:
         """Line range is clamped to valid range."""
         result = basic_store.get_file_lines(
             "doc_with_title_and_summary.md",
@@ -462,7 +462,7 @@ class TestGetFileLines:
 class TestIndexMethods:
     """Tests for get_documentation_index and get_code_index."""
 
-    def test_documentation_index_structure(self, basic_store: DocumentationDataStore) -> None:
+    def test_documentation_index_structure(self, basic_store: DocumentationDataLoader) -> None:
         """Documentation index has correct structure."""
         index = basic_store.get_documentation_index()
         assert isinstance(index, list)
@@ -472,13 +472,13 @@ class TestIndexMethods:
             assert "title" in item
             assert "summary" in item
 
-    def test_documentation_index_sorted_by_path(self, basic_store: DocumentationDataStore) -> None:
+    def test_documentation_index_sorted_by_path(self, basic_store: DocumentationDataLoader) -> None:
         """Documentation index is sorted by path."""
         index = basic_store.get_documentation_index()
         paths = [item["path"] for item in index]
         assert paths == sorted(paths)
 
-    def test_code_index_structure(self, basic_store: DocumentationDataStore) -> None:
+    def test_code_index_structure(self, basic_store: DocumentationDataLoader) -> None:
         """Code index has correct structure."""
         index = basic_store.get_code_index()
         assert isinstance(index, list)
@@ -488,7 +488,7 @@ class TestIndexMethods:
             assert "docstring" in item
             assert "extension" in item
 
-    def test_code_index_sorted_by_path(self, basic_store: DocumentationDataStore) -> None:
+    def test_code_index_sorted_by_path(self, basic_store: DocumentationDataLoader) -> None:
         """Code index is sorted by path."""
         index = basic_store.get_code_index()
         paths = [item["path"] for item in index]
@@ -500,16 +500,16 @@ class TestIndexMethods:
 class TestStatsComputation:
     """Tests for stats computation."""
 
-    def test_stats_total_files(self, basic_store: DocumentationDataStore) -> None:
+    def test_stats_total_files(self, basic_store: DocumentationDataLoader) -> None:
         """Total files equals entries length."""
         assert basic_store.stats.total_files == len(basic_store.entries)
 
-    def test_stats_docs_and_code_sum(self, basic_store: DocumentationDataStore) -> None:
+    def test_stats_docs_and_code_sum(self, basic_store: DocumentationDataLoader) -> None:
         """Docs + code equals total files."""
         stats = basic_store.stats
         assert stats.total_docs + stats.total_code == stats.total_files
 
-    def test_stats_extensions_counted(self, basic_store: DocumentationDataStore) -> None:
+    def test_stats_extensions_counted(self, basic_store: DocumentationDataLoader) -> None:
         """Extensions are correctly counted."""
         stats = basic_store.stats
         assert ".md" in stats.extensions
@@ -517,7 +517,7 @@ class TestStatsComputation:
         # Sum of extension counts should equal total files
         assert sum(stats.extensions.values()) == stats.total_files
 
-    def test_stats_quality_metrics(self, basic_store: DocumentationDataStore) -> None:
+    def test_stats_quality_metrics(self, basic_store: DocumentationDataLoader) -> None:
         """Quality metrics are computed."""
         stats = basic_store.stats
         # Should have some docs with titles (at least 2 test files have titles)
@@ -527,7 +527,7 @@ class TestStatsComputation:
         # Should have at least 1 code file with docstring
         assert stats.code_with_docstring >= 1
 
-    def test_stats_bytes_accumulated(self, basic_store: DocumentationDataStore) -> None:
+    def test_stats_bytes_accumulated(self, basic_store: DocumentationDataLoader) -> None:
         """Total bytes is accumulated from all files."""
         stats = basic_store.stats
         assert stats.total_bytes > 0

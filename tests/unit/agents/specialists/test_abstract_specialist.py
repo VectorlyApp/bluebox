@@ -1,7 +1,7 @@
 """
 tests/unit/agents/specialists/test_abstract_specialist.py
 
-Comprehensive unit tests for AbstractSpecialist base class and @specialist_tool decorator.
+Comprehensive unit tests for AbstractSpecialist base class and @agent_tool decorator.
 """
 
 from typing import Any
@@ -10,12 +10,11 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel
 
+from bluebox.agents.abstract_agent import AgentCard, agent_tool, _ToolMeta
 from bluebox.agents.specialists.abstract_specialist import (
     AbstractSpecialist,
     AutonomousConfig,
     RunMode,
-    _ToolMeta,
-    specialist_tool,
 )
 
 
@@ -35,6 +34,8 @@ class ConcreteSpecialist(AbstractSpecialist):
 
     Has a mix of tools with different availability conditions and signatures.
     """
+
+    AGENT_CARD = AgentCard(description="Test specialist for unit tests.")
 
     def __init__(self, **kwargs: Any) -> None:
         self._autonomous_result: DummyResult | None = None
@@ -60,7 +61,7 @@ class ConcreteSpecialist(AbstractSpecialist):
 
     # --- Tools with various signatures and availability ---
 
-    @specialist_tool()
+    @agent_tool
     def _always_available(self, message: str) -> dict[str, Any]:
         """
         A tool that is always available.
@@ -70,12 +71,12 @@ class ConcreteSpecialist(AbstractSpecialist):
         """
         return {"echoed": message}
 
-    @specialist_tool()
+    @agent_tool
     def _no_params(self) -> dict[str, Any]:
         """A tool with no parameters."""
         return {"status": "ok"}
 
-    @specialist_tool()
+    @agent_tool
     def _with_optional_params(
         self,
         required_arg: str,
@@ -96,7 +97,7 @@ class ConcreteSpecialist(AbstractSpecialist):
             "nullable": nullable_arg,
         }
 
-    @specialist_tool()
+    @agent_tool
     def _with_list_param(self, items: list[str], count: int) -> dict[str, Any]:
         """
         A tool that accepts a list parameter.
@@ -107,17 +108,17 @@ class ConcreteSpecialist(AbstractSpecialist):
         """
         return {"items": items[:count]}
 
-    @specialist_tool(availability=False)
+    @agent_tool(availability=False)
     def _never_available(self) -> dict[str, Any]:
         """A tool that is never available."""
         return {"should": "never see this"}
 
-    @specialist_tool(availability=lambda self: self.can_finalize)
+    @agent_tool(availability=lambda self: self.can_finalize)
     def _finalize_gated(self) -> dict[str, Any]:
         """A tool gated by can_finalize property."""
         return {"finalized": True}
 
-    @specialist_tool(
+    @agent_tool(
         description="Explicit description overrides docstring.",
         parameters={
             "type": "object",
@@ -131,7 +132,7 @@ class ConcreteSpecialist(AbstractSpecialist):
         """This docstring description is ignored because explicit description is provided."""
         return {"custom": custom_field}
 
-    @specialist_tool(availability=lambda self: self.can_finalize)
+    @agent_tool(availability=lambda self: self.can_finalize)
     def _finalize(self, value: str) -> dict[str, Any]:
         """
         Finalize the autonomous run.
@@ -167,12 +168,12 @@ def autonomous_specialist(mock_emit: MagicMock) -> ConcreteSpecialist:
 
 
 # =============================================================================
-# Tests for @specialist_tool decorator
+# Tests for @agent_tool decorator
 # =============================================================================
 
 
-class TestSpecialistToolDecorator:
-    """Tests for the @specialist_tool decorator."""
+class TestAgentToolDecorator:
+    """Tests for the @agent_tool decorator."""
 
     def test_extracts_tool_name_from_method_name(self, specialist: ConcreteSpecialist) -> None:
         """Tool name is derived by stripping leading underscores from method name."""
@@ -261,7 +262,7 @@ class TestSpecialistToolDecorator:
     def test_raises_error_without_description_or_docstring(self) -> None:
         """Decorator raises ValueError if no description and no docstring."""
         with pytest.raises(ValueError, match="no description and no docstring"):
-            @specialist_tool()
+            @agent_tool
             def _no_docs(self) -> dict[str, Any]:
                 pass  # no docstring!
 
@@ -307,7 +308,7 @@ class TestCollectTools:
     """Tests for the _collect_tools class method."""
 
     def test_finds_all_decorated_methods(self, specialist: ConcreteSpecialist) -> None:
-        """_collect_tools finds all methods decorated with @specialist_tool."""
+        """_collect_tools finds all methods decorated with @agent_tool."""
         tools = specialist._collect_tools()
         tool_names = {meta.name for meta, _ in tools}
 
@@ -320,6 +321,17 @@ class TestCollectTools:
             "finalize_gated",
             "with_explicit_schema",
             "finalize",
+            "add_note",
+            # Generic finalize tools from AbstractSpecialist (both with and without output schema)
+            "finalize_with_output",
+            "finalize_with_failure",
+            "finalize_result",
+            "finalize_failure",
+            # Documentation tools from AbstractAgent
+            "search_docs",
+            "get_doc_file",
+            "search_docs_by_terms",
+            "search_docs_by_regex",
         }
         assert tool_names == expected
 
@@ -345,7 +357,7 @@ class TestCollectTools:
         """Different subclasses have independent tool caches."""
 
         class AnotherSpecialist(ConcreteSpecialist):
-            @specialist_tool()
+            @agent_tool
             def _extra_tool(self) -> dict[str, Any]:
                 """An extra tool only in this subclass."""
                 return {}
