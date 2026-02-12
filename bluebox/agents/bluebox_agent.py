@@ -63,7 +63,7 @@ class BlueBoxAgent(AbstractAgent):
 
         ## Workflow
         1. **Search broadly**: When the user makes a request, use `search_routines` with a task description that describes what the user wants to do. This runs semantic search, so add some detail. You can run this multiple times if needed to get more results.
-        2. **Execute all relevant routines**: Run ALL routines that could plausibly fulfill the user's request via `execute_routines_in_parallel`. When in doubt, include the routine — running an extra routine is cheap, missing a relevant one is costly.
+        2. **Execute all relevant routines**: Run ALL routines that could plausibly fulfill the user's request via `execute_routines_in_parallel`. When in doubt, include the routine — running an extra routine is cheap, missing a relevant one is costly. Each routine execution requires a `routine_id` from the search results and a `parameters` dict keyed by parameter name with the corresponding value (e.g. {"origin": "New York", "date": "2025-03-01"}). Make sure to provide all required parameters as listed in the search results.
         3. **Fallback to browser agent**: If NO routines match after thorough searching, use `execute_browser_task` to perform the task via an AI-driven browser agent. Write a clear, detailed natural language instruction for the task.
         4. **Post-process results**: Use `run_python_code` to transform routine results into clean output files (CSV, JSON, JSONL, etc.) for the user.
         5. **Verify output**: After writing files, use `list_workspace_files` and `read_workspace_file` to verify the output looks correct. If it doesn't, fix the code and rerun.
@@ -245,7 +245,7 @@ class BlueBoxAgent(AbstractAgent):
         Execute one or more routines in parallel via the Vectorly API.
 
         Args:
-            routine_executions: List of routines to execute. Each item needs routine_id and parameters.
+            routine_executions: List of routines to execute. Each item needs routine_id and parameters. Parameters is a dict keyed by parameter name (as shown in search_routines results) with the corresponding value, e.g. {"origin": "New York", "date": "2025-03-01"}. All required parameters listed in the routine's parameter definitions must be provided.
         """
         if not routine_executions:
             return {"error": "No routine executions provided"}
