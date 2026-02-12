@@ -9,7 +9,7 @@
             "type": "fetch",
             "endpoint": {
                 "description": "Amtrak station/location autocomplete. GET with query parameter searchTerm; returns JSON with autoCompleterResponse.autoCompleteList.",
-                "url": "https://www.amtrak.com/services/MapDataService/AutoCompleterArcgis/getResponseList?searchTerm=\"{{origin}}\"",
+                "url": "https://www.amtrak.com/services/MapDataService/AutoCompleterArcgis/getResponseList?searchTerm={{origin}}",
                 "method": "GET",
                 "headers": {"Accept": "application/json, text/plain, */*"},
                 "body": {},
@@ -21,7 +21,7 @@
             "type": "fetch",
             "endpoint": {
                 "description": "Amtrak station/location autocomplete. GET with query parameter searchTerm; returns JSON with autoCompleterResponse.autoCompleteList.",
-                "url": "https://www.amtrak.com/services/MapDataService/AutoCompleterArcgis/getResponseList?searchTerm=\"{{destination}}\"",
+                "url": "https://www.amtrak.com/services/MapDataService/AutoCompleterArcgis/getResponseList?searchTerm={{destination}}",
                 "method": "GET",
                 "headers": {"Accept": "application/json, text/plain, */*"},
                 "body": {},
@@ -55,7 +55,7 @@
                             {
                                 "origin": {
                                     "code": "{{sessionStorage:amtrak_autocomplete_stations_origin.autoCompleterResponse.autoCompleteList.0.stationCode}}",
-                                    "schedule": {"departureDateTime": "\"{{departureDate}}\"T00:00:00"}
+                                    "schedule": {"departureDateTime": "{{departureDate}}T00:00:00"}
                                 },
                                 "destination": {
                                     "code": "{{sessionStorage:amtrak_autocomplete_stations_destination.autoCompleterResponse.autoCompleteList.0.stationCode}}"

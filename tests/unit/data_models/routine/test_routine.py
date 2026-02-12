@@ -86,7 +86,7 @@ class TestRoutineConstruction:
     def test_parameters_can_be_provided(self) -> None:
         routine = _minimal_routine(
             operations=[
-                RoutineNavigateOperation(url="https://example.com/\"{{q}}\""),
+                RoutineNavigateOperation(url="https://example.com/{{q}}"),
                 RoutineFetchOperation(
                     endpoint=Endpoint(
                         url="https://api.example.com/data",

@@ -27,19 +27,22 @@ class Parameter(BaseModel):
 
 ## Parameter Types
 
-| Type | Description | Validation | Standalone | In String |
-|------|-------------|------------|------------|-----------|
-| `string` | Text | `min_length`, `max_length`, `pattern` | `"\"{{x}}\""` | `"...\"{{x}}\"..."` |
-| `integer` | Whole number | `min_value`, `max_value` | `"{{x}}"` | `"...\"{{x}}\"..."` |
-| `number` | Decimal | `min_value`, `max_value` | `"{{x}}"` | `"...\"{{x}}\"..."` |
-| `boolean` | true/false | - | `"{{x}}"` | `"...\"{{x}}\"..."` |
-| `date` | Date string | `format` | `"\"{{x}}\""` | `"...\"{{x}}\"..."` |
-| `datetime` | Date+time | `format` | `"\"{{x}}\""` | `"...\"{{x}}\"..."` |
-| `email` | Email address | Pattern validated | `"\"{{x}}\""` | `"...\"{{x}}\"..."` |
-| `url` | URL string | Pattern validated | `"\"{{x}}\""` | `"...\"{{x}}\"..."` |
-| `enum` | One of allowed | `enum_values` required | `"\"{{x}}\""` | `"...\"{{x}}\"..."` |
+ALL types use the same `"{{x}}"` placeholder format. The `type` field drives coercion at resolution time.
 
-**Rule:** String-like types always need `\"`. Primitives (int, number, bool) only need `\"` when embedded in a larger string.
+| Type | Description | Validation | Standalone Result |
+|------|-------------|------------|-------------------|
+| `string` | Text | `min_length`, `max_length`, `pattern` | `"john"` (string) |
+| `integer` | Whole number | `min_value`, `max_value` | `50` (int) |
+| `number` | Decimal | `min_value`, `max_value` | `19.99` (float) |
+| `boolean` | true/false | - | `true` (bool) |
+| `date` | Date string | `format` | `"2026-08-22"` (string) |
+| `datetime` | Date+time | `format` | `"2026-08-22T10:00:00"` (string) |
+| `email` | Email address | Pattern validated | `"user@example.com"` (string) |
+| `url` | URL string | Pattern validated | `"https://example.com"` (string) |
+| `enum` | One of allowed | `enum_values` required | `"desc"` (string) |
+
+**CRITICAL — Match types to the raw CDP request:**
+If the raw CDP request sends `"adults": "5"` (a string), use `type=string`, NOT `type=integer`. Integer would produce `5` (unquoted) and may break the API.
 
 ## Naming Rules
 
@@ -57,8 +60,8 @@ Available without definition in `parameters`:
 | `{{epoch_milliseconds}}` | Current timestamp in ms |
 
 ```json
-"requestId": "\"{{uuid}}\"",
-"timestamp": "\"{{epoch_milliseconds}}\""
+"requestId": "{{uuid}}",
+"timestamp": "{{epoch_milliseconds}}"
 ```
 
 ## Examples
@@ -134,10 +137,10 @@ Available without definition in `parameters`:
 ```json
 {
   "body": {
-    "username": "\"{{username}}\"",
+    "username": "{{username}}",
     "limit": "{{limit}}",
     "active": "{{is_active}}",
-    "date": "\"{{departure_date}}\"T00:00:00"
+    "date": "{{departure_date}}T00:00:00"
   }
 }
 ```

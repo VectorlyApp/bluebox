@@ -48,7 +48,7 @@
     {
       "type": "input_text",
       "selector": "input[name='ctl00$MainContent$txtEntityName']",
-      "text": "\"{{entity_name}}\"",
+      "text": "{{entity_name}}",
       "clear": true,
       "timeout_ms": 20000
     },

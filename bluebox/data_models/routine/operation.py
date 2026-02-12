@@ -35,7 +35,7 @@ from bluebox.data_models.routine.endpoint import Endpoint
 from bluebox.data_models.routine.execution import RoutineExecutionContext, FetchExecutionResult, OperationExecutionMetadata
 from bluebox.data_models.routine.parameter import VALID_PLACEHOLDER_PREFIXES, BUILTIN_PARAMETERS
 from bluebox.data_models.ui_elements import MouseButton, ScrollBehavior, HTMLScope
-from bluebox.utils.data_utils import apply_params, assert_balanced_js_delimiters
+from bluebox.utils.data_utils import apply_params_to_str, apply_params_to_json, assert_balanced_js_delimiters
 from bluebox.utils.logger import get_logger
 from bluebox.utils.js_utils import (
     DANGEROUS_JS_PATTERNS,
@@ -177,7 +177,7 @@ class RoutineNavigateOperation(RoutineOperation):
 
     def _execute_operation(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Navigate to the specified URL."""
-        url = apply_params(self.url, routine_execution_context.parameters_dict)
+        url = apply_params_to_str(self.url, routine_execution_context.parameters_dict)
         routine_execution_context.send_cmd("Page.navigate", {"url": url}, session_id=routine_execution_context.session_id)
         routine_execution_context.current_url = url
 
@@ -228,20 +228,12 @@ class RoutineFetchOperation(RoutineOperation):
     ) -> FetchExecutionResult:
         """Execute the fetch request and return the result."""
         parameters_dict = routine_execution_context.parameters_dict or {}
+        param_type_map = routine_execution_context.param_type_map
 
         # Apply parameters to endpoint
-        fetch_url = apply_params(self.endpoint.url, parameters_dict)
-        headers: dict = {}
-        if self.endpoint.headers:
-            headers_str = json.dumps(self.endpoint.headers)
-            headers_str_interpolated = apply_params(headers_str, parameters_dict)
-            headers = json.loads(headers_str_interpolated)
-
-        body = None
-        if self.endpoint.body:
-            body_str = json.dumps(self.endpoint.body)
-            body_str_interpolated = apply_params(body_str, parameters_dict)
-            body = json.loads(body_str_interpolated)
+        fetch_url = apply_params_to_str(self.endpoint.url, parameters_dict)
+        headers = apply_params_to_json(self.endpoint.headers, parameters_dict, param_type_map) if self.endpoint.headers else {}
+        body = apply_params_to_json(self.endpoint.body, parameters_dict, param_type_map) if self.endpoint.body else None
 
         # Serialize body to JS string literal
         if body is None:
@@ -318,7 +310,7 @@ class RoutineFetchOperation(RoutineOperation):
         # If current page is blank, navigate to the target origin first to avoid CORS
         if not routine_execution_context.current_url or routine_execution_context.current_url == "about:blank":
             # Extract origin URL from the fetch endpoint (scheme + netloc)
-            fetch_url = apply_params(self.endpoint.url, routine_execution_context.parameters_dict)
+            fetch_url = apply_params_to_str(self.endpoint.url, routine_execution_context.parameters_dict)
             parsed = urlparse(fetch_url)
             origin_url = f"{parsed.scheme}://{parsed.netloc}"
             logger.info(f"Current page is blank, navigating to {origin_url} before fetch")
@@ -525,7 +517,7 @@ class RoutineClickOperation(RoutineOperation):
 
     def _execute_operation(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Click on an element by CSS selector."""
-        selector = apply_params(self.selector, routine_execution_context.parameters_dict)
+        selector = apply_params_to_str(self.selector, routine_execution_context.parameters_dict)
         click_js = generate_click_js(selector, self.ensure_visible)
 
         eval_id = routine_execution_context.send_cmd(
@@ -616,8 +608,8 @@ class RoutineTypeOperation(RoutineOperation):
 
     def _execute_operation(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Type text into an input element."""
-        selector = apply_params(self.selector, routine_execution_context.parameters_dict)
-        text = apply_params(self.text, routine_execution_context.parameters_dict)
+        selector = apply_params_to_str(self.selector, routine_execution_context.parameters_dict)
+        text = apply_params_to_str(self.text, routine_execution_context.parameters_dict)
         type_js = generate_type_js(selector, self.clear)
 
         eval_id = routine_execution_context.send_cmd(
@@ -789,7 +781,7 @@ class RoutineScrollOperation(RoutineOperation):
     def _execute_operation(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Scroll the page or a specific element."""
         if self.selector:
-            selector = apply_params(self.selector, routine_execution_context.parameters_dict)
+            selector = apply_params_to_str(self.selector, routine_execution_context.parameters_dict)
             scroll_js = generate_scroll_element_js(
                 selector,
                 self.delta_x or 0,
@@ -849,7 +841,7 @@ class RoutineReturnHTMLOperation(RoutineOperation):
         if self.scope == HTMLScope.PAGE or not self.selector:
             js = generate_get_html_js()
         else:
-            selector = apply_params(self.selector, routine_execution_context.parameters_dict)
+            selector = apply_params_to_str(self.selector, routine_execution_context.parameters_dict)
             js = generate_get_html_js(selector)
 
         eval_id = routine_execution_context.send_cmd(
@@ -893,19 +885,13 @@ class RoutineDownloadOperation(RoutineOperation):
 
     def _execute_operation(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Download a file and return it as base64."""
-        # Apply parameters to endpoint
-        download_url = apply_params(self.endpoint.url, routine_execution_context.parameters_dict)
-        download_headers = {}
-        if self.endpoint.headers:
-            headers_str = json.dumps(self.endpoint.headers)
-            headers_str_interpolated = apply_params(headers_str, routine_execution_context.parameters_dict)
-            download_headers = json.loads(headers_str_interpolated)
+        parameters_dict = routine_execution_context.parameters_dict
+        param_type_map = routine_execution_context.param_type_map
 
-        download_body = None
-        if self.endpoint.body:
-            body_str = json.dumps(self.endpoint.body)
-            body_str_interpolated = apply_params(body_str, routine_execution_context.parameters_dict)
-            download_body = json.loads(body_str_interpolated)
+        # Apply parameters to endpoint
+        download_url = apply_params_to_str(self.endpoint.url, parameters_dict)
+        download_headers = apply_params_to_json(self.endpoint.headers, parameters_dict, param_type_map) if self.endpoint.headers else {}
+        download_body = apply_params_to_json(self.endpoint.body, parameters_dict, param_type_map) if self.endpoint.body else None
 
         # Serialize body for JS
         if download_body is None:
@@ -916,7 +902,7 @@ class RoutineDownloadOperation(RoutineOperation):
             body_js_literal = json.dumps(str(download_body))
 
         # Interpolate filename
-        download_filename = apply_params(self.filename, routine_execution_context.parameters_dict)
+        download_filename = apply_params_to_str(self.filename, parameters_dict)
 
         # Generate JS to fetch as binary and convert to base64
         download_js = generate_download_js(
@@ -1114,7 +1100,7 @@ class RoutineJsEvaluateOperation(RoutineOperation):
 
     def _execute_operation(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Execute JavaScript code and optionally store result in session storage."""
-        js_code = apply_params(self.js, routine_execution_context.parameters_dict)
+        js_code = apply_params_to_str(self.js, routine_execution_context.parameters_dict)
 
         # Validate again after parameter interpolation to prevent injection attacks
         RoutineJsEvaluateOperation.validate_js_code(js_code)

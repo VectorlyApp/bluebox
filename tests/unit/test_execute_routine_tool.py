@@ -67,7 +67,7 @@ def test_execute_routine_valid_json_string(mock_executor):
             {
                 "type": "fetch",
                 "endpoint": {
-                    "url": "https://example.com/\"{{test_param}}\"",
+                    "url": "https://example.com/{{test_param}}",
                     "method": "GET",
                     "headers": {},
                     "body": {}
@@ -108,7 +108,7 @@ def test_execute_routine_valid_dict(mock_executor):
             {
                 "type": "fetch",
                 "endpoint": {
-                    "url": "https://example.com/\"{{test_param}}\"",
+                    "url": "https://example.com/{{test_param}}",
                     "method": "GET",
                     "headers": {},
                     "body": {}

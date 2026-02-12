@@ -84,23 +84,20 @@ class RoutineDiscoveryAgent(BaseModel):
 
     PLACEHOLDER_INSTRUCTIONS: str = (
         "PLACEHOLDER SYNTAX:\n"
+        "ALL placeholders use {{param_name}} — the parameter's `type` field drives type coercion at resolution time.\n\n"
         "- PARAMS: {{param_name}} (NO prefix, name matches parameter definition)\n"
         "- SOURCES (use dot paths): {{cookie:name}}, {{sessionStorage:path.to.value}}, "
         "{{localStorage:key}}, {{windowProperty:obj.key}}\n\n"
-        "JSON VALUE RULES (TWO sets of quotes needed for strings!):\n"
-        '- String: "key": \\"{{x}}\\"  (OUTER quotes = JSON string, INNER \\" = escaped quotes)\n'
-        '- Number/bool/null: "key": "{{x}}"  (only outer quotes, they get stripped)\n'
-        '- Inside larger string: "prefix\\"{{x}}\\"suffix"  (escaped quotes wrap placeholder)\n\n'
         "EXAMPLES:\n"
-        '1. String param:     "name": \\"{{username}}\\"           -> "name": "john"\n'
-        '2. Number param:     "count": "{{limit}}"                -> "count": 50\n'
-        '3. Bool param:       "active": "{{is_active}}"           -> "active": true\n'
-        '4. String in string: "msg_\\"{{id}}\\""                  -> "msg_abc"\n'
-        '5. Number in string: "page\\"{{num}}\\""                 -> "page5"\n'
-        '6. URL with param:   "/api/\\"{{user_id}}\\"/data"       -> "/api/123/data"\n'
-        '7. Session storage:  "token": \\"{{sessionStorage:auth.access_token}}\\"\n'
-        '8. Cookie:           "sid": \\"{{cookie:session_id}}\\"\n'
-        "IMPORTANT: YOU MUST ENSURE THAT EACH PLACEHOLDER IS SURROUNDED BY QUOTES OR ESCAPED QUOTES!"
+        '1. String param:     "name": "{{username}}"              -> "name": "john"   (type=string)\n'
+        '2. Number param:     "count": "{{limit}}"                -> "count": 50      (type=integer)\n'
+        '3. Bool param:       "active": "{{is_active}}"           -> "active": true   (type=boolean)\n'
+        '4. In URL:           "/api/{{user_id}}/data"             -> "/api/123/data"\n'
+        '5. Session storage:  "token": "{{sessionStorage:auth.access_token}}"\n'
+        '6. Cookie:           "sid": "{{cookie:session_id}}"\n\n'
+        "CRITICAL — MATCH TYPES TO THE RAW CDP REQUEST:\n"
+        'If the raw CDP request has "adults": "5" (a string), use type=string, NOT type=integer.\n'
+        "Integer would produce 5 (unquoted) and may break the API. Always match the type observed in the actual request."
     )
 
     SYSTEM_PROMPT: str = """You are an expert at analyzing network traffic and building web automation routines.
