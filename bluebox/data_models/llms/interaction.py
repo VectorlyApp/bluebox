@@ -131,6 +131,7 @@ class EmittedMessageType(StrEnum):
     BROWSER_RECORDING_REQUEST = "browser_recording_request"
     ROUTINE_DISCOVERY_REQUEST = "routine_discovery_request"
     ROUTINE_CREATION_REQUEST = "routine_creation_request"
+    STATUS_UPDATE = "status_update"
     ERROR = "error"
 
 
@@ -165,6 +166,12 @@ class ChatResponseEmittedMessage(BaseEmittedMessage):
         default=None,
         description="ID of the Chat message",
     )
+
+
+class StatusUpdateEmittedMessage(BaseEmittedMessage):
+    """Ephemeral status/progress update (not persisted as a chat message)."""
+    type: Literal[EmittedMessageType.STATUS_UPDATE] = EmittedMessageType.STATUS_UPDATE
+    content: str = Field(..., description="Status update text content")
 
 
 class ToolInvocationRequestEmittedMessage(BaseEmittedMessage):
@@ -239,6 +246,7 @@ class ErrorEmittedMessage(BaseEmittedMessage):
 EmittedMessage = Annotated[
     Union[
         ChatResponseEmittedMessage,
+        StatusUpdateEmittedMessage,
         ToolInvocationRequestEmittedMessage,
         ToolInvocationResultEmittedMessage,
         SuggestedEditEmittedMessage,
