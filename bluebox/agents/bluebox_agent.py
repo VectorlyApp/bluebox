@@ -305,8 +305,6 @@ class BlueBoxAgent(AbstractAgent):
     def _execute_browser_task(
         self,
         task: str,
-        timeout_seconds: int = 300,
-        use_vision: bool = True,
     ) -> dict[str, Any]:
         """
         Execute a free-form browser task using the AI browser agent.
@@ -318,13 +316,11 @@ class BlueBoxAgent(AbstractAgent):
 
         Args:
             task: Detailed natural language instruction for the browser agent. Be specific and step-by-step.
-            timeout_seconds: Maximum execution time in seconds (30-1800). Defaults to 300.
-            use_vision: Whether the agent should use vision (screenshots). Defaults to True.
         """
         if not task or not task.strip():
             return {"error": "Task description cannot be empty"}
 
-        timeout_seconds = max(30, min(timeout_seconds, 1800))
+        timeout_seconds = 300
 
         headers = {
             "Content-Type": "application/json",
@@ -334,7 +330,7 @@ class BlueBoxAgent(AbstractAgent):
         payload = {
             "task": task,
             "timeout_seconds": timeout_seconds,
-            "use_vision": use_vision,
+            "use_vision": True,
         }
 
         self._emit_message(ChatResponseEmittedMessage(
