@@ -22,7 +22,12 @@ import requests
 
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
 from bluebox.config import Config
-from bluebox.data_models.browser_agent import BrowserAgentDoneEvent, BrowserAgentErrorEvent, BrowserAgentStepEvent
+from bluebox.data_models.browser_agent import (
+    BrowserAgentDoneEvent,
+    BrowserAgentErrorEvent,
+    BrowserAgentStepEvent,
+    sse_event_adapter,
+)
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatResponseEmittedMessage,
@@ -354,19 +359,11 @@ class BlueBoxAgent(AbstractAgent):
             return {"error": f"Browser agent request failed: {e}"}
 
     def _consume_sse_stream(self, response: requests.Response) -> dict[str, Any]:
-        """Parse an SSE stream from the BU agent and emit progress messages."""
-        current_event = ""
+        """Parse an SSE stream from the browser agent and emit progress messages."""
         result: dict[str, Any] = {"error": "Stream ended without a terminal event"}
 
         for line in response.iter_lines(decode_unicode=True):
-            if not line:
-                continue
-
-            if line.startswith("event: "):
-                current_event = line[7:]
-                continue
-
-            if not line.startswith("data: "):
+            if not line or not line.startswith("data: "):
                 continue
 
             try:
@@ -375,37 +372,36 @@ class BlueBoxAgent(AbstractAgent):
                 logger.warning("Malformed SSE data line: %s", line)
                 continue
 
-            if current_event == "step":
-                step = BrowserAgentStepEvent.model_validate(data)
-                msg = f"[Step {step.step_number}]"
-                if step.next_goal:
-                    msg += f" {step.next_goal}"
+            event = sse_event_adapter.validate_python(data)
+
+            if isinstance(event, BrowserAgentStepEvent):
+                msg = f"[Step {event.step_number}]"
+                if event.next_goal:
+                    msg += f" {event.next_goal}"
                 self._emit_message(ChatResponseEmittedMessage(content=msg))
 
-            elif current_event == "done":
-                done = BrowserAgentDoneEvent.model_validate(data)
-                status = "succeeded" if done.is_successful else "completed (not confirmed successful)"
-                if not done.is_done:
+            elif isinstance(event, BrowserAgentDoneEvent):
+                status = "succeeded" if event.is_successful else "completed (not confirmed successful)"
+                if not event.is_done:
                     status = "did not finish"
                 self._emit_message(ChatResponseEmittedMessage(
-                    content=f"Browser agent task {status} in {done.duration_seconds or 0:.1f}s ({done.n_steps} steps).",
+                    content=f"Browser agent task {status} in {event.duration_seconds or 0:.1f}s ({event.n_steps} steps).",
                 ))
                 result = {
-                    "success": done.is_successful or False,
-                    "is_done": done.is_done,
-                    "final_result": done.final_result,
-                    "errors": done.errors,
-                    "n_steps": done.n_steps,
-                    "duration_seconds": done.duration_seconds,
-                    "execution_id": done.execution_id,
+                    "success": event.is_successful or False,
+                    "is_done": event.is_done,
+                    "final_result": event.final_result,
+                    "errors": event.errors,
+                    "n_steps": event.n_steps,
+                    "duration_seconds": event.duration_seconds,
+                    "execution_id": event.execution_id,
                 }
 
-            elif current_event == "error":
-                error = BrowserAgentErrorEvent.model_validate(data)
+            elif isinstance(event, BrowserAgentErrorEvent):
                 self._emit_message(ChatResponseEmittedMessage(
-                    content=f"Browser agent error: {error.error}",
+                    content=f"Browser agent error: {event.error}",
                 ))
-                result = {"error": error.error, "execution_id": error.execution_id}
+                result = {"error": event.error, "execution_id": event.execution_id}
 
         return result
 
