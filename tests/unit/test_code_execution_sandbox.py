@@ -4,8 +4,10 @@ tests/unit/test_code_execution_sandbox.py
 Unit tests for the sandboxed Python code execution utility.
 """
 
-from unittest.mock import patch, MagicMock
+import os
 import subprocess
+from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -13,12 +15,14 @@ from bluebox.utils.code_execution_sandbox import (
     BLOCKED_MODULES,
     BLOCKED_PATTERNS,
     BLOCKED_BUILTINS,
+    SENSITIVE_PATH_PREFIXES,
     check_code_safety,
     create_safe_builtins,
     execute_python_sandboxed,
     _is_docker_available,
     _execute_in_docker,
     _execute_blocklist_sandbox,
+    _create_scoped_open,
 )
 
 
@@ -940,3 +944,426 @@ class TestBlocklistSandboxDirect:
         result = _execute_blocklist_sandbox("import os")
         assert "error" in result
         assert "blocked" in result["error"].lower()
+
+
+class TestCheckCodeSafetyAllowFileIO:
+    """Tests for check_code_safety with allow_file_io flag."""
+
+    def test_blocks_open_by_default(self) -> None:
+        """open() should be blocked when allow_file_io is False."""
+        assert check_code_safety("f = open('file.txt')") is not None
+
+    def test_allows_open_with_flag(self) -> None:
+        """open() should be allowed when allow_file_io is True."""
+        assert check_code_safety("f = open('file.txt')", allow_file_io=True) is None
+
+    def test_still_blocks_exec_with_flag(self) -> None:
+        """exec() should still be blocked even with allow_file_io."""
+        assert check_code_safety("exec('x=1')", allow_file_io=True) is not None
+
+    def test_still_blocks_eval_with_flag(self) -> None:
+        """eval() should still be blocked even with allow_file_io."""
+        assert check_code_safety("eval('1+1')", allow_file_io=True) is not None
+
+    def test_still_blocks_dunder_import_with_flag(self) -> None:
+        """__import__ should still be blocked even with allow_file_io."""
+        assert check_code_safety("__import__('os')", allow_file_io=True) is not None
+
+    def test_still_blocks_dunder_builtins_with_flag(self) -> None:
+        """__builtins__ should still be blocked even with allow_file_io."""
+        assert check_code_safety("x = __builtins__", allow_file_io=True) is not None
+
+
+class TestScopedOpen:
+    """Tests for the _create_scoped_open function."""
+
+    def test_allows_file_within_dir(self, tmp_path: object) -> None:
+        """Should allow opening files within work_dir."""
+        work_dir = str(tmp_path)
+        test_file = os.path.join(work_dir, "test.txt")
+        with open(test_file, "w") as f:
+            f.write("hello")
+
+        scoped = _create_scoped_open(work_dir)
+        with scoped("test.txt", "r") as f:
+            assert f.read() == "hello"
+
+    def test_allows_subdirectory_file(self, tmp_path: object) -> None:
+        """Should allow opening files in subdirectories."""
+        work_dir = str(tmp_path)
+        sub_dir = os.path.join(work_dir, "sub")
+        os.makedirs(sub_dir)
+        test_file = os.path.join(sub_dir, "data.txt")
+        with open(test_file, "w") as f:
+            f.write("nested")
+
+        scoped = _create_scoped_open(work_dir)
+        with scoped("sub/data.txt", "r") as f:
+            assert f.read() == "nested"
+
+    def test_blocks_path_traversal(self, tmp_path: object) -> None:
+        """Should block paths that escape work_dir via '..'."""
+        work_dir = str(tmp_path / "workspace")
+        os.makedirs(work_dir)
+
+        scoped = _create_scoped_open(work_dir)
+        with pytest.raises(PermissionError, match="outside the working directory"):
+            scoped("../../../etc/passwd", "r")
+
+    def test_blocks_absolute_path_outside(self, tmp_path: object) -> None:
+        """Should block absolute paths outside work_dir."""
+        work_dir = str(tmp_path / "workspace")
+        os.makedirs(work_dir)
+
+        scoped = _create_scoped_open(work_dir)
+        with pytest.raises(PermissionError, match="outside the working directory"):
+            scoped("/etc/passwd", "r")
+
+    def test_allows_write(self, tmp_path: object) -> None:
+        """Should allow writing files within work_dir."""
+        work_dir = str(tmp_path)
+        scoped = _create_scoped_open(work_dir)
+
+        with scoped("output.csv", "w") as f:
+            f.write("a,b,c\n1,2,3\n")
+
+        with open(os.path.join(work_dir, "output.csv")) as f:
+            assert f.read() == "a,b,c\n1,2,3\n"
+
+
+class TestBlocklistSandboxWorkDir:
+    """Tests for blocklist sandbox with work_dir parameter."""
+
+    def test_can_write_file(self, tmp_path: object) -> None:
+        """Should be able to write files to work_dir."""
+        work_dir = str(tmp_path)
+        code = """
+with open("test_output.txt", "w") as f:
+    f.write("hello from sandbox")
+print("wrote file")
+"""
+        result = _execute_blocklist_sandbox(code, work_dir=work_dir)
+        assert "error" not in result
+        assert "wrote file" in result["output"]
+
+        output_file = os.path.join(work_dir, "test_output.txt")
+        assert os.path.exists(output_file)
+        with open(output_file) as f:
+            assert f.read() == "hello from sandbox"
+
+    def test_can_read_file(self, tmp_path: object) -> None:
+        """Should be able to read existing files in work_dir."""
+        work_dir = str(tmp_path)
+        with open(os.path.join(work_dir, "input.txt"), "w") as f:
+            f.write("existing data")
+
+        code = """
+with open("input.txt", "r") as f:
+    content = f.read()
+print(content)
+"""
+        result = _execute_blocklist_sandbox(code, work_dir=work_dir)
+        assert "error" not in result
+        assert "existing data" in result["output"]
+
+    def test_can_write_csv(self, tmp_path: object) -> None:
+        """Should be able to write CSV files using the csv module."""
+        work_dir = str(tmp_path)
+        code = """
+import csv
+with open("results.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["name", "price"])
+    writer.writerow(["Watch A", 5000])
+    writer.writerow(["Watch B", 8000])
+print("CSV written")
+"""
+        result = _execute_blocklist_sandbox(code, work_dir=work_dir)
+        assert "error" not in result
+        assert "CSV written" in result["output"]
+
+        csv_path = os.path.join(work_dir, "results.csv")
+        assert os.path.exists(csv_path)
+        with open(csv_path) as f:
+            lines = f.readlines()
+        assert len(lines) == 3
+        assert "name,price" in lines[0]
+
+    def test_can_write_json(self, tmp_path: object) -> None:
+        """Should be able to write JSON files."""
+        work_dir = str(tmp_path)
+        code = """
+data = [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}]
+with open("output.json", "w") as f:
+    json.dump(data, f, indent=2)
+print(f"Wrote {len(data)} records")
+"""
+        result = _execute_blocklist_sandbox(code, work_dir=work_dir)
+        assert "error" not in result
+        assert "Wrote 2 records" in result["output"]
+
+        import json
+        with open(os.path.join(work_dir, "output.json")) as f:
+            loaded = json.load(f)
+        assert len(loaded) == 2
+        assert loaded[0]["id"] == 1
+
+    def test_can_write_to_subdirectory(self, tmp_path: object) -> None:
+        """Should be able to create subdirectories and write files."""
+        work_dir = str(tmp_path)
+        code = """
+Path("outputs").mkdir(exist_ok=True)
+with open("outputs/result.txt", "w") as f:
+    f.write("in subdir")
+print("done")
+"""
+        result = _execute_blocklist_sandbox(code, work_dir=work_dir)
+        assert "error" not in result
+        assert "done" in result["output"]
+        assert os.path.exists(os.path.join(work_dir, "outputs", "result.txt"))
+
+    def test_csv_module_available(self, tmp_path: object) -> None:
+        """csv module should be pre-loaded when work_dir is set."""
+        work_dir = str(tmp_path)
+        code = "print(type(csv).__name__)"
+        result = _execute_blocklist_sandbox(code, work_dir=work_dir)
+        assert "error" not in result
+        assert "module" in result["output"]
+
+    def test_path_available(self, tmp_path: object) -> None:
+        """pathlib.Path should be pre-loaded when work_dir is set."""
+        work_dir = str(tmp_path)
+        code = "print(Path('.').resolve())"
+        result = _execute_blocklist_sandbox(code, work_dir=work_dir)
+        assert "error" not in result
+        assert work_dir in result["output"]
+
+    def test_blocks_path_traversal_write(self, tmp_path: object) -> None:
+        """Should block writing outside work_dir."""
+        work_dir = str(tmp_path / "workspace")
+        os.makedirs(work_dir)
+        code = """
+with open("../../escape.txt", "w") as f:
+    f.write("escaped")
+"""
+        result = _execute_blocklist_sandbox(code, work_dir=work_dir)
+        assert "error" in result
+        assert "outside" in result["error"].lower() or "denied" in result["error"].lower()
+
+    def test_extra_globals_with_work_dir(self, tmp_path: object) -> None:
+        """Extra globals should work alongside work_dir."""
+        work_dir = str(tmp_path)
+        data = [{"name": "A", "val": 1}, {"name": "B", "val": 2}]
+        code = """
+with open("from_globals.json", "w") as f:
+    json.dump(routine_results, f)
+print(f"Saved {len(routine_results)} results")
+"""
+        result = _execute_blocklist_sandbox(
+            code,
+            extra_globals={"routine_results": data},
+            work_dir=work_dir,
+        )
+        assert "error" not in result
+        assert "Saved 2 results" in result["output"]
+        assert os.path.exists(os.path.join(work_dir, "from_globals.json"))
+
+    def test_cwd_restored_after_execution(self, tmp_path: object) -> None:
+        """Working directory should be restored after execution."""
+        original_cwd = os.getcwd()
+        work_dir = str(tmp_path)
+        _execute_blocklist_sandbox("print('hi')", work_dir=work_dir)
+        assert os.getcwd() == original_cwd
+
+    def test_cwd_restored_after_error(self, tmp_path: object) -> None:
+        """Working directory should be restored even after an error."""
+        original_cwd = os.getcwd()
+        work_dir = str(tmp_path)
+        _execute_blocklist_sandbox("raise ValueError('boom')", work_dir=work_dir)
+        assert os.getcwd() == original_cwd
+
+    def test_without_work_dir_still_blocks_open(self) -> None:
+        """Without work_dir, open() should still be blocked."""
+        result = _execute_blocklist_sandbox("f = open('test.txt', 'w')")
+        assert "error" in result
+
+
+class TestExecutePythonSandboxedWorkDir:
+    """Tests for execute_python_sandboxed with work_dir (top-level API)."""
+
+    def test_allows_open_with_work_dir(self, tmp_path: object) -> None:
+        """open() pattern should not be blocked when work_dir is set."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        original_mode = sandbox_module.SANDBOX_MODE
+
+        try:
+            sandbox_module.SANDBOX_MODE = "blocklist"
+            work_dir = str(tmp_path)
+            code = """
+with open("test.txt", "w") as f:
+    f.write("allowed")
+print("ok")
+"""
+            result = execute_python_sandboxed(code, work_dir=work_dir)
+            assert "error" not in result
+            assert "ok" in result["output"]
+            assert os.path.exists(os.path.join(work_dir, "test.txt"))
+        finally:
+            sandbox_module.SANDBOX_MODE = original_mode
+
+    def test_blocks_open_without_work_dir(self) -> None:
+        """open() pattern should be blocked when work_dir is not set."""
+        result = execute_python_sandboxed("f = open('test.txt', 'w')")
+        assert "error" in result
+        assert "Blocked" in result["error"]
+
+    def test_lambda_mode_rejects_work_dir(self) -> None:
+        """Lambda mode should reject work_dir."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        original_mode = sandbox_module.SANDBOX_MODE
+
+        try:
+            sandbox_module.SANDBOX_MODE = "lambda"
+            result = execute_python_sandboxed("print('hi')", work_dir="/tmp/test")
+            assert "error" in result
+            assert "not supported" in result["error"]
+        finally:
+            sandbox_module.SANDBOX_MODE = original_mode
+
+    def test_docker_mode_passes_work_dir(self) -> None:
+        """Docker mode should pass work_dir to _execute_in_docker."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        original_mode = sandbox_module.SANDBOX_MODE
+        sandbox_module._docker_available = None
+
+        mock_docker_info = MagicMock()
+        mock_docker_info.returncode = 0
+        mock_docker_run = MagicMock()
+        mock_docker_run.returncode = 0
+        mock_docker_run.stdout = "ok\n"
+        mock_docker_run.stderr = ""
+
+        try:
+            sandbox_module.SANDBOX_MODE = "docker"
+            with patch("shutil.which", return_value="/usr/bin/docker"):
+                with patch("subprocess.run", side_effect=[mock_docker_info, mock_docker_run]) as mock_run:
+                    result = execute_python_sandboxed(
+                        "print('hi')",
+                        work_dir="/tmp/workspace",
+                    )
+                    assert "error" not in result
+                    # Verify -v mount flag was included
+                    docker_cmd = mock_run.call_args_list[1][0][0]
+                    assert "-v" in docker_cmd
+                    assert any("/tmp/workspace:/data:rw" in arg for arg in docker_cmd)
+        finally:
+            sandbox_module.SANDBOX_MODE = original_mode
+            sandbox_module._docker_available = None
+
+
+class TestWorkDirValidation:
+    """Tests for work_dir validation in execute_python_sandboxed."""
+
+    @pytest.mark.parametrize("prefix", SENSITIVE_PATH_PREFIXES)
+    def test_rejects_sensitive_prefix_exact(self, prefix: str) -> None:
+        """Every entry in SENSITIVE_PATH_PREFIXES should be rejected as work_dir."""
+        result = execute_python_sandboxed("print('hi')", work_dir=prefix)
+        assert "error" in result
+        assert "sensitive system path" in result["error"]
+
+    @pytest.mark.parametrize("prefix", SENSITIVE_PATH_PREFIXES)
+    def test_rejects_sensitive_prefix_subdir(self, prefix: str) -> None:
+        """Subdirectories under sensitive prefixes should also be rejected."""
+        result = execute_python_sandboxed("print('hi')", work_dir=f"{prefix}/subdir")
+        assert "error" in result
+        assert "sensitive system path" in result["error"]
+
+    def test_normalizes_path_with_dotdot(self) -> None:
+        """Paths with '..' that resolve to a sensitive prefix should be rejected."""
+        result = execute_python_sandboxed("print('hi')", work_dir="/etc/../etc/nginx")
+        assert "error" in result
+        assert "sensitive system path" in result["error"]
+
+    def test_allows_tmp(self, tmp_path: Path) -> None:
+        """A normal temp directory should pass validation."""
+        import bluebox.utils.code_execution_sandbox as sandbox_module
+        original_mode = sandbox_module.SANDBOX_MODE
+        try:
+            sandbox_module.SANDBOX_MODE = "blocklist"
+            result = execute_python_sandboxed("print('ok')", work_dir=str(tmp_path))
+            assert "error" not in result
+            assert "ok" in result["output"]
+        finally:
+            sandbox_module.SANDBOX_MODE = original_mode
+
+
+class TestDockerExecutionWorkDir:
+    """Tests for Docker execution with work_dir."""
+
+    def test_docker_mounts_work_dir(self) -> None:
+        """Should mount work_dir as /data:rw when provided."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "ok\n"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            _execute_in_docker("print('ok')", work_dir="/tmp/workspace")
+            docker_cmd = mock_run.call_args[0][0]
+            assert "-v" in docker_cmd
+            vol_idx = docker_cmd.index("-v")
+            assert "/tmp/workspace:/data:rw" in docker_cmd[vol_idx + 1]
+
+    def test_docker_sets_workdir_flag(self) -> None:
+        """Should set -w /data when work_dir is provided."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "ok\n"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            _execute_in_docker("print('ok')", work_dir="/tmp/workspace")
+            docker_cmd = mock_run.call_args[0][0]
+            assert "-w" in docker_cmd
+            w_idx = docker_cmd.index("-w")
+            assert docker_cmd[w_idx + 1] == "/data"
+
+    def test_docker_no_mount_without_work_dir(self) -> None:
+        """Should not mount any volume when work_dir is not set."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "ok\n"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            _execute_in_docker("print('ok')")
+            docker_cmd = mock_run.call_args[0][0]
+            assert "-v" not in docker_cmd
+            assert "-w" not in docker_cmd
+
+    def test_docker_wrapper_includes_csv_and_path_with_work_dir(self) -> None:
+        """Wrapper script should import csv and pathlib when work_dir is set."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "ok\n"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            _execute_in_docker("print('ok')", work_dir="/tmp/workspace")
+            wrapper_script = mock_run.call_args[1]["input"]
+            assert "import json, csv, base64, sys, os" in wrapper_script
+            assert "from pathlib import Path" in wrapper_script
+            assert 'os.chdir("/data")' in wrapper_script
+
+    def test_docker_wrapper_no_csv_without_work_dir(self) -> None:
+        """Wrapper script should not import csv/pathlib without work_dir."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "ok\n"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            _execute_in_docker("print('ok')")
+            wrapper_script = mock_run.call_args[1]["input"]
+            assert "import json, base64, sys" in wrapper_script
+            assert "from pathlib import Path" not in wrapper_script

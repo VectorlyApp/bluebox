@@ -243,6 +243,7 @@ class AbstractAgentTUI(App):
         self._tool_call_count: int = 0
         self._last_seen_chat_count: int = 0
         self._seen_call_ids: set[str] = set()  # dedup CALL nodes in tool tree
+        self._saved_file_paths: list[str] = []
 
     # ── Abstract / hook methods ──────────────────────────────────────────
 
@@ -305,6 +306,7 @@ class AbstractAgentTUI(App):
 
     def _add_saved_file(self, filepath: str) -> None:
         """Write a timestamped entry to the saved-files pane."""
+        self._saved_file_paths.append(filepath)
         if not self.SHOW_SAVED_FILES_PANE:
             return
         log = self.query_one("#saved-files-log", RichLog)
@@ -314,6 +316,54 @@ class AbstractAgentTUI(App):
         log.write(Text.from_markup(f"[dim]{ts}[/dim]  {filename}"))
         log.scroll_end(animate=False)
 
+    # ── Copy-to-clipboard actions ─────────────────────────────────────
+
+    def action_copy_chat(self) -> None:
+        """Copy chat history to clipboard."""
+        if not self._agent:
+            self.notify("No chat content to copy", timeout=2)
+            return
+        lines: list[str] = []
+        for c in self._agent.get_chats():
+            role = c.role.value.upper()
+            if c.tool_calls:
+                tool_names = ", ".join(tc.tool_name for tc in c.tool_calls)
+                lines.append(f"[{role}] -> {tool_names}")
+            else:
+                lines.append(f"[{role}]\n{c.content or ''}")
+        text = "\n\n".join(lines)
+        if text:
+            self.copy_to_clipboard(text)
+            self.notify("Chat copied to clipboard", timeout=2)
+        else:
+            self.notify("No chat content to copy", timeout=2)
+
+    def action_copy_tools(self) -> None:
+        """Copy tool invocation log to clipboard."""
+        tree = self.query_one("#tool-log", Tree)
+        lines: list[str] = []
+        for node in tree.root.children:
+            label = node.label.plain if hasattr(node.label, "plain") else str(node.label)
+            lines.append(label)
+            for child in node.children:
+                child_label = child.label.plain if hasattr(child.label, "plain") else str(child.label)
+                lines.append(f"  {child_label}")
+        text = "\n".join(lines)
+        if text:
+            self.copy_to_clipboard(text)
+            self.notify("Tools log copied to clipboard", timeout=2)
+        else:
+            self.notify("No tool calls to copy", timeout=2)
+
+    def action_copy_saved_files(self) -> None:
+        """Copy saved file paths to clipboard."""
+        text = "\n".join(self._saved_file_paths)
+        if text:
+            self.copy_to_clipboard(text)
+            self.notify("Saved files copied to clipboard", timeout=2)
+        else:
+            self.notify("No saved files to copy", timeout=2)
+
     # ── Compose ──────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
@@ -321,6 +371,7 @@ class AbstractAgentTUI(App):
             with Vertical(id="left-pane"):
                 chat_log = RichLog(id="chat-log", wrap=True, highlight=True, markup=True)
                 chat_log.border_title = "Chat"
+                chat_log.border_subtitle = "[@click=app.copy_chat]\\[copy][/]"
                 yield chat_log
                 with Horizontal(id="input-row"):
                     yield Static(">", id="input-prompt")
@@ -336,10 +387,12 @@ class AbstractAgentTUI(App):
                 tool_tree = Tree("Tools", id="tool-log")
                 tool_tree.show_root = False
                 tool_tree.border_title = "Tools invoked"
+                tool_tree.border_subtitle = "[@click=app.copy_tools]\\[copy][/]"
                 yield tool_tree
                 if self.SHOW_SAVED_FILES_PANE:
                     saved_log = RichLog(id="saved-files-log", wrap=False, markup=True)
                     saved_log.border_title = "Saved files"
+                    saved_log.border_subtitle = "[@click=app.copy_saved_files]\\[copy][/]"
                     yield saved_log
         yield Static(id="status-bar")
 
@@ -739,6 +792,7 @@ class AbstractAgentTUI(App):
                 self._agent.reset()
             self._last_seen_chat_count = 0
             self._seen_call_ids.clear()
+            self._saved_file_paths.clear()
             self._on_reset()
             chat.write(Text.from_markup("[yellow]\u21ba Conversation reset[/yellow]"))
             self._update_status()
