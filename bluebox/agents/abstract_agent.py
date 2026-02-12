@@ -36,6 +36,7 @@ from bluebox.data_models.llms.interaction import (
     ErrorEmittedMessage,
     LLMChatResponse,
     LLMToolCall,
+    StatusUpdateEmittedMessage,
     ToolInvocationResultEmittedMessage,
     PendingToolInvocation,
     ToolInvocationStatus,
@@ -698,6 +699,9 @@ class AbstractAgent(ABC):
     def _emit_message(self, message: EmittedMessage) -> None:
         """Emit a message via the callback."""
         self._emit_message_callable(message)
+        # Persist status updates as Chat objects
+        if isinstance(message, StatusUpdateEmittedMessage):
+            self._add_chat(role=ChatRole.SYSTEM_STATUS_UPDATE, content=message.content)
 
     def _add_chat(
         self,
@@ -747,6 +751,8 @@ class AbstractAgent(ABC):
         for chat_id in chats_to_include:
             chat = self._chats.get(chat_id)
             if not chat:
+                continue
+            if chat.role == ChatRole.SYSTEM_STATUS_UPDATE:
                 continue
             msg: dict[str, Any] = {
                 "role": chat.role.value,
