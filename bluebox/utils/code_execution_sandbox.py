@@ -219,7 +219,7 @@ exec(code, exec_globals)
         "--cpus", "0.5",                 # CPU limit
         "--pids-limit", "50",            # Process limit
         "--security-opt", "no-new-privileges",  # No privilege escalation
-        "--user", "nobody",              # Non-root user
+        "--user", f"{os.getuid()}:{os.getgid()}",  # Match host user for volume permissions
         "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",  # Writable /tmp for Python
         "-i",                            # Accept stdin
     ]
