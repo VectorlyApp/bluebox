@@ -320,8 +320,6 @@ class BlueBoxAgent(AbstractAgent):
         if not task or not task.strip():
             return {"error": "Task description cannot be empty"}
 
-        timeout_seconds = 300
-
         headers = {
             "Content-Type": "application/json",
             "X-Service-Token": Config.VECTORLY_API_KEY,
@@ -329,7 +327,7 @@ class BlueBoxAgent(AbstractAgent):
 
         payload = {
             "task": task,
-            "timeout_seconds": timeout_seconds,
+            "timeout_seconds": 300,
             "use_vision": True,
         }
 
