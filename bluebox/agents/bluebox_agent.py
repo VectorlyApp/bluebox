@@ -322,6 +322,7 @@ class BlueBoxAgent(AbstractAgent):
 
         Args:
             task: Detailed natural language instruction for the browser agent. Be specific and step-by-step.
+            TOOD: add an example instruction to convey the level of detail we need. either here or in system prompt
         """
         if not task or not task.strip():
             return {"error": "Task description cannot be empty"}
