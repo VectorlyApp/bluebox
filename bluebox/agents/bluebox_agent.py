@@ -338,7 +338,7 @@ class BlueBoxAgent(AbstractAgent):
 
         try:
             with requests.post(
-                f"{Config.VECTORLY_API_BASE}/buagent/execute/stream",
+                f"{Config.VECTORLY_API_BASE}/browser-agent/execute/stream",
                 headers=headers,
                 json=payload,
                 stream=True,
