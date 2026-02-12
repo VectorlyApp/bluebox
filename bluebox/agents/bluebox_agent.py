@@ -22,6 +22,12 @@ import requests
 
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
 from bluebox.config import Config
+from bluebox.data_models.browser_agent import (
+    BrowserAgentDoneEvent,
+    BrowserAgentErrorEvent,
+    BrowserAgentStepEvent,
+    sse_event_adapter,
+)
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatResponseEmittedMessage,
@@ -53,14 +59,15 @@ class BlueBoxAgent(AbstractAgent):
     AGENT_LOOP_MAX_ITERATIONS: int = 100
 
     SYSTEM_PROMPT: str = dedent("""
-        You are a routine execution agent. Your job is to find and run pre-built Vectorly routines to fulfill user requests.
+        You are a web automation agent. Your job is to fulfill user requests by running pre-built Vectorly routines, or falling back to the browser agent for free-form tasks.
 
         ## Workflow
         1. **Search broadly**: When the user makes a request, use `search_routines` with a task description that describes what the user wants to do. This runs semantic search, so add some detail. You can run this multiple times if needed to get more results.
         2. **Execute all relevant routines**: Run ALL routines that could plausibly fulfill the user's request via `execute_routines_in_parallel`. When in doubt, include the routine — running an extra routine is cheap, missing a relevant one is costly.
-        3. **Post-process results**: Use `run_python_code` to transform routine results into clean output files (CSV, JSON, JSONL, etc.) for the user.
-        4. **Verify output**: After writing files, use `list_workspace_files` and `read_workspace_file` to verify the output looks correct. If it doesn't, fix the code and rerun.
-        5. **Report results**: Summarize what was executed and the output files to the user.
+        3. **Fallback to browser agent**: If NO routines match after thorough searching, use `execute_browser_task` to perform the task via an AI-driven browser agent. Write a clear, detailed natural language instruction for the task.
+        4. **Post-process results**: Use `run_python_code` to transform routine results into clean output files (CSV, JSON, JSONL, etc.) for the user.
+        5. **Verify output**: After writing files, use `list_workspace_files` and `read_workspace_file` to verify the output looks correct. If it doesn't, fix the code and rerun.
+        6. **Report results**: Summarize what was executed and the output files to the user.
 
         ## Post-Processing with Python
         - After routines return results, ALWAYS use `run_python_code` to post-process data and generate clean output files.
@@ -76,9 +83,9 @@ class BlueBoxAgent(AbstractAgent):
         - Use `read_workspace_file` to read any file by relative path (e.g. "raw/25-01-15-143052-routine_result_1.json" or "outputs/results.csv"). Use optional start_line/end_line to read specific line ranges for large files.
 
         ## Important Rules
-        - You ONLY have routine tools, code execution, and file inspection tools. Do not tell the user you can browse, click, type, or interact with web pages directly.
-        - If no routines match, tell the user clearly that no matching routines were found.
-        - Keywords MUST be short single words. Never pass multi-word phrases as a single keyword. If your first search returns no results, try different synonyms and related single-word keywords before giving up.
+        - **Always prefer routines over `execute_browser_task`**. Routines are faster, cheaper, and more reliable. Only use the browser agent as a fallback when no suitable routine exists.
+        - When using `execute_browser_task`, write a specific, step-by-step task description so the browser agent knows exactly what to do.
+        - If your first search returns no results, try rephrasing the task description before giving up.
         - Be concise in responses.
     """).strip()
 
@@ -298,6 +305,106 @@ class BlueBoxAgent(AbstractAgent):
             "failed": total - succeeded,
             "results": results,
         }
+
+    @agent_tool()
+    @token_optimized
+    def _execute_browser_task(
+        self,
+        task: str,
+    ) -> dict[str, Any]:
+        """
+        Execute a free-form browser task using the AI browser agent.
+
+        Use this as a FALLBACK when no pre-built routine matches the user's request.
+        The browser agent receives a natural language task and autonomously navigates
+        the web to complete it. This is slower and more expensive than routines.
+        Progress is streamed in real time via SSE.
+
+        Args:
+            task: Detailed natural language instruction for the browser agent. Be specific and step-by-step.
+            TOOD: add an example instruction to convey the level of detail we need. either here or in system prompt
+        """
+        if not task or not task.strip():
+            return {"error": "Task description cannot be empty"}
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Service-Token": Config.VECTORLY_API_KEY,
+        }
+
+        payload = {
+            "task": task,
+            "timeout_seconds": 300,
+            "use_vision": True,
+        }
+
+        self._emit_message(ChatResponseEmittedMessage(
+            content="Starting browser agent task... This may take a few minutes.",
+        ))
+
+        try:
+            with requests.post(
+                f"{Config.VECTORLY_API_BASE}/browser-agent/execute/stream",
+                headers=headers,
+                json=payload,
+                stream=True,
+                timeout=330,
+            ) as response:
+                response.raise_for_status()
+                return self._consume_sse_stream(response)
+
+        except requests.Timeout:
+            return {"error": "Browser agent timed out after 300s"}
+        except requests.RequestException as e:
+            logger.error("Browser agent API call failed: %s", e)
+            return {"error": f"Browser agent request failed: {e}"}
+
+    def _consume_sse_stream(self, response: requests.Response) -> dict[str, Any]:
+        """Parse an SSE stream from the browser agent and emit progress messages."""
+        result: dict[str, Any] = {"error": "Stream ended without a terminal event"}
+
+        for line in response.iter_lines(decode_unicode=True):
+            if not line or not line.startswith("data: "):
+                continue
+
+            try:
+                data = json.loads(line[6:])
+            except json.JSONDecodeError:
+                logger.warning("Malformed SSE data line: %s", line)
+                continue
+
+            event = sse_event_adapter.validate_python(data)
+
+            if isinstance(event, BrowserAgentStepEvent):
+                msg = f"[Step {event.step_number}]"
+                if event.next_goal:
+                    msg += f" {event.next_goal}"
+                self._emit_message(ChatResponseEmittedMessage(content=msg))
+
+            elif isinstance(event, BrowserAgentDoneEvent):
+                status = "succeeded" if event.is_successful else "completed (not confirmed successful)"
+                if not event.is_done:
+                    status = "did not finish"
+                self._emit_message(ChatResponseEmittedMessage(
+                    content=f"Browser agent task {status} in {event.duration_seconds or 0:.1f}s ({event.n_steps} steps).",
+                ))
+                result = {
+                    "success": event.is_successful or False,
+                    "is_done": event.is_done,
+                    "final_result": event.final_result,
+                    "errors": event.errors,
+                    "n_steps": event.n_steps,
+                    "duration_seconds": event.duration_seconds,
+                    "execution_id": event.execution_id,
+                }
+
+            elif isinstance(event, BrowserAgentErrorEvent):
+                self._emit_message(ChatResponseEmittedMessage(
+                    content=f"Browser agent error: {event.error}",
+                ))
+                result = {"error": event.error, "execution_id": event.execution_id}
+
+        return result
 
     @agent_tool()
     def _run_python_code(self, code: str) -> dict[str, Any]:
