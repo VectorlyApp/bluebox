@@ -3,9 +3,9 @@ bluebox/data_models/browser_agent.py
 
 Data models for browser agent SSE stream events.
 
-Mirrors the SSE event models from the server
-(servers/src/data_models/buagent.py) using a discriminated union
-on the ``type`` field for robust parsing.
+Mirrors the SSE event models from the server 
+using a discriminated union on the ``type`` field 
+for robust parsing.
 """
 
 from typing import Annotated, Literal, Union
