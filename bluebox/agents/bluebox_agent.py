@@ -22,6 +22,7 @@ import requests
 
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
 from bluebox.config import Config
+from bluebox.data_models.browser_agent import BrowserAgentDoneEvent, BrowserAgentErrorEvent, BrowserAgentStepEvent
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatResponseEmittedMessage,
@@ -341,13 +342,13 @@ class BlueBoxAgent(AbstractAgent):
                 headers=headers,
                 json=payload,
                 stream=True,
-                timeout=timeout_seconds + 30,
+                timeout=330,
             ) as response:
                 response.raise_for_status()
                 return self._consume_sse_stream(response)
 
         except requests.Timeout:
-            return {"error": f"Browser agent timed out after {timeout_seconds}s"}
+            return {"error": "Browser agent timed out after 300s"}
         except requests.RequestException as e:
             logger.error("Browser agent API call failed: %s", e)
             return {"error": f"Browser agent request failed: {e}"}
@@ -375,37 +376,36 @@ class BlueBoxAgent(AbstractAgent):
                 continue
 
             if current_event == "step":
-                step_num = data.get("step_number", "?")
-                max_steps = data.get("max_steps", "?")
-                goal = data.get("next_goal", "")
-                msg = f"[Step {step_num}/{max_steps}]"
-                if goal:
-                    msg += f" {goal}"
+                step = BrowserAgentStepEvent.model_validate(data)
+                msg = f"[Step {step.step_number}/{step.max_steps}]"
+                if step.next_goal:
+                    msg += f" {step.next_goal}"
                 self._emit_message(ChatResponseEmittedMessage(content=msg))
 
             elif current_event == "done":
-                status = "succeeded" if data.get("is_successful") else "completed (not confirmed successful)"
-                if not data.get("is_done"):
+                done = BrowserAgentDoneEvent.model_validate(data)
+                status = "succeeded" if done.is_successful else "completed (not confirmed successful)"
+                if not done.is_done:
                     status = "did not finish"
                 self._emit_message(ChatResponseEmittedMessage(
-                    content=f"Browser agent task {status} in {data.get('duration_seconds', 0):.1f}s ({data.get('n_steps', 0)} steps).",
+                    content=f"Browser agent task {status} in {done.duration_seconds or 0:.1f}s ({done.n_steps} steps).",
                 ))
                 result = {
-                    "success": data.get("is_successful", False),
-                    "is_done": data.get("is_done", False),
-                    "final_result": data.get("final_result"),
-                    "errors": data.get("errors", []),
-                    "n_steps": data.get("n_steps", 0),
-                    "duration_seconds": data.get("duration_seconds"),
-                    "execution_id": data.get("execution_id"),
+                    "success": done.is_successful or False,
+                    "is_done": done.is_done,
+                    "final_result": done.final_result,
+                    "errors": done.errors,
+                    "n_steps": done.n_steps,
+                    "duration_seconds": done.duration_seconds,
+                    "execution_id": done.execution_id,
                 }
 
             elif current_event == "error":
-                error_msg = data.get("error", "Unknown error")
+                error = BrowserAgentErrorEvent.model_validate(data)
                 self._emit_message(ChatResponseEmittedMessage(
-                    content=f"Browser agent error: {error_msg}",
+                    content=f"Browser agent error: {error.error}",
                 ))
-                result = {"error": error_msg, "execution_id": data.get("execution_id")}
+                result = {"error": error.error, "execution_id": error.execution_id}
 
         return result
 
