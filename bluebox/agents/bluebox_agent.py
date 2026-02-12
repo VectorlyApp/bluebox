@@ -33,6 +33,7 @@ from bluebox.data_models.llms.interaction import (
     ChatResponseEmittedMessage,
     ChatThread,
     EmittedMessage,
+    StatusUpdateEmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.routine.routine import RoutineExecutionRequest, RoutineInfo
@@ -303,7 +304,7 @@ class BlueBoxAgent(AbstractAgent):
                 results.append(result)
 
                 status = "succeeded" if result.get("success") else "FAILED"
-                self._emit_message(ChatResponseEmittedMessage(
+                self._emit_message(StatusUpdateEmittedMessage(
                     content=f"[{len(results)}/{total}] Routine '{result.get('routine_id')}' {status}.",
                 ))
 
@@ -345,7 +346,7 @@ class BlueBoxAgent(AbstractAgent):
             "use_vision": True,
         }
 
-        self._emit_message(ChatResponseEmittedMessage(
+        self._emit_message(StatusUpdateEmittedMessage(
             content="Starting browser agent task... This may take a few minutes.",
         ))
 
@@ -386,13 +387,13 @@ class BlueBoxAgent(AbstractAgent):
                 msg = f"[Step {event.step_number}]"
                 if event.next_goal:
                     msg += f" {event.next_goal}"
-                self._emit_message(ChatResponseEmittedMessage(content=msg))
+                self._emit_message(StatusUpdateEmittedMessage(content=msg))
 
             elif isinstance(event, BrowserAgentDoneEvent):
                 status = "succeeded" if event.is_successful else "completed (not confirmed successful)"
                 if not event.is_done:
                     status = "did not finish"
-                self._emit_message(ChatResponseEmittedMessage(
+                self._emit_message(StatusUpdateEmittedMessage(
                     content=f"Browser agent task {status} in {event.duration_seconds or 0:.1f}s ({event.n_steps} steps).",
                 ))
                 result = {
@@ -406,7 +407,7 @@ class BlueBoxAgent(AbstractAgent):
                 }
 
             elif isinstance(event, BrowserAgentErrorEvent):
-                self._emit_message(ChatResponseEmittedMessage(
+                self._emit_message(StatusUpdateEmittedMessage(
                     content=f"Browser agent error: {event.error}",
                 ))
                 result = {"error": event.error, "execution_id": event.execution_id}
