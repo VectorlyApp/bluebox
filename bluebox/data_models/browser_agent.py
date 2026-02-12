@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 class BrowserAgentStepEvent(BaseModel):
     """SSE 'step' event payload."""
     step_number: int = Field(description="Current step number (1-based)")
-    max_steps: int = Field(description="Maximum steps allowed")
     next_goal: str | None = Field(default=None, description="Agent's stated goal for the next action")
     is_done: bool = Field(default=False, description="Whether the agent marked the task as done on this step")
 

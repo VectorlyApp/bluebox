@@ -377,7 +377,7 @@ class BlueBoxAgent(AbstractAgent):
 
             if current_event == "step":
                 step = BrowserAgentStepEvent.model_validate(data)
-                msg = f"[Step {step.step_number}/{step.max_steps}]"
+                msg = f"[Step {step.step_number}]"
                 if step.next_goal:
                     msg += f" {step.next_goal}"
                 self._emit_message(ChatResponseEmittedMessage(content=msg))
