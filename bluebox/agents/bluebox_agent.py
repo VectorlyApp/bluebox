@@ -101,6 +101,7 @@ class BlueBoxAgent(AbstractAgent):
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         workspace_dir: str = "./bluebox_workspace",
+        auth_headers_provider: Callable[[], dict[str, str]] | None = None,
     ) -> None:
         """
         Initialize the BlueBox Agent.
@@ -115,10 +116,13 @@ class BlueBoxAgent(AbstractAgent):
             existing_chats: Existing Chat messages if loading from persistence.
             workspace_dir: Root workspace directory. Raw routine results go in raw/,
                 agent-generated output files go in outputs/.
+            auth_headers_provider: Optional callback that returns auth headers for
+                downstream API calls. If not provided, falls back to Config.VECTORLY_API_KEY.
         """
         # Validate required config
-        if not Config.VECTORLY_API_KEY:
-            raise ValueError("VECTORLY_API_KEY is not set")
+        self._auth_headers_provider = auth_headers_provider
+        if not auth_headers_provider and not Config.VECTORLY_API_KEY:
+            raise ValueError("Either auth_headers_provider or VECTORLY_API_KEY must be provided")
         if not Config.VECTORLY_API_BASE:
             raise ValueError("VECTORLY_API_BASE is not set")
 
@@ -145,6 +149,18 @@ class BlueBoxAgent(AbstractAgent):
             llm_model,
             self._thread.id,
         )
+
+    ## Auth
+
+    def _get_auth_headers(self) -> dict[str, str]:
+        """Build auth headers for downstream API calls.
+        Uses auth_headers_provider if set, otherwise falls back to Config.VECTORLY_API_KEY."""
+        if self._auth_headers_provider:
+            return self._auth_headers_provider()
+        return {
+            "Content-Type": "application/json",
+            "X-Service-Token": Config.VECTORLY_API_KEY,
+        }
 
     ## Abstract method implementations
 
@@ -206,10 +222,7 @@ class BlueBoxAgent(AbstractAgent):
             task: Task description to search for.
         """
         url = f"{Config.VECTORLY_API_BASE}/routines/semantic-search"
-        headers = {
-            "Content-Type": "application/json",
-            "X-Service-Token": Config.VECTORLY_API_KEY,
-        }
+        headers = self._get_auth_headers()
         payload = {
             "query": task,
             "top_n": 5,
@@ -247,10 +260,7 @@ class BlueBoxAgent(AbstractAgent):
         if validation_errors:
             return {"error": "Parameter validation failed. Fix and retry.\n" + "\n".join(validation_errors)}
 
-        headers = {
-            "Content-Type": "application/json",
-            "X-Service-Token": Config.VECTORLY_API_KEY,
-        }
+        headers = self._get_auth_headers()
 
         def save_result(result: dict[str, Any]) -> dict[str, Any]:
             """Save a single routine result to a JSON file in raw/."""
@@ -327,10 +337,7 @@ class BlueBoxAgent(AbstractAgent):
         if not task or not task.strip():
             return {"error": "Task description cannot be empty"}
 
-        headers = {
-            "Content-Type": "application/json",
-            "X-Service-Token": Config.VECTORLY_API_KEY,
-        }
+        headers = self._get_auth_headers()
 
         payload = {
             "task": task,
