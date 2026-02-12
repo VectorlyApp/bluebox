@@ -7,6 +7,7 @@ Infrastructure utility functions for directory management and file operations.
 import shutil
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import requests
 
@@ -83,6 +84,69 @@ def extract_zip(zip_path: Path, extract_to: Path) -> bool:
     except zipfile.BadZipFile as e:
         print_colored(f"  Extraction failed: {e}", YELLOW)
         return False
+
+
+def read_file_lines(
+    file_path: Path,
+    start_line: int | None = None,
+    end_line: int | None = None,
+    max_lines: int = 200,
+) -> dict[str, Any]:
+    """
+    Read a text file with optional line range, streaming to avoid loading
+    the entire file into memory.
+
+    Args:
+        file_path: Resolved path to the file.
+        start_line: Optional 1-based start line (inclusive).
+        end_line: Optional 1-based end line (inclusive).
+        max_lines: Maximum lines to return when no range is specified.
+
+    Returns:
+        Dict with "content", "line_range", or "error" on failure.
+    """
+    if not file_path.exists():
+        return {"error": f"File not found: {file_path}"}
+    if not file_path.is_file():
+        return {"error": f"Not a file: {file_path}"}
+
+    has_range = start_line is not None or end_line is not None
+    s = (start_line or 1) - 1  # 0-based start index
+    upper = end_line if has_range and end_line is not None else None
+
+    lines: list[str] = []
+    total_lines = 0
+    try:
+        with file_path.open("r") as f:
+            for i, raw in enumerate(f):
+                total_lines = i + 1
+                if i >= s and (upper is None or i < upper):
+                    if not has_range and len(lines) >= max_lines:
+                        continue
+                    lines.append(raw.rstrip("\n"))
+                if upper is not None and total_lines >= upper:
+                    remaining = sum(1 for _ in f)
+                    total_lines += remaining
+                    break
+    except OSError as e:
+        return {"error": f"Failed to read file: {e}"}
+
+    if has_range:
+        e = end_line or total_lines
+        line_range = f"lines {s + 1}-{min(e, total_lines)} of {total_lines}"
+    else:
+        if total_lines > max_lines:
+            line_range = (
+                f"lines 1-{max_lines} of {total_lines} "
+                "(truncated, use start_line/end_line for more)"
+            )
+        else:
+            line_range = f"all {total_lines} lines"
+
+    return {
+        "line_range": line_range,
+        "content": "\n".join(lines),
+    }
 
 
 def resolve_glob_patterns(

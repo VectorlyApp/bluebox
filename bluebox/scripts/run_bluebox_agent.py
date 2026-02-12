@@ -16,18 +16,19 @@ Layout:
 Usage:
     bluebox-agent
     bluebox-agent --model gpt-5.1
-    bluebox-agent --model gpt-5.2 --remote-debugging-address http://127.0.0.1:9222
 """
 
 from __future__ import annotations
 
-import sys
-print("\n  \033[1;31mBlueBox Agent is still a work in progress. Please check back soon.\033[0m\n")
-sys.exit(0)
-
 import argparse
+import shutil
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+import sys
+
+from bluebox.utils.code_execution_sandbox import _is_docker_available
+from bluebox.utils.terminal_utils import ask_yes_no, print_colored, YELLOW
 
 from rich.console import Console
 from rich.text import Text
@@ -55,12 +56,10 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
     def __init__(
         self,
         llm_model: LLMModel,
-        remote_debugging_address: str = "http://127.0.0.1:9222",
-        routine_output_dir: str = "./routine_output",
+        workspace_dir: str = "./bluebox_workspace",
     ) -> None:
-        super().__init__(llm_model, working_dir=routine_output_dir)
-        self._remote_debugging_address = remote_debugging_address
-        self._routine_output_dir = routine_output_dir
+        super().__init__(llm_model, working_dir=workspace_dir)
+        self._workspace_dir = workspace_dir
 
     # ── Abstract implementations ─────────────────────────────────────────
 
@@ -69,8 +68,7 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
-            remote_debugging_address=self._remote_debugging_address,
-            routine_output_dir=self._routine_output_dir,
+            workspace_dir=self._workspace_dir,
         )
 
     def _print_welcome(self) -> None:
@@ -83,7 +81,6 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
 
         lines = [
             f"[dim]Model:[/dim]       {self._llm_model.value}",
-            f"[dim]Remote:[/dim]      {self._remote_debugging_address}",
         ]
         chat.write(Text.from_markup("\n".join(lines)))
         chat.write("")
@@ -108,7 +105,6 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
             f"[dim]Context:[/dim]   {ctx_bar}\n"
             f"[dim](est.)      ~{tokens_used:,} / {self._context_window_size:,}[/dim]\n"
             f"[dim]\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/dim]\n"
-            f"[dim]Remote:[/dim]    {self._remote_debugging_address}\n"
             f"[dim]Time:[/dim]      {now}\n"
         )
 
@@ -117,10 +113,8 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
         if not isinstance(tool_result, dict):
             return []
         paths: list[str] = []
-        # Top-level output_file
         if tool_result.get("output_file"):
             paths.append(f"📄 {tool_result['output_file']}")
-        # Nested results (e.g. execute_routines_parallel)
         for r in tool_result.get("results", []):
             if isinstance(r, dict) and r.get("output_file"):
                 paths.append(f"📄 {r['output_file']}")
@@ -132,18 +126,12 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
 def main() -> None:
     """Entry point for the BlueBox Agent TUI."""
     parser = argparse.ArgumentParser(description="BlueBox Agent \u2014 Multi-pane TUI")
-    parser.add_argument(
-        "--remote-debugging-address",
-        type=str,
-        default="http://127.0.0.1:9222",
-        help="Chrome remote debugging address (default: http://127.0.0.1:9222)",
-    )
     add_model_argument(parser)
     parser.add_argument(
-        "--routine-output-dir",
+        "--workspace-dir",
         type=str,
-        default="./routine_output",
-        help="Directory to save routine execution results as JSON files (default: ./routine_output)",
+        default="./bluebox_workspace",
+        help="Workspace directory. Raw results in raw/, output files in outputs/ (default: ./bluebox_workspace)",
     )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")
@@ -161,7 +149,28 @@ def main() -> None:
 
     llm_model = resolve_model(args.model, console)
 
-    console.print(f"[dim]Remote debugging: {args.remote_debugging_address}[/dim]")
+    # Check if workspace directory exists and offer to clear it
+    workspace_path = Path(args.workspace_dir)
+    if workspace_path.exists() and any(workspace_path.iterdir()):
+        print_colored(f"Workspace directory already exists: {workspace_path.resolve()}", YELLOW)
+        if ask_yes_no("Clear workspace?"):
+            shutil.rmtree(workspace_path)
+            print_colored("Workspace cleared.", YELLOW)
+        else:
+            print_colored("Keeping existing workspace.", YELLOW)
+        print()
+
+    # Warn if Docker is not available (code execution will fall back to blocklist sandbox)
+    if not _is_docker_available():
+        print_colored(
+            "Warning: Docker is not available. Code execution will use the blocklist sandbox,\n"
+            "which is less secure and has limited isolation.",
+            YELLOW,
+        )
+        if not ask_yes_no("Continue without Docker?"):
+            sys.exit(0)
+        print()
+
     console.print(f"[dim]Model: {llm_model.value}[/dim]")
     console.print()
 
@@ -170,8 +179,7 @@ def main() -> None:
 
     app = BlueBoxAgentTUI(
         llm_model=llm_model,
-        remote_debugging_address=args.remote_debugging_address,
-        routine_output_dir=args.routine_output_dir,
+        workspace_dir=args.workspace_dir,
     )
     app.run()
 

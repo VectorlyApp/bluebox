@@ -14,7 +14,7 @@ import ast
 import json
 import time
 from collections import defaultdict
-from typing import get_args
+from typing import Any, get_args
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -461,3 +461,19 @@ class Routine(BaseModel):
                 browser_ws.close()
             except Exception:
                 pass
+
+# NOTE: Update server to use this model.
+class RoutineInfo(BaseModel):
+    """Information about an available routine."""
+    routine_id: str = Field(..., description="Unique identifier of the routine")
+    name: str = Field(..., description="Routine name")
+    description: str = Field(..., description="Routine description")
+    parameters: list[Parameter] = Field(..., description="List of parameters for the routine")
+    
+class RoutineExecutionRequest(BaseModel):
+    """A single routine to execute."""
+    routine_id: str = Field(..., description="The routine_id returned by search_routines")
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Parameters for the routine, keyed by parameter name. Example: {\"origin \": \"California\"}",
+    )
