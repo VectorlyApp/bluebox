@@ -24,6 +24,7 @@ class ChatRole(StrEnum):
     ASSISTANT = "assistant"  # AI
     SYSTEM = "system"
     TOOL = "tool"
+    SYSTEM_STATUS_UPDATE = "system_status_update"
 
 
 class ToolInvocationStatus(StrEnum):
