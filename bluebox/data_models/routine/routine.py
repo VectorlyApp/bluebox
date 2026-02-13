@@ -371,7 +371,9 @@ class Routine(BaseModel):
             timeout: Operation timeout in seconds.
             close_tab_when_done: Whether to close the tab when finished.
             tab_id: If provided, attach to this existing tab. If None, create a new tab.
-            proxy_address: If provided, use this proxy address.
+            proxy_address: If provided, use this proxy address. Not exposed via CLI/SDK
+                because Chrome doesn't support proxy authentication natively — requires
+                a sidecar proxy server to inject credentials.
             incognito: Whether to create an incognito browser context.
         Returns:
             RoutineExecutionResult: Result of the routine execution.
