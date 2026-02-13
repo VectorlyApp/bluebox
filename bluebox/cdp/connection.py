@@ -230,10 +230,11 @@ def cdp_new_tab(
 
         send_cmd, _, recv_until = create_cdp_helpers(browser_ws)
 
-        # Create incognito context if requested
+        # Create a browser context if incognito or proxy is requested.
+        # A proxy requires its own context because proxyServer is a context-level param.
         browser_context_id = None
-        if incognito:
-            ctx_params = None
+        if incognito or proxy_address:
+            ctx_params: dict | None = None
             if proxy_address:
                 ctx_params = {"proxyServer": proxy_address}
             iid = send_cmd("Target.createBrowserContext", params=ctx_params)
