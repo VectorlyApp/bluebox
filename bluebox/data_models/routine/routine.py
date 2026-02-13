@@ -359,6 +359,7 @@ class Routine(BaseModel):
         timeout: float = 180.0,
         close_tab_when_done: bool = True,
         tab_id: str | None = None,
+        proxy_address: str | None = None,
     ) -> RoutineExecutionResult:
         """
         Execute this routine using Chrome DevTools Protocol.
@@ -372,7 +373,7 @@ class Routine(BaseModel):
             timeout: Operation timeout in seconds.
             close_tab_when_done: Whether to close the tab when finished.
             tab_id: If provided, attach to this existing tab. If None, create a new tab.
-
+            proxy_address: If provided, use this proxy address.
         Returns:
             RoutineExecutionResult: Result of the routine execution.
         """
@@ -389,8 +390,9 @@ class Routine(BaseModel):
             else:
                 target_id, browser_context_id, browser_ws = cdp_new_tab(
                     remote_debugging_address=remote_debugging_address,
-                    incognito=self.incognito,
+                    incognito=True,
                     url="about:blank",
+                    proxy_address=proxy_address,
                 )
         except Exception as e:
             return RoutineExecutionResult(

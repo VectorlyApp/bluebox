@@ -58,6 +58,7 @@ def main(
     output: str | None = None,
     download_dir: str | None = None,
     keep_open: bool = False,
+    proxy_address: str | None = None,
 ) -> None:
     """Execute a routine with given parameters."""
     # Parse CLI arguments if not called programmatically
@@ -69,6 +70,7 @@ def main(
         parser.add_argument("--output", type=str, help="Save full RoutineExecutionResult as JSON")
         parser.add_argument("--download-dir", type=str, help="Directory for downloaded files")
         parser.add_argument("--keep-open", action="store_true", help="Keep the browser tab open after execution (default: False)")
+        parser.add_argument("--proxy-address", type=str, help="Proxy server address (e.g. http://host:port)")
         args = parser.parse_args()
         routine_path = args.routine_path
         parameters_path = args.parameters_path
@@ -76,6 +78,7 @@ def main(
         output = args.output
         download_dir = args.download_dir
         keep_open = args.keep_open
+        proxy_address = args.proxy_address
     
     # Validate parameters
     if parameters_path and parameters_dict:
@@ -99,6 +102,7 @@ def main(
             parameters_dict=params,
             timeout=60.0,
             close_tab_when_done=not keep_open,
+            proxy_address=proxy_address,
         )
         logger.info(f"Result: {result}")
         save_result(result, output, download_dir)
