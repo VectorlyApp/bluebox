@@ -103,6 +103,7 @@ class BlueBoxAgent(AbstractAgent):
         existing_chats: list[Chat] | None = None,
         workspace_dir: str = "./bluebox_workspace",
         auth_headers_provider: Callable[[], dict[str, str]] | None = None,
+        s3_upload_fn: Callable[[str, str], str | None] | None = None,
     ) -> None:
         """
         Initialize the BlueBox Agent.
@@ -119,9 +120,13 @@ class BlueBoxAgent(AbstractAgent):
                 agent-generated output files go in outputs/.
             auth_headers_provider: Optional callback that returns auth headers for
                 downstream API calls. If not provided, falls back to Config.VECTORLY_API_KEY.
+            s3_upload_fn: Optional callback to upload saved files to S3.
+                Signature: (local_path: str, filename: str) -> s3_key | None.
+                When provided, files are uploaded to S3 immediately after local save.
         """
         # Validate required config
         self._auth_headers_provider = auth_headers_provider
+        self._s3_upload_fn = s3_upload_fn
         if not auth_headers_provider and not Config.VECTORLY_API_KEY:
             raise ValueError("Either auth_headers_provider or VECTORLY_API_KEY must be provided")
         if not Config.VECTORLY_API_BASE:
@@ -211,6 +216,48 @@ class BlueBoxAgent(AbstractAgent):
             )
         return None
 
+    ## File saving
+
+    def _save_to_workspace(
+        self,
+        directory: Path,
+        filename_prefix: str,
+        content: str,
+        extension: str = ".json",
+    ) -> dict[str, str]:
+        """Save content to a workspace file with a unique timestamped name.
+
+        Args:
+            directory: Target directory (e.g. self._raw_dir or self._outputs_dir).
+            filename_prefix: Name prefix (e.g. "routine_result" or "browser_agent").
+            content: File content to write.
+            extension: File extension including the dot.
+
+        Returns:
+            Dict with "output_file" (local path) and optionally "output_file_s3_key".
+        """
+        directory.mkdir(parents=True, exist_ok=True)
+        with self._counter_lock:
+            self._execution_counter += 1
+            idx = self._execution_counter
+        timestamp = datetime.now().strftime("%y-%m-%d-%H%M%S")
+        filename = f"{timestamp}-{filename_prefix}_{idx}{extension}"
+        output_path = directory / filename
+        output_path.write_text(content)
+        logger.info("Result saved to %s", output_path)
+
+        result = {"output_file": str(output_path)}
+
+        if self._s3_upload_fn:
+            try:
+                s3_key = self._s3_upload_fn(str(output_path), filename)
+                if s3_key:
+                    result["output_file_s3_key"] = s3_key
+            except Exception as e:
+                logger.exception("S3 upload failed for %s: %s", output_path, e)
+
+        return result
+
     ## Tool handlers
 
     @agent_tool()
@@ -266,15 +313,11 @@ class BlueBoxAgent(AbstractAgent):
         def save_result(result: dict[str, Any]) -> dict[str, Any]:
             """Save a single routine result to a JSON file in raw/."""
             try:
-                self._raw_dir.mkdir(parents=True, exist_ok=True)
-                with self._counter_lock:
-                    self._execution_counter += 1
-                    idx = self._execution_counter
-                timestamp = datetime.now().strftime("%y-%m-%d-%H%M%S")
-                output_path = self._raw_dir / f"{timestamp}-routine_result_{idx}.json"
-                output_path.write_text(json.dumps(result, indent=2, default=str))
-                result["output_file"] = str(output_path)
-                logger.info("Routine result saved to %s", output_path)
+                save_info = self._save_to_workspace(
+                    self._raw_dir, "routine_result",
+                    json.dumps(result, indent=2, default=str),
+                )
+                result.update(save_info)
             except Exception as e:
                 logger.exception("Failed to save routine result to file: %s", e)
                 result["output_file_error"] = str(e)
@@ -318,7 +361,6 @@ class BlueBoxAgent(AbstractAgent):
         }
 
     @agent_tool()
-    @token_optimized
     def _execute_browser_task(
         self,
         task: str,
@@ -359,13 +401,27 @@ class BlueBoxAgent(AbstractAgent):
                 timeout=330,
             ) as response:
                 response.raise_for_status()
-                return self._consume_sse_stream(response)
+                result = self._consume_sse_stream(response)
 
         except requests.Timeout:
             return {"error": "Browser agent timed out after 300s"}
         except requests.RequestException as e:
             logger.error("Browser agent API call failed: %s", e)
             return {"error": f"Browser agent request failed: {e}"}
+
+        # Save final_result as a markdown file in outputs/
+        final_result = result.get("final_result")
+        if final_result:
+            try:
+                save_info = self._save_to_workspace(
+                    self._outputs_dir, "browser_agent", final_result, extension=".md",
+                )
+                result.update(save_info)
+            except Exception as e:
+                logger.exception("Failed to save browser agent result: %s", e)
+                result["output_file_error"] = str(e)
+
+        return result
 
     def _consume_sse_stream(self, response: requests.Response) -> dict[str, Any]:
         """Parse an SSE stream from the browser agent and emit progress messages."""
