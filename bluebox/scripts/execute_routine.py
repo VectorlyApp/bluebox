@@ -59,7 +59,6 @@ def main(
     download_dir: str | None = None,
     keep_open: bool = False,
     proxy_address: str | None = None,
-    proxy_via_sidecar: bool = False,
     remote_debugging_address: str = "http://127.0.0.1:9222",
 ) -> None:
     """Execute a routine with given parameters."""
@@ -73,7 +72,6 @@ def main(
         parser.add_argument("--download-dir", type=str, help="Directory for downloaded files")
         parser.add_argument("--keep-open", action="store_true", help="Keep the browser tab open after execution (default: False)")
         parser.add_argument("--proxy-address", type=str, help="Proxy server address (e.g. http://user:pass@host:port)")
-        parser.add_argument("--proxy-via-sidecar", action="store_true", help="Use CDP proxy sidecar for auth (skips Fetch-based auth)")
         parser.add_argument("--remote-debugging-address", type=str, default="http://127.0.0.1:9222", help="Chrome/sidecar address (default: http://127.0.0.1:9222)")
         args = parser.parse_args()
         routine_path = args.routine_path
@@ -83,7 +81,6 @@ def main(
         download_dir = args.download_dir
         keep_open = args.keep_open
         proxy_address = args.proxy_address
-        proxy_via_sidecar = args.proxy_via_sidecar
         remote_debugging_address = args.remote_debugging_address
     
     # Validate parameters
@@ -110,7 +107,6 @@ def main(
             timeout=60.0,
             close_tab_when_done=not keep_open,
             proxy_address=proxy_address,
-            proxy_via_sidecar=proxy_via_sidecar,
         )
         logger.info(f"Result: {result}")
         save_result(result, output, download_dir)

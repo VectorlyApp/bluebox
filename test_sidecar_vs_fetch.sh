@@ -58,10 +58,8 @@ run_method() {
     local addr="http://${user}:${pass}@${host}:${port}"
     local label="${host}:${port}"
 
-    # Sidecar expects user:pass@host:port (no scheme)
-    if [[ "$extra_flags" == *"--proxy-via-sidecar"* ]]; then
-      addr="${user}:${pass}@${host}:${port}"
-    fi
+    # Use user:pass@host:port format (no scheme)
+    addr="${user}:${pass}@${host}:${port}"
 
     local start=$(python3 -c 'import time; print(time.time())')
 
@@ -104,7 +102,7 @@ run_method() {
 }
 
 # ── Method 1: Sidecar ──
-run_method "SIDECAR" "--proxy-via-sidecar --remote-debugging-address $SIDECAR_ADDR"
+run_method "SIDECAR" "--remote-debugging-address $SIDECAR_ADDR"
 
 # ── Method 2: Fetch-based auth (direct to Chrome) ──
 run_method "FETCH AUTH" ""

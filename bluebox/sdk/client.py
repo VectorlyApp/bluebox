@@ -145,7 +145,6 @@ class Bluebox:
         close_tab_when_done: bool = True,
         tab_id: str | None = None,
         proxy_address: str | None = None,
-        proxy_via_sidecar: bool = False,
     ) -> dict[str, Any]:
         """
         Execute a routine with given parameters.
@@ -157,7 +156,6 @@ class Bluebox:
             close_tab_when_done: Whether to close tab when finished.
             tab_id: If provided, attach to this existing tab. If None, create a new tab.
             proxy_address: If provided, use this proxy address.
-            proxy_via_sidecar: If True, skip Fetch-based auth (sidecar handles it).
 
         Returns:
             RoutineExecutionResult with "ok" status and "result" data.
@@ -172,6 +170,5 @@ class Bluebox:
             close_tab_when_done=close_tab_when_done,
             tab_id=tab_id,
             proxy_address=proxy_address,
-            proxy_via_sidecar=proxy_via_sidecar,
         )
 

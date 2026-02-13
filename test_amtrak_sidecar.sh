@@ -54,7 +54,6 @@ for entry in "${PROXIES[@]}"; do
     --routine-path "$ROUTINE" \
     --parameters-dict "$PARAMS" \
     --proxy-address "$addr" \
-    --proxy-via-sidecar \
     --remote-debugging-address "http://127.0.0.1:${SIDECAR_PORT}" \
     2>&1)
 
