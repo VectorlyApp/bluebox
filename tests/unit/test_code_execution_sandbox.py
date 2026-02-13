@@ -835,7 +835,7 @@ class TestDockerExecution:
             _execute_in_docker("print('ok')")
             docker_cmd = mock_run.call_args[0][0]
 
-            # Verify security flags (--user is host uid:gid for volume permissions)
+            # Verify security flags
             assert "--network" in docker_cmd
             assert "none" in docker_cmd
             assert "--read-only" in docker_cmd
