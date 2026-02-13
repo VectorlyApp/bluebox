@@ -359,13 +359,32 @@ class BlueBoxAgent(AbstractAgent):
                 timeout=330,
             ) as response:
                 response.raise_for_status()
-                return self._consume_sse_stream(response)
+                result = self._consume_sse_stream(response)
 
         except requests.Timeout:
             return {"error": "Browser agent timed out after 300s"}
         except requests.RequestException as e:
             logger.error("Browser agent API call failed: %s", e)
             return {"error": f"Browser agent request failed: {e}"}
+
+        # Save final_result as a markdown file in outputs/
+        final_result = result.get("final_result")
+        if final_result:
+            try:
+                self._outputs_dir.mkdir(parents=True, exist_ok=True)
+                with self._counter_lock:
+                    self._execution_counter += 1
+                    idx = self._execution_counter
+                timestamp = datetime.now().strftime("%y-%m-%d-%H%M%S")
+                output_path = self._outputs_dir / f"{timestamp}-browser_agent_{idx}.md"
+                output_path.write_text(final_result)
+                result["output_file"] = str(output_path)
+                logger.info("Browser agent result saved to %s", output_path)
+            except Exception as e:
+                logger.exception("Failed to save browser agent result: %s", e)
+                result["output_file_error"] = str(e)
+
+        return result
 
     def _consume_sse_stream(self, response: requests.Response) -> dict[str, Any]:
         """Parse an SSE stream from the browser agent and emit progress messages."""
