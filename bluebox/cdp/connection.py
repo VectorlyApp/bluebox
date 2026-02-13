@@ -266,17 +266,23 @@ def cdp_new_tab(
         raise RuntimeError(f"Failed to create target: {e}")
 
 
-def dispose_context(remote_debugging_address: str, browser_context_id: str) -> None:
+def dispose_context(browser_context_id: str, ws: WebSocket | None = None, remote_debugging_address: str | None = None) -> None:
     """
-    Dispose of a browser context.
+    Dispose of a browser context. Fire-and-forget.
 
     Args:
-        remote_debugging_address: Chrome debugging server address.
         browser_context_id: The browser context ID to dispose.
+        ws: Existing WebSocket to reuse (preferred — avoids opening a new connection).
+        remote_debugging_address: Chrome debugging server address (used only if ws is None).
     """
-    ws_url = get_browser_websocket_url(remote_debugging_address)
+    owns_ws = False
+    if ws is None:
+        if remote_debugging_address is None:
+            raise ValueError("Either ws or remote_debugging_address must be provided")
+        ws_url = get_browser_websocket_url(remote_debugging_address)
+        ws = websocket.create_connection(ws_url, timeout=10)
+        owns_ws = True
 
-    ws = websocket.create_connection(ws_url, timeout=10)
     try:
         ws.send(
             json.dumps(
@@ -287,14 +293,11 @@ def dispose_context(remote_debugging_address: str, browser_context_id: str) -> N
                 }
             )
         )
-        # Best-effort read with short timeout — don't block on sidecar cleanup
-        ws.settimeout(2)
-        try:
-            json.loads(ws.recv())
-        except Exception:
-            pass
+    except Exception:
+        pass
     finally:
-        try:
-            ws.close()
-        except Exception:
-            pass
+        if owns_ws:
+            try:
+                ws.close()
+            except Exception:
+                pass

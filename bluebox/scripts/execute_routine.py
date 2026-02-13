@@ -72,7 +72,7 @@ def main(
         parser.add_argument("--download-dir", type=str, help="Directory for downloaded files")
         parser.add_argument("--keep-open", action="store_true", help="Keep the browser tab open after execution (default: False)")
         parser.add_argument("--proxy-address", type=str, help="Proxy server address (e.g. http://user:pass@host:port)")
-        parser.add_argument("--remote-debugging-address", type=str, default="http://127.0.0.1:9222", help="Chrome/sidecar address (default: http://127.0.0.1:9222)")
+        parser.add_argument("--remote-debugging-address", type=str, default="http://127.0.0.1:9222", help="Chrome debugging address (default: http://127.0.0.1:9222)")
         args = parser.parse_args()
         routine_path = args.routine_path
         parameters_path = args.parameters_path

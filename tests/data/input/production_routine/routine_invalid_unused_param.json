@@ -1,7 +1,6 @@
 {
   "name": "routine_with_unused_param",
   "description": "This routine should fail because it has an unused parameter",
-  "incognito": true,
   "parameters": [
     {
       "name": "used_param",

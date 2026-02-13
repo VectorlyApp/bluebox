@@ -71,14 +71,6 @@ class TestRoutineConstruction:
         assert routine.description == "test routine"
         assert len(routine.operations) == 3
 
-    def test_incognito_defaults_true(self) -> None:
-        routine = _minimal_routine()
-        assert routine.incognito is True
-
-    def test_incognito_can_be_set_false(self) -> None:
-        routine = _minimal_routine(incognito=False)
-        assert routine.incognito is False
-
     def test_parameters_defaults_empty(self) -> None:
         routine = _minimal_routine()
         assert routine.parameters == []
@@ -122,7 +114,7 @@ class TestRoutineSerialization:
     def test_model_dump_contains_expected_keys(self) -> None:
         routine = _minimal_routine()
         dumped = routine.model_dump()
-        assert set(dumped.keys()) >= {"name", "description", "operations", "incognito", "parameters"}
+        assert set(dumped.keys()) >= {"name", "description", "operations", "parameters"}
 
 
 # ---------------------------------------------------------------------------
@@ -168,9 +160,6 @@ class TestModelSchemaMarkdown:
     def test_routine_required_fields(self, schema: str) -> None:
         assert "- name: str (required)" in schema
         assert "- description: str (required)" in schema
-
-    def test_routine_optional_fields(self, schema: str) -> None:
-        assert "- incognito: bool = true" in schema
 
     def test_navigate_fields(self, schema: str) -> None:
         assert "- url: str (required)" in schema

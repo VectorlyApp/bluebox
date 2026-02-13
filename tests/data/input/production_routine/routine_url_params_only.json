@@ -1,7 +1,6 @@
 {
   "name": "url_params_only_routine",
   "description": "A routine where all parameters are used only in URLs (not in headers or body)",
-  "incognito": true,
   "parameters": [
     {
       "name": "user_id",
