@@ -294,8 +294,8 @@ def dispose_context(browser_context_id: str, ws: WebSocket | None = None, remote
                 }
             )
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Failed to dispose context {browser_context_id}: {e}")
     finally:
         if owns_ws:
             try:
