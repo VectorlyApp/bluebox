@@ -60,6 +60,7 @@ def main(
     keep_open: bool = False,
     proxy_address: str | None = None,
     remote_debugging_address: str = "http://127.0.0.1:9222",
+    incognito: bool = True,
 ) -> None:
     """Execute a routine with given parameters."""
     # Parse CLI arguments if not called programmatically
@@ -73,6 +74,7 @@ def main(
         parser.add_argument("--keep-open", action="store_true", help="Keep the browser tab open after execution (default: False)")
         parser.add_argument("--proxy-address", type=str, help="Proxy server address (e.g. http://user:pass@host:port)")
         parser.add_argument("--remote-debugging-address", type=str, default="http://127.0.0.1:9222", help="Chrome debugging address (default: http://127.0.0.1:9222)")
+        parser.add_argument("--no-incognito", action="store_true", help="Disable incognito mode (default: incognito is on)")
         args = parser.parse_args()
         routine_path = args.routine_path
         parameters_path = args.parameters_path
@@ -82,6 +84,7 @@ def main(
         keep_open = args.keep_open
         proxy_address = args.proxy_address
         remote_debugging_address = args.remote_debugging_address
+        incognito = not args.no_incognito
     
     # Validate parameters
     if parameters_path and parameters_dict:
@@ -107,6 +110,7 @@ def main(
             timeout=60.0,
             close_tab_when_done=not keep_open,
             proxy_address=proxy_address,
+            incognito=incognito,
         )
         logger.info(f"Result: {result}")
         save_result(result, output, download_dir)
