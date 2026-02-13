@@ -1,7 +1,6 @@
 {
   "name": "routine_with_escaped_string_params",
   "description": "A routine demonstrating proper escaping of string parameters vs non-string parameters. String params use escaped quotes in headers and body, while integers/numbers do not need escaping.",
-  "incognito": true,
   "parameters": [
     {
       "name": "api_key",

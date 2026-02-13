@@ -1,7 +1,6 @@
 {
   "name": "Routine for {{user_id}}",
   "description": "This routine has a parameter placeholder in the name which should fail validation",
-  "incognito": true,
   "parameters": [
     {
       "name": "user_id",

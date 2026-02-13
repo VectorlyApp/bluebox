@@ -35,7 +35,7 @@ from bluebox.data_models.routine.parameter import (
     BUILTIN_PARAMETERS,
     VALID_PLACEHOLDER_PREFIXES,
 )
-from bluebox.cdp.connection import cdp_new_tab, cdp_attach_to_existing_tab
+from bluebox.cdp.connection import cdp_new_tab, cdp_attach_to_existing_tab, dispose_context
 from bluebox.data_models.routine.endpoint import Endpoint
 from bluebox.utils.pydantic_utils import format_model_fields
 from bluebox.data_models.routine.placeholder import (
@@ -60,10 +60,6 @@ class Routine(BaseModel):
     name: str
     description: str
     operations: list[RoutineOperationUnion]
-    incognito: bool = Field(
-        default=True,
-        description="Whether to use incognito mode when executing the routine"
-    )
     parameters: list[Parameter] = Field(
         default_factory=list,
         description="List of parameters"
@@ -455,11 +451,9 @@ class Routine(BaseModel):
         finally:
             try:
                 if close_tab_when_done:
-                    # Fire-and-forget: close tab and dispose context on existing ws, no waiting
                     send_cmd(browser_ws, "Target.closeTarget", {"targetId": target_id})
-                    if browser_context_id and self.incognito:
-                        send_cmd(browser_ws, "Target.disposeBrowserContext",
-                                 {"browserContextId": browser_context_id})
+                    if browser_context_id:
+                        dispose_context(browser_context_id, ws=browser_ws)
             except Exception:
                 pass
             try:
