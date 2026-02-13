@@ -1,7 +1,6 @@
 {
   "name": "routine_with_invalid_description",
   "description": "This routine has a {{param}} placeholder in the description which should fail validation",
-  "incognito": true,
   "parameters": [
     {
       "name": "query",

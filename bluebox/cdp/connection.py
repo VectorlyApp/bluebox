@@ -21,6 +21,7 @@ from websocket import WebSocket
 
 from bluebox.utils.logger import get_logger
 
+
 logger = get_logger(name=__name__)
 
 
@@ -193,6 +194,7 @@ def cdp_new_tab(
     remote_debugging_address: str = "http://127.0.0.1:9222",
     incognito: bool = True,
     url: str = "about:blank",
+    proxy_address: str | None = None,
 ) -> tuple[str, str | None, WebSocket]:
     """
     Create a new browser tab and return target info and browser-level WebSocket.
@@ -201,7 +203,7 @@ def cdp_new_tab(
         remote_debugging_address: Chrome debugging server address.
         incognito: Whether to create an incognito context.
         url: Initial URL for the new tab.
-
+        proxy_address: If provided, use this proxy address.
     Returns:
         Tuple of (target_id, browser_context_id, browser_ws) where browser_ws is the
         BROWSER-LEVEL WebSocket connection (not page-level).
@@ -228,10 +230,14 @@ def cdp_new_tab(
 
         send_cmd, _, recv_until = create_cdp_helpers(browser_ws)
 
-        # Create incognito context if requested
+        # Create a browser context if incognito or proxy is requested.
+        # A proxy requires its own context because proxyServer is a context-level param.
         browser_context_id = None
-        if incognito:
-            iid = send_cmd("Target.createBrowserContext")
+        if incognito or proxy_address:
+            ctx_params: dict | None = None
+            if proxy_address:
+                ctx_params = {"proxyServer": proxy_address}
+            iid = send_cmd("Target.createBrowserContext", params=ctx_params)
             reply = recv_until(lambda m: m.get("id") == iid, time.time() + 10)
             if "error" in reply:
                 raise RuntimeError(reply["error"])
@@ -261,17 +267,23 @@ def cdp_new_tab(
         raise RuntimeError(f"Failed to create target: {e}")
 
 
-def dispose_context(remote_debugging_address: str, browser_context_id: str) -> None:
+def dispose_context(browser_context_id: str, ws: WebSocket | None = None, remote_debugging_address: str | None = None) -> None:
     """
-    Dispose of a browser context.
+    Dispose of a browser context. Fire-and-forget.
 
     Args:
-        remote_debugging_address: Chrome debugging server address.
         browser_context_id: The browser context ID to dispose.
+        ws: Existing WebSocket to reuse (preferred — avoids opening a new connection).
+        remote_debugging_address: Chrome debugging server address (used only if ws is None).
     """
-    ws_url = get_browser_websocket_url(remote_debugging_address)
+    owns_ws = False
+    if ws is None:
+        if remote_debugging_address is None:
+            raise ValueError("Either ws or remote_debugging_address must be provided")
+        ws_url = get_browser_websocket_url(remote_debugging_address)
+        ws = websocket.create_connection(ws_url, timeout=10)
+        owns_ws = True
 
-    ws = websocket.create_connection(ws_url, timeout=10)
     try:
         ws.send(
             json.dumps(
@@ -282,10 +294,11 @@ def dispose_context(remote_debugging_address: str, browser_context_id: str) -> N
                 }
             )
         )
-        # read one reply (best-effort)
-        json.loads(ws.recv())
+    except Exception as e:
+        logger.debug(f"Failed to dispose context {browser_context_id}: {e}")
     finally:
-        try:
-            ws.close()
-        except Exception:
-            pass
+        if owns_ws:
+            try:
+                ws.close()
+            except Exception:
+                pass

@@ -44,6 +44,7 @@ from bluebox.data_models.routine.placeholder import (
 )
 from bluebox.utils.data_utils import extract_base_url_from_url
 from bluebox.utils.logger import get_logger
+
 from bluebox.utils.web_socket_utils import send_cmd, recv_until
 
 logger = get_logger(name=__name__)
@@ -59,10 +60,6 @@ class Routine(BaseModel):
     name: str
     description: str
     operations: list[RoutineOperationUnion]
-    incognito: bool = Field(
-        default=True,
-        description="Whether to use incognito mode when executing the routine"
-    )
     parameters: list[Parameter] = Field(
         default_factory=list,
         description="List of parameters"
@@ -359,6 +356,8 @@ class Routine(BaseModel):
         timeout: float = 180.0,
         close_tab_when_done: bool = True,
         tab_id: str | None = None,
+        proxy_address: str | None = None,
+        incognito: bool = True,
     ) -> RoutineExecutionResult:
         """
         Execute this routine using Chrome DevTools Protocol.
@@ -372,7 +371,10 @@ class Routine(BaseModel):
             timeout: Operation timeout in seconds.
             close_tab_when_done: Whether to close the tab when finished.
             tab_id: If provided, attach to this existing tab. If None, create a new tab.
-
+            proxy_address: If provided, use this proxy address. Not exposed via CLI/SDK
+                because Chrome doesn't support proxy authentication natively — requires
+                a sidecar proxy server to inject credentials.
+            incognito: Whether to create an incognito browser context.
         Returns:
             RoutineExecutionResult: Result of the routine execution.
         """
@@ -389,8 +391,9 @@ class Routine(BaseModel):
             else:
                 target_id, browser_context_id, browser_ws = cdp_new_tab(
                     remote_debugging_address=remote_debugging_address,
-                    incognito=self.incognito,
+                    incognito=incognito,
                     url="about:blank",
+                    proxy_address=proxy_address,
                 )
         except Exception as e:
             return RoutineExecutionResult(
@@ -453,8 +456,8 @@ class Routine(BaseModel):
             try:
                 if close_tab_when_done:
                     send_cmd(browser_ws, "Target.closeTarget", {"targetId": target_id})
-                    if browser_context_id and self.incognito:
-                        dispose_context(remote_debugging_address, browser_context_id)
+                    if browser_context_id:
+                        dispose_context(browser_context_id, ws=browser_ws)
             except Exception:
                 pass
             try:

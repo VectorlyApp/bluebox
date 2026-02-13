@@ -21,11 +21,8 @@
   "operations": [
     {
       "type": "navigate",
-      "url": "https://corp.sec.state.ma.us/corpweb/CorpSearch/CorpSearch.aspx"
-    },
-    {
-      "type": "sleep",
-      "timeout_seconds": 3.5
+      "url": "https://corp.sec.state.ma.us/corpweb/CorpSearch/CorpSearch.aspx",
+      "sleep_after_navigation_seconds": 2
     },
     {
       "type": "scroll",
