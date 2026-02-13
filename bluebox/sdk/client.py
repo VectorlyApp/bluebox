@@ -144,17 +144,19 @@ class Bluebox:
         timeout: float = 180.0,
         close_tab_when_done: bool = True,
         tab_id: str | None = None,
+        proxy_address: str | None = None,
     ) -> dict[str, Any]:
         """
         Execute a routine with given parameters.
-        
+
         Args:
             routine: Routine to execute.
             parameters: Parameters for the routine.
             timeout: Operation timeout in seconds.
             close_tab_when_done: Whether to close tab when finished.
             tab_id: If provided, attach to this existing tab. If None, create a new tab.
-        
+            proxy_address: If provided, use this proxy address.
+
         Returns:
             RoutineExecutionResult with "ok" status and "result" data.
         """
@@ -167,5 +169,6 @@ class Bluebox:
             timeout=timeout,
             close_tab_when_done=close_tab_when_done,
             tab_id=tab_id,
+            proxy_address=proxy_address,
         )
 

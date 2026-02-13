@@ -193,6 +193,7 @@ def cdp_new_tab(
     remote_debugging_address: str = "http://127.0.0.1:9222",
     incognito: bool = True,
     url: str = "about:blank",
+    proxy_address: str | None = None,
 ) -> tuple[str, str | None, WebSocket]:
     """
     Create a new browser tab and return target info and browser-level WebSocket.
@@ -201,7 +202,7 @@ def cdp_new_tab(
         remote_debugging_address: Chrome debugging server address.
         incognito: Whether to create an incognito context.
         url: Initial URL for the new tab.
-
+        proxy_address: If provided, use this proxy address.
     Returns:
         Tuple of (target_id, browser_context_id, browser_ws) where browser_ws is the
         BROWSER-LEVEL WebSocket connection (not page-level).
@@ -231,7 +232,8 @@ def cdp_new_tab(
         # Create incognito context if requested
         browser_context_id = None
         if incognito:
-            iid = send_cmd("Target.createBrowserContext")
+            ctx_params = {"proxyServer": proxy_address} if proxy_address else None
+            iid = send_cmd("Target.createBrowserContext", params=ctx_params)
             reply = recv_until(lambda m: m.get("id") == iid, time.time() + 10)
             if "error" in reply:
                 raise RuntimeError(reply["error"])

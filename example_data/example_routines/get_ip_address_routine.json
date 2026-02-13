@@ -1,0 +1,32 @@
+{
+    "name": "get_ip_address",
+    "description": "A routine to fetch the current public IP address",
+    "incognito": true,
+    "operations": [
+        {
+            "type": "navigate",
+            "url": "https://api.ipify.org/"
+        },
+        {
+            "type": "sleep",
+            "timeout_seconds": 2.5
+        },
+        {
+            "type": "fetch",
+            "endpoint": {
+                "url": "https://api.ipify.org/",
+                "description": "Get IP address.",
+                "method": "GET",
+                "headers": {},
+                "body": {},
+                "credentials": "same-origin"
+            },
+            "session_storage_key": "ip_address"
+        },
+        {
+            "type": "return",
+            "session_storage_key": "ip_address"
+        }
+    ],
+    "parameters": []
+}
