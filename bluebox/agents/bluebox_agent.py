@@ -210,6 +210,15 @@ class BlueBoxAgent(AbstractAgent):
             )
         return None
 
+    ## Streaming helpers
+
+    def _stream_or_emit(self, text: str) -> None:
+        """Stream text as a chunk if streaming is available, otherwise emit as a message."""
+        if self._stream_chunk_callable:
+            self._stream_chunk_callable(text + "\n")
+        else:
+            self._emit_message(ChatResponseEmittedMessage(content=text))
+
     ## Tool handlers
 
     @agent_tool()
@@ -345,9 +354,7 @@ class BlueBoxAgent(AbstractAgent):
             "use_vision": True,
         }
 
-        self._emit_message(ChatResponseEmittedMessage(
-            content="Starting browser agent task... This may take a few minutes.",
-        ))
+        self._stream_or_emit("Starting browser agent task. This may take a few minutes...\n")
 
         try:
             with requests.post(
@@ -369,6 +376,8 @@ class BlueBoxAgent(AbstractAgent):
     def _consume_sse_stream(self, response: requests.Response) -> dict[str, Any]:
         """Parse an SSE stream from the browser agent and emit progress messages."""
         result: dict[str, Any] = {"error": "Stream ended without a terminal event"}
+        step_counter = 0
+        steps: list[dict[str, Any]] = []
 
         for line in response.iter_lines(decode_unicode=True):
             if not line or not line.startswith("data: "):
@@ -383,18 +392,22 @@ class BlueBoxAgent(AbstractAgent):
             event = sse_event_adapter.validate_python(data)
 
             if isinstance(event, BrowserAgentStepEvent):
-                msg = f"[Step {event.step_number}]"
+                step_counter += 1
+                if step_counter > 1:
+                    self._stream_or_emit("")
+                msg = f"[Step {step_counter}]"
                 if event.next_goal:
                     msg += f" {event.next_goal}"
-                self._emit_message(ChatResponseEmittedMessage(content=msg))
+                self._stream_or_emit(msg)
+                steps.append({"step": step_counter, "goal": event.next_goal, "is_done": event.is_done})
 
             elif isinstance(event, BrowserAgentDoneEvent):
                 status = "succeeded" if event.is_successful else "completed (not confirmed successful)"
                 if not event.is_done:
                     status = "did not finish"
-                self._emit_message(ChatResponseEmittedMessage(
-                    content=f"Browser agent task {status} in {event.duration_seconds or 0:.1f}s ({event.n_steps} steps).",
-                ))
+                self._stream_or_emit(
+                    f"Browser agent task {status} in {event.duration_seconds or 0:.1f}s ({event.n_steps} steps).",
+                )
                 result = {
                     "success": event.is_successful or False,
                     "is_done": event.is_done,
@@ -403,13 +416,12 @@ class BlueBoxAgent(AbstractAgent):
                     "n_steps": event.n_steps,
                     "duration_seconds": event.duration_seconds,
                     "execution_id": event.execution_id,
+                    "steps": steps,
                 }
 
             elif isinstance(event, BrowserAgentErrorEvent):
-                self._emit_message(ChatResponseEmittedMessage(
-                    content=f"Browser agent error: {event.error}",
-                ))
-                result = {"error": event.error, "execution_id": event.execution_id}
+                self._stream_or_emit(f"Browser agent error: {event.error}")
+                result = {"error": event.error, "execution_id": event.execution_id, "steps": steps}
 
         return result
 
