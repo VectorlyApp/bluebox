@@ -53,7 +53,6 @@ for idx in $(seq 0 $((TOTAL - 1))); do
       --routine-path "$ROUTINE" \
       --parameters-dict "$PARAMS" \
       --proxy-address "$addr" \
-      --proxy-via-sidecar \
       --remote-debugging-address "$SIDECAR_ADDR" \
       2>&1)
 
