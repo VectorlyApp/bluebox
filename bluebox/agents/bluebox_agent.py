@@ -211,6 +211,36 @@ class BlueBoxAgent(AbstractAgent):
             )
         return None
 
+    ## File saving
+
+    def _save_to_workspace(
+        self,
+        directory: Path,
+        filename_prefix: str,
+        content: str,
+        extension: str = ".json",
+    ) -> str:
+        """Save content to a workspace file with a unique timestamped name.
+
+        Args:
+            directory: Target directory (e.g. self._raw_dir or self._outputs_dir).
+            filename_prefix: Name prefix (e.g. "routine_result" or "browser_agent").
+            content: File content to write.
+            extension: File extension including the dot.
+
+        Returns:
+            The absolute path of the saved file.
+        """
+        directory.mkdir(parents=True, exist_ok=True)
+        with self._counter_lock:
+            self._execution_counter += 1
+            idx = self._execution_counter
+        timestamp = datetime.now().strftime("%y-%m-%d-%H%M%S")
+        output_path = directory / f"{timestamp}-{filename_prefix}_{idx}{extension}"
+        output_path.write_text(content)
+        logger.info("Result saved to %s", output_path)
+        return str(output_path)
+
     ## Tool handlers
 
     @agent_tool()
@@ -266,15 +296,10 @@ class BlueBoxAgent(AbstractAgent):
         def save_result(result: dict[str, Any]) -> dict[str, Any]:
             """Save a single routine result to a JSON file in raw/."""
             try:
-                self._raw_dir.mkdir(parents=True, exist_ok=True)
-                with self._counter_lock:
-                    self._execution_counter += 1
-                    idx = self._execution_counter
-                timestamp = datetime.now().strftime("%y-%m-%d-%H%M%S")
-                output_path = self._raw_dir / f"{timestamp}-routine_result_{idx}.json"
-                output_path.write_text(json.dumps(result, indent=2, default=str))
-                result["output_file"] = str(output_path)
-                logger.info("Routine result saved to %s", output_path)
+                result["output_file"] = self._save_to_workspace(
+                    self._raw_dir, "routine_result",
+                    json.dumps(result, indent=2, default=str),
+                )
             except Exception as e:
                 logger.exception("Failed to save routine result to file: %s", e)
                 result["output_file_error"] = str(e)
@@ -370,15 +395,9 @@ class BlueBoxAgent(AbstractAgent):
         final_result = result.get("final_result")
         if final_result:
             try:
-                self._outputs_dir.mkdir(parents=True, exist_ok=True)
-                with self._counter_lock:
-                    self._execution_counter += 1
-                    idx = self._execution_counter
-                timestamp = datetime.now().strftime("%y-%m-%d-%H%M%S")
-                output_path = self._outputs_dir / f"{timestamp}-browser_agent_{idx}.md"
-                output_path.write_text(final_result)
-                result["output_file"] = str(output_path)
-                logger.info("Browser agent result saved to %s", output_path)
+                result["output_file"] = self._save_to_workspace(
+                    self._outputs_dir, "browser_agent", final_result, extension=".md",
+                )
             except Exception as e:
                 logger.exception("Failed to save browser agent result: %s", e)
                 result["output_file_error"] = str(e)
