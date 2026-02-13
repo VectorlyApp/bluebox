@@ -58,7 +58,6 @@ def main(
     output: str | None = None,
     download_dir: str | None = None,
     keep_open: bool = False,
-    proxy_address: str | None = None,
     remote_debugging_address: str = "http://127.0.0.1:9222",
     incognito: bool = True,
 ) -> None:
@@ -72,7 +71,6 @@ def main(
         parser.add_argument("--output", type=str, help="Save full RoutineExecutionResult as JSON")
         parser.add_argument("--download-dir", type=str, help="Directory for downloaded files")
         parser.add_argument("--keep-open", action="store_true", help="Keep the browser tab open after execution (default: False)")
-        parser.add_argument("--proxy-address", type=str, help="Proxy server address (e.g. http://user:pass@host:port)")
         parser.add_argument("--remote-debugging-address", type=str, default="http://127.0.0.1:9222", help="Chrome debugging address (default: http://127.0.0.1:9222)")
         parser.add_argument("--no-incognito", action="store_true", help="Disable incognito mode (default: incognito is on)")
         args = parser.parse_args()
@@ -82,7 +80,6 @@ def main(
         output = args.output
         download_dir = args.download_dir
         keep_open = args.keep_open
-        proxy_address = args.proxy_address
         remote_debugging_address = args.remote_debugging_address
         incognito = not args.no_incognito
     
@@ -109,7 +106,6 @@ def main(
             remote_debugging_address=remote_debugging_address,
             timeout=60.0,
             close_tab_when_done=not keep_open,
-            proxy_address=proxy_address,
             incognito=incognito,
         )
         logger.info(f"Result: {result}")
