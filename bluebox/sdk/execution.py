@@ -41,6 +41,7 @@ class RoutineExecutor:
         close_tab_when_done: bool = True,
         tab_id: str | None = None,
         proxy_address: str | None = None,
+        proxy_via_sidecar: bool = False,
     ) -> RoutineExecutionResult:
         """
         Execute a routine.
@@ -52,6 +53,7 @@ class RoutineExecutor:
             close_tab_when_done: Whether to close the tab when finished.
             tab_id: If provided, attach to this existing tab. If None, create a new tab.
             proxy_address: If provided, use this proxy address.
+            proxy_via_sidecar: If True, skip Fetch-based auth (sidecar handles it).
 
         Returns:
             RoutineExecutionResult with execution status and data.
@@ -63,4 +65,5 @@ class RoutineExecutor:
             close_tab_when_done=close_tab_when_done,
             tab_id=tab_id,
             proxy_address=proxy_address,
+            proxy_via_sidecar=proxy_via_sidecar,
         )

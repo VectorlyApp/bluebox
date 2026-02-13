@@ -264,13 +264,11 @@ class RoutineFetchOperation(RoutineOperation):
         )
 
         # Execute the fetch
-        ws = routine_execution_context.ws
         session_id = routine_execution_context.session_id
         timeout = routine_execution_context.timeout
 
         logger.info(f"Sending Runtime.evaluate for fetch with timeout={timeout}s")
-        eval_id = send_cmd(
-            ws,
+        eval_id = routine_execution_context.send_cmd(
             "Runtime.evaluate",
             {
                 "expression": expr,
@@ -281,7 +279,9 @@ class RoutineFetchOperation(RoutineOperation):
             session_id=session_id,
         )
 
-        reply = recv_until(ws, lambda m: m.get("id") == eval_id, time.time() + timeout)
+        reply = routine_execution_context.recv_until(
+            lambda m: m.get("id") == eval_id, time.time() + timeout
+        )
 
         if "error" in reply:
             logger.error(f"Error in _execute_fetch (CDP error): {reply['error']}")

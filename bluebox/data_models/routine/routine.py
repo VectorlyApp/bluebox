@@ -35,7 +35,7 @@ from bluebox.data_models.routine.parameter import (
     BUILTIN_PARAMETERS,
     VALID_PLACEHOLDER_PREFIXES,
 )
-from bluebox.cdp.connection import cdp_new_tab, cdp_attach_to_existing_tab, dispose_context
+from bluebox.cdp.connection import cdp_new_tab, cdp_attach_to_existing_tab
 from bluebox.data_models.routine.endpoint import Endpoint
 from bluebox.utils.pydantic_utils import format_model_fields
 from bluebox.data_models.routine.placeholder import (
@@ -44,6 +44,7 @@ from bluebox.data_models.routine.placeholder import (
 )
 from bluebox.utils.data_utils import extract_base_url_from_url
 from bluebox.utils.logger import get_logger
+
 from bluebox.utils.web_socket_utils import send_cmd, recv_until
 
 logger = get_logger(name=__name__)
@@ -360,6 +361,7 @@ class Routine(BaseModel):
         close_tab_when_done: bool = True,
         tab_id: str | None = None,
         proxy_address: str | None = None,
+        proxy_via_sidecar: bool = False,
     ) -> RoutineExecutionResult:
         """
         Execute this routine using Chrome DevTools Protocol.
@@ -374,6 +376,7 @@ class Routine(BaseModel):
             close_tab_when_done: Whether to close the tab when finished.
             tab_id: If provided, attach to this existing tab. If None, create a new tab.
             proxy_address: If provided, use this proxy address.
+            proxy_via_sidecar: If True, proxy auth is handled by sidecar.
         Returns:
             RoutineExecutionResult: Result of the routine execution.
         """
@@ -393,6 +396,7 @@ class Routine(BaseModel):
                     incognito=True,
                     url="about:blank",
                     proxy_address=proxy_address,
+                    proxy_via_sidecar=proxy_via_sidecar,
                 )
         except Exception as e:
             return RoutineExecutionResult(
@@ -454,9 +458,11 @@ class Routine(BaseModel):
         finally:
             try:
                 if close_tab_when_done:
+                    # Fire-and-forget: close tab and dispose context on existing ws, no waiting
                     send_cmd(browser_ws, "Target.closeTarget", {"targetId": target_id})
                     if browser_context_id and self.incognito:
-                        dispose_context(remote_debugging_address, browser_context_id)
+                        send_cmd(browser_ws, "Target.disposeBrowserContext",
+                                 {"browserContextId": browser_context_id})
             except Exception:
                 pass
             try:
