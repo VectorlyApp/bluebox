@@ -318,7 +318,6 @@ class BlueBoxAgent(AbstractAgent):
         }
 
     @agent_tool()
-    @token_optimized
     def _execute_browser_task(
         self,
         task: str,
