@@ -117,19 +117,20 @@ async def handle_proxy_client(
 # ── ProxyManager: single event loop, dynamic ports ──────────────────────────
 
 class ProxyManager:
-    def __init__(self, port_base: int = 18001) -> None:
-        self._port_base = port_base
+    def __init__(self, port_start: int = 18001, port_count: int = 10) -> None:
+        self._port_start = port_start
+        self._port_count = port_count
+        self._next_idx = 0
         self._servers: dict[int, asyncio.Server] = {}
-        self._free_ports: list[int] = []  # recycled ports ready for reuse
 
     async def allocate(self, upstream_host: str, upstream_port: int, username: str, password: str) -> int:
-        if self._free_ports:
-            port = self._free_ports.pop()
-        else:
-            port = self._port_base + len(self._servers) + len(self._free_ports)
-            # Find next unused port
-            while port in self._servers:
-                port += 1
+        port = self._port_start + (self._next_idx % self._port_count)
+        self._next_idx += 1
+
+        # If port still has a lingering server, close it first
+        old = self._servers.pop(port, None)
+        if old:
+            old.close()
 
         auth_b64 = base64.b64encode(f"{username}:{password}".encode()).decode()
 
@@ -138,16 +139,14 @@ class ProxyManager:
 
         server = await asyncio.start_server(on_client, "127.0.0.1", port)
         self._servers[port] = server
-        log.info("proxy port %d UP → %s:%d (user: ...%s)", port, upstream_host, upstream_port, username[-20:])
+        log.info("proxy port %d UP → %s:%d (user: ...%s)  [active=%d]", port, upstream_host, upstream_port, username[-20:], len(self._servers))
         return port
 
     async def release(self, port: int) -> None:
         server = self._servers.pop(port, None)
         if server:
             server.close()
-            await server.wait_closed()
-            self._free_ports.append(port)
-            log.info("proxy port %d DOWN (recycled)", port)
+            log.info("proxy port %d DOWN  [active=%d]", port, len(self._servers))
 
     async def release_all(self) -> None:
         for port in list(self._servers):
@@ -157,27 +156,29 @@ class ProxyManager:
 # ── CDP WebSocket Sidecar ───────────────────────────────────────────────────
 
 def parse_proxy_with_auth(proxy_server: str) -> tuple[str, int, str, str] | None:
-    """Parse 'user:pass@host:port' → (host, port, user, pass) or None if no auth."""
-    if "@" not in proxy_server:
+    """Parse proxy address with auth → (host, port, user, pass) or None if no auth.
+
+    Supports formats:
+    - user:pass@host:port
+    - http://user:pass@host:port
+    """
+    addr = proxy_server.strip()
+    if not addr.startswith(("http://", "https://")):
+        addr = f"http://{addr}"
+    parsed = urlparse(addr)
+    if not parsed.username or not parsed.password or not parsed.hostname or not parsed.port:
         return None
-    auth_part, hostport = proxy_server.rsplit("@", 1)
-    if ":" not in auth_part:
-        return None
-    username, password = auth_part.split(":", 1)
-    if ":" not in hostport:
-        return None
-    host, port_str = hostport.rsplit(":", 1)
-    return host, int(port_str), username, password
+    return parsed.hostname, parsed.port, parsed.username, parsed.password
 
 
 class CDPProxySidecar:
-    def __init__(self, chrome_host: str, chrome_port: int, listen_port: int, proxy_port_base: int = 18001) -> None:
+    def __init__(self, chrome_host: str, chrome_port: int, listen_port: int) -> None:
         self.chrome_host = chrome_host
         self.chrome_port = chrome_port
         self.listen_port = listen_port
         self.chrome_http = f"http://{chrome_host}:{chrome_port}"
         self._chrome_ws_url: str | None = None
-        self.proxy_mgr = ProxyManager(proxy_port_base)
+        self.proxy_mgr = ProxyManager()
 
         # Shared state: browserContextId → local proxy port
         self._context_to_port: dict[str, int] = {}
@@ -340,10 +341,9 @@ def main() -> None:
     parser.add_argument("--chrome-host", default="127.0.0.1", help="Chrome debug host (default: 127.0.0.1)")
     parser.add_argument("--chrome-port", type=int, default=9222, help="Chrome debug port (default: 9222)")
     parser.add_argument("--listen-port", type=int, default=9223, help="Sidecar listen port (default: 9223)")
-    parser.add_argument("--proxy-port-base", type=int, default=18001, help="Base port for local proxy listeners (default: 18001)")
     args = parser.parse_args()
 
-    sidecar = CDPProxySidecar(args.chrome_host, args.chrome_port, args.listen_port, args.proxy_port_base)
+    sidecar = CDPProxySidecar(args.chrome_host, args.chrome_port, args.listen_port)
     try:
         asyncio.run(sidecar.run())
     except KeyboardInterrupt:

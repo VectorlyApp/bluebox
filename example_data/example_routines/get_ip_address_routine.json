@@ -5,11 +5,8 @@
     "operations": [
         {
             "type": "navigate",
-            "url": "https://api.ipify.org/"
-        },
-        {
-            "type": "sleep",
-            "timeout_seconds": 2.5
+            "url": "https://api.ipify.org/",
+            "sleep_after_navigation_seconds": 0.1
         },
         {
             "type": "fetch",

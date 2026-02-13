@@ -20,6 +20,7 @@ import websocket
 from websocket import WebSocket
 
 from bluebox.utils.logger import get_logger
+from bluebox.utils.proxy_utils import parse_proxy_address
 
 logger = get_logger(name=__name__)
 
@@ -194,6 +195,7 @@ def cdp_new_tab(
     incognito: bool = True,
     url: str = "about:blank",
     proxy_address: str | None = None,
+    proxy_via_sidecar: bool = False,
 ) -> tuple[str, str | None, WebSocket]:
     """
     Create a new browser tab and return target info and browser-level WebSocket.
@@ -203,6 +205,7 @@ def cdp_new_tab(
         incognito: Whether to create an incognito context.
         url: Initial URL for the new tab.
         proxy_address: If provided, use this proxy address.
+        proxy_via_sidecar: If True, pass raw proxy address (with creds) for sidecar to handle.
     Returns:
         Tuple of (target_id, browser_context_id, browser_ws) where browser_ws is the
         BROWSER-LEVEL WebSocket connection (not page-level).
@@ -232,7 +235,14 @@ def cdp_new_tab(
         # Create incognito context if requested
         browser_context_id = None
         if incognito:
-            ctx_params = {"proxyServer": proxy_address} if proxy_address else None
+            ctx_params = None
+            if proxy_address:
+                if proxy_via_sidecar:
+                    # Sidecar intercepts createBrowserContext and handles auth itself
+                    ctx_params = {"proxyServer": proxy_address}
+                else:
+                    proxy_creds = parse_proxy_address(proxy_address)
+                    ctx_params = {"proxyServer": proxy_creds.host_port}
             iid = send_cmd("Target.createBrowserContext", params=ctx_params)
             reply = recv_until(lambda m: m.get("id") == iid, time.time() + 10)
             if "error" in reply:
@@ -284,8 +294,12 @@ def dispose_context(remote_debugging_address: str, browser_context_id: str) -> N
                 }
             )
         )
-        # read one reply (best-effort)
-        json.loads(ws.recv())
+        # Best-effort read with short timeout — don't block on sidecar cleanup
+        ws.settimeout(2)
+        try:
+            json.loads(ws.recv())
+        except Exception:
+            pass
     finally:
         try:
             ws.close()
