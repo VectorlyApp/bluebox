@@ -241,7 +241,7 @@ class NetworkSpecialist(AbstractSpecialist):
         Search RESPONSE bodies by a list of terms.
 
         Searches HTML/JSON response bodies (excludes JS, images, media) and returns
-        top 10-20 entries ranked by relevance score. Pass 20-30 search terms for best results.
+        top 50 entries ranked by relevance score. Pass 20-30 search terms for best results.
 
         Args:
             terms: List of 20-30 search terms to look for in response bodies.
@@ -250,7 +250,7 @@ class NetworkSpecialist(AbstractSpecialist):
         if not terms:
             return {"error": "No search terms provided"}
 
-        results = self._network_data_loader.search_entries_by_terms(terms, top_n=20)
+        results = self._network_data_loader.search_entries_by_terms(terms, top_n=50)
 
         if not results:
             return {
@@ -450,7 +450,7 @@ class NetworkSpecialist(AbstractSpecialist):
         return {
             "terms_searched": len(terms),
             "results_found": len(results),
-            "results": results[:20],  # Top 20
+            "results": results[:50],  # Top 50
         }
 
     @agent_tool()
@@ -502,5 +502,5 @@ class NetworkSpecialist(AbstractSpecialist):
             "case_sensitive": case_sensitive,
             "regex": regex,
             "results_found": len(results),
-            "results": results[:20],  # Top 20
+            "results": results[:50],  # Top 50
         }

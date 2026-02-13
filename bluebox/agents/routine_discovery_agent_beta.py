@@ -142,9 +142,11 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
            ```
            create_task(
                agent_type="value_trace_resolver",
-               prompt="Trace the origin of value '<observed_value>' (variable: <name>). Find where it comes from."
+               prompt="Trace the origin of: <ACTUAL_VALUE_HERE>. Variable name: <name>. Transaction: <tx_id>. Find where this EXACT value first appears."
            )
            ```
+           **CRITICAL**: Include the FULL actual value in the prompt (e.g., the complete JWT token, not just "Bearer token").
+           The specialist searches for the exact string, so you must copy the full observed_value.
         4. Call `run_pending_tasks()` then `get_task_result(task_id)` to get findings
         5. Use `record_resolved_variable` to record where each token comes from
            - If source is another transaction, it will be auto-added to the queue
@@ -469,12 +471,29 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
                         )
                     elif phase == DiscoveryPhase.DISCOVERING:
                         task_status = self._orchestration_state.get_queue_status()
+                        queue_status = self._discovery_state.get_queue_status()
+
                         if task_status["pending_tasks"] > 0:
                             guidance = (
                                 f"Phase: DISCOVERING. You have {task_status['pending_tasks']} pending tasks. "
                                 "Call run_pending_tasks() to execute them."
                             )
-                        elif task_status["completed_tasks"] > 0:
+                        elif queue_status["pending_count"] > 0:
+                            # There are transactions in the queue that need processing
+                            next_tx = self._discovery_state.transaction_queue[0] if self._discovery_state.transaction_queue else None
+                            guidance = (
+                                f"Phase: DISCOVERING. Transaction queue has {queue_status['pending_count']} pending transaction(s). "
+                                f"Process the next transaction '{next_tx}': "
+                                "1. Use get_transaction(request_id) to see full details "
+                                "2. Identify variables in headers/body (Authorization, CSRF tokens, parameters) "
+                                "3. For each variable, use record_extracted_variable (classify as PARAMETER/DYNAMIC_TOKEN/STATIC_VALUE) "
+                                "4. For DYNAMIC_TOKENs, delegate to value_trace_resolver with THE FULL ACTUAL VALUE in the prompt "
+                                "   (e.g., for Authorization: Bearer eyJhbGc..., include the COMPLETE JWT, not just 'Bearer token') "
+                                "5. Use record_resolved_variable when you know the source "
+                                "6. Use mark_transaction_processed when done. "
+                                "CRITICAL: Authorization headers are DYNAMIC_TOKENs - extract the FULL token value before delegating!"
+                            )
+                        elif task_status["completed_tasks"] > 0 and not self._discovery_state.root_transaction:
                             guidance = (
                                 "Phase: DISCOVERING. Tasks completed. Review results with get_task_result(task_id), "
                                 "then record findings using record_identified_endpoint, record_extracted_variable. "
@@ -851,7 +870,9 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
         )
 
         self._orchestration_state.add_task(task)
-        self._discovery_state.phase = DiscoveryPhase.DISCOVERING
+        # Only transition to DISCOVERING if we're in PLANNING
+        if self._discovery_state.phase == DiscoveryPhase.PLANNING:
+            self._discovery_state.phase = DiscoveryPhase.DISCOVERING
 
         result: dict[str, Any] = {
             "success": True,
@@ -1328,7 +1349,13 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
             "transaction_id": request_id,
             "added_to_queue": added,
             "queue_position": position,
-            "message": f"Recorded root transaction: {url}"
+            "message": f"Recorded root transaction: {url}",
+            "next_steps": (
+                f"1. Use get_transaction('{request_id}') to see full request details "
+                "2. Look for variables in headers (Authorization, cookies) and body "
+                "3. Use record_extracted_variable for each variable found "
+                "4. For DYNAMIC_TOKENs (auth tokens, session IDs), delegate to value_trace_resolver to find their source"
+            )
         }
 
     @agent_tool(
@@ -1570,6 +1597,15 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
                 transaction_id=source_tx_id,
                 dot_path=dot_path,
             )
+
+            # Validate source transaction exists before adding to queue
+            if self._network_data_loader:
+                entry = self._network_data_loader.get_entry(source_tx_id)
+                if not entry:
+                    return {
+                        "error": f"Source transaction '{source_tx_id}' not found in network data",
+                        "hint": "Verify the transaction ID is correct. Use list_transactions or search to find valid IDs."
+                    }
 
             # Auto-add dependency transaction to queue
             added, position = self._discovery_state.add_to_queue(source_tx_id)
@@ -1954,8 +1990,7 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
             "required": ["routine"],
         },
         availability=lambda self: (
-            self._discovery_state.root_transaction is not None and
-            not self._discovery_state.transaction_queue
+            self._discovery_state.root_transaction is not None
         ),
     )
     def _construct_routine(
@@ -1970,6 +2005,13 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
         Args:
             routine: The routine dict with name, description, parameters, and operations.
         """
+        # Enforce maximum construction attempts to prevent infinite loops
+        if self._discovery_state.construction_attempts >= 10:
+            return {
+                "error": "Too many construction attempts (10 max). Use _fail() to abort.",
+                "hint": "Review discovery data and validation errors. The routine may need manual intervention."
+            }
+
         self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
         self._discovery_state.construction_attempts += 1
 
@@ -1991,6 +2033,10 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
 
         try:
             self._discovery_state.production_routine = routine_obj
+
+            # Transition to VALIDATING if browser is connected, otherwise stay in CONSTRUCTING
+            if self._remote_debugging_address:
+                self._discovery_state.phase = DiscoveryPhase.VALIDATING
 
             return {
                 "success": True,

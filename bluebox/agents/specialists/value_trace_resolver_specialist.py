@@ -85,19 +85,53 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         ## Your Mission
 
         Find the ORIGINAL source of a token/value and trace how it propagates.
+        **BE PERSISTENT** - try MULTIPLE search strategies before giving up!
 
-        ## Process
+        ## Search Strategy (try ALL of these!)
 
-        1. **Search**: Use `search_everywhere` to find all occurrences
-        2. **Analyze**: Examine entries for context and timestamps
-        3. **Trace**: Determine the flow (e.g., API response -> cookie -> request header)
-        4. **Finalize**: Call the appropriate finalize tool with your findings
+        1. **Full Value Search**: Search for the COMPLETE exact value
+        2. **Strip Prefixes**: If value has "Bearer ", "Basic ", etc., strip it and search the token alone
+        3. **Partial Search**: Search for just the FIRST 50-100 characters (for very long tokens)
+        4. **Case Variations**: Try case-sensitive=False if case-sensitive=True fails
+        5. **Truncated Search**: JWT tokens have 3 parts (header.payload.signature) - try searching each part
+        6. **Multiple Stores**: Check network, storage, AND window properties separately
+        7. **Related Values**: Look for field names like "token", "accessToken", "auth", "jwt" near the timestamp
+
+        ## Multi-Attempt Process
+
+        **DO NOT give up after one search!** Follow this workflow:
+
+        1. **Attempt 1**: `search_everywhere(full_value, case_sensitive=True)`
+        2. **Attempt 2**: If Authorization/Bearer token, strip "Bearer " prefix and search again
+        3. **Attempt 3**: Search first 80 chars of the token (helps with very long values)
+        4. **Attempt 4**: Try case-insensitive: `search_everywhere(value, case_sensitive=False)`
+        5. **Attempt 5**: For JWTs, extract and search just the payload section
+        6. **Attempt 6**: Use `search_network_responses` with just a unique substring
+        7. **Analyze timestamps**: Look at transactions around the time the value was first used
+
+        **ONLY finalize with failure after trying AT LEAST 5 different search approaches!**
 
         ## What to Look For
 
         - First occurrence (by timestamp) is often the original source
         - Network responses often set values that end up in storage
         - Storage values (cookies) are often sent in subsequent request headers
+        - Look for API endpoints with keywords: "token", "auth", "login", "session"
+
+        **CRITICAL - Filter for Successful Responses:**
+        - When you find a token in network responses, CHECK THE STATUS CODE!
+        - ONLY use responses with status 200-299 (successful)
+        - IGNORE responses with status 400-599 (errors like 403 Forbidden, 404 Not Found)
+        - If you see "Access Denied" or "Forbidden", that's a FAILED request - keep searching!
+        - Look for the same endpoint with status 201 (Created) or 200 (OK)
+
+        ## Authorization Header Handling
+
+        **CRITICAL**: Authorization tokens are almost ALWAYS in the network data!
+        - Tokens are stored WITHOUT prefix in responses: `{"token": "eyJh..."}`
+        - Tokens are used WITH prefix in requests: `"Authorization: Bearer eyJh..."`
+        - Search for the token WITHOUT "Bearer " if initial search fails
+        - Try searching just "eyJh" (first 20 chars) to find the response
 
         ## Source Preference
 
@@ -105,6 +139,11 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         both a prior transaction response AND browser storage (cookie, localStorage,
         sessionStorage), report the transaction response as the primary source.
         Storage may be empty in a fresh browser session, making it unreliable.
+
+        ## Iteration Budget
+
+        You have up to 20 iterations. Use them ALL if needed! Don't give up early.
+        A successful trace is worth the iterations.
     """).strip()
 
     ## Magic methods
@@ -247,7 +286,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             results["network"] = {
                 "found": len(network_results) > 0,
                 "count": len(network_results),
-                "matches": network_results[:10],
+                "matches": network_results[:30],
             }
         else:
             results["network"] = {"available": False}
@@ -260,7 +299,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             results["storage"] = {
                 "found": len(storage_results) > 0,
                 "count": len(storage_results),
-                "matches": storage_results[:10],
+                "matches": storage_results[:30],
             }
         else:
             results["storage"] = {"available": False}
@@ -273,7 +312,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             results["window_properties"] = {
                 "found": len(window_results) > 0,
                 "count": len(window_results),
-                "matches": window_results[:10],
+                "matches": window_results[:30],
             }
         else:
             results["window_properties"] = {"available": False}
@@ -322,7 +361,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         return {
             "value_searched": value,
             "results_found": len(results),
-            "results": results[:20],
+            "results": results[:50],
         }
 
     @agent_tool(availability=lambda self: self._storage_data_loader is not None)
@@ -354,7 +393,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         return {
             "value_searched": value,
             "results_found": len(results),
-            "results": results[:20],
+            "results": results[:50],
         }
 
     @agent_tool(availability=lambda self: self._window_property_data_loader is not None)
@@ -386,7 +425,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         return {
             "value_searched": value,
             "results_found": len(results),
-            "results": results[:20],
+            "results": results[:50],
         }
 
     @agent_tool(availability=lambda self: self._network_data_loader is not None)
@@ -502,7 +541,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         return {
             "key": key,
             "entries_found": len(entries),
-            "entries": [e.model_dump() for e in entries[:20]],
+            "entries": [e.model_dump() for e in entries[:50]],
         }
 
     @agent_tool()
