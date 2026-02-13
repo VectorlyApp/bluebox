@@ -127,7 +127,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         ## Authorization Header Handling
 
-        **CRITICAL**: Authorization tokens are almost ALWAYS in the network data!
+        **CRITICAL**: Authorization tokens can be in the network data, storage, or window properties!
         - Tokens are stored WITHOUT prefix in responses: `{"token": "eyJh..."}`
         - Tokens are used WITH prefix in requests: `"Authorization: Bearer eyJh..."`
         - Search for the token WITHOUT "Bearer " if initial search fails
@@ -143,7 +143,40 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         ## Iteration Budget
 
         You have up to 20 iterations. Use them ALL if needed! Don't give up early.
-        A successful trace is worth the iterations.
+
+        ## How to Finalize (IMPORTANT!)
+
+        When you've found the origin, call the appropriate finalize tool:
+
+        **If output schema is provided** (check your system prompt for "Expected Output Schema"):
+        - Use `finalize_with_output(output={...})` with a DICT matching the schema
+        - Example with schema:
+          ```python
+          finalize_with_output(output={
+              "origin_summary": "Token from /api/token endpoint at path data.token",
+              "primary_source": {
+                  "type": "network_response",
+                  "request_id": "interception-job-716.0",
+                  "url": "https://api.example.com/token",
+                  "method": "POST",
+                  "location": "data.token"
+              }
+          })
+          ```
+
+        **If NO output schema** (no schema section in system prompt):
+        - Use `finalize_result(output={...})` with a DICT (not a string!)
+        - Example without schema:
+          ```python
+          finalize_result(output={
+              "summary": "Token originates from...",
+              "source_transaction": "interception-job-716.0",
+              "path": "data.token"
+          })
+          ```
+
+        **NEVER** call finalize without the `output` parameter!
+        **NEVER** pass a string to `output` - it must be a dict/object!
     """).strip()
 
     ## Magic methods
