@@ -58,7 +58,7 @@ class AutonomousConfig(NamedTuple):
     Configuration for autonomous specialist runs. Helps manage their "lifecycles."
     """
     min_iterations: int = 3   # Minimum iterations before finalize tools become available
-    max_iterations: int = 10  # Maximum iterations before loop exits (returns None if not finalized)
+    max_iterations: int = 20  # Maximum iterations before loop exits (returns None if not finalized)
 
 
 class AbstractSpecialist(AbstractAgent):

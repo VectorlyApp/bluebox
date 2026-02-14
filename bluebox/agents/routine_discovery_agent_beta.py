@@ -137,20 +137,102 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
 
         For each transaction in the queue:
         1. Use `get_transaction` to see full details
-        2. Use `record_extracted_variable` to log variables found in the request
+        2. Use `record_extracted_variable` to log variables found in the request:
+           **CRITICAL - Extract INDIVIDUAL fields, NOT the entire body!**
+           - **From JSON POST body**: Extract each field separately (e.g., `originStationCodes`, `destinationStationCodes`, `beginDate`)
+             DO NOT extract the entire body as one parameter!
+           - **From URL path**: Extract path parameters (e.g., `/api/users/{{user_id}}/posts`)
+           - **From headers**: ALWAYS check for `Authorization` header (usually a DYNAMIC_TOKEN)
+           - **From query params**: Extract each query parameter (e.g., `?query={{search_term}}&limit={{page_size}}`)
+
+           **Example - CORRECT extraction from POST request:**
+           ```json
+           POST /api/flights
+           Headers: {"Authorization": "Bearer eyJh..."}
+           Body: {"origin": "ATL", "destination": "MEM", "date": "2026-02-12"}
+
+           Extract these 4 variables:
+           - Authorization (type: DYNAMIC_TOKEN, from headers)
+           - origin (type: PARAMETER, from body)
+           - destination (type: PARAMETER, from body)
+           - date (type: PARAMETER, from body)
+           ```
+
+           **Example - WRONG extraction:**
+           ```
+           - request_body (entire JSON as one variable) ❌ NEVER DO THIS!
+           ```
         3. **For DYNAMIC_TOKENs — DELEGATE TO value_trace_resolver**:
            ```
            create_task(
                agent_type="value_trace_resolver",
-               prompt="Trace the origin of value '<observed_value>' (variable: <name>). Find where it comes from."
+               prompt="Trace the origin of: <ACTUAL_VALUE_HERE>. Variable name: <name>. Transaction: <tx_id>. Find where this EXACT value first appears.",
+               output_schema={
+                   "type": "object",
+                   "properties": {
+                       "origin_summary": {"type": "string"},
+                       "primary_source": {
+                           "type": "object",
+                           "properties": {
+                               "type": {"type": "string", "enum": ["network_response", "storage", "window_property"]},
+                               "request_id": {"type": "string"},
+                               "url": {"type": "string"},
+                               "method": {"type": "string"},
+                               "location": {"type": "string"}
+                           },
+                           "required": ["type"]
+                       }
+                   },
+                   "required": ["origin_summary", "primary_source"]
+               },
+               output_description="Return the origin of the value: 'origin_summary' (brief explanation) and 'primary_source' (details about where it first appeared: type='network_response' with request_id, url, method, location OR type='storage' with storage details OR type='window_property' with path)"
            )
            ```
+           **CRITICAL**: Include the FULL actual value in the prompt (e.g., the complete JWT token, not just "Bearer token").
+           The specialist searches for the exact string, so you must copy the full observed_value.
         4. Call `run_pending_tasks()` then `get_task_result(task_id)` to get findings
-        5. Use `record_resolved_variable` to record where each token comes from
+        5. Use `record_resolved_variable` to record where each token comes from:
+           - **Step A - Get specialist results**: Call `get_task_result(task_id)` and look at `result.output`
+           - **Step B - Translate specialist results**:
+             * If `primary_source.type: "network_response"` → use `source_type="transaction"`
+             * Specialist's `request_id` → becomes `transaction_source.transaction_id`
+             * If `primary_source.type: "storage"` → use `source_type="storage"`
+             * If `primary_source.type: "window_property"` → use `source_type="window_property"`
+           - **Step C - Extract dot_path from response** (for network_response sources):
+             * Use the specialist's `primary_source.location` if provided, OR
+             * Call `get_transaction(request_id)` on the source transaction
+             * Examine the `response_body` JSON to find where the token value appears
+             * Determine the JSON path (e.g., if token is in `{"data": {"token": "eyJh..."}}`, path is `data.token`)
+             * Common paths: `token`, `data.token`, `accessToken`, `response.token`, `auth.token`
+           - **Step D - Call record_resolved_variable**:
+             ```python
+             # Example: Specialist returned:
+             # {
+             #   "origin_summary": "Token from /api/token endpoint",
+             #   "primary_source": {
+             #     "type": "network_response",
+             #     "request_id": "interception-job-123",
+             #     "url": "https://api.example.com/token",
+             #     "location": "data.token"
+             #   }
+             # }
+             #
+             # You call:
+             record_resolved_variable(
+               variable_name="Authorization",
+               transaction_id="interception-job-456",  # The transaction that USES the token
+               source_type="transaction",
+               transaction_source={
+                 "transaction_id": "interception-job-123",  # The transaction that PROVIDES the token
+                 "dot_path": "data.token"  # From specialist's location or by examining response_body
+               }
+             )
+             ```
+           - **For storage sources**: use `source_type="storage"`, `storage_source={"type": "cookie|localStorage|sessionStorage", "dot_path": "keyName"}`
+           - **For window sources**: use `source_type="window_property"`, `window_property_source={"dot_path": "path.to.prop"}`
+           - **PREFER NETWORK (transaction) SOURCES**: When a value appears in both session storage AND a prior
+             transaction response, use `source_type='transaction'` as the PRIMARY source (storage may be empty in fresh sessions)
            - If source is another transaction, it will be auto-added to the queue
-           - PREFER NETWORK SOURCES: When a value appears in both session storage AND a prior
-             transaction response, use source_type='transaction' as the PRIMARY source.
-             Session storage may be empty in a fresh session.
         6. Use `mark_transaction_processed` when done with a transaction
         7. Continue until queue is empty
 
@@ -178,8 +260,7 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
 
         1. Use `get_discovery_context` to see all processed data (includes CRITICAL_OBSERVED_VALUES)
         2. Review the **Routine Schema Reference** below for required fields and operation types
-        3. Use `validate_placeholders` on your fetch bodies/headers to catch quoting errors early
-        4. Use `construct_routine` with the routine definition:
+        3. Use `construct_routine` with the routine definition:
            - `routine`: the routine definition (name, description, parameters, operations)
 
         **If browser is connected (validation available):**
@@ -469,12 +550,29 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
                         )
                     elif phase == DiscoveryPhase.DISCOVERING:
                         task_status = self._orchestration_state.get_queue_status()
+                        queue_status = self._discovery_state.get_queue_status()
+
                         if task_status["pending_tasks"] > 0:
                             guidance = (
                                 f"Phase: DISCOVERING. You have {task_status['pending_tasks']} pending tasks. "
                                 "Call run_pending_tasks() to execute them."
                             )
-                        elif task_status["completed_tasks"] > 0:
+                        elif queue_status["pending_count"] > 0:
+                            # There are transactions in the queue that need processing
+                            next_tx = self._discovery_state.transaction_queue[0] if self._discovery_state.transaction_queue else None
+                            guidance = (
+                                f"Phase: DISCOVERING. Transaction queue has {queue_status['pending_count']} pending transaction(s). "
+                                f"Process the next transaction '{next_tx}': "
+                                "1. Use get_transaction(request_id) to see full details "
+                                "2. Identify variables in headers/body (Authorization, CSRF tokens, parameters) "
+                                "3. For each variable, use record_extracted_variable (classify as PARAMETER/DYNAMIC_TOKEN/STATIC_VALUE) "
+                                "4. For DYNAMIC_TOKENs, delegate to value_trace_resolver with THE FULL ACTUAL VALUE in the prompt "
+                                "   (e.g., for Authorization: Bearer eyJhbGc..., include the COMPLETE JWT, not just 'Bearer token') "
+                                "5. Use record_resolved_variable when you know the source "
+                                "6. Use mark_transaction_processed when done. "
+                                "CRITICAL: Authorization headers are DYNAMIC_TOKENs - extract the FULL token value before delegating!"
+                            )
+                        elif task_status["completed_tasks"] > 0 and not self._discovery_state.root_transaction:
                             guidance = (
                                 "Phase: DISCOVERING. Tasks completed. Review results with get_task_result(task_id), "
                                 "then record findings using record_identified_endpoint, record_extracted_variable. "
@@ -851,7 +949,9 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
         )
 
         self._orchestration_state.add_task(task)
-        self._discovery_state.phase = DiscoveryPhase.DISCOVERING
+        # Only transition to DISCOVERING if we're in PLANNING
+        if self._discovery_state.phase == DiscoveryPhase.PLANNING:
+            self._discovery_state.phase = DiscoveryPhase.DISCOVERING
 
         result: dict[str, Any] = {
             "success": True,
@@ -1328,7 +1428,13 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
             "transaction_id": request_id,
             "added_to_queue": added,
             "queue_position": position,
-            "message": f"Recorded root transaction: {url}"
+            "message": f"Recorded root transaction: {url}",
+            "next_steps": (
+                f"1. Use get_transaction('{request_id}') to see full request details "
+                "2. Look for variables in headers (Authorization, cookies) and body "
+                "3. Use record_extracted_variable for each variable found "
+                "4. For DYNAMIC_TOKENs (auth tokens, session IDs), delegate to value_trace_resolver to find their source"
+            )
         }
 
     @agent_tool(
@@ -1571,6 +1677,15 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
                 dot_path=dot_path,
             )
 
+            # Validate source transaction exists before adding to queue
+            if self._network_data_loader:
+                entry = self._network_data_loader.get_entry(source_tx_id)
+                if not entry:
+                    return {
+                        "error": f"Source transaction '{source_tx_id}' not found in network data",
+                        "hint": "Verify the transaction ID is correct. Use list_transactions or search to find valid IDs."
+                    }
+
             # Auto-add dependency transaction to queue
             added, position = self._discovery_state.add_to_queue(source_tx_id)
             if added:
@@ -1592,11 +1707,20 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
         else:
             return {"error": f"Invalid source_type '{source_type}'. Use: storage, window_property, transaction"}
 
-        # Create ResolvedVariableResponse
-        resolved = ResolvedVariableResponse(
-            variable=variable,
-            source=source
-        )
+        # Create ResolvedVariableResponse with the appropriate source field
+        resolved_kwargs: dict[str, Any] = {
+            "variable": variable,
+            "short_explanation": f"Resolved from {source_type}",
+        }
+
+        if source_type == "storage":
+            resolved_kwargs["session_storage_source"] = source
+        elif source_type == "window_property":
+            resolved_kwargs["window_property_source"] = source
+        elif source_type == "transaction":
+            resolved_kwargs["transaction_source"] = source
+
+        resolved = ResolvedVariableResponse(**resolved_kwargs)
 
         # Store in transaction data
         if "resolved_variables" not in tx_data:
@@ -1748,22 +1872,22 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
             if tx_data.get("resolved_variables"):
                 for resolved in tx_data["resolved_variables"]:
                     source_info = {}
-                    if isinstance(resolved.source, SessionStorageSource):
+                    if resolved.session_storage_source:
                         source_info = {
                             "type": "storage",
-                            "storage_type": resolved.source.type.value,
-                            "dot_path": resolved.source.dot_path,
+                            "storage_type": resolved.session_storage_source.type.value,
+                            "dot_path": resolved.session_storage_source.dot_path,
                         }
-                    elif isinstance(resolved.source, WindowPropertySource):
+                    elif resolved.window_property_source:
                         source_info = {
                             "type": "window_property",
-                            "dot_path": resolved.source.dot_path,
+                            "dot_path": resolved.window_property_source.dot_path,
                         }
-                    elif isinstance(resolved.source, TransactionSource):
+                    elif resolved.transaction_source:
                         source_info = {
                             "type": "transaction",
-                            "transaction_id": resolved.source.transaction_id,
-                            "dot_path": resolved.source.dot_path,
+                            "transaction_id": resolved.transaction_source.transaction_id,
+                            "dot_path": resolved.transaction_source.dot_path,
                         }
 
                     context["resolution_map"][resolved.variable.name] = source_info
@@ -1778,145 +1902,6 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
         return context
 
     ## Tools - Routine Construction
-
-    @agent_tool(
-        description=(
-            "Validate placeholder syntax in a JSON string before constructing a routine. "
-            "Checks quoting, prefixes, and parameter type compatibility. "
-            "Pass the JSON body/headers you plan to use and the parameter definitions."
-        ),
-        parameters={
-            "type": "object",
-            "properties": {
-                "json_string": {
-                    "type": "string",
-                    "description": (
-                        "The JSON string containing placeholders to validate. "
-                        "Example: '{\"query\": \\\"{{search_term}}\\\", \"page\": \"{{page_number}}\"}'"
-                    ),
-                },
-                "parameters": {
-                    "type": "array",
-                    "description": (
-                        "Parameter definitions. Each needs 'name' and 'type'. "
-                        "Example: [{\"name\": \"search_term\", \"type\": \"string\"}, {\"name\": \"page_number\", \"type\": \"integer\"}]"
-                    ),
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "type": {"type": "string"},
-                        },
-                        "required": ["name", "type"],
-                    },
-                },
-            },
-            "required": ["json_string"],
-        },
-        availability=lambda self: self._discovery_state.root_transaction is not None,
-    )
-    def _validate_placeholders(
-        self,
-        json_string: str,
-        parameters: list[dict[str, str]] | None = None,
-    ) -> dict[str, Any]:
-        """
-        Validate placeholder syntax in a JSON string before routine construction.
-
-        Checks that placeholders are properly quoted, prefixes are valid, and
-        quoting matches the parameter type (string params need escape-quoted).
-
-        Args:
-            json_string: JSON string containing {{...}} placeholders to validate.
-            parameters: Optional parameter definitions with 'name' and 'type' fields.
-        """
-        placeholders = extract_placeholders_from_json_str(json_string)
-
-        if not placeholders:
-            return {"valid": True, "placeholders_found": 0, "message": "No placeholders found in string."}
-
-        # Build param type map from provided definitions
-        param_type_map: dict[str, ParameterType] = {}
-        if parameters:
-            for p in parameters:
-                try:
-                    param_type_map[p["name"]] = ParameterType(p["type"])
-                except (KeyError, ValueError):
-                    pass  # skip malformed entries
-
-        builtin_names = {bp.name for bp in BUILTIN_PARAMETERS}
-        non_string_types = {ParameterType.INTEGER, ParameterType.NUMBER, ParameterType.BOOLEAN}
-        errors: list[str] = []
-        validated: list[dict[str, str]] = []
-
-        for ph in placeholders:
-            content = ph.content
-            quote_type = ph.quote_type
-
-            # Storage/meta/window prefix check
-            if ":" in content:
-                prefix, path = [s.strip() for s in content.split(":", 1)]
-                if prefix not in VALID_PLACEHOLDER_PREFIXES:
-                    errors.append(
-                        f"Invalid prefix '{prefix}' in placeholder '{{{{{content}}}}}'. "
-                        f"Valid: {sorted(VALID_PLACEHOLDER_PREFIXES)}"
-                    )
-                elif not path:
-                    errors.append(f"Path is required after '{prefix}:' in placeholder '{{{{{content}}}}}'.")
-                else:
-                    validated.append(
-                        {
-                            "placeholder": content,
-                            "type": "storage/meta",
-                            "quoting": quote_type.value,
-                            "status": "ok",
-                        }
-                    )
-                continue
-
-            # Builtin check
-            if content in builtin_names:
-                validated.append({"placeholder": content, "type": "builtin", "quoting": quote_type.value, "status": "ok"})
-                continue
-
-            # User-defined parameter
-            param_type = param_type_map.get(content)
-            if param_type is None and parameters is not None:
-                errors.append(f"Placeholder '{{{{{content}}}}}' not found in parameter definitions.")
-                continue
-
-            if param_type is not None and param_type not in non_string_types:
-                # String-like types must use escape-quoted
-                if quote_type != PlaceholderQuoteType.ESCAPE_QUOTED:
-                    errors.append(
-                        f"String parameter '{{{{{content}}}}}' must use escape-quoted format: "
-                        f'\\"{{{{{content}}}}}\\" instead of "{{{{{content}}}}}".'
-                    )
-                else:
-                    validated.append(
-                        {
-                            "placeholder": content,
-                            "type": f"param ({param_type.value})",
-                            "quoting": quote_type.value,
-                            "status": "ok",
-                        }
-                    )
-            else:
-                validated.append(
-                    {
-                        "placeholder": content,
-                        "type": f"param ({param_type.value if param_type else 'unknown'})",
-                        "quoting": quote_type.value,
-                        "status": "ok",
-                    }
-                )
-
-        return {
-            "valid": len(errors) == 0,
-            "placeholders_found": len(placeholders),
-            "validated": validated,
-            "errors": errors,
-        }
 
     @agent_tool(
         description="Construct a routine from discovered data. After constructing, use validate_routine to test it.",
@@ -1954,8 +1939,7 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
             "required": ["routine"],
         },
         availability=lambda self: (
-            self._discovery_state.root_transaction is not None and
-            not self._discovery_state.transaction_queue
+            self._discovery_state.root_transaction is not None
         ),
     )
     def _construct_routine(
@@ -1970,6 +1954,13 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
         Args:
             routine: The routine dict with name, description, parameters, and operations.
         """
+        # Enforce maximum construction attempts to prevent infinite loops
+        if self._discovery_state.construction_attempts >= 10:
+            return {
+                "error": "Too many construction attempts (10 max). Use _fail() to abort.",
+                "hint": "Review discovery data and validation errors. The routine may need manual intervention."
+            }
+
         self._discovery_state.phase = DiscoveryPhase.CONSTRUCTING
         self._discovery_state.construction_attempts += 1
 
@@ -1991,6 +1982,10 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
 
         try:
             self._discovery_state.production_routine = routine_obj
+
+            # Transition to VALIDATING if browser is connected, otherwise stay in CONSTRUCTING
+            if self._remote_debugging_address:
+                self._discovery_state.phase = DiscoveryPhase.VALIDATING
 
             return {
                 "success": True,

@@ -676,7 +676,7 @@ class TestAutonomousConfig:
         """AutonomousConfig has sensible defaults."""
         config = AutonomousConfig()
         assert config.min_iterations == 3
-        assert config.max_iterations == 10
+        assert config.max_iterations == 20
 
     def test_custom_values(self) -> None:
         """AutonomousConfig accepts custom values."""
