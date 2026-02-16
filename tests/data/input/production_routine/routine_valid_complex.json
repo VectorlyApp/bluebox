@@ -1,7 +1,6 @@
 {
   "name": "complex_routine",
   "description": "A complex routine with multiple parameters and operations",
-  "incognito": false,
   "parameters": [
     {
       "name": "user_id",

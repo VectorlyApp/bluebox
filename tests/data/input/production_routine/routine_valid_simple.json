@@ -1,7 +1,6 @@
 {
   "name": "simple_search_routine",
   "description": "A simple routine that searches for items",
-  "incognito": true,
   "parameters": [
     {
       "name": "query",

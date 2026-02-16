@@ -201,7 +201,7 @@ class BrowserMonitor:
         # Cleanup browser context if we created one and browser is still up
         if self.created_tab and self.context_id and self._is_browser_connected():
             try:
-                dispose_context(self.remote_debugging_address, self.context_id)
+                dispose_context(browser_context_id=self.context_id, remote_debugging_address=self.remote_debugging_address)
             except Exception as e:
                 logger.debug(f"Could not dispose browser context: {e}")
 

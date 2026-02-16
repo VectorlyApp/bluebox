@@ -219,7 +219,7 @@ async def async_main(args: argparse.Namespace, tab_id: str | None) -> None:
         if created_tab and context_id:
             try:
                 logger.info(f"Disposing browser context {context_id}...")
-                dispose_context(remote_debugging_address, context_id)
+                dispose_context(browser_context_id=context_id, remote_debugging_address=remote_debugging_address)
                 logger.info("Browser context disposed")
             except Exception as e:
                 logger.error(f"Failed to dispose browser context: {e}", exc_info=True)

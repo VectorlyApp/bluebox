@@ -40,6 +40,7 @@ class RoutineExecutor:
         timeout: float = 180.0,
         close_tab_when_done: bool = True,
         tab_id: str | None = None,
+        incognito: bool = True,
     ) -> RoutineExecutionResult:
         """
         Execute a routine.
@@ -50,6 +51,7 @@ class RoutineExecutor:
             timeout: Operation timeout in seconds.
             close_tab_when_done: Whether to close the tab when finished.
             tab_id: If provided, attach to this existing tab. If None, create a new tab.
+            incognito: Whether to create an incognito browser context.
 
         Returns:
             RoutineExecutionResult with execution status and data.
@@ -60,4 +62,5 @@ class RoutineExecutor:
             timeout=timeout,
             close_tab_when_done=close_tab_when_done,
             tab_id=tab_id,
+            incognito=incognito,
         )
