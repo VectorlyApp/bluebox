@@ -529,6 +529,15 @@ class BlueBoxAgent(AbstractAgent):
             if path_str not in files_before or files_before[path_str] < mtime:
                 files_created.append(path_str)
 
+        # Upload new/modified files to S3 so they appear in the files panel
+        if files_created and self._s3_upload_fn:
+            for filepath in files_created:
+                try:
+                    filename = Path(filepath).name
+                    self._s3_upload_fn(filepath, filename)
+                except Exception as e:
+                    logger.exception("S3 upload failed for %s: %s", filepath, e)
+
         # Build response
         result: dict[str, Any] = {}
 
