@@ -19,7 +19,7 @@ from bluebox.utils.code_execution_sandbox import (
     check_code_safety,
     create_safe_builtins,
     execute_python_sandboxed,
-    _is_docker_available,
+    is_docker_available,
     _execute_in_docker,
     _execute_blocklist_sandbox,
     _create_scoped_open,
@@ -711,7 +711,7 @@ class TestDockerAvailability:
         sandbox_module._docker_available = None  # Reset cache
 
         with patch("shutil.which", return_value=None):
-            result = _is_docker_available()
+            result = is_docker_available()
             assert result is False
 
         sandbox_module._docker_available = None  # Reset for other tests
@@ -726,7 +726,7 @@ class TestDockerAvailability:
 
         with patch("shutil.which", return_value="/usr/bin/docker"):
             with patch("subprocess.run", return_value=mock_result):
-                result = _is_docker_available()
+                result = is_docker_available()
                 assert result is False
 
         sandbox_module._docker_available = None  # Reset for other tests
@@ -741,7 +741,7 @@ class TestDockerAvailability:
 
         with patch("shutil.which", return_value="/usr/bin/docker"):
             with patch("subprocess.run", return_value=mock_result):
-                result = _is_docker_available()
+                result = is_docker_available()
                 assert result is True
 
         sandbox_module._docker_available = None  # Reset for other tests
@@ -753,7 +753,7 @@ class TestDockerAvailability:
 
         # Even with docker binary missing, cached value should be returned
         with patch("shutil.which", return_value=None):
-            result = _is_docker_available()
+            result = is_docker_available()
             assert result is True
 
         sandbox_module._docker_available = None  # Reset for other tests
