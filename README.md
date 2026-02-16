@@ -654,9 +654,6 @@ This substitutes parameter values and injects `auth_token` from cookies. The JSO
   - The agent will execute discovered routines, detect failures, and automatically suggest/fix issues to make routines more robust and efficient.
 - **Checkpointing progress and resumability**
   - Avoid re-running the entire discovery pipeline after exceptions; the agent will checkpoint progress and resume from the last successful stage.
-- **Parameter resolution visibility**
-  - During execution, show which placeholders (e.g., `{{sessionStorage:...}}`, `{{cookie:...}}`, `{{localStorage:...}}`) resolved successfully and which failed.
-
 ### Additional Operations (Not Yet Implemented)
 
 #### Navigation
