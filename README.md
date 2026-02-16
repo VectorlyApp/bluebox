@@ -128,13 +128,13 @@ Example:
 
 > Navigate to a dashboard, search based on keywords, and return results — all as a reusable Routine.
 
+### Quickstart (Easiest Way) 🚀
+
 <p align="center">
   <video src="https://github.com/user-attachments/assets/1b239ba2-45fd-4098-96c0-6d8f97e5e66b" width="760" controls autoplay loop muted>
     Video not supported? [Watch the demo on YouTube](https://youtu.be/s4Xe_2pXcSQ)
   </video>
 </p>
-
-### Quickstart (Easiest Way) 🚀
 
 The fastest way to get started is using the quickstart script, which automates the entire workflow:
 
