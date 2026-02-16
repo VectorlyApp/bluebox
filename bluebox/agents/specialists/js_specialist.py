@@ -659,6 +659,6 @@ class JSSpecialist(AbstractSpecialist):
                         pass
                 if browser_context_id and self._remote_debugging_address:
                     try:
-                        dispose_context(self._remote_debugging_address, browser_context_id)
+                        dispose_context(browser_context_id=browser_context_id, remote_debugging_address=self._remote_debugging_address)
                     except Exception:
                         pass

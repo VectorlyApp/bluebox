@@ -457,7 +457,7 @@ class Routine(BaseModel):
                 if close_tab_when_done:
                     send_cmd(browser_ws, "Target.closeTarget", {"targetId": target_id})
                     if browser_context_id:
-                        dispose_context(browser_context_id, ws=browser_ws)
+                        dispose_context(browser_context_id=browser_context_id, ws=browser_ws)
             except Exception:
                 pass
             try:
