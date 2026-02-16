@@ -37,7 +37,7 @@ class Config():
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     VECTORLY_API_KEY: str | None = os.getenv("VECTORLY_API_KEY")
-    VECTORLY_API_BASE: str = os.getenv("VECTORLY_API_BASE", "https://api.vectorly.app")
+    VECTORLY_API_BASE: str = os.getenv("VECTORLY_API_BASE", "https://api.vectorly.app/api/v1")
 
     # Code execution sandbox configuration
     # Mode: "docker" (require Docker), "blocklist" (no Docker), "auto" (Docker if available)
