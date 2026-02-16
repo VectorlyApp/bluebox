@@ -128,8 +128,6 @@ class BlueBoxAgent(AbstractAgent):
         self._s3_upload_fn = s3_upload_fn
         if not auth_headers_provider and not Config.VECTORLY_API_KEY:
             raise ValueError("Either auth_headers_provider or VECTORLY_API_KEY must be provided")
-        if not Config.VECTORLY_API_BASE:
-            raise ValueError("VECTORLY_API_BASE is not set")
 
         self._workspace_dir = Path(workspace_dir)
         self._raw_dir = self._workspace_dir / "raw"

@@ -143,9 +143,6 @@ def main() -> None:
     if not Config.VECTORLY_API_KEY:
         console.print("[bold red]Error: VECTORLY_API_KEY is not set[/bold red]")
         sys.exit(1)
-    if not Config.VECTORLY_API_BASE:
-        console.print("[bold red]Error: VECTORLY_API_BASE is not set[/bold red]")
-        sys.exit(1)
 
     llm_model = resolve_model(args.model, console)
 
