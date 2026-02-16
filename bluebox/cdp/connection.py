@@ -294,8 +294,11 @@ def dispose_context(browser_context_id: str, ws: WebSocket | None = None, remote
                 }
             )
         )
+        reply = json.loads(ws.recv())
+        if "error" in reply:
+            logger.debug("Chrome refused to dispose context %s: %s", browser_context_id, reply.get("error"))
     except Exception as e:
-        logger.debug(f"Failed to dispose context {browser_context_id}: {e}")
+        logger.debug("Failed to dispose context %s: %s", browser_context_id, e)
     finally:
         if owns_ws:
             try:
