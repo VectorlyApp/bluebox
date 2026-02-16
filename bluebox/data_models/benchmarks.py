@@ -626,7 +626,7 @@ class LLMTest(BaseModel):
     )
 
     model: str = Field(
-        description="LLM model identifier used for evaluation (e.g. gpt-4.1, claude-3.5-sonnet)"
+        description="LLM model identifier used for evaluation (e.g. gpt-5.1, claude-3.5-sonnet)"
     )
 
     n_trials: int = Field(

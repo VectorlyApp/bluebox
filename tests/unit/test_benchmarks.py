@@ -1401,7 +1401,7 @@ class TestLLMTest:
         test = LLMTest(
             name="test",
             prompt="Evaluate this",
-            model="gpt-4.1"
+            model="gpt-5.1"
         )
         assert test.description == ""
         assert test.n_trials == 3
@@ -1414,7 +1414,7 @@ class TestLLMTest:
             name="quality_check",
             description="Check response quality",
             prompt="Rate the quality of this response",
-            model="gpt-4.1",
+            model="gpt-5.1",
             n_trials=5,
             score_range=(1.0, 10.0),
             passing_threshold=7.0,
@@ -1431,7 +1431,7 @@ class TestLLMTest:
         original = LLMTest(
             name="test",
             prompt="Evaluate",
-            model="gpt-4.1",
+            model="gpt-5.1",
             n_trials=2,
             aggregation="max"
         )
@@ -1446,7 +1446,7 @@ class TestLLMTest:
         test = LLMTest(
             name="test",
             prompt="Evaluate the data",
-            model="gpt-4.1",
+            model="gpt-5.1",
             n_trials=3,
             aggregation="mean"
         )
@@ -1472,7 +1472,7 @@ class TestLLMTest:
         test = LLMTest(
             name="test",
             prompt="Evaluate",
-            model="gpt-4.1",
+            model="gpt-5.1",
             n_trials=3,
             aggregation="median"
         )
@@ -1495,7 +1495,7 @@ class TestLLMTest:
         test = LLMTest(
             name="test",
             prompt="Evaluate",
-            model="gpt-4.1",
+            model="gpt-5.1",
             n_trials=3,
             aggregation="min"
         )
@@ -1518,7 +1518,7 @@ class TestLLMTest:
         test = LLMTest(
             name="test",
             prompt="Evaluate",
-            model="gpt-4.1",
+            model="gpt-5.1",
             n_trials=3,
             aggregation="max"
         )
@@ -1541,7 +1541,7 @@ class TestLLMTest:
         test = LLMTest(
             name="test",
             prompt="Evaluate",
-            model="gpt-4.1",
+            model="gpt-5.1",
             n_trials=1
         )
 
@@ -1562,7 +1562,7 @@ class TestLLMTest:
         test = LLMTest(
             name="test",
             prompt="Evaluate",
-            model="gpt-4.1",
+            model="gpt-5.1",
             n_trials=2
         )
 
@@ -1582,7 +1582,7 @@ class TestLLMTest:
         test = LLMTest(
             name="test",
             prompt="Rate the quality",
-            model="gpt-4.1",
+            model="gpt-5.1",
             n_trials=1,
             score_range=(1.0, 5.0)
         )
@@ -1596,7 +1596,7 @@ class TestLLMTest:
 
         # Verify the call was made with correct arguments
         call_args = mock_client.responses.parse.call_args
-        assert call_args.kwargs["model"] == "gpt-4.1"
+        assert call_args.kwargs["model"] == "gpt-5.1"
 
         input_messages = call_args.kwargs["input"]
         assert len(input_messages) == 1
@@ -1613,7 +1613,7 @@ class TestLLMTest:
         test = LLMTest(
             name="test",
             prompt="Evaluate",
-            model="gpt-4.1",
+            model="gpt-5.1",
             n_trials=1
         )
 

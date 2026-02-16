@@ -86,6 +86,8 @@ The BlueBox Agent is a conversational AI agent that automates web tasks. It sear
 ```bash
 # Set your Vectorly API key (sign up at console.vectorly.app)
 export VECTORLY_API_KEY="your-key"
+# Or add it to a .env file in your project directory:
+# echo 'VECTORLY_API_KEY=your-key' >> .env
 
 # Launch the agent
 bluebox-agent
