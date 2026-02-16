@@ -236,6 +236,27 @@ class TestResourceBase:
         assert generated_id.startswith("NewSampleResource_")
         assert len(generated_id) == len("NewSampleResource_") + 36
 
+    def test_create_new_id_uses_subclass_name(self) -> None:
+        """Test that create_new_id generates IDs with the correct class prefix."""
+        new_id = SampleResource.create_new_id()
+
+        assert new_id.startswith("SampleResource_")
+        uuid_part = new_id.split("_", 1)[1]
+        UUID(uuid_part)  # valid UUID
+
+    def test_create_new_id_different_subclasses(self) -> None:
+        """Test that create_new_id uses each subclass's own name."""
+        id1 = SampleResource.create_new_id()
+        id2 = SampleResourceWithCustomFields.create_new_id()
+
+        assert id1.startswith("SampleResource_")
+        assert id2.startswith("SampleResourceWithCustomFields_")
+
+    def test_create_new_id_uniqueness(self) -> None:
+        """Test that create_new_id generates unique IDs each call."""
+        ids = {SampleResource.create_new_id() for _ in range(10)}
+        assert len(ids) == 10
+
     def test_resource_base_inheritance_from_base_model(self) -> None:
         """Test that ResourceBase properly inherits from BaseModel."""
         assert issubclass(ResourceBase, BaseModel)

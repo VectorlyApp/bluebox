@@ -42,6 +42,11 @@ class ResourceBase(BaseModel, ABC):
         description="Metadata for the resource. Anythning that is not suitable for a regular field."
     )
 
+    @classmethod
+    def create_new_id(cls) -> str:
+        """Generate a new ID in format [ClassName]_[uuidv4]."""
+        return f"{cls.__name__}_{uuid4()}"
+
     @property
     def resource_type(self) -> str:
         """
