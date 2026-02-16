@@ -45,6 +45,8 @@ class ResourceBase(BaseModel, ABC):
     @classmethod
     def create_new_id(cls) -> str:
         """Generate a new ID in format [ClassName]_[uuidv4]."""
+        if cls is ResourceBase:
+            raise TypeError("create_new_id() must be called on a subclass, not ResourceBase")
         return f"{cls.__name__}_{uuid4()}"
 
     @property

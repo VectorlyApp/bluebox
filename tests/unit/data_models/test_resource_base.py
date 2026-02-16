@@ -252,6 +252,11 @@ class TestResourceBase:
         assert id1.startswith("SampleResource_")
         assert id2.startswith("SampleResourceWithCustomFields_")
 
+    def test_create_new_id_raises_on_resource_base(self) -> None:
+        """Test that calling create_new_id on ResourceBase itself raises TypeError."""
+        with pytest.raises(TypeError, match="must be called on a subclass"):
+            ResourceBase.create_new_id()
+
     def test_create_new_id_uniqueness(self) -> None:
         """Test that create_new_id generates unique IDs each call."""
         ids = {SampleResource.create_new_id() for _ in range(10)}
