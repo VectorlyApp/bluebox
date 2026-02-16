@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 import sys
 
-from bluebox.utils.code_execution_sandbox import _is_docker_available
+from bluebox.utils.code_execution_sandbox import is_docker_available
 from bluebox.utils.terminal_utils import ask_yes_no, print_colored, YELLOW
 
 from rich.console import Console
@@ -161,7 +161,7 @@ def main() -> None:
         print()
 
     # Warn if Docker is not available (code execution will fall back to blocklist sandbox)
-    if not _is_docker_available():
+    if not is_docker_available():
         print_colored(
             "Warning: Docker is not available. Code execution will use the blocklist sandbox,\n"
             "which is less secure and has limited isolation.",

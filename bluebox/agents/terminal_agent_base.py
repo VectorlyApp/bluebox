@@ -163,6 +163,11 @@ class AbstractTerminalAgentChat(ABC):
                 print_assistant_message(message.content, self.console)
 
         elif isinstance(message, ToolInvocationResultEmittedMessage):
+            # Reset streaming state if tool result arrives after streamed progress
+            if self._streaming_started:
+                print()
+                print()
+                self._streaming_started = False
             # Show tool call and result
             print_tool_call(message.tool_invocation, self.console)
             print_tool_result(message.tool_invocation, message.tool_result, self.console)

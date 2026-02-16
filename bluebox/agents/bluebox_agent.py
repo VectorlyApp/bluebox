@@ -33,7 +33,6 @@ from bluebox.data_models.llms.interaction import (
     ChatResponseEmittedMessage,
     ChatThread,
     EmittedMessage,
-    StatusUpdateEmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.routine.routine import RoutineExecutionRequest, RoutineInfo
@@ -57,7 +56,7 @@ class BlueBoxAgent(AbstractAgent):
         description="Searches and executes pre-built Vectorly routines to fulfill user requests.",
     )
 
-    AGENT_LOOP_MAX_ITERATIONS: int = 100
+    AGENT_LOOP_MAX_ITERATIONS: int = 30
 
     SYSTEM_PROMPT: str = dedent("""
         You are a web automation agent. Your job is to fulfill user requests by running pre-built Vectorly routines, or falling back to the browser agent for free-form tasks.
@@ -163,10 +162,7 @@ class BlueBoxAgent(AbstractAgent):
         Uses auth_headers_provider if set, otherwise falls back to Config.VECTORLY_API_KEY."""
         if self._auth_headers_provider:
             return self._auth_headers_provider()
-        return {
-            "Content-Type": "application/json",
-            "X-Service-Token": Config.VECTORLY_API_KEY,
-        }
+        return {"X-Service-Token": Config.VECTORLY_API_KEY}
 
     ## Abstract method implementations
 
@@ -215,6 +211,15 @@ class BlueBoxAgent(AbstractAgent):
                 f"Expected parameters: {param_summary}"
             )
         return None
+
+    ## Streaming helpers
+
+    def _stream_or_emit(self, text: str) -> None:
+        """Stream text as a chunk if streaming is available, otherwise emit as a message."""
+        if self._stream_chunk_callable:
+            self._stream_chunk_callable(text + "\n")
+        else:
+            self._emit_message(ChatResponseEmittedMessage(content=text))
 
     ## File saving
 
@@ -278,11 +283,15 @@ class BlueBoxAgent(AbstractAgent):
             "keywords": [],
         }
 
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-        self._cache_routines_from_response(data)
-        return data
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            self._cache_routines_from_response(data)
+            return data
+        except requests.RequestException as e:
+            logger.error("Routine search failed: %s", e)
+            return {"error": f"Routine search failed: {e}", "results": []}
 
     @agent_tool()
     def _execute_routines_in_parallel(
@@ -347,9 +356,7 @@ class BlueBoxAgent(AbstractAgent):
                 results.append(result)
 
                 status = "succeeded" if result.get("success") else "FAILED"
-                self._emit_message(StatusUpdateEmittedMessage(
-                    content=f"[{len(results)}/{total}] Routine '{result.get('routine_id')}' {status}.",
-                ))
+                self._stream_or_emit(f"[{len(results)}/{total}] Routine '{result.get('routine_id')}' {status}.")
 
         succeeded = sum(1 for r in results if r.get("success"))
         return {
@@ -375,7 +382,8 @@ class BlueBoxAgent(AbstractAgent):
 
         Args:
             task: Detailed natural language instruction for the browser agent. Be specific and step-by-step.
-            TOOD: add an example instruction to convey the level of detail we need. either here or in system prompt
+                Example: "Go to google.com, search for 'best flight deals NYC to LA March 2026',
+                click the first result, and extract the price and airline name."
         """
         if not task or not task.strip():
             return {"error": "Task description cannot be empty"}
@@ -388,9 +396,7 @@ class BlueBoxAgent(AbstractAgent):
             "use_vision": True,
         }
 
-        self._emit_message(StatusUpdateEmittedMessage(
-            content="Starting browser agent task... This may take a few minutes.",
-        ))
+        self._stream_or_emit("Starting browser agent task. This may take a few minutes...\n")
 
         try:
             with requests.post(
@@ -426,6 +432,8 @@ class BlueBoxAgent(AbstractAgent):
     def _consume_sse_stream(self, response: requests.Response) -> dict[str, Any]:
         """Parse an SSE stream from the browser agent and emit progress messages."""
         result: dict[str, Any] = {"error": "Stream ended without a terminal event"}
+        step_counter = 0
+        steps: list[dict[str, Any]] = []
 
         for line in response.iter_lines(decode_unicode=True):
             if not line or not line.startswith("data: "):
@@ -437,21 +445,29 @@ class BlueBoxAgent(AbstractAgent):
                 logger.warning("Malformed SSE data line: %s", line)
                 continue
 
-            event = sse_event_adapter.validate_python(data)
+            try:
+                event = sse_event_adapter.validate_python(data)
+            except Exception as e:
+                logger.warning("Unknown or invalid SSE event (type=%s): %s", data.get("type"), e)
+                continue
 
             if isinstance(event, BrowserAgentStepEvent):
-                msg = f"[Step {event.step_number}]"
+                step_counter += 1
+                if step_counter > 1:
+                    self._stream_or_emit("")
+                msg = f"[Step {step_counter}]"
                 if event.next_goal:
                     msg += f" {event.next_goal}"
-                self._emit_message(StatusUpdateEmittedMessage(content=msg))
+                self._stream_or_emit(msg)
+                steps.append({"step": step_counter, "goal": event.next_goal, "is_done": event.is_done})
 
             elif isinstance(event, BrowserAgentDoneEvent):
                 status = "succeeded" if event.is_successful else "completed (not confirmed successful)"
                 if not event.is_done:
                     status = "did not finish"
-                self._emit_message(StatusUpdateEmittedMessage(
-                    content=f"Browser agent task {status} in {event.duration_seconds or 0:.1f}s ({event.n_steps} steps).",
-                ))
+                self._stream_or_emit(
+                    f"Browser agent task {status} in {event.duration_seconds or 0:.1f}s ({event.n_steps} steps).",
+                )
                 result = {
                     "success": event.is_successful or False,
                     "is_done": event.is_done,
@@ -460,13 +476,12 @@ class BlueBoxAgent(AbstractAgent):
                     "n_steps": event.n_steps,
                     "duration_seconds": event.duration_seconds,
                     "execution_id": event.execution_id,
+                    "steps": steps,
                 }
 
             elif isinstance(event, BrowserAgentErrorEvent):
-                self._emit_message(StatusUpdateEmittedMessage(
-                    content=f"Browser agent error: {event.error}",
-                ))
-                result = {"error": event.error, "execution_id": event.execution_id}
+                self._stream_or_emit(f"Browser agent error: {event.error}")
+                result = {"error": event.error, "execution_id": event.execution_id, "steps": steps}
 
         return result
 

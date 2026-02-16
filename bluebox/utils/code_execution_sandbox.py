@@ -118,7 +118,7 @@ SENSITIVE_PATH_PREFIXES: tuple[str, ...] = (
 )
 
 
-def _is_docker_available() -> bool:
+def is_docker_available() -> bool:
     """
     Check if Docker is available and running.
 
@@ -466,14 +466,14 @@ def execute_python_sandboxed(
     use_docker = False
     if SANDBOX_MODE == "docker":
         use_docker = True
-        if not _is_docker_available():
+        if not is_docker_available():
             return {"error": "Docker sandbox requested but Docker is not available"}
     elif SANDBOX_MODE == "auto":
         # Priority: lambda > docker > blocklist
         if _lambda_executor_fn is not None and not work_dir:
             logger.debug("Executing code via AWS Lambda sandbox (auto-selected)")
             return _lambda_executor_fn(code, extra_globals)
-        use_docker = _is_docker_available()
+        use_docker = is_docker_available()
     # else: SANDBOX_MODE == "blocklist" -> use_docker stays False
 
     if use_docker:
