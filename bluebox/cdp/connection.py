@@ -36,14 +36,40 @@ cdp_http_session: contextvars.ContextVar[requests.Session | None] = contextvars.
 
 
 def _get_http(base_url: str, path: str, timeout: int = 5) -> requests.Response:
-    """HTTP GET using the context session (if set) or bare requests.get."""
+    """
+    Perform an HTTP GET, routing through the context session when available.
+
+    If ``cdp_http_session`` holds a :class:`requests.Session`, the request is
+    made via that session so cookies (e.g. sticky-session cookies set by a load
+    balancer) are automatically captured and replayed on subsequent calls.
+    Otherwise falls back to a stateless :func:`requests.get`.
+
+    Args:
+        base_url: Scheme + host + port, e.g. ``"http://chrome:9222"``.
+        path: URL path to append, e.g. ``"/json/version"``.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        The HTTP response object.
+    """
     session = cdp_http_session.get()
     getter = session.get if session is not None else requests.get
     return getter(f"{base_url}{path}", timeout=timeout)
 
 
 def _ws_cookie_header() -> dict[str, str]:
-    """Build a Cookie header dict from the context session's cookie jar."""
+    """
+    Build a ``Cookie`` header dict from the context session's cookie jar.
+
+    Intended to be passed as the ``header`` argument to
+    :func:`websocket.create_connection` so that WebSocket upgrade requests
+    carry the same cookies captured by earlier HTTP calls (e.g. sticky-session
+    cookies from a load balancer).
+
+    Returns:
+        A dict with a single ``"Cookie"`` key, or an empty dict if no session
+        is set or the session has no cookies.
+    """
     session = cdp_http_session.get()
     if session is None or len(session.cookies) == 0:
         return {}
@@ -55,7 +81,8 @@ def _ws_cookie_header() -> dict[str, str]:
 
 
 def get_browser_websocket_url(remote_debugging_address: str) -> str:
-    """Get the normalized WebSocket URL for browser connection.
+    """
+    Get the normalized WebSocket URL for browser connection.
 
     Args:
         remote_debugging_address: The Chrome debugging server address (e.g., 'http://127.0.0.1:9222').
@@ -99,7 +126,8 @@ def get_browser_websocket_url(remote_debugging_address: str) -> str:
 def create_cdp_helpers(
     ws: WebSocket,
 ) -> tuple[Callable, Callable, Callable]:
-    """Create helper functions for CDP communication.
+    """
+    Create helper functions for CDP communication.
 
     Args:
         ws: WebSocket connection to Chrome.
@@ -151,7 +179,8 @@ def create_cdp_helpers(
 
 
 def get_existing_tabs(remote_debugging_address: str) -> list[dict]:
-    """Get list of existing browser tabs/targets.
+    """
+    Get list of existing browser tabs/targets.
 
     Args:
         remote_debugging_address: Chrome debugging server address.
