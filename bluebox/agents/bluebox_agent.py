@@ -33,6 +33,7 @@ from bluebox.data_models.llms.interaction import (
     ChatResponseEmittedMessage,
     ChatThread,
     EmittedMessage,
+    StatusUpdateEmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.routine.routine import RoutineExecutionRequest, RoutineInfo
@@ -213,11 +214,10 @@ class BlueBoxAgent(AbstractAgent):
     ## Streaming helpers
 
     def _stream_or_emit(self, text: str) -> None:
-        """Stream text as a chunk if streaming is available, otherwise emit as a message."""
+        """Stream text as a chunk if streaming is available, and always emit a status update."""
         if self._stream_chunk_callable:
             self._stream_chunk_callable(text + "\n")
-        else:
-            self._emit_message(ChatResponseEmittedMessage(content=text))
+        self._emit_message(StatusUpdateEmittedMessage(content=text))
 
     ## File saving
 
