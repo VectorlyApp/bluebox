@@ -328,28 +328,24 @@ In addition to the Guide Agent, we provide specialized agents for analyzing capt
 
 | Agent                            | Purpose                                                                                                                                                       |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Network Spy**            | Search and analyze network traffic. Find API endpoints, inspect request/response patterns, discover authentication flows.                                     |
-| **Trace Hound**            | Trace where tokens and values originate. Search across network, cookies, localStorage, sessionStorage, and window properties to find the source of any value. |
-| **Docs Digger**            | Search through documentation and code files. Find relevant docs, examples, and implementation details in a codebase.                                          |
+| **Network Specialist**     | Search and analyze network traffic. Find API endpoints, inspect request/response patterns, discover authentication flows.                                     |
+| **Value Trace Resolver**   | Trace where tokens and values originate. Search across network, cookies, localStorage, sessionStorage, and window properties to find the source of any value. |
 | **JS Specialist**          | Interactive JavaScript code generation and analysis. Analyzes DOM snapshots, JS files, and network traffic to generate custom code for data extraction.       |
 | **Interaction Specialist** | User interaction analysis and parameter discovery. Analyzes interaction events (clicks, inputs, form submissions) to discover parameters and workflows.       |
 
 ```bash
-# Network Spy - analyze captured network traffic
-bluebox-network-spy --jsonl-path ./cdp_captures/network/events.jsonl
+# Network Specialist - analyze captured network traffic
+bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl
 
-# Trace Hound - trace token origins across network, storage, and window properties
-bluebox-trace-hound \
+# Value Trace Resolver - trace token origins across network, storage, and window properties
+bluebox-value-trace-resolver-specialist \
     --network-jsonl ./cdp_captures/network/events.jsonl \
     --storage-jsonl ./cdp_captures/storage/events.jsonl \
     --window-props-jsonl ./cdp_captures/window_properties/events.jsonl
 
-# Docs Digger - search documentation and code (runs with defaults if no args)
-bluebox-docs-digger
-
 # JS Specialist - interactive JavaScript code generation
 bluebox-js-specialist \
-    --dom-snapshots-dir ./cdp_captures/dom/ \
+    --dom-snapshots-path ./cdp_captures/dom/events.jsonl \
     --javascript-events-jsonl-path ./cdp_captures/network/javascript_events.jsonl \
     --network-events-jsonl-path ./cdp_captures/network/events.jsonl \
     --remote-debugging-address 127.0.0.1:9222
