@@ -1,13 +1,13 @@
 <p align="center">
   <a href="https://www.vectorly.app/"><img src="https://img.shields.io/badge/Website-Vectorly.app-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white" /></a>
   <a href="https://console.vectorly.app"><img src="https://img.shields.io/badge/Console-console.vectorly.app-8b5cf6?style=for-the-badge&logo=googlechrome&logoColor=white" /></a>
+  <a href="https://vectorly.app/discord-invite"><img src="https://img.shields.io/badge/Discord-Join%20our%20server-5865F2?style=for-the-badge&logo=discord&logoColor=white" /></a>
   <a href="https://www.youtube.com/@VectorlyAI"><img src="https://img.shields.io/badge/YouTube-@VectorlyAI-ff0000?style=for-the-badge&logo=youtube&logoColor=white" /></a>
   <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-10b981?style=for-the-badge&logo=apache&logoColor=white" /></a>
 </p>
-
 # bluebox 🟦
 
-Index the world's undocumented APIs
+Index the world's undocumented APIs.
 
 **Why "Blue Box"?** Named after the [phone phreaking devices](https://en.wikipedia.org/wiki/Blue_box) that let tech enthusiasts in the 1960s and 70s explore telephone networks.
 
@@ -24,51 +24,27 @@ https://github.com/user-attachments/assets/934728e1-1384-4b44-a7b0-d93480d329de
 ## Prerequisites
 
 - Python 3.12+
-- Vectorly API key
-  - used by `bluebox` agent for web data extraction
+- Vectorly API key (required, used by `bluebox` agent for web data extraction)
   - Sign up at [console.vectorly.app](https://console.vectorly.app)
   - macOS/Linux: `export VECTORLY_API_KEY="your-key"`
   - Windows (PowerShell): `setx VECTORLY_API_KEY "your-key"`
   - Or add it to your `.env` file: `VECTORLY_API_KEY=your-key`
 - LLM provider API key (required, used by `bluebox` agent for orchestration)
-  - set `export OPENAI_API_KEY="your-key"`  or `export ANTHROPIC_API_KEY="your-key"` (or add to `.env`)
-- [uv (Python package manager)](https://github.com/astral-sh/uv) (optional, for development)
+  - Configure one of the following:
+  - OpenAI (default):
+    - macOS/Linux: `export OPENAI_API_KEY="your-key"`
+    - Windows (PowerShell): `setx OPENAI_API_KEY "your-key"`
+    - `.env`: `OPENAI_API_KEY=your-key`
+  - Anthropic:
+    - macOS/Linux: `export ANTHROPIC_API_KEY="your-key"`
+    - Windows (PowerShell): `setx ANTHROPIC_API_KEY "your-key"`
+    - `.env`: `ANTHROPIC_API_KEY=your-key`
+- [uv](https://github.com/astral-sh/uv) (optional, for dependency management)
   - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
   - Windows (PowerShell): `iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex`
 
 ## Installation
 
-### From PyPI (Recommended)
-
-**Note:** We recommend using a virtual environment to avoid dependency conflicts.
-
-```bash
-# Create and activate a virtual environment
-# Option 1: Using uv (recommended - handles Python version automatically)
-uv venv bluebox-env
-source bluebox-env/bin/activate  # On Windows: bluebox-env\Scripts\activate
-uv pip install bluebox-lib
-
-# Option 2: Using python3 (if Python 3.12+ is your default)
-python3 -m venv bluebox-env
-source bluebox-env/bin/activate  # On Windows: bluebox-env\Scripts\activate
-pip install bluebox-lib
-
-# Option 3: Using pyenv (if you need a specific Python version)
-pyenv install 3.12.3  # if not already installed
-pyenv local 3.12.3
-python -m venv bluebox-env
-source bluebox-env/bin/activate  # On Windows: bluebox-env\Scripts\activate
-pip install bluebox-lib
-
-# Troubleshooting: If pip is not found, recreate the venv or use:
-python -m ensurepip --upgrade  # Install pip in the venv
-pip install bluebox-lib
-```
-
-### From Source (Development)
-
-For development or if you want the latest code:
 
 ```bash
 # Clone the repository
@@ -88,25 +64,27 @@ source bluebox-env/bin/activate
 uv pip install -e .
 ```
 
-## BlueBox Agent
+## Bluebox agent
 
-The BlueBox Agent is a conversational AI agent that automates web tasks. It searches for matching [Vectorly routines](https://vectorly.app/docs/routines/overview), executes them in parallel, and falls back to a live AI browser agent for anything without a pre-built routine.
+The `bluebox` agent is a conversational AI agent that automates web data extraction. It searches the Vectorly web routine index for relevant web APIs, executes matched endpoints in parallel, and falls back to a live AI browser agent when no suitable pre-built routine is available.
 
+### Quickstart
 ```bash
 bluebox-agent
 ```
 
 **What it does:**
 
-- Searches for relevant routines based on your natural language request
-- Executes multiple routines in parallel for speed
-- Falls back to an AI browser agent for free-form tasks when no routine exists
-- Post-processes results with Python (CSV, JSON, etc.)
-- Saves output files to a local workspace
+- Interprets natural language requests and maps them to relevant routines
+- Executes multiple routines concurrently for faster results
+- Falls back to an AI browser agent for tasks without predefined routines
+- Post-processes outputs using Python (CSV, JSON, etc.)
+- Saves generated files to a local workspace
 
-Ask it anything: *"Find one-way trains from Boston to NYC on March 22"* — the agent finds the right routine, runs it, and gives you structured results.
+Ask it anything: *"Run a price analysis on Rolex Sea Dweller 16600"* — the agent automatically selects the right routine, runs it, and delivers structured results.
 
-## Create Your Own Routines
+
+## Create your own routines
 
 To learn about the core technology powering BlueBox, see [routine_discovery.md](routine_discovery.md).
 
@@ -119,7 +97,7 @@ We welcome contributions! Here's how to get started:
 3. **Test your code** — Add unit tests and make sure all tests pass:
 
 ```bash
-pytest tests/ -v
+python -m pytest tests/ -v
 ```
 
 Please follow existing code style and include tests for new features.
