@@ -231,6 +231,7 @@ class AbstractAgentTUI(App):
 
         # Streaming state
         self._streaming_started: bool = False
+        self._assistant_header_printed: bool = False
         self._stream_buffer: list[str] = []
         self._in_code_block: bool = False
         self._code_block_lang: str = ""
@@ -477,11 +478,17 @@ class AbstractAgentTUI(App):
 
     # ── Agent callbacks ──────────────────────────────────────────────────
 
+    def _ensure_assistant_header(self, chat: RichLog) -> None:
+        """Print the 'Assistant' header once per turn if not already printed."""
+        if not self._assistant_header_printed:
+            chat.write(Text.from_markup("\n[bold cyan]Assistant[/bold cyan]"))
+            self._assistant_header_printed = True
+
     def _handle_stream_chunk(self, chunk: str) -> None:
         """Buffer streaming chunks, rendering markdown line-by-line."""
         chat = self.query_one("#chat-log", RichLog)
         if not self._streaming_started:
-            chat.write(Text.from_markup("\n[bold cyan]Assistant[/bold cyan]"))
+            self._ensure_assistant_header(chat)
             self._streaming_started = True
 
         self._stream_buffer.append(chunk)
@@ -690,12 +697,13 @@ class AbstractAgentTUI(App):
                 self._in_code_block = False
             else:
                 # Non-streaming: render full response as markdown
-                chat.write(Text.from_markup("\n[bold cyan]Assistant[/bold cyan]"))
+                self._ensure_assistant_header(chat)
                 if message.content:
                     chat.write(RichMarkdown(message.content))
             chat.write("")
 
         elif isinstance(message, ToolInvocationResultEmittedMessage):
+            self._ensure_assistant_header(chat)
             inv = message.tool_invocation
             ts = datetime.now().strftime("%H:%M:%S")
             self._tool_call_count += 1
@@ -815,6 +823,7 @@ class AbstractAgentTUI(App):
             chat.write(Text.from_markup("[red]Agent not initialized.[/red]"))
             return
         self._processing = True
+        self._assistant_header_printed = False
         self._send_to_agent(user_input)
 
     @work(thread=True)

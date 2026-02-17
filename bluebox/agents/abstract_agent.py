@@ -225,14 +225,11 @@ class AbstractAgent(ABC):
 
         # Conversation state
         self._thread = chat_thread or ChatThread()
+        self._thread_persisted = chat_thread is not None
         self._chats: dict[str, Chat] = {}
         if existing_chats:
             for chat in existing_chats:
                 self._chats[chat.id] = chat
-
-        # Persist initial thread if callback provided
-        if self._persist_chat_thread_callable and chat_thread is None:
-            self._thread = self._persist_chat_thread_callable(self._thread)
 
     ## Properties
 
@@ -255,15 +252,13 @@ class AbstractAgent(ABC):
         """Reset the conversation to a fresh state."""
         old_chat_thread_id = self._thread.id
         self._thread = ChatThread()
+        self._thread_persisted = False
         self._chats = {}
         self._previous_response_id = None
         self._response_id_to_chat_index = {}
 
         # Sync tools for fresh state
         self._sync_tools()
-
-        if self._persist_chat_thread_callable:
-            self._thread = self._persist_chat_thread_callable(self._thread)
 
         logger.debug("Reset conversation from %s to %s", old_chat_thread_id, self._thread.id)
 
@@ -712,6 +707,11 @@ class AbstractAgent(ABC):
         llm_provider_response_id: str | None = None,
     ) -> Chat:
         """Create and store a new Chat, update thread, persist if callbacks set."""
+        # Lazy-persist thread on first chat (avoids creating empty threads on connect)
+        if not self._thread_persisted and self._persist_chat_thread_callable:
+            self._thread = self._persist_chat_thread_callable(self._thread)
+            self._thread_persisted = True
+
         chat = Chat(
             chat_thread_id=self._thread.id,
             role=role,
