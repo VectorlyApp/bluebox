@@ -9,22 +9,18 @@
 
 Index the world's undocumented APIs
 
-**Why "Blue Box"?** Named after the [phone phreaking devices](https://en.wikipedia.org/wiki/Blue_box) that let tech enthu
-
-siasts in the 1960s and 70s explore telephone networks.
+**Why "Blue Box"?** Named after the [phone phreaking devices](https://en.wikipedia.org/wiki/Blue_box) that let tech enthusiasts in the 1960s and 70s explore telephone networks.
 
 **You are in the right place if you ...**
 
-* want your AI agent to take real actions on the web
-* never want to pay for an API (except for OpenAI... shouldn't piss them off...)
+* need to scrape data behind UI interactions
+* are dealing with closed APIs
 * are tired of complicated, endless API integrations
-* dealing with closed APIs
+* want to reverse engineer websites
 
 ## Tutorial
 
-
 https://github.com/user-attachments/assets/934728e1-1384-4b44-a7b0-d93480d329de
-
 
 ## Prerequisites
 
@@ -32,9 +28,9 @@ https://github.com/user-attachments/assets/934728e1-1384-4b44-a7b0-d93480d329de
 - [uv (Python package manager)](https://github.com/astral-sh/uv) (optional, for development)
   - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
   - Windows (PowerShell): `iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex`
-- Vectorly API key 
+- Vectorly API key
   - used by `bluexbox` agent for web data extraction
-  - sign up at [console.vectorly.app](https://console.vectorly.app) 
+  - sign up at [console.vectorly.app](https://console.vectorly.app)
   - macOS/Linux: `export VECTORLY_API_KEY="your-key"`
   - Or Windows (PowerShell): `setx VECTORLY_API_KEY "your-key"`
   - Or add it to your `.env` file: `VECTORLY_API_KEY=your-key`
