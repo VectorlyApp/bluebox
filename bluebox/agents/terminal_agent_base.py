@@ -78,6 +78,7 @@ class AbstractTerminalAgentChat(ABC):
         self.console = console
         self.agent_color = agent_color
         self._streaming_started: bool = False
+        self._assistant_header_printed: bool = False
         self._command_history = CommandHistory()
         self._agent = self._create_agent()
 
@@ -142,6 +143,7 @@ class AbstractTerminalAgentChat(ABC):
             self.console.print(f"[bold {self.agent_color}]Assistant[/bold {self.agent_color}]")
             self.console.print()
             self._streaming_started = True
+            self._assistant_header_printed = True
 
         print(chunk, end="", flush=True)
 
@@ -161,13 +163,19 @@ class AbstractTerminalAgentChat(ABC):
             else:
                 # Non-streaming response
                 print_assistant_message(message.content, self.console)
+            self._assistant_header_printed = True
 
         elif isinstance(message, ToolInvocationResultEmittedMessage):
             # Reset streaming state if tool result arrives after streamed progress
             if self._streaming_started:
                 print()
                 print()
-                self._streaming_started = False
+            elif not self._assistant_header_printed:
+                # Print "Assistant" header if no response or stream preceded this tool call
+                self.console.print()
+                self.console.print(f"[bold {self.agent_color}]Assistant[/bold {self.agent_color}]")
+            self._streaming_started = False
+            self._assistant_header_printed = True
             # Show tool call and result
             print_tool_call(message.tool_invocation, self.console)
             print_tool_result(message.tool_invocation, message.tool_result, self.console)
@@ -259,10 +267,12 @@ class AbstractTerminalAgentChat(ABC):
                         self.console.print(f"[bold yellow]Usage:[/bold yellow] /{self.autonomous_command_name} <task>")
                         self.console.print()
                         continue
+                    self._assistant_header_printed = False
                     self.handle_autonomous_command(task)
                     continue
 
                 # Normal message - send to agent
+                self._assistant_header_printed = False
                 self._agent.process_new_message(user_input, ChatRole.USER)
 
             except KeyboardInterrupt:
