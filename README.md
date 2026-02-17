@@ -32,7 +32,12 @@ https://github.com/user-attachments/assets/934728e1-1384-4b44-a7b0-d93480d329de
 - [uv (Python package manager)](https://github.com/astral-sh/uv) (optional, for development)
   - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
   - Windows (PowerShell): `iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex`
-- **Vectorly API key** — sign up at [console.vectorly.app](https://console.vectorly.app) and set `export VECTORLY_API_KEY="your-key"` (or add to `.env`)
+- Vectorly API key 
+  - used by `bluexbox` agent for web data extraction
+  - sign up at [console.vectorly.app](https://console.vectorly.app) 
+  - macOS/Linux: `export VECTORLY_API_KEY="your-key"`
+  - Or Windows (PowerShell): `setx VECTORLY_API_KEY "your-key"`
+  - Or add it to your `.env` file: `VECTORLY_API_KEY=your-key`
 - OpenAI API key or Anthropic API key
   - set `export OPENAI_API_KEY="your-key"`  or `export ANTHROPIC_API_KEY="your-key"` (or add to `.env`)
 
