@@ -104,7 +104,7 @@ class AsyncCDPSession:
         try:
             cdp_target_id: str | None = None
 
-            if self.target_id:
+            if self.target_id is not None:
                 # Caller specified the exact target to attach to
                 cdp_target_id = self.target_id
                 logger.info("✅ Using provided targetId: %s", cdp_target_id)
