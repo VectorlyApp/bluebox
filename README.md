@@ -20,7 +20,11 @@ siasts in the 1960s and 70s explore telephone networks.
 * are tired of complicated, endless API integrations
 * dealing with closed APIs
 
-## BlueBox Tutorial
+## Tutorial
+
+
+https://github.com/user-attachments/assets/934728e1-1384-4b44-a7b0-d93480d329de
+
 
 ## Prerequisites
 
