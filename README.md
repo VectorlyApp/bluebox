@@ -45,7 +45,6 @@ https://github.com/user-attachments/assets/934728e1-1384-4b44-a7b0-d93480d329de
 
 ## Installation
 
-
 ```bash
 # Clone the repository
 git clone https://github.com/VectorlyApp/bluebox.git
@@ -69,8 +68,13 @@ uv pip install -e .
 The `bluebox` agent is a conversational AI agent that automates web data extraction. It searches the Vectorly web routine index for relevant web APIs, executes matched endpoints in parallel, and falls back to a live AI browser agent when no suitable pre-built routine is available.
 
 ### Quickstart
+
 ```bash
-bluebox-agent
+# run with OpenAI models
+bluebox-agent --model gpt-5.2
+
+# run with Anthropic models
+bluebox-agent --model claude-opus-4-5
 ```
 
 **What it does:**
@@ -82,7 +86,6 @@ bluebox-agent
 - Saves generated files to a local workspace
 
 Ask it anything: *"Run a price analysis on Rolex Sea Dweller 16600"* — the agent automatically selects the right routine, runs it, and delivers structured results.
-
 
 ## Create your own routines
 
