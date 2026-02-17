@@ -11,16 +11,15 @@ Contains:
 from __future__ import annotations
 
 import json
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from pathlib import Path
 from textwrap import dedent
 from typing import Any, Callable
 
 import requests
 
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
+from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
 from bluebox.config import Config
 from bluebox.data_models.browser_agent import (
     BrowserAgentDoneEvent,
@@ -38,7 +37,6 @@ from bluebox.data_models.llms.interaction import (
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.routine.routine import RoutineExecutionRequest, RoutineInfo
 from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
-from bluebox.utils.infra_utils import read_file_lines
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
@@ -101,9 +99,8 @@ class BlueBoxAgent(AbstractAgent):
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
-        workspace_dir: str = "./bluebox_workspace",
+        workspace: AgentWorkspace | None = None,
         auth_headers_provider: Callable[[], dict[str, str]] | None = None,
-        s3_upload_fn: Callable[[str, str], str | None] | None = None,
     ) -> None:
         """
         Initialize the BlueBox Agent.
@@ -116,26 +113,17 @@ class BlueBoxAgent(AbstractAgent):
             llm_model: The LLM model to use for conversation.
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
-            workspace_dir: Root workspace directory. Raw routine results go in raw/,
-                agent-generated output files go in outputs/.
+            workspace: Workspace for file I/O. Defaults to LocalWorkspace if not provided.
             auth_headers_provider: Optional callback that returns auth headers for
                 downstream API calls. If not provided, falls back to Config.VECTORLY_SERVICE_TOKEN.
-            s3_upload_fn: Optional callback to upload saved files to S3.
-                Signature: (local_path: str, filename: str) -> s3_key | None.
-                When provided, files are uploaded to S3 immediately after local save.
         """
         # Validate required config
         self._auth_headers_provider = auth_headers_provider
-        self._s3_upload_fn = s3_upload_fn
         if not auth_headers_provider and not Config.VECTORLY_SERVICE_TOKEN:
             raise ValueError("Either auth_headers_provider or VECTORLY_SERVICE_TOKEN must be provided")
 
-        self._workspace_dir = Path(workspace_dir)
-        self._raw_dir = self._workspace_dir / "raw"
-        self._outputs_dir = self._workspace_dir / "outputs"
+        self._workspace = workspace or LocalWorkspace()
         self._routine_cache: dict[str, RoutineInfo] = {}
-        self._execution_counter: int = 0
-        self._counter_lock = threading.Lock()
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -219,48 +207,6 @@ class BlueBoxAgent(AbstractAgent):
             self._stream_chunk_callable(text + "\n")
         self._emit_message(StatusUpdateEmittedMessage(content=text))
 
-    ## File saving
-
-    def _save_to_workspace(
-        self,
-        directory: Path,
-        filename_prefix: str,
-        content: str,
-        extension: str = ".json",
-    ) -> dict[str, str]:
-        """Save content to a workspace file with a unique timestamped name.
-
-        Args:
-            directory: Target directory (e.g. self._raw_dir or self._outputs_dir).
-            filename_prefix: Name prefix (e.g. "routine_result" or "browser_agent").
-            content: File content to write.
-            extension: File extension including the dot.
-
-        Returns:
-            Dict with "output_file" (local path) and optionally "output_file_s3_key".
-        """
-        directory.mkdir(parents=True, exist_ok=True)
-        with self._counter_lock:
-            self._execution_counter += 1
-            idx = self._execution_counter
-        timestamp = datetime.now().strftime("%y-%m-%d-%H%M%S")
-        filename = f"{timestamp}-{filename_prefix}_{idx}{extension}"
-        output_path = directory / filename
-        output_path.write_text(content)
-        logger.info("Result saved to %s", output_path)
-
-        result = {"output_file": str(output_path)}
-
-        if self._s3_upload_fn:
-            try:
-                s3_key = self._s3_upload_fn(str(output_path), filename)
-                if s3_key:
-                    result["output_file_s3_key"] = s3_key
-            except Exception as e:
-                logger.exception("S3 upload failed for %s: %s", output_path, e)
-
-        return result
-
     ## Tool handlers
 
     @agent_tool()
@@ -320,8 +266,8 @@ class BlueBoxAgent(AbstractAgent):
         def save_result(result: dict[str, Any]) -> dict[str, Any]:
             """Save a single routine result to a JSON file in raw/."""
             try:
-                save_info = self._save_to_workspace(
-                    self._raw_dir, "routine_result",
+                save_info = self._workspace.save_file(
+                    "raw", "routine_result",
                     json.dumps(result, indent=2, default=str),
                 )
                 result.update(save_info)
@@ -417,8 +363,8 @@ class BlueBoxAgent(AbstractAgent):
         final_result = result.get("final_result")
         if final_result:
             try:
-                save_info = self._save_to_workspace(
-                    self._outputs_dir, "browser_agent", final_result, extension=".md",
+                save_info = self._workspace.save_file(
+                    "outputs", "browser_agent", final_result, extension=".md",
                 )
                 result.update(save_info)
             except Exception as e:
@@ -506,24 +452,14 @@ class BlueBoxAgent(AbstractAgent):
                 statements for debugging.
         """
         # Ensure directories exist
-        self._raw_dir.mkdir(parents=True, exist_ok=True)
-        self._outputs_dir.mkdir(parents=True, exist_ok=True)
-        work_dir = str(self._workspace_dir.resolve())
+        self._workspace.ensure_dirs()
+        work_dir = str(self._workspace.root_path.resolve())
 
         # Snapshot files in outputs/ before execution
-        files_before: dict[str, float] = {}
-        for p in self._outputs_dir.iterdir():
-            if p.is_file():
-                files_before[str(p)] = p.stat().st_mtime
+        files_before = self._workspace.snapshot_outputs()
 
         # Load all JSON files from raw/ as routine_results
-        routine_results: list[dict[str, Any]] = []
-        for json_file in sorted(self._raw_dir.glob("*.json")):
-            try:
-                data = json.loads(json_file.read_text())
-                routine_results.append(data)
-            except (json.JSONDecodeError, OSError) as e:
-                logger.warning("Failed to load %s: %s", json_file, e)
+        routine_results = self._workspace.load_raw_json()
 
         # Execute in sandbox with work_dir for file access
         sandbox_result = execute_python_sandboxed(
@@ -533,23 +469,7 @@ class BlueBoxAgent(AbstractAgent):
         )
 
         # Diff files in outputs/ to find new/modified ones
-        files_created: list[str] = []
-        for p in self._outputs_dir.iterdir():
-            if not p.is_file():
-                continue
-            path_str = str(p)
-            mtime = p.stat().st_mtime
-            if path_str not in files_before or files_before[path_str] < mtime:
-                files_created.append(path_str)
-
-        # Upload new/modified files to S3 so they appear in the files panel
-        if files_created and self._s3_upload_fn:
-            for filepath in files_created:
-                try:
-                    filename = Path(filepath).name
-                    self._s3_upload_fn(filepath, filename)
-                except Exception as e:
-                    logger.exception("S3 upload failed for %s: %s", filepath, e)
+        files_created = self._workspace.diff_outputs(files_before)
 
         # Build response
         result: dict[str, Any] = {}
@@ -591,36 +511,7 @@ class BlueBoxAgent(AbstractAgent):
         Shows the full directory structure including raw/ (routine results)
         and outputs/ (generated files).
         """
-        self._workspace_dir.mkdir(parents=True, exist_ok=True)
-
-        tree_lines: list[str] = []
-        total_files = 0
-
-        for dirpath, dirnames, filenames in sorted(self._workspace_dir.walk()):
-            # Relative path from workspace root
-            rel_dir = dirpath.relative_to(self._workspace_dir)
-            depth = len(rel_dir.parts)
-            indent = "  " * depth
-            dir_name = rel_dir.name or str(self._workspace_dir.name)
-            tree_lines.append(f"{indent}{dir_name}/")
-
-            dirnames.sort()
-            for filename in sorted(filenames):
-                filepath = dirpath / filename
-                size = filepath.stat().st_size
-                if size < 1024:
-                    size_str = f"{size}B"
-                elif size < 1024 * 1024:
-                    size_str = f"{size / 1024:.1f}KB"
-                else:
-                    size_str = f"{size / (1024 * 1024):.1f}MB"
-                tree_lines.append(f"{indent}  {filename}  ({size_str})")
-                total_files += 1
-
-        return {
-            "tree": "\n".join(tree_lines),
-            "total_files": total_files,
-        }
+        return self._workspace.list_files()
 
     @agent_tool()
     def _read_workspace_file(
@@ -641,14 +532,4 @@ class BlueBoxAgent(AbstractAgent):
             start_line: Optional 1-based start line number. Omit to read from the beginning.
             end_line: Optional 1-based end line number (inclusive). Omit to read to the end.
         """
-        # Resolve and validate path stays within workspace
-        resolved = (self._workspace_dir / path).resolve()
-        workspace_resolved = self._workspace_dir.resolve()
-        try:
-            resolved.relative_to(workspace_resolved)
-        except ValueError:
-            return {"error": f"Access denied: '{path}' is outside the workspace directory"}
-
-        result = read_file_lines(resolved, start_line=start_line, end_line=end_line)
-        result["path"] = path
-        return result
+        return self._workspace.read_file(path, start_line=start_line, end_line=end_line)

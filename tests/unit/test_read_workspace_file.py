@@ -1,27 +1,25 @@
 """
 tests/unit/test_read_workspace_file.py
 
-Unit tests for the path traversal fix in BlueBoxAgent._read_workspace_file.
-Tests the method directly using a minimal stub with only _workspace_dir set.
+Unit tests for the path traversal fix in LocalWorkspace.read_file.
+Tests the method directly using a LocalWorkspace instance.
 """
 
-import os
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
-from bluebox.agents.bluebox_agent import BlueBoxAgent
+from bluebox.agents.workspace import LocalWorkspace
 
 
-def _make_stub(workspace_dir: Path) -> SimpleNamespace:
-    """Create a minimal stub with just _workspace_dir for testing."""
-    return SimpleNamespace(_workspace_dir=workspace_dir)
+def _make_workspace(workspace_dir: Path) -> LocalWorkspace:
+    """Create a LocalWorkspace for testing."""
+    return LocalWorkspace(str(workspace_dir))
 
 
-def _call(stub: SimpleNamespace, path: str, **kwargs: object) -> dict:
-    """Call the unbound _read_workspace_file with our stub as self."""
-    return BlueBoxAgent._read_workspace_file(stub, path=path, **kwargs)
+def _call(ws: LocalWorkspace, path: str, **kwargs: object) -> dict:
+    """Call read_file on the workspace."""
+    return ws.read_file(path, **kwargs)
 
 
 class TestPathTraversalPrevention:
@@ -29,17 +27,17 @@ class TestPathTraversalPrevention:
 
     def test_parent_traversal_blocked(self, tmp_path: Path) -> None:
         """../  should be denied."""
-        stub = _make_stub(tmp_path / "workspace")
-        stub._workspace_dir.mkdir()
-        result = _call(stub, "../../../etc/passwd")
+        ws = _make_workspace(tmp_path / "workspace")
+        ws.root_path.mkdir()
+        result = _call(ws, "../../../etc/passwd")
         assert "error" in result
         assert "Access denied" in result["error"]
 
     def test_absolute_path_outside_blocked(self, tmp_path: Path) -> None:
         """/etc/passwd should be denied."""
-        stub = _make_stub(tmp_path / "workspace")
-        stub._workspace_dir.mkdir()
-        result = _call(stub, "/etc/passwd")
+        ws = _make_workspace(tmp_path / "workspace")
+        ws.root_path.mkdir()
+        result = _call(ws, "/etc/passwd")
         assert "error" in result
         assert "Access denied" in result["error"]
 
@@ -55,8 +53,8 @@ class TestPathTraversalPrevention:
         evil.mkdir()
         (evil / "secret.txt").write_text("stolen")
 
-        stub = _make_stub(workspace)
-        result = _call(stub, "../workspace-evil/secret.txt")
+        ws = _make_workspace(workspace)
+        result = _call(ws, "../workspace-evil/secret.txt")
         assert "error" in result
         assert "Access denied" in result["error"]
 
@@ -71,8 +69,8 @@ class TestPathTraversalPrevention:
         link = workspace / "escape"
         link.symlink_to(outside)
 
-        stub = _make_stub(workspace)
-        result = _call(stub, "escape/secret.txt")
+        ws = _make_workspace(workspace)
+        result = _call(ws, "escape/secret.txt")
         assert "error" in result
         assert "Access denied" in result["error"]
 
@@ -82,8 +80,8 @@ class TestPathTraversalPrevention:
         workspace.mkdir()
         (workspace / "subdir").mkdir()
 
-        stub = _make_stub(workspace)
-        result = _call(stub, "subdir/../../etc/passwd")
+        ws = _make_workspace(workspace)
+        result = _call(ws, "subdir/../../etc/passwd")
         assert "error" in result
         assert "Access denied" in result["error"]
 
@@ -97,8 +95,8 @@ class TestLegitimateAccess:
         workspace.mkdir()
         (workspace / "data.txt").write_text("line1\nline2")
 
-        stub = _make_stub(workspace)
-        result = _call(stub, "data.txt")
+        ws = _make_workspace(workspace)
+        result = _call(ws, "data.txt")
         assert "error" not in result
         assert result["content"] == "line1\nline2"
 
@@ -108,8 +106,8 @@ class TestLegitimateAccess:
         (workspace / "raw").mkdir(parents=True)
         (workspace / "raw" / "results.json").write_text('{"ok": true}')
 
-        stub = _make_stub(workspace)
-        result = _call(stub, "raw/results.json")
+        ws = _make_workspace(workspace)
+        result = _call(ws, "raw/results.json")
         assert "error" not in result
         assert '{"ok": true}' in result["content"]
 
@@ -118,8 +116,8 @@ class TestLegitimateAccess:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
 
-        stub = _make_stub(workspace)
-        result = _call(stub, ".")
+        ws = _make_workspace(workspace)
+        result = _call(ws, ".")
         assert "error" in result
         assert "Not a file" in result["error"]
 
@@ -128,8 +126,8 @@ class TestLegitimateAccess:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
 
-        stub = _make_stub(workspace)
-        result = _call(stub, "nope.txt")
+        ws = _make_workspace(workspace)
+        result = _call(ws, "nope.txt")
         assert "error" in result
         assert "File not found" in result["error"]
 
@@ -139,7 +137,7 @@ class TestLegitimateAccess:
         workspace.mkdir()
         (workspace / "big.txt").write_text("\n".join(f"line{i}" for i in range(1, 11)))
 
-        stub = _make_stub(workspace)
-        result = _call(stub, "big.txt", start_line=3, end_line=5)
+        ws = _make_workspace(workspace)
+        result = _call(ws, "big.txt", start_line=3, end_line=5)
         assert "error" not in result
         assert result["content"] == "line3\nline4\nline5"
