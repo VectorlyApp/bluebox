@@ -88,12 +88,6 @@ uv pip install -e .
 The BlueBox Agent is a conversational AI agent that automates web tasks. It searches for matching [Vectorly routines](https://vectorly.app/docs/routines/overview), executes them in parallel, and falls back to a live AI browser agent for anything without a pre-built routine.
 
 ```bash
-# Set your Vectorly API key (sign up at console.vectorly.app)
-export VECTORLY_API_KEY="your-key"
-# Or add it to a .env file in your project directory:
-# echo 'VECTORLY_API_KEY=your-key' >> .env
-
-# Launch the agent
 bluebox-agent
 ```
 
