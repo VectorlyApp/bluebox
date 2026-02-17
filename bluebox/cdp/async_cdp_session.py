@@ -5,6 +5,7 @@ Single comprehensive class for asynchronous CDP session monitoring.
 """
 
 import asyncio
+import contextvars
 import json
 from typing import Any, Awaitable, Callable
 
@@ -19,6 +20,14 @@ from bluebox.data_models.cdp import BaseCDPEvent
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
+
+# ContextVar for extra headers on the async WebSocket upgrade request.
+# Set this to e.g. {"Cookie": "sticky=..."} before creating an AsyncCDPSession
+# to ensure the WS connection hits the same backend.
+cdp_ws_extra_headers: contextvars.ContextVar[dict[str, str]] = contextvars.ContextVar(
+    "cdp_ws_extra_headers",
+    default={},
+)
 
 
 class AsyncCDPSession:
@@ -106,7 +115,11 @@ class AsyncCDPSession:
                     for target_info in targets_result["targetInfos"]:
                         if target_info.get("type") == "page":
                             cdp_target_id = target_info.get("targetId")
-                            logger.info("✅ Found page targetId: %s (url: %s)", cdp_target_id, target_info.get("url", "unknown"))
+                            logger.info(
+                                "✅ Found page targetId: %s (url: %s)",
+                                cdp_target_id,
+                                target_info.get("url", "unknown"),
+                            )
                             break
 
             if not cdp_target_id:
@@ -420,7 +433,7 @@ class AsyncCDPSession:
     async def run(self) -> None:
         """Main message processing loop."""
         logger.info("🔌 Connecting to CDP: %s", self.ws_url)
-        async with connect(uri=self.ws_url, max_size=None) as ws:
+        async with connect(uri=self.ws_url, max_size=None, additional_headers=cdp_ws_extra_headers.get()) as ws:
             self.ws = ws
             logger.info("✅ WebSocket connected")
 

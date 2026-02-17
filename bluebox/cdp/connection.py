@@ -9,6 +9,7 @@ This module provides the core functionality for:
 - CDP command/response helpers
 """
 
+import contextvars
 import json
 import time
 from json import JSONDecodeError
@@ -23,6 +24,30 @@ from bluebox.utils.logger import get_logger
 
 
 logger = get_logger(name=__name__)
+
+# ContextVar for sticky-session cookie affinity.
+# Callers set this to a requests.Session before invoking any CDP function;
+# the session's cookies are then forwarded on all HTTP and WebSocket requests
+# within that context, ensuring they hit the same backend.
+cdp_http_session: contextvars.ContextVar[requests.Session | None] = contextvars.ContextVar(
+    "cdp_http_session", default=None,
+)
+
+
+def _get_http(base_url: str, path: str, timeout: int = 5) -> requests.Response:
+    """HTTP GET using the context session (if set) or bare requests.get."""
+    session = cdp_http_session.get()
+    getter = session.get if session is not None else requests.get
+    return getter(f"{base_url}{path}", timeout=timeout)
+
+
+def _ws_cookie_header() -> dict[str, str]:
+    """Build a Cookie header dict from the context session's cookie jar."""
+    session = cdp_http_session.get()
+    if session is None or len(session.cookies) == 0:
+        return {}
+    cookie_str = "; ".join(f"{c.name}={c.value}" for c in session.cookies)
+    return {"Cookie": cookie_str}
 
 
 # WebSocket URL helpers ___________________________________________________________________________
@@ -44,7 +69,7 @@ def get_browser_websocket_url(remote_debugging_address: str) -> str:
     if not base.startswith(("http://", "https://")):
         base = f"http://{base}"
     try:
-        ver = requests.get(f"{base}/json/version", timeout=5)
+        ver = _get_http(base, "/json/version")
         ver.raise_for_status()
         data = ver.json()
         raw_ws = data.get("webSocketDebuggerUrl")
@@ -57,10 +82,10 @@ def get_browser_websocket_url(remote_debugging_address: str) -> str:
         fixed_netloc = f"{base_parsed.hostname}:{base_parsed.port}"
         ws_url = urlunparse(parsed._replace(netloc=fixed_netloc))
 
-        logger.debug(f"Raw WebSocket URL: {raw_ws}")
-        logger.debug(f"Base URL: {base}")
-        logger.debug(f"Fixed netloc: {fixed_netloc}")
-        logger.debug(f"Normalized WebSocket URL: {ws_url}")
+        logger.debug("Raw WebSocket URL: %s", raw_ws)
+        logger.debug("Base URL: %s", base)
+        logger.debug("Fixed netloc: %s", fixed_netloc)
+        logger.debug("Normalized WebSocket URL: %s", ws_url)
 
         return ws_url
     except Exception as e:
@@ -137,7 +162,7 @@ def get_existing_tabs(remote_debugging_address: str) -> list[dict]:
     if not base.startswith(("http://", "https://")):
         base = f"http://{base}"
     try:
-        response = requests.get(f"{base}/json/list", timeout=5)
+        response = _get_http(base, "/json/list")
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -171,15 +196,19 @@ def cdp_attach_to_existing_tab(
             raise RuntimeError("No existing page tabs found to attach to")
         # Use the first available page tab
         target_id = page_tabs[0]["id"]
-        logger.debug(f"Auto-selected tab: {page_tabs[0].get('url', 'unknown')}")
+        logger.debug("Auto-selected tab: %s", page_tabs[0].get("url", "unknown"))
 
     ws_url = get_browser_websocket_url(remote_debugging_address)
-    logger.debug(f"cdp_attach_to_existing_tab ws_url: {ws_url}")
+    logger.debug("cdp_attach_to_existing_tab ws_url: %s", ws_url)
 
     browser_ws = None
     try:
-        browser_ws = websocket.create_connection(ws_url, timeout=10)
-        logger.debug(f"cdp_attach_to_existing_tab browser_ws: {browser_ws}")
+        browser_ws = websocket.create_connection(
+            url=ws_url,
+            timeout=10,
+            header=_ws_cookie_header(),
+        )
+        logger.debug("cdp_attach_to_existing_tab browser_ws: %s", browser_ws)
         return target_id, None, browser_ws
     except Exception as e:
         if browser_ws:
@@ -217,16 +246,20 @@ def cdp_new_tab(
         RuntimeError: If failed to create the tab.
     """
     ws_url = get_browser_websocket_url(remote_debugging_address)
-    logger.debug(f"cdp_new_tab ws_url: {ws_url}")
+    logger.debug("cdp_new_tab ws_url: %s", ws_url)
 
     browser_ws = None
     try:
         try:
-            browser_ws = websocket.create_connection(ws_url, timeout=10)
+            browser_ws = websocket.create_connection(
+                url=ws_url,
+                timeout=10,
+                header=_ws_cookie_header(),
+            )
         except Exception as e:
             raise RuntimeError(f"Failed to connect to browser WebSocket: {e}")
 
-        logger.debug(f"cdp_new_tab browser_ws: {browser_ws}")
+        logger.debug("cdp_new_tab browser_ws: %s", browser_ws)
 
         send_cmd, _, recv_until = create_cdp_helpers(browser_ws)
 
@@ -267,7 +300,11 @@ def cdp_new_tab(
         raise RuntimeError(f"Failed to create target: {e}")
 
 
-def dispose_context(browser_context_id: str, ws: WebSocket | None = None, remote_debugging_address: str | None = None) -> None:
+def dispose_context(
+    browser_context_id: str,
+    ws: WebSocket | None = None,
+    remote_debugging_address: str | None = None,
+) -> None:
     """
     Dispose of a browser context. Fire-and-forget.
 
@@ -281,7 +318,11 @@ def dispose_context(browser_context_id: str, ws: WebSocket | None = None, remote
         if remote_debugging_address is None:
             raise ValueError("Either ws or remote_debugging_address must be provided")
         ws_url = get_browser_websocket_url(remote_debugging_address)
-        ws = websocket.create_connection(ws_url, timeout=10)
+        ws = websocket.create_connection(
+            ws_url,
+            timeout=10,
+            header=_ws_cookie_header(),
+        )
         owns_ws = True
 
     try:
