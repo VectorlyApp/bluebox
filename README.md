@@ -15,7 +15,6 @@ Index the world's undocumented APIs
 
 * need to scrape data behind UI interactions
 * are dealing with closed APIs
-* are tired of complicated, endless API integrations
 * want to reverse engineer websites
 
 ## Tutorial
