@@ -253,24 +253,24 @@ def save_data_to_file(
         is_base64: If True, decode data as base64 and write as binary.
     """
     os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
-    
+
     if data is None:
         logger.warning("Data is None. Skipping file save.")
         return
-    
+
     if is_base64 and isinstance(data, str):
         raw_data = base64.b64decode(data)
         with open(file_path, mode="wb") as f:
             f.write(raw_data)
-        logger.info(f"Saved data to: {file_path} ({len(raw_data)} bytes)")
+        logger.info("Saved data to: %s (%s bytes)", file_path, len(raw_data))
     elif isinstance(data, (dict, list)):
         with open(file_path, mode="w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        logger.info(f"Saved data to: {file_path}")
+        logger.info("Saved data to: %s", file_path)
     else:
         with open(file_path, mode="w", encoding="utf-8", errors="replace") as f:
             f.write(str(data))
-        logger.info(f"Saved data to: {file_path}")
+        logger.info("Saved data to: %s", file_path)
 
 
 def get_set_cookie_values(headers: dict) -> list:
@@ -330,7 +330,11 @@ def blocked_by_regex(url: str, block_regexes: list) -> bool:
     """
     u = url or ""
     for rx in block_regexes:
-        if re.search(rx, u, flags=re.IGNORECASE):
+        if re.search(
+            pattern=rx,
+            string=u,
+            flags=re.IGNORECASE,
+        ):
             return True
     return False
 
@@ -357,15 +361,15 @@ def resolve_dotted_path(
     # make a copy of the path to avoid modifying the original
     path_copy = copy.deepcopy(path)
     obj_copy = copy.deepcopy(obj)
-    
+
     # convert string path to list
     if isinstance(path_copy, str):
         path_copy = path_copy.split(".")
-    
+
     # handle empty path case
     if not path_copy:
         return str(obj_copy) if obj_copy is not None else None
-    
+
     try:
         
         # loop until we have no more steps in the path
@@ -383,13 +387,23 @@ def resolve_dotted_path(
             elif isinstance(obj_copy, dict):
                 obj_copy = obj_copy.get(path_step, None)
             else:
-                logger.error(f"Step {path_step} (index {step_idx}) in path {path_copy} is not a string, list, or dictionary")
+                logger.error(
+                    "Step %s (index %s) in path %s is not a string, list, or dictionary",
+                    path_step,
+                    step_idx,
+                    path_copy,
+                )
                 return None
                 
         return str(obj_copy) if obj_copy is not None else None
     
     except Exception as e:
-        logger.error(f"Error resolving dotted path {path}: for object {obj}: \nException: {e}")
+        logger.error(
+            "Error resolving dotted path %s: for object %s: \nException: %s",
+            path,
+            obj,
+            e,
+        )
         return None
 
 
@@ -412,9 +426,7 @@ def apply_params(text: str, parameters_dict: dict | None) -> str:
     Returns:
         str: Text with parameters replaced.
     """
-    
-    logger.info(f"Applying params to text: {text} with parameters_dict: {parameters_dict}")
-    
+    logger.debug("Applying params to text: %s with parameters_dict: %s", text, parameters_dict)
     if not text or not parameters_dict:
         return text
 
@@ -424,20 +436,28 @@ def apply_params(text: str, parameters_dict: dict | None) -> str:
             literal = value  # For strings, insert raw string (no quotes)
         else:
             literal = json.dumps(value)  # For numbers/bools/null, use JSON encoding
-        
+
         escaped_key = re.escape(key)
-        
+
         # Pattern 1: Simple quoted placeholder "{{key}}" in JSON string
         # Matches: "{{key}}" (when the JSON value itself is the string "{{key}}")
         simple_quoted = '"' + r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}' + '"'
-        text = re.sub(simple_quoted, literal, text)
-        
+        text = re.sub(
+            pattern=simple_quoted,
+            repl=literal,
+            string=text,
+        )
+
         # Pattern 2: Escaped quote variant \"{{key}}\"
         # In JSON string this appears as: \\"{{key}}\\" 
         double_escaped = r'\\"' + r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}' + r'\\"'
-        text = re.sub(double_escaped, literal, text)
+        text = re.sub(
+            pattern=double_escaped,
+            repl=literal,
+            string=text,
+        )
     
-    logger.info(f"Applied params to text: {text}")
+    logger.debug("Applied params to text: %s", text)
     return text
 
 
@@ -461,30 +481,33 @@ def extract_base_url_from_url(url: str) -> str | None:
         
         if not hostname:
             return None
-        
+
         # Use tldextract to properly extract the root domain, handling special TLDs
         extracted = tldextract.extract(hostname)
         if extracted.domain and extracted.suffix:
             return f"{extracted.domain}.{extracted.suffix}"
         # Fallback: if domain extraction fails, return the hostname as-is
         return hostname
-        
+
     except Exception:
         # If URL parsing fails (e.g., contains placeholders), try to extract hostname manually
         # Match protocol://hostname pattern
-        match = re.match(r'^[^:]+://([^/\?\:]+)', url)
+        match = re.match(
+            pattern=r'^[^:]+://([^/\?\:]+)',
+            string=url,
+        )
         if match and match.group(1):
             hostname = match.group(1)
             # Remove port if present
             hostname = hostname.split(':')[0]
-            
+
             # Use tldextract to parse the hostname even if URL parsing failed
             extracted = tldextract.extract(hostname)
             if extracted.domain and extracted.suffix:
                 return f"{extracted.domain}.{extracted.suffix}"
             # Fallback: return hostname as-is if parsing fails
             return hostname
-    
+
     return None
 
 
@@ -579,7 +602,10 @@ def build_transaction_dir(url: str, ts_ms: int, output_dir: str) -> str:
     Returns:
         str: The path to the directory.
     """
-    date_str = time.strftime("%Y%m%d", time.localtime(ts_ms / 1000))
+    date_str = time.strftime(
+        "%Y%m%d",
+        time.localtime(ts_ms / 1000),
+    )
     url_core = (url or "").split("://", 1)[-1].split("?", 1)[0].strip("/")
     url_core = url_core.replace("/", "_")
     safe_url = sanitize_filename(url_core)[:120] or "url"
