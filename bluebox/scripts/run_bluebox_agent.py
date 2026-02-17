@@ -140,8 +140,8 @@ def main() -> None:
     console = Console()
 
     # Validate required config
-    if not Config.VECTORLY_API_KEY:
-        console.print("[bold red]Error: VECTORLY_API_KEY is not set[/bold red]")
+    if not Config.VECTORLY_SERVICE_TOKEN:
+        console.print("[bold red]Error: VECTORLY_SERVICE_TOKEN is not set[/bold red]")
         sys.exit(1)
 
     llm_model = resolve_model(args.model, console)
