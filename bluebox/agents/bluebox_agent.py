@@ -118,7 +118,7 @@ class BlueBoxAgent(AbstractAgent):
             workspace_dir: Root workspace directory. Raw routine results go in raw/,
                 agent-generated output files go in outputs/.
             auth_headers_provider: Optional callback that returns auth headers for
-                downstream API calls. If not provided, falls back to Config.VECTORLY_API_KEY.
+                downstream API calls. If not provided, falls back to Config.VECTORLY_SERVICE_TOKEN.
             s3_upload_fn: Optional callback to upload saved files to S3.
                 Signature: (local_path: str, filename: str) -> s3_key | None.
                 When provided, files are uploaded to S3 immediately after local save.
@@ -126,8 +126,8 @@ class BlueBoxAgent(AbstractAgent):
         # Validate required config
         self._auth_headers_provider = auth_headers_provider
         self._s3_upload_fn = s3_upload_fn
-        if not auth_headers_provider and not Config.VECTORLY_API_KEY:
-            raise ValueError("Either auth_headers_provider or VECTORLY_API_KEY must be provided")
+        if not auth_headers_provider and not Config.VECTORLY_SERVICE_TOKEN:
+            raise ValueError("Either auth_headers_provider or VECTORLY_SERVICE_TOKEN must be provided")
 
         self._workspace_dir = Path(workspace_dir)
         self._raw_dir = self._workspace_dir / "raw"
@@ -157,10 +157,10 @@ class BlueBoxAgent(AbstractAgent):
 
     def _get_auth_headers(self) -> dict[str, str]:
         """Build auth headers for downstream API calls.
-        Uses auth_headers_provider if set, otherwise falls back to Config.VECTORLY_API_KEY."""
+        Uses auth_headers_provider if set, otherwise falls back to Config.VECTORLY_SERVICE_TOKEN."""
         if self._auth_headers_provider:
             return self._auth_headers_provider()
-        return {"X-Service-Token": Config.VECTORLY_API_KEY}
+        return {"X-Service-Token": Config.VECTORLY_SERVICE_TOKEN}
 
     ## Abstract method implementations
 
