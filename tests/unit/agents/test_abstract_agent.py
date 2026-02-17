@@ -216,14 +216,25 @@ class TestInitialization:
         assert len(chats) == 1
         assert chats[0].content == "hello"
 
-    def test_persist_thread_called_on_new_thread(self, mock_emit: MagicMock) -> None:
-        """persist_chat_thread_callable is called when creating a new thread."""
+    def test_persist_thread_not_called_on_init(self, mock_emit: MagicMock) -> None:
+        """persist_chat_thread_callable is NOT called during __init__ (lazy persist)."""
         mock_persist = MagicMock(side_effect=lambda t: t)
         ConcreteAgent(
             emit_message_callable=mock_emit,
             persist_chat_thread_callable=mock_persist,
         )
-        assert mock_persist.call_count == 1
+        assert mock_persist.call_count == 0
+
+    def test_persist_thread_called_on_first_chat(self, mock_emit: MagicMock) -> None:
+        """persist_chat_thread_callable is called lazily on the first _add_chat."""
+        mock_persist = MagicMock(side_effect=lambda t: t)
+        agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            persist_chat_thread_callable=mock_persist,
+        )
+        agent._add_chat(role=ChatRole.USER, content="hello")
+        # Called twice: once for lazy thread create, once for thread update after chat
+        assert mock_persist.call_count == 2
 
     def test_persist_thread_not_called_with_existing_thread(self, mock_emit: MagicMock) -> None:
         """persist_chat_thread_callable is NOT called when thread is provided."""
@@ -678,7 +689,8 @@ class TestReset:
         agent.reset()
         assert "echo" in agent._registered_tool_names
 
-    def test_persist_thread_called_on_reset(self, mock_emit: MagicMock) -> None:
+    def test_persist_thread_deferred_after_reset(self, mock_emit: MagicMock) -> None:
+        """After reset, thread persist is deferred until the next _add_chat."""
         mock_persist = MagicMock(side_effect=lambda t: t)
         agent = ConcreteAgent(
             emit_message_callable=mock_emit,
@@ -686,7 +698,10 @@ class TestReset:
         )
         mock_persist.reset_mock()
         agent.reset()
-        assert mock_persist.call_count == 1
+        assert mock_persist.call_count == 0
+        agent._add_chat(role=ChatRole.USER, content="hello")
+        # Called twice: lazy thread create + thread update after chat
+        assert mock_persist.call_count == 2
 
 
 # =============================================================================
