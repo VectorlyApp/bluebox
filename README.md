@@ -9,7 +9,9 @@
 
 INDEXING THE WORLD'S UNDOCUMENTED APIs ⚡️
 
-**Why "Blue Box"?** Named after the [phone phreaking devices](https://en.wikipedia.org/wiki/Blue_box) that let tech enthusiasts in the 1960s and 70s explore telephone networks.
+**Why "Blue Box"?** Named after the [phone phreaking devices](https://en.wikipedia.org/wiki/Blue_box) that let tech enthu
+
+siasts in the 1960s and 70s explore telephone networks.
 
 **You are in the right place if you ...**
 
@@ -18,7 +20,8 @@ INDEXING THE WORLD'S UNDOCUMENTED APIs ⚡️
 * are tired of complicated, endless API integrations
 * dealing with closed APIs
 
-Welcome to Vectorly's Bluebox... **No API? No Problem!**
+## BlueBox Tutorial
+
 
 ## Prerequisites
 
