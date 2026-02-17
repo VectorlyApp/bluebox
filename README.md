@@ -7,7 +7,7 @@
 
 # bluebox 🟦
 
-INDEXING THE WORLD'S UNDOCUMENTED APIs ⚡️
+Index the world's undocumented APIs
 
 **Why "Blue Box"?** Named after the [phone phreaking devices](https://en.wikipedia.org/wiki/Blue_box) that let tech enthu
 
