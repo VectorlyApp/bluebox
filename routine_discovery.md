@@ -49,12 +49,9 @@ python quickstart.py
 
 The quickstart script will:
 
-1. ✅ Automatically launch Chrome in debug mode
-2. 📊 Start browser monitoring (you perform actions)
-3. 🤖 Discover routines from captured data
-4. 📝 Show you how to execute the discovered routine
-
-**Note:** The quickstart script is included in the repository. If you installed from PyPI, you can download it from the [GitHub repository](https://github.com/VectorlyApp/bluebox/blob/main/quickstart.py).
+1. 📊 **Monitor** — Launch Chrome (if needed) and capture browser activity while you perform actions
+2. 🤖 **Discover** — Analyze captured data and generate a reusable Routine
+3. 🏃 **Execute** — Run the discovered routine with your parameters
 
 ### Guide Agent Terminal (Interactive Mode)
 
@@ -86,35 +83,27 @@ bluebox-guide
 | Command                             | Description                                 |
 | ----------------------------------- | ------------------------------------------- |
 | `/load <file.json>`               | Load a routine file (auto-reloads on edits) |
+| `/unload`                         | Unload the current routine                  |
 | `/execute [params.json]`          | Execute the loaded routine                  |
 | `/monitor`                        | Start browser monitoring session            |
 | `/validate`                       | Validate the current routine                |
 | `/diff`, `/accept`, `/reject` | Review agent-suggested edits                |
 | `/show`, `/status`              | Display routine details and state           |
+| `/chats`                          | Show all messages in the thread             |
+| `/reset`                          | Start a new conversation                    |
 | `/help`                           | Show all commands                           |
+| `/quit`                           | Exit                                        |
 
 **When to use Guide Agent vs Quickstart:**
 
 - **Quickstart (`quickstart.py`)**: First-time users, demos, simple one-off automation tasks
-- **Guide Agent (`bluebox-guide`)**: Iterative routine development, debugging, complex workflows requiring back-and-forth with the agent
+- **Guide Agent (`bluebox-guide`)**: Iterative routine development, debugging, complex workflows
 
-### Reverse Engineering Workflow
+### Manual Workflow (Step-by-Step)
 
-The reverse engineering process follows a simple three-step workflow:
+The reverse engineering process follows three steps: **Monitor** (capture browser traffic) → **Discover** (AI generates a Routine) → **Execute** (run with different parameters).
 
-1. **Monitor** — Capture network traffic, storage events, and interactions while you manually perform the target task in Chrome
-2. **Discover** — Let the AI agent analyze the captured data and generate a reusable Routine
-3. **Execute** — Run the discovered Routine with different parameters to automate the task
-
-#### Legal & Privacy Notice
-
-Reverse-engineering and automating a website can violate terms of service. Store captures securely and scrub any sensitive fields before sharing.
-
-#### Quick Start (Recommended)
-
-**Easiest way:** Use the [quickstart script](#quickstart-easiest-way-) which automates the entire workflow.
-
-#### Manual Workflow (Step-by-Step)
+> **Legal & Privacy Notice:** Reverse-engineering and automating a website can violate terms of service. Store captures securely and scrub any sensitive fields before sharing.
 
 ##### 0. Launch Chrome in Debug Mode
 
@@ -202,7 +191,7 @@ Use the CDP browser monitor to block trackers and capture network, storage, and 
 bluebox-monitor --host 127.0.0.1 --port 9222 --output-dir ./cdp_captures --url about:blank --incognito
 ```
 
-The script will open a new tab (starting at `about:blank`). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` and the script will consolidate transactions and produce a HAR automatically.
+Navigate to your target website, perform the actions you want to automate, then press `Ctrl+C`. The script consolidates transactions and produces a HAR automatically.
 
 **Output structure** (under `--output-dir`, default `./cdp_captures`):
 
@@ -221,19 +210,13 @@ cdp_captures/
     └── events.jsonl
 ```
 
-Tip: Keep Chrome focused while monitoring and perform the target flow (search, checkout, etc.). Press Ctrl+C to stop; the script will consolidate transactions and produce a HTTP Archive (HAR) automatically.
-
 ##### 2. Run Routine-Discovery Agent 🤖
 
 Use the **routine-discovery pipeline** to analyze captured data and synthesize a reusable Routine (`navigate → fetch → return`).
 
 **Prerequisites:** You've already captured a session with the browser monitor (`./cdp_captures` exists).
 
-**Run the discovery agent:**
-
-> ⚠️ **Important:** You must specify your own `--task` parameter. The example below is just for demonstration—replace it with a description of what you want to automate.
-
-**Linux/macOS (bash):**
+**Run the discovery agent** (replace `--task` with your own description):
 
 ```bash
 bluebox-discover \
@@ -242,20 +225,6 @@ bluebox-discover \
   --output-dir ./routine_discovery_output \
   --llm-model gpt-5.1
 ```
-
-**Windows (PowerShell):**
-
-```powershell
-# Simple task (no quotes inside):
-bluebox-discover --task "Recover the API endpoints for searching for trains and their prices" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5.1
-```
-
-**Example tasks:**
-
-- `"recover the api endpoints for searching for trains and their prices"` (shown above)
-- `"discover how to search for flights and get pricing"`
-- `"find the API endpoint for user authentication"`
-- `"extract the endpoint for submitting a job application"`
 
 Arguments:
 
@@ -276,51 +245,28 @@ routine_discovery_output/
 
 ##### 3. Execute the Discovered Routines 🏃
 
-⚠️ **Prerequisite:** Make sure Chrome is still running in debug mode. The routine execution script connects to the same Chrome debug session on `127.0.0.1:9222`.
+⚠️ **Prerequisite:** Chrome must still be running in debug mode (`127.0.0.1:9222`).
 
-⚠️ **Important:** If you have a string-typed parameter used in a JSON body field, it may need to be escaped. When the agent generates routines, string parameters are sometimes placed as `"{{PARAM}}"` when they should be `"\"{{PARAM}}\""` to ensure proper JSON string escaping.
-
-**Example:** If you see:
-
-```json
-"field": "{{paramName}}"
-```
-
-And `paramName` is a string parameter, manually change it to:
-
-```json
-"field": "\"{{paramName}}\""
-```
-
-This ensures the parameter value is properly quoted as a JSON string when substituted.
-
-Run the example routine:
+> **String escaping gotcha:** If a string parameter appears in a JSON body as `"{{PARAM}}"`, it may need to be `"\"{{PARAM}}\""` to ensure proper JSON string escaping.
 
 ```bash
-# Using a parameters file:
-
+# Run an example routine (from a parameters file):
 bluebox-execute \
   --routine-path example_data/example_routines/amtrak_one_way_train_search_routine.json \
   --parameters-path example_data/example_routines/amtrak_one_way_train_search_input.json
 
-# Or pass parameters inline (JSON string):
-
+# Or pass parameters inline:
 bluebox-execute \
   --routine-path example_data/example_routines/amtrak_one_way_train_search_routine.json \
   --parameters-dict '{"origin": "BOS", "destination": "NYP", "departureDate": "2026-03-22"}'
-```
 
-Run a discovered routine:
-
-```bash
+# Run a discovered routine:
 bluebox-execute \
   --routine-path routine_discovery_output/routine.json \
   --parameters-path routine_discovery_output/test_parameters.json
 ```
 
-**Note:** Routines execute in a new incognito tab by default (controlled by the routine's `incognito` field). This ensures clean sessions for each execution.
-
-**Alternative:** Deploy your routine to [console.vectorly.app](https://console.vectorly.app) to expose it as an API endpoint or MCP tool for use in production environments.
+Routines execute in a new incognito tab by default. You can also deploy routines to [console.vectorly.app](https://console.vectorly.app) to expose them as API endpoints or MCP tools.
 
 ### Specialized Agents (Beta)
 
@@ -361,12 +307,12 @@ bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.js
 
 #### Parameters
 
-- Defined as typed inputs (see [`Parameter`](https://github.com/VectorlyApp/bluebox/blob/main/src/data_models/production_routine.py) class).
+- Defined as typed inputs (see [`Parameter`](https://github.com/VectorlyApp/bluebox/blob/main/bluebox/data_models/routine/parameter.py) class).
 - Each parameter has required `name` and `description` fields. Optional fields include `type` (defaults to `string`), `required` (defaults to `true`), `default`, and `examples`.
 - Parameters are referenced inside `operations` using placeholder tokens like `"{{paramName}}"` or `\"{{paramName}}\"` (see [Placeholder Interpolation](#placeholder-interpolation) below).
 - **Parameter Types**: Supported types include `string`, `integer`, `number`, `boolean`, `date`, `datetime`, `email`, `url`, and `enum`.
 - **Parameter Validation**: Parameters support validation constraints such as `min_length`, `max_length`, `min_value`, `max_value`, `pattern` (regex), `enum_values`, and `format`.
-- **Reserved Prefixes**: Parameter names cannot start with reserved prefixes: `sessionStorage`, `localStorage`, `cookie`, `meta`, `uuid`, `epoch_milliseconds`.
+- **Reserved Prefixes**: Parameter names cannot start with reserved prefixes: `sessionStorage`, `localStorage`, `cookie`, `meta`, `windowProperty`, `uuid`, `epoch_milliseconds`.
 
 #### Operations
 
@@ -496,8 +442,9 @@ Placeholders inside operation fields are resolved at runtime:
   - `{{localStorage:myKey}}` — access localStorage values
   - `{{cookie:CookieName}}` — read cookie values
   - `{{meta:name}}` — read meta tag content (e.g., `<meta name="csrf-token">`)
+  - `{{windowProperty:path.to.value}}` — access window property values
 
-**Important:** Currently, `sessionStorage`, `localStorage`, `cookie`, and `meta` placeholder resolution is supported only inside fetch `headers` and `body`. Future versions will support interpolation anywhere in operations.
+**Important:** Currently, `sessionStorage`, `localStorage`, `cookie`, `meta`, and `windowProperty` placeholder resolution is supported only inside fetch `headers` and `body`. Future versions will support interpolation anywhere in operations.
 
 Interpolation occurs before an operation executes. For example, a fetch endpoint might be:
 
@@ -537,37 +484,6 @@ This substitutes parameter values and injects `auth_token` from cookies. The JSO
     - The relevant network requests weren't captured (they may have been blocked or filtered)
     - The task description is too vague or too specific
   - **Fix:** Reword your `--task` parameter to more accurately describe what you did during the monitoring step, or re-run the browser monitor and ensure you perform the exact actions you want to automate.
-
-## Coming Soon 🔮
-
-### Pipeline Improvements
-
-- **Integration of routine testing into the agentic pipeline**
-  - The agent will execute discovered routines, detect failures, and automatically suggest/fix issues to make routines more robust and efficient.
-- **Checkpointing progress and resumability**
-  - Avoid re-running the entire discovery pipeline after exceptions; the agent will checkpoint progress and resume from the last successful stage.
-
-### Additional Operations (Not Yet Implemented)
-
-#### Navigation
-
-- **wait_for_title** — wait for the page title to match a regex pattern
-
-#### Network
-
-- **network_sniffing** (background operation) — intercept and capture network requests matching a URL pattern in the background while other operations execute. Useful for capturing API calls triggered by UI interactions.
-  - Supports different capture modes: `list` (all matching requests), `first` (only first match), `last` (only last match)
-  - Can capture request, response, or body data
-
-#### Interaction
-
-- **hover** — move mouse over an element to trigger hover states
-- **wait_for_selector** — wait for an element to reach a specific state (visible, hidden, attached, detached)
-- **set_files** — set file paths for file input elements (for file uploads)
-
-#### Data
-
-- **return_screenshot** — capture and return a screenshot of the page as base64
 
 ## Running Benchmarks 📊
 
