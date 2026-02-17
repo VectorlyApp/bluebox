@@ -27,9 +27,9 @@ https://github.com/user-attachments/assets/934728e1-1384-4b44-a7b0-d93480d329de
 - Python 3.12+
 - Vectorly API key (required, used by `bluebox` agent for web data extraction)
   - Sign up at [console.vectorly.app](https://console.vectorly.app)
-  - macOS/Linux: `export VECTORLY_API_KEY="your-key"`
-  - Windows (PowerShell): `setx VECTORLY_API_KEY "your-key"`
-  - Or add it to your `.env` file: `VECTORLY_API_KEY=your-key`
+  - macOS/Linux: `export VECTORLY_SERVICE_TOKEN="your-key"`
+  - Windows (PowerShell): `setx VECTORLY_SERVICE_TOKEN "your-key"`
+  - Or add it to your `.env` file: `VECTORLY_SERVICE_TOKEN=your-key`
 - LLM provider API key (required, used by `bluebox` agent for orchestration)
   - Configure one of the following:
   - OpenAI (default):
