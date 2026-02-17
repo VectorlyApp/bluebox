@@ -29,6 +29,8 @@ siasts in the 1960s and 70s explore telephone networks.
 - [uv (Python package manager)](https://github.com/astral-sh/uv) (optional, for development)
   - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
   - Windows (PowerShell): `iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex`
+- **Vectorly API key** — sign up at [console.vectorly.app](https://console.vectorly.app) and set `export VECTORLY_API_KEY="your-key"`
+- **OpenAI API key** — required for routine discovery and AI agents: `export OPENAI_API_KEY="sk-..."`
 
 ## Installation
 
