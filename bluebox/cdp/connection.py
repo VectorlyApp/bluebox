@@ -35,7 +35,7 @@ cdp_http_session: contextvars.ContextVar[requests.Session | None] = contextvars.
 )
 
 
-def _get_http(base_url: str, path: str, timeout: int = 5) -> requests.Response:
+def _get_http(base_url: str, path: str, timeout: float = 5) -> requests.Response:
     """
     Perform an HTTP GET, routing through the context session when available.
 
