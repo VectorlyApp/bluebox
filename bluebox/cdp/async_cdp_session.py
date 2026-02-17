@@ -5,6 +5,7 @@ Single comprehensive class for asynchronous CDP session monitoring.
 """
 
 import asyncio
+import contextvars
 import json
 from typing import Any, Awaitable, Callable
 
@@ -19,6 +20,14 @@ from bluebox.data_models.cdp import BaseCDPEvent
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
+
+# ContextVar for extra headers on the async WebSocket upgrade request.
+# Set this to e.g. {"Cookie": "sticky=..."} before creating an AsyncCDPSession
+# to ensure the WS connection hits the same backend.
+cdp_ws_extra_headers: contextvars.ContextVar[dict[str, str]] = contextvars.ContextVar(
+    "cdp_ws_extra_headers",
+    default={},
+)
 
 
 class AsyncCDPSession:
@@ -35,6 +44,7 @@ class AsyncCDPSession:
         session_start_dtm: str,
         event_callback_fn: Callable[[str, BaseCDPEvent], Awaitable[None]],
         paths: dict[str, str] | None = None,
+        target_id: str | None = None,
     ) -> None:
         """
         Initialize AsyncCDPSession.
@@ -45,6 +55,9 @@ class AsyncCDPSession:
                 Called when CDP events are captured. Caller can use this to store events, stream them, etc.
             paths: Optional dict of file paths for output.
                 If not provided, finalize() will skip file operations.
+            target_id: Optional CDP target ID to attach to directly. If provided, skips the
+                Target.getTargets scan and attaches to this specific target. Use when you know
+                which tab to monitor (e.g. a proxy-context tab created by the caller).
         NOTE:
             The CDP sessionId will be obtained automatically in run() after connecting.
             CDP sessionIds are only valid for the specific WebSocket connection where Target.attachToTarget was called.
@@ -55,6 +68,7 @@ class AsyncCDPSession:
         self.event_callback_fn = event_callback_fn
         self.session_start_dtm = session_start_dtm
         self.paths = paths or {}
+        self.target_id = target_id
         self.ws: ClientConnection | None = None
         self.seq = 0  # sequence ID for CDP commands
 
@@ -84,18 +98,29 @@ class AsyncCDPSession:
         """
         Get CDP sessionId from the current WebSocket connection.
         Must be called after connecting and starting the message receiver.
+        If self.target_id is set, attaches directly to that target instead of scanning.
         """
         logger.info("🔍 Getting CDP session ID from current WebSocket connection...")
         try:
-            # Step 1: Get targets to find the page targetId
-            targets_result = await self.send_and_wait(method="Target.getTargets", timeout=5.0)
             cdp_target_id: str | None = None
-            if targets_result and "targetInfos" in targets_result:
-                for target_info in targets_result["targetInfos"]:
-                    if target_info.get("type") == "page":
-                        cdp_target_id = target_info.get("targetId")
-                        logger.info("✅ Found page targetId: %s (url: %s)", cdp_target_id, target_info.get("url", "unknown"))
-                        break
+
+            if self.target_id is not None:
+                # Caller specified the exact target to attach to
+                cdp_target_id = self.target_id
+                logger.info("✅ Using provided targetId: %s", cdp_target_id)
+            else:
+                # Step 1: Get targets to find the page targetId
+                targets_result = await self.send_and_wait(method="Target.getTargets", timeout=5.0)
+                if targets_result and "targetInfos" in targets_result:
+                    for target_info in targets_result["targetInfos"]:
+                        if target_info.get("type") == "page":
+                            cdp_target_id = target_info.get("targetId")
+                            logger.info(
+                                "✅ Found page targetId: %s (url: %s)",
+                                cdp_target_id,
+                                target_info.get("url", "unknown"),
+                            )
+                            break
 
             if not cdp_target_id:
                 logger.error("❌ No page target found in Target.getTargets result")
@@ -408,7 +433,7 @@ class AsyncCDPSession:
     async def run(self) -> None:
         """Main message processing loop."""
         logger.info("🔌 Connecting to CDP: %s", self.ws_url)
-        async with connect(uri=self.ws_url, max_size=None) as ws:
+        async with connect(uri=self.ws_url, max_size=None, additional_headers=cdp_ws_extra_headers.get()) as ws:
             self.ws = ws
             logger.info("✅ WebSocket connected")
 

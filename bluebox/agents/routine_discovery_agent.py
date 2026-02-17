@@ -73,7 +73,7 @@ class RoutineDiscoveryAgent(BaseModel):
     last_response_id: str | None = Field(default=None)
     n_transaction_identification_attempts: int = Field(default=3)
     max_iterations: int = Field(default=50)
-    timeout: int = Field(default=600)
+    timeout: float = Field(default=600)
     remote_debugging_address: str | None = Field(default=None, description="Chrome remote debugging address for routine validation (e.g., http://127.0.0.1:9222)")
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
