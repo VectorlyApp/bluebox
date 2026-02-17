@@ -30,7 +30,8 @@ logger = get_logger(name=__name__)
 # the session's cookies are then forwarded on all HTTP and WebSocket requests
 # within that context, ensuring they hit the same backend.
 cdp_http_session: contextvars.ContextVar[requests.Session | None] = contextvars.ContextVar(
-    "cdp_http_session", default=None,
+    "cdp_http_session",
+    default=None,
 )
 
 
