@@ -73,7 +73,7 @@ class BlueBoxAgent(AbstractAgent):
 
         ## Post-Processing with Python
         - After routines return results, ALWAYS use `run_python_code` to post-process data and generate clean output files.
-        - The variable `routine_results` is pre-loaded: a list of dicts, one per JSON file in the raw/ directory. Each result includes diagnostic fields: `has_failed_placeholders`, `failed_placeholder_count`, `has_operation_errors`, `operation_error_summary`. Use these to detect and report issues.
+        - The variable `routine_results` is pre-loaded: a list of dicts, one per JSON file in the raw/ directory.
         - You have full read/write file access to the workspace directory. Use open() to read/write files.
         - `json`, `csv`, and `Path` (from pathlib) are pre-loaded.
         - Output files are saved in the outputs/ subdirectory. Write there: `with open("outputs/results.csv", "w") as f: ...`
