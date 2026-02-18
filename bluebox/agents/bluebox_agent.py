@@ -343,11 +343,16 @@ class BlueBoxAgent(AbstractAgent):
                 response.raise_for_status()
                 api_response = response.json()
                 result_data = api_response.get("result", api_response)
-                exec_result = RoutineExecutionResult.model_validate(result_data)
-                return save_result({"success": True, "routine_id": req.routine_id, "data": exec_result.to_agent_dict()})
+                try:
+                    exec_result = RoutineExecutionResult.model_validate(result_data)
+                    data = exec_result.to_agent_dict()
+                except Exception:
+                    logger.warning("Failed to parse execution result for %s, using raw response", req.routine_id)
+                    data = result_data
+                return save_result({"api_success": True, "routine_id": req.routine_id, "data": data})
             except requests.RequestException as e:
                 logger.error("Routine execution failed for %s: %s", req.routine_id, e)
-                return save_result({"success": False, "routine_id": req.routine_id, "error": str(e)})
+                return save_result({"api_success": False, "routine_id": req.routine_id, "error": str(e)})
 
         total = len(routine_executions)
         results: list[dict[str, Any]] = []
@@ -357,12 +362,11 @@ class BlueBoxAgent(AbstractAgent):
                 result = future.result()
                 results.append(result)
 
-                status = "succeeded" if result.get("success") else "FAILED"
+                status = "succeeded" if result.get("api_success") else "FAILED"
                 self._stream_or_emit(f"[{len(results)}/{total}] Routine '{result.get('routine_id')}' {status}.")
 
-        succeeded = sum(1 for r in results if r.get("success"))
+        succeeded = sum(1 for r in results if r.get("api_success"))
         return {
-            "success": succeeded == total,
             "total_requested": total,
             "succeeded": succeeded,
             "failed": total - succeeded,
