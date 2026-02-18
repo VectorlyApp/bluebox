@@ -161,7 +161,8 @@ def main() -> None:
     if not is_docker_available():
         print_colored(
             "Warning: Docker is not available. Code execution will use the blocklist sandbox,\n"
-            "which is less secure and has limited isolation.",
+            "which is less secure and has limited isolation. Running with Docker leads to much\n"
+            "better performance because the sandbox can allow more operations safely.",
             YELLOW,
         )
         if not ask_yes_no("Continue without Docker?"):
