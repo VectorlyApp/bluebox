@@ -20,6 +20,7 @@ from bluebox.utils.data_utils import (
     get_text_from_html,
     apply_params,
     extract_object_schema,
+    strip_proxy_credentials,
 )
 
 
@@ -1403,3 +1404,35 @@ class TestExtractObjectSchema:
         assert result["_type"] == "list"
         assert result["_count"] == 4
         assert result["_items"] == {"_type": "scalar"}
+
+
+class TestStripProxyCredentials:
+    """Tests for strip_proxy_credentials."""
+
+    def test_strips_user_and_password(self) -> None:
+        assert strip_proxy_credentials("http://user:pass@proxy.example.com:8080") == "proxy.example.com:8080"
+
+    def test_strips_user_only(self) -> None:
+        assert strip_proxy_credentials("http://user@proxy.example.com:8080") == "proxy.example.com:8080"
+
+    def test_no_credentials_unchanged(self) -> None:
+        assert strip_proxy_credentials("http://proxy.example.com:8080") == "proxy.example.com:8080"
+
+    def test_no_port(self) -> None:
+        assert strip_proxy_credentials("http://user:pass@proxy.example.com") == "proxy.example.com"
+
+    def test_https_scheme(self) -> None:
+        assert strip_proxy_credentials("https://user:pass@proxy.example.com:443") == "proxy.example.com:443"
+
+    def test_socks5_scheme(self) -> None:
+        assert strip_proxy_credentials("socks5://user:pass@10.0.0.1:1080") == "10.0.0.1:1080"
+
+    def test_ip_address_host(self) -> None:
+        assert strip_proxy_credentials("http://admin:secret@192.168.1.1:3128") == "192.168.1.1:3128"
+
+    def test_no_scheme_returns_as_is(self) -> None:
+        """If urlparse can't extract a hostname, return the input unchanged."""
+        assert strip_proxy_credentials("not-a-url") == "not-a-url"
+
+    def test_special_chars_in_password(self) -> None:
+        assert strip_proxy_credentials("http://user:p%40ss%3Aword@proxy.example.com:8080") == "proxy.example.com:8080"

@@ -569,6 +569,24 @@ def sanitize_filename(s: str, default: str = "file") -> str:
     return s or default
 
 
+def strip_proxy_credentials(proxy_address: str) -> str:
+    """
+    Strip scheme, username, and password from a proxy address, keeping only host:port.
+
+    Args:
+        proxy_address: Proxy URL, potentially with embedded credentials
+            (e.g. "http://user:pass@proxy.example.com:8080").
+
+    Returns:
+        Just host:port (e.g. "proxy.example.com:8080").
+    """
+    parsed = urlparse(proxy_address)
+    if not parsed.hostname:
+        return proxy_address
+    port_suffix = f":{parsed.port}" if parsed.port else ""
+    return f"{parsed.hostname}{port_suffix}"
+
+
 def format_bytes(num_bytes: int | float) -> str:
     """
     Format bytes as human-readable string.
