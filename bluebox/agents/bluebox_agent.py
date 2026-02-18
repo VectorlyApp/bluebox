@@ -36,6 +36,7 @@ from bluebox.data_models.llms.interaction import (
     StatusUpdateEmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
+from bluebox.data_models.routine.execution import RoutineExecutionResult
 from bluebox.data_models.routine.routine import RoutineExecutionRequest, RoutineInfo
 from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
 from bluebox.utils.infra_utils import read_file_lines
@@ -72,7 +73,7 @@ class BlueBoxAgent(AbstractAgent):
 
         ## Post-Processing with Python
         - After routines return results, ALWAYS use `run_python_code` to post-process data and generate clean output files.
-        - The variable `routine_results` is pre-loaded: a list of dicts, one per JSON file in the raw/ directory.
+        - The variable `routine_results` is pre-loaded: a list of dicts, one per JSON file in the raw/ directory. Each result includes diagnostic fields: `has_failed_placeholders`, `failed_placeholder_count`, `has_operation_errors`, `operation_error_summary`. Use these to detect and report issues.
         - You have full read/write file access to the workspace directory. Use open() to read/write files.
         - `json`, `csv`, and `Path` (from pathlib) are pre-loaded.
         - Output files are saved in the outputs/ subdirectory. Write there: `with open("outputs/results.csv", "w") as f: ...`
@@ -340,7 +341,8 @@ class BlueBoxAgent(AbstractAgent):
                     timeout=300,
                 )
                 response.raise_for_status()
-                return save_result({"success": True, "routine_id": req.routine_id, "data": response.json()})
+                exec_result = RoutineExecutionResult.model_validate(response.json())
+                return save_result({"success": True, "routine_id": req.routine_id, "data": exec_result.to_agent_dict()})
             except requests.RequestException as e:
                 logger.error("Routine execution failed for %s: %s", req.routine_id, e)
                 return save_result({"success": False, "routine_id": req.routine_id, "error": str(e)})

@@ -50,6 +50,34 @@ class RoutineExecutionResult(BaseModel):
     filename: str | None = Field(default=None, description="Suggested filename for the data.")
     data: dict | list | str | None = Field(default=None, description="The result of the routine execution.")
 
+    def to_agent_dict(self) -> dict[str, Any]:
+        """Return a sanitized dict for the agent, stripping internal fields and adding diagnostics."""
+        sanitized: dict[str, Any] = {
+            "ok": self.ok,
+            "data": self.data,
+            "error": self.error,
+            "warnings": self.warnings,
+            "is_base64": self.is_base64,
+            "content_type": self.content_type,
+            "filename": self.filename,
+        }
+
+        # Derive placeholder diagnostics
+        failed = [k for k, v in self.placeholder_resolution.items() if v is None]
+        sanitized["has_failed_placeholders"] = len(failed) > 0
+        sanitized["failed_placeholder_count"] = len(failed)
+
+        # Derive operation error diagnostics
+        op_errors = [
+            f"{op.type}: {op.error}"
+            for op in self.operations_metadata
+            if op.error is not None
+        ]
+        sanitized["has_operation_errors"] = len(op_errors) > 0
+        sanitized["operation_error_summary"] = op_errors
+
+        return sanitized
+
 
 class RoutineExecutionContext(BaseModel):
     """
