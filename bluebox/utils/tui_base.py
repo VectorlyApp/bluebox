@@ -34,6 +34,7 @@ from bluebox.data_models.llms.interaction import (
     ChatRole,
     BaseEmittedMessage,
     ChatResponseEmittedMessage,
+    StatusUpdateEmittedMessage,
     ToolInvocationResultEmittedMessage,
     ErrorEmittedMessage,
     ToolInvocationStatus,
@@ -232,6 +233,7 @@ class AbstractAgentTUI(App):
         # Streaming state
         self._streaming_started: bool = False
         self._assistant_header_printed: bool = False
+        self._status_update_printed: bool = False
         self._stream_buffer: list[str] = []
         self._in_code_block: bool = False
         self._code_block_lang: str = ""
@@ -489,6 +491,9 @@ class AbstractAgentTUI(App):
         chat = self.query_one("#chat-log", RichLog)
         if not self._streaming_started:
             self._ensure_assistant_header(chat)
+            if self._status_update_printed:
+                chat.write("")
+                self._status_update_printed = False
             self._streaming_started = True
 
         self._stream_buffer.append(chunk)
@@ -753,6 +758,14 @@ class AbstractAgentTUI(App):
                     f"[yellow]\u2717 {inv.tool_name} denied[/yellow]"
                 ))
 
+        elif isinstance(message, StatusUpdateEmittedMessage):
+            self._ensure_assistant_header(chat)
+            if message.content:
+                self._write_md_line(chat, message.content)
+            else:
+                chat.write("")
+            self._status_update_printed = True
+
         elif isinstance(message, ErrorEmittedMessage):
             chat.write(Text.from_markup(
                 f"[bold red]Error:[/bold red] {escape(message.error)}"
@@ -824,6 +837,7 @@ class AbstractAgentTUI(App):
             return
         self._processing = True
         self._assistant_header_printed = False
+        self._status_update_printed = False
         self._send_to_agent(user_input)
 
     @work(thread=True)
