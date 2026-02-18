@@ -363,7 +363,3 @@ class ChatThread(BaseModel):
         default=None,
         description="Tool invocation awaiting user confirmation, if any",
     )
-    updated_at: int = Field(
-        default=0,
-        description="Unix timestamp (seconds) when thread was last updated",
-    )
