@@ -398,7 +398,8 @@ class Routine(BaseModel):
         except Exception as e:
             return RoutineExecutionResultWithMetadata(
                 ok=False,
-                error=f"Failed to {'attach to' if tab_id else 'create'} tab: {e}"
+                error=f"Failed to {'attach to' if tab_id else 'create'} tab: {e}",
+                proxy_address=proxy_address,
             )
 
         try:
@@ -444,12 +445,14 @@ class Routine(BaseModel):
                     except Exception:
                         pass  # Keep as string if both fail
 
+            routine_execution_context.result.proxy_address = proxy_address
             return routine_execution_context.result
 
         except Exception as e:
             return RoutineExecutionResultWithMetadata(
                 ok=False,
                 error=f"Routine execution failed: {e}",
+                proxy_address=proxy_address,
             )
 
         finally:

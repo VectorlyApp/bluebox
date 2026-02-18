@@ -14,10 +14,11 @@ Contains:
 import re
 from typing import Any, Callable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from websocket import WebSocket
 
 from bluebox.data_models.routine.endpoint import MimeType
+from bluebox.utils.data_utils import strip_proxy_credentials
 
 
 class OperationExecutionMetadata(BaseModel):
@@ -54,6 +55,14 @@ class RoutineExecutionResultWithMetadata(RoutineExecutionResult):
     warnings: list[str] = Field(default_factory=list, description="Warnings from the routine execution.")
     operations_metadata: list[OperationExecutionMetadata] = Field(default_factory=list, description="Metadata for each operation executed in order")
     placeholder_resolution: dict[str, str | None] = Field(default_factory=dict, description="The placeholder resolution of the routine execution.")
+    proxy_address: str | None = Field(default=None, description="Proxy address used for this execution (scheme://host:port, credentials stripped).")
+
+    @model_validator(mode="after")
+    def _strip_proxy_credentials(self) -> "RoutineExecutionResultWithMetadata":
+        """Strip username/password from proxy_address, keep only scheme://host:port."""
+        if self.proxy_address:
+            self.proxy_address = strip_proxy_credentials(self.proxy_address)
+        return self
 
 
 class RoutineExecutionContext(BaseModel):
