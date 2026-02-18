@@ -7,8 +7,6 @@ Data models for LLM interactions and agent communication.
 from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Annotated, Any, Literal, Union
-from uuid import uuid4
-
 from pydantic import BaseModel, Field
 
 from bluebox.data_models.resource_base import ResourceBase
@@ -305,14 +303,10 @@ class LLMChatResponse(BaseModel):
     )
 
 
-class Chat(BaseModel):
+class Chat(ResourceBase):
     """
     A single message in a conversation.
     """
-    id: str = Field(
-        default_factory=lambda: str(uuid4()),
-        description="Unique message ID (UUIDv4)",
-    )
     chat_thread_id: str = Field(
         ...,
         description="ID of the parent thread this message belongs to",
@@ -343,14 +337,10 @@ class Chat(BaseModel):
     )
 
 
-class ChatThread(BaseModel):
+class ChatThread(ResourceBase):
     """
     Container for a conversation thread.
     """
-    id: str = Field(
-        default_factory=lambda: str(uuid4()),
-        description="Unique thread ID (UUIDv4)",
-    )
     chat_ids: list[str] = Field(
         default_factory=list,
         description="Ordered list of message IDs in this thread",
