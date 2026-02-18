@@ -35,6 +35,7 @@ from rich.text import Text
 from textual.widgets import RichLog
 
 from bluebox.agents.bluebox_agent import BlueBoxAgent
+from bluebox.agents.workspace import LocalWorkspace
 from bluebox.config import Config
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
@@ -68,7 +69,7 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
-            workspace_dir=self._workspace_dir,
+            workspace=LocalWorkspace(self._workspace_dir),
         )
 
     def _print_welcome(self) -> None:
