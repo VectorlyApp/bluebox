@@ -345,7 +345,7 @@ class BlueBoxAgent(AbstractAgent):
                 result_data = api_response.get("result", api_response)
                 try:
                     exec_result = RoutineExecutionResult.model_validate(result_data)
-                    data = exec_result.to_agent_dict()
+                    data = exec_result.to_sanitized_result()
                 except Exception:
                     logger.warning("Failed to parse execution result for %s, using raw response", req.routine_id)
                     data = result_data

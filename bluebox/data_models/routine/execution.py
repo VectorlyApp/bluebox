@@ -50,7 +50,7 @@ class RoutineExecutionResult(BaseModel):
     filename: str | None = Field(default=None, description="Suggested filename for the data.")
     data: dict | list | str | None = Field(default=None, description="The result of the routine execution.")
 
-    def to_agent_dict(self) -> dict[str, Any]:
+    def to_sanitized_result(self) -> dict[str, Any]:
         """Return a sanitized dict for the agent, exposing only business data."""
         return {
             "ok": self.ok,

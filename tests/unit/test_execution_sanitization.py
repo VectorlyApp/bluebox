@@ -1,4 +1,4 @@
-"""Tests for RoutineExecutionResult.to_agent_dict() sanitization."""
+"""Tests for RoutineExecutionResult.to_sanitized_result() sanitization."""
 
 from bluebox.data_models.routine.execution import (
     OperationExecutionMetadata,
@@ -7,7 +7,7 @@ from bluebox.data_models.routine.execution import (
 
 
 class TestToAgentDict:
-    """Tests for RoutineExecutionResult.to_agent_dict()."""
+    """Tests for RoutineExecutionResult.to_sanitized_result()."""
 
     def test_strips_internal_fields(self) -> None:
         """Sanitized dict should not contain internal fields."""
@@ -20,7 +20,7 @@ class TestToAgentDict:
             ],
             warnings=["rate limited"],
         )
-        sanitized = result.to_agent_dict()
+        sanitized = result.to_sanitized_result()
         assert "placeholder_resolution" not in sanitized
         assert "operations_metadata" not in sanitized
         assert "warnings" not in sanitized
@@ -39,7 +39,7 @@ class TestToAgentDict:
             content_type="application/json",
             filename="results.json",
         )
-        sanitized = result.to_agent_dict()
+        sanitized = result.to_sanitized_result()
         assert sanitized["ok"] is True
         assert sanitized["data"] == {"items": [1, 2, 3]}
         assert sanitized["error"] is None
@@ -57,7 +57,7 @@ class TestToAgentDict:
                 OperationExecutionMetadata(type="fetch", duration_seconds=1.0, error="403"),
             ],
         )
-        sanitized = result.to_agent_dict()
+        sanitized = result.to_sanitized_result()
         assert set(sanitized.keys()) == {"ok", "data", "error", "is_base64", "content_type", "filename"}
 
     def test_failed_execution(self) -> None:
@@ -67,7 +67,7 @@ class TestToAgentDict:
             error="Connection refused",
             data=None,
         )
-        sanitized = result.to_agent_dict()
+        sanitized = result.to_sanitized_result()
         assert sanitized["ok"] is False
         assert sanitized["error"] == "Connection refused"
         assert sanitized["data"] is None
@@ -81,7 +81,7 @@ class TestToAgentDict:
             content_type="application/pdf",
             filename="report.pdf",
         )
-        sanitized = result.to_agent_dict()
+        sanitized = result.to_sanitized_result()
         assert sanitized["is_base64"] is True
         assert sanitized["content_type"] == "application/pdf"
         assert sanitized["filename"] == "report.pdf"
