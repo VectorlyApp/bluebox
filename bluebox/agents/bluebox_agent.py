@@ -341,7 +341,9 @@ class BlueBoxAgent(AbstractAgent):
                     timeout=300,
                 )
                 response.raise_for_status()
-                exec_result = RoutineExecutionResult.model_validate(response.json())
+                api_response = response.json()
+                result_data = api_response.get("result", api_response)
+                exec_result = RoutineExecutionResult.model_validate(result_data)
                 return save_result({"success": True, "routine_id": req.routine_id, "data": exec_result.to_agent_dict()})
             except requests.RequestException as e:
                 logger.error("Routine execution failed for %s: %s", req.routine_id, e)
