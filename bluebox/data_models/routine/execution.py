@@ -55,7 +55,7 @@ class RoutineExecutionResultWithMetadata(RoutineExecutionResult):
     warnings: list[str] = Field(default_factory=list, description="Warnings from the routine execution.")
     operations_metadata: list[OperationExecutionMetadata] = Field(default_factory=list, description="Metadata for each operation executed in order")
     placeholder_resolution: dict[str, str | None] = Field(default_factory=dict, description="The placeholder resolution of the routine execution.")
-    proxy_address: str | None = Field(default=None, description="Proxy address used for this execution (scheme://host:port, credentials stripped).")
+    proxy_address: str | None = Field(default=None, description="Proxy used for this execution (host:port, credentials and scheme stripped).")
 
     @model_validator(mode="after")
     def _strip_proxy_credentials(self) -> "RoutineExecutionResultWithMetadata":
