@@ -399,14 +399,11 @@ class GuideAgent:
 
         # Initialize or load conversation state
         self._thread = chat_thread or ChatThread()
+        self._thread_persisted = chat_thread is not None
         self._chats: dict[str, Chat] = {}
         if existing_chats:
             for chat in existing_chats:
                 self._chats[chat.id] = chat
-
-        # Persist initial thread if callback provided
-        if self._persist_chat_thread_callable and chat_thread is None:
-            self._thread = self._persist_chat_thread_callable(self._thread)
 
         logger.info(
             "Instantiated GuideAgent with model: %s, chat_thread_id: %s, mode: %s",
@@ -683,6 +680,11 @@ class GuideAgent:
         Returns:
             The created Chat object (with final ID from persistence layer if callback provided).
         """
+        # Lazy-persist thread on first chat (avoids creating empty threads on connect)
+        if not self._thread_persisted and self._persist_chat_thread_callable:
+            self._thread = self._persist_chat_thread_callable(self._thread)
+            self._thread_persisted = True
+
         chat = Chat(
             chat_thread_id=self._thread.id,
             role=role,
