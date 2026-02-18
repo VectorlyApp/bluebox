@@ -227,6 +227,7 @@ class AbstractAgent(ABC):
         self._thread = chat_thread or ChatThread()
         self._thread_persisted = chat_thread is not None
         self._chats: dict[str, Chat] = {}
+        self._current_assistant_chat_id: str | None = None
         if existing_chats:
             for chat in existing_chats:
                 self._chats[chat.id] = chat
@@ -696,7 +697,10 @@ class AbstractAgent(ABC):
         self._emit_message_callable(message)
         # Persist status updates as Chat objects
         if isinstance(message, StatusUpdateEmittedMessage):
-            self._add_chat(role=ChatRole.SYSTEM_STATUS_UPDATE, content=message.content)
+            metadata = None
+            if self._current_assistant_chat_id:
+                metadata = {"associated_chat_id": self._current_assistant_chat_id}
+            self._add_chat(role=ChatRole.SYSTEM_STATUS_UPDATE, content=message.content, metadata=metadata)
 
     def _add_chat(
         self,
@@ -705,6 +709,7 @@ class AbstractAgent(ABC):
         tool_call_id: str | None = None,
         tool_calls: list[LLMToolCall] | None = None,
         llm_provider_response_id: str | None = None,
+        metadata: dict | None = None,
     ) -> Chat:
         """Create and store a new Chat, update thread, persist if callbacks set."""
         # Lazy-persist thread on first chat (avoids creating empty threads on connect)
@@ -719,6 +724,7 @@ class AbstractAgent(ABC):
             tool_call_id=tool_call_id,
             tool_calls=tool_calls or [],
             llm_provider_response_id=llm_provider_response_id,
+            metadata=metadata,
         )
 
         if self._persist_chat_callable:
@@ -890,7 +896,11 @@ class AbstractAgent(ABC):
                     logger.debug("Agent loop complete - no more tool calls")
                     return
 
-                self._process_tool_calls(response.tool_calls)
+                self._current_assistant_chat_id = chat.id
+                try:
+                    self._process_tool_calls(response.tool_calls)
+                finally:
+                    self._current_assistant_chat_id = None
 
             except Exception as e:
                 logger.exception("Error in agent loop: %s", e)
