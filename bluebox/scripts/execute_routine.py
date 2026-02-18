@@ -14,7 +14,7 @@ import argparse
 import json
 import os
 
-from bluebox.data_models.routine.execution import RoutineExecutionResult
+from bluebox.data_models.routine.execution import RoutineExecutionResultWithMetadata
 from bluebox.data_models.routine.routine import Routine
 from bluebox.utils.data_utils import save_data_to_file, write_json_file
 from bluebox.utils.logger import get_logger
@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 
 
 def save_result(
-    result: RoutineExecutionResult,
+    result: RoutineExecutionResultWithMetadata,
     output_path: str | None = None,
     download_dir: str | None = None,
 ) -> None:
