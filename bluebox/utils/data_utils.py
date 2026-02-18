@@ -33,6 +33,7 @@ from urllib.parse import urlparse
 import tldextract
 from bs4 import BeautifulSoup
 
+from bluebox.data_models.routine.parameter import ParameterType
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -413,13 +414,13 @@ _STANDALONE_PLACEHOLDER_RE = re.compile(r"^\{\{\s*([^}]+?)\s*\}\}$")  # entire s
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")  # any placeholder within a string
 
 
-def _coerce_value(value: Any, param_type: str) -> Any:
+def _coerce_value(value: Any, param_type: ParameterType) -> Any:
     """
     Coerce a parameter value based on its declared type.
 
     Args:
         value: The raw value to coerce.
-        param_type: Type string from Parameter.type (e.g., "integer", "string", "boolean").
+        param_type: ParameterType enum from Parameter.type.
 
     Returns:
         Coerced value, or the original value if coercion isn't needed/possible.
@@ -428,18 +429,18 @@ def _coerce_value(value: Any, param_type: str) -> Any:
         return None
 
     # Already the correct type — pass through
-    if param_type == "integer" and isinstance(value, int) and not isinstance(value, bool):
+    if param_type == ParameterType.INTEGER and isinstance(value, int) and not isinstance(value, bool):
         return value
-    if param_type == "number" and isinstance(value, float):
+    if param_type == ParameterType.NUMBER and isinstance(value, float):
         return value
-    if param_type == "boolean" and isinstance(value, bool):
+    if param_type == ParameterType.BOOLEAN and isinstance(value, bool):
         return value
 
-    if param_type == "integer":
+    if param_type == ParameterType.INTEGER:
         return int(value)
-    elif param_type == "number":
+    elif param_type == ParameterType.NUMBER:
         return float(value)
-    elif param_type == "boolean":
+    elif param_type == ParameterType.BOOLEAN:
         if isinstance(value, str):
             if value.lower() in ("true", "1", "yes"):
                 return True
@@ -447,7 +448,7 @@ def _coerce_value(value: Any, param_type: str) -> Any:
                 return False
         return bool(value)
     else:
-        # All string-like types: string, date, datetime, email, url, enum
+        # All string-like types: STRING, DATE, DATETIME, EMAIL, URL, ENUM
         return str(value)
 
 
@@ -480,7 +481,7 @@ def apply_params_to_str(text: str, parameters_dict: dict | None) -> str:
 def apply_params_to_json(
     d: Any,
     parameters_dict: dict | None,
-    param_type_map: dict[str, str] | None = None,
+    param_type_map: dict[str, ParameterType] | None = None,
 ) -> Any:
     """
     Recursively walk a dict/list and resolve {{placeholders}} with typed coercion.
@@ -493,7 +494,7 @@ def apply_params_to_json(
     Args:
         d: The data structure to resolve (dict, list, string, or other).
         parameters_dict: Dictionary of parameter values.
-        param_type_map: Maps parameter names to type strings for coercion.
+        param_type_map: Maps parameter names to ParameterType enums for coercion.
 
     Returns:
         New data structure with placeholders resolved.
@@ -510,7 +511,7 @@ def apply_params_to_json(
             if m:
                 key = m.group(1).strip()
                 if key in parameters_dict:
-                    param_type = param_type_map.get(key, "string")
+                    param_type = param_type_map.get(key, ParameterType.STRING)
                     return _coerce_value(parameters_dict[key], param_type)
                 return v  # runtime placeholder or unknown — leave as-is
 
