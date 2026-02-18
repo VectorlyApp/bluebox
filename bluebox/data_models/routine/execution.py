@@ -5,7 +5,8 @@ Execution context and result models for routine runs.
 
 Contains:
 - OperationExecutionMetadata: Per-operation timing, details, errors
-- RoutineExecutionResult: Final result with data, warnings, operation metadata
+- RoutineExecutionResult: API-facing result with data
+- RoutineExecutionResultWithMetadata: Internal result with warnings, operation metadata
 - RoutineExecutionContext: Mutable state passed to operations (CDP session, parameters)
 - FetchExecutionResult: Response data from fetch operations
 """
@@ -29,26 +30,30 @@ class OperationExecutionMetadata(BaseModel):
 
 class RoutineExecutionResult(BaseModel):
     """
-    Result of a routine execution.
-    Args:
-        ok (bool): Whether the routine execution was successful.
-        data (dict | list | str | None): The result of the routine execution.
-        placeholder_resolution (dict[str, str | None]): The placeholder resolution of the routine execution.
-        warnings (list[str] | None): Warnings from the routine execution.
-        error (str | None): Error message from the routine execution.
-        is_base64 (bool): Whether the data is base64-encoded binary content (from RoutineDownloadOperation).
-        content_type (str | None): MIME type of the data (e.g., 'application/pdf', 'image/png').
-        filename (str | None): Suggested filename for the data.
+    Result of a routine execution (API-facing).
+
+    Contains only the fields needed by external consumers (server API, SDK clients).
+    For internal backend metadata (warnings, operation timing, placeholder resolution),
+    see RoutineExecutionResultWithMetadata.
     """
     ok: bool = Field(default=True, description="Whether the routine execution was successful.")
     error: str | None = Field(default=None, description="Error message from the routine execution.")
-    warnings: list[str] = Field(default_factory=list, description="Warnings from the routine execution.")
-    operations_metadata: list[OperationExecutionMetadata] = Field(default_factory=list, description="Metadata for each operation executed in order")
-    placeholder_resolution: dict[str, str | None] = Field(default_factory=dict, description="The placeholder resolution of the routine execution.")
     is_base64: bool = Field(default=False, description="Whether the data is base64-encoded binary content.")
     content_type: MimeType | str | None = Field(default=None, description="MIME type of the data (e.g., 'application/pdf', 'image/png').")
     filename: str | None = Field(default=None, description="Suggested filename for the data.")
     data: dict | list | str | None = Field(default=None, description="The result of the routine execution.")
+
+
+class RoutineExecutionResultWithMetadata(RoutineExecutionResult):
+    """
+    Result of a routine execution with internal metadata.
+
+    Extends RoutineExecutionResult with fields needed by the backend:
+    warnings, per-operation metadata, and placeholder resolution details.
+    """
+    warnings: list[str] = Field(default_factory=list, description="Warnings from the routine execution.")
+    operations_metadata: list[OperationExecutionMetadata] = Field(default_factory=list, description="Metadata for each operation executed in order")
+    placeholder_resolution: dict[str, str | None] = Field(default_factory=dict, description="The placeholder resolution of the routine execution.")
 
 
 class RoutineExecutionContext(BaseModel):
@@ -73,7 +78,7 @@ class RoutineExecutionContext(BaseModel):
     current_url: str = Field(default="about:blank", description="Current page URL, updated by navigate operations")
 
     # Result (operations update this directly)
-    result: RoutineExecutionResult = Field(default_factory=RoutineExecutionResult)
+    result: RoutineExecutionResultWithMetadata = Field(default_factory=RoutineExecutionResultWithMetadata)
 
     # Current operation metadata (set by execute(), operations can add to details)
     current_operation_metadata: OperationExecutionMetadata | None = None

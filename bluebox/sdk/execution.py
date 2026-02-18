@@ -5,13 +5,13 @@ Routine execution SDK wrapper.
 
 Contains:
 - RoutineExecutor: High-level interface for running routines
-- execute(): Run routine with parameters, return RoutineExecutionResult
+- execute(): Run routine with parameters, return RoutineExecutionResultWithMetadata
 - Handles: CDP connection setup, parameter validation, result extraction
 """
 
 from typing import Any
 
-from bluebox.data_models.routine.execution import RoutineExecutionResult
+from bluebox.data_models.routine.execution import RoutineExecutionResultWithMetadata
 from bluebox.data_models.routine.routine import Routine
 
 
@@ -41,7 +41,7 @@ class RoutineExecutor:
         close_tab_when_done: bool = True,
         tab_id: str | None = None,
         incognito: bool = True,
-    ) -> RoutineExecutionResult:
+    ) -> RoutineExecutionResultWithMetadata:
         """
         Execute a routine.
 
@@ -54,7 +54,7 @@ class RoutineExecutor:
             incognito: Whether to create an incognito browser context.
 
         Returns:
-            RoutineExecutionResult with execution status and data.
+            RoutineExecutionResultWithMetadata with execution status, data, and metadata.
         """
         return routine.execute(
             parameters_dict=parameters,

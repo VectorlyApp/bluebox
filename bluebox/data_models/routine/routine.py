@@ -18,7 +18,7 @@ from typing import Any, get_args
 
 from pydantic import BaseModel, Field, model_validator
 
-from bluebox.data_models.routine.execution import RoutineExecutionContext, RoutineExecutionResult
+from bluebox.data_models.routine.execution import RoutineExecutionContext, RoutineExecutionResult, RoutineExecutionResultWithMetadata
 from bluebox.data_models.routine.operation import (
     RoutineDownloadOperation,
     RoutineFetchOperation,
@@ -358,7 +358,7 @@ class Routine(BaseModel):
         tab_id: str | None = None,
         proxy_address: str | None = None,
         incognito: bool = True,
-    ) -> RoutineExecutionResult:
+    ) -> RoutineExecutionResultWithMetadata:
         """
         Execute this routine using Chrome DevTools Protocol.
 
@@ -376,7 +376,7 @@ class Routine(BaseModel):
                 a sidecar proxy server to inject credentials.
             incognito: Whether to create an incognito browser context.
         Returns:
-            RoutineExecutionResult: Result of the routine execution.
+            RoutineExecutionResultWithMetadata: Result of the routine execution.
         """
         if parameters_dict is None:
             parameters_dict = {}
@@ -396,7 +396,7 @@ class Routine(BaseModel):
                     proxy_address=proxy_address,
                 )
         except Exception as e:
-            return RoutineExecutionResult(
+            return RoutineExecutionResultWithMetadata(
                 ok=False,
                 error=f"Failed to {'attach to' if tab_id else 'create'} tab: {e}"
             )
@@ -447,7 +447,7 @@ class Routine(BaseModel):
             return routine_execution_context.result
 
         except Exception as e:
-            return RoutineExecutionResult(
+            return RoutineExecutionResultWithMetadata(
                 ok=False,
                 error=f"Routine execution failed: {e}",
             )

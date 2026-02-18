@@ -13,7 +13,7 @@ from .operation import (
     RoutineFetchOperation,
     RoutineReturnOperation,
 )
-from .execution import RoutineExecutionContext, RoutineExecutionResult
+from .execution import RoutineExecutionContext, RoutineExecutionResult, RoutineExecutionResultWithMetadata
 from .placeholder import PlaceholderQuoteType, ExtractedPlaceholder, extract_placeholders_from_json_str
 
 __all__ = [
@@ -30,6 +30,7 @@ __all__ = [
     "RoutineReturnOperation",
     "RoutineExecutionContext",
     "RoutineExecutionResult",
+    "RoutineExecutionResultWithMetadata",
     "PlaceholderQuoteType",
     "ExtractedPlaceholder",
     "extract_placeholders_from_json_str",
