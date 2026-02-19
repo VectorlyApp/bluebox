@@ -11,6 +11,8 @@ import logging
 import json
 import pytest
 
+from bluebox.data_models.routine.parameter import ParameterType
+from bluebox.data_models.routine.placeholder import extract_placeholders_from_json_str
 from bluebox.utils.data_utils import (
     assert_balanced_js_delimiters,
     convert_decimals_to_floats,
@@ -1365,3 +1367,344 @@ class TestStripProxyCredentials:
 
     def test_special_chars_in_password(self) -> None:
         assert strip_proxy_credentials("http://user:p%40ss%3Aword@proxy.example.com:8080") == "proxy.example.com:8080"
+
+
+# ============================================================================
+# HIGH PRIORITY — _coerce_value edge cases
+# ============================================================================
+
+
+class TestCoerceValueEdgeCases:
+    """Edge cases and error paths for _coerce_value."""
+
+    def test_invalid_string_to_integer_raises(self) -> None:
+        """Non-numeric string with integer type should raise ValueError."""
+        with pytest.raises(ValueError):
+            _coerce_value("not_a_number", ParameterType.INTEGER)
+
+    def test_invalid_string_to_number_raises(self) -> None:
+        """Non-numeric string with number type should raise ValueError."""
+        with pytest.raises(ValueError):
+            _coerce_value("not_a_number", ParameterType.NUMBER)
+
+    def test_unrecognized_boolean_string_falls_through(self) -> None:
+        """Unrecognized boolean string like 'maybe' falls through to bool(), which is truthy."""
+        result = _coerce_value("maybe", ParameterType.BOOLEAN)
+        assert result is True
+
+    def test_empty_string_boolean_is_false(self) -> None:
+        """Empty string with boolean type: bool('') is False."""
+        result = _coerce_value("", ParameterType.BOOLEAN)
+        assert result is False
+
+    def test_bool_true_as_number(self) -> None:
+        """bool is subclass of int; float(True) returns 1.0."""
+        result = _coerce_value(True, ParameterType.NUMBER)
+        assert result == 1.0
+        assert isinstance(result, float)
+
+    def test_negative_integer_passthrough(self) -> None:
+        """Negative int passes through for integer type."""
+        assert _coerce_value(-5, ParameterType.INTEGER) == -5
+
+    def test_negative_float_string_to_number(self) -> None:
+        """Negative float string coerces correctly."""
+        assert _coerce_value("-3.14", ParameterType.NUMBER) == -3.14
+
+    def test_datetime_type_treated_as_string(self) -> None:
+        """datetime type coerces to str."""
+        assert _coerce_value("2023-01-15T10:30:00", ParameterType.DATETIME) == "2023-01-15T10:30:00"
+        assert _coerce_value(42, ParameterType.DATETIME) == "42"
+
+    def test_email_type_treated_as_string(self) -> None:
+        """email type coerces to str."""
+        assert _coerce_value("alice@example.com", ParameterType.EMAIL) == "alice@example.com"
+
+    def test_url_type_treated_as_string(self) -> None:
+        """url type coerces to str."""
+        assert _coerce_value("https://example.com", ParameterType.URL) == "https://example.com"
+
+    def test_enum_type_treated_as_string(self) -> None:
+        """enum type coerces to str."""
+        assert _coerce_value("option_a", ParameterType.ENUM) == "option_a"
+        assert _coerce_value(42, ParameterType.ENUM) == "42"
+
+    def test_list_coerced_to_string(self) -> None:
+        """Complex objects are stringified for string-like types."""
+        result = _coerce_value(["a", "b"], ParameterType.STRING)
+        assert result == "['a', 'b']"
+        assert isinstance(result, str)
+
+
+# ============================================================================
+# HIGH PRIORITY — apply_params_to_json advanced cases
+# ============================================================================
+
+
+class TestApplyParamsToJsonAdvanced:
+    """Advanced test cases for apply_params_to_json."""
+
+    def test_top_level_list_input(self) -> None:
+        """Top-level list with standalone placeholders gets typed coercion."""
+        result = apply_params_to_json(
+            ["{{a}}", "{{b}}"],
+            {"a": "1", "b": "2"},
+            {ParameterType.STRING: ParameterType.INTEGER, "a": ParameterType.INTEGER, "b": ParameterType.INTEGER},
+        )
+        assert result == [1, 2]
+
+    def test_top_level_string_standalone(self) -> None:
+        """Top-level string that is a standalone placeholder gets typed coercion."""
+        result = apply_params_to_json(
+            "{{val}}",
+            {"val": "42"},
+            {"val": ParameterType.INTEGER},
+        )
+        assert result == 42
+
+    def test_top_level_string_substring(self) -> None:
+        """Top-level string with substring placeholder stays as string."""
+        result = apply_params_to_json(
+            "prefix_{{val}}_suffix",
+            {"val": "42"},
+            {"val": ParameterType.INTEGER},
+        )
+        assert result == "prefix_42_suffix"
+        assert isinstance(result, str)
+
+    def test_top_level_non_string_passthrough(self) -> None:
+        """Top-level non-string scalar passes through unchanged."""
+        assert apply_params_to_json(42, {"x": "y"}) == 42
+        assert apply_params_to_json(True, {"x": "y"}) is True
+        assert apply_params_to_json(None, {"x": "y"}) is None
+
+    def test_nested_list_of_lists(self) -> None:
+        """Nested list-of-lists resolves placeholders recursively."""
+        d = {"matrix": [["{{a}}", "b"], ["c", "{{d}}"]]}
+        result = apply_params_to_json(
+            d,
+            {"a": "1", "d": "4"},
+            {"a": ParameterType.INTEGER, "d": ParameterType.INTEGER},
+        )
+        assert result == {"matrix": [[1, "b"], ["c", 4]]}
+
+    def test_bool_false_standalone(self) -> None:
+        """Bool False as parameter value should not be lost (falsy value)."""
+        result = apply_params_to_json(
+            {"flag": "{{f}}"},
+            {"f": False},
+            {"f": ParameterType.BOOLEAN},
+        )
+        assert result == {"flag": False}
+        assert result["flag"] is False
+
+    def test_int_zero_standalone(self) -> None:
+        """Int 0 as parameter value should not be lost (falsy value)."""
+        result = apply_params_to_json(
+            {"count": "{{n}}"},
+            {"n": 0},
+            {"n": ParameterType.INTEGER},
+        )
+        assert result == {"count": 0}
+        assert result["count"] == 0
+
+    def test_none_parameter_value(self) -> None:
+        """None as parameter value: _coerce_value(None, ...) returns None."""
+        result = apply_params_to_json(
+            {"val": "{{x}}"},
+            {"x": None},
+            {"x": ParameterType.STRING},
+        )
+        assert result == {"val": None}
+
+    def test_empty_string_parameter_value(self) -> None:
+        """Empty string as parameter value stays as empty string."""
+        result = apply_params_to_json(
+            {"val": "{{x}}"},
+            {"x": ""},
+            {"x": ParameterType.STRING},
+        )
+        assert result == {"val": ""}
+
+    def test_coercion_error_propagates(self) -> None:
+        """Invalid coercion (string to int) raises ValueError from apply_params_to_json."""
+        with pytest.raises(ValueError):
+            apply_params_to_json(
+                {"val": "{{x}}"},
+                {"x": "not_a_number"},
+                {"x": ParameterType.INTEGER},
+            )
+
+    def test_mixed_runtime_and_user_in_substring(self) -> None:
+        """Substring with both a runtime placeholder and a user param."""
+        d = {"header": "Bearer {{sessionStorage:token}} for {{user}}"}
+        result = apply_params_to_json(d, {"user": "Alice"})
+        # sessionStorage:token is not in params, so stays as placeholder
+        assert result == {"header": "Bearer {{sessionStorage:token}} for Alice"}
+
+    def test_whitespace_in_standalone_placeholder_with_type_map(self) -> None:
+        """Extra whitespace in placeholder is stripped before type_map lookup."""
+        result = apply_params_to_json(
+            {"val": "{{  n  }}"},
+            {"n": "5"},
+            {"n": ParameterType.INTEGER},
+        )
+        assert result == {"val": 5}
+
+
+# ============================================================================
+# HIGH PRIORITY — apply_params_to_str vs apply_params_to_json contract
+# ============================================================================
+
+
+class TestStrVsJsonContract:
+    """The core contract: apply_params_to_str always returns string,
+    apply_params_to_json returns typed values based on Parameter.type."""
+
+    def test_same_param_string_in_url_int_in_body(self) -> None:
+        """Same param 'count' produces str in URL, int in body."""
+        params = {"count": "5"}
+        type_map = {"count": ParameterType.INTEGER}
+
+        url = apply_params_to_str("https://api.example.com/items?limit={{count}}", params)
+        body = apply_params_to_json({"limit": "{{count}}"}, params, type_map)
+
+        assert url == "https://api.example.com/items?limit=5"
+        assert isinstance(url, str)
+        assert body == {"limit": 5}
+        assert isinstance(body["limit"], int)
+
+    def test_boolean_param_string_in_selector_bool_in_body(self) -> None:
+        """Boolean param is stringified in selectors, typed in body."""
+        params = {"active": "true"}
+        type_map = {"active": ParameterType.BOOLEAN}
+
+        selector = apply_params_to_str("input[data-active='{{active}}']", params)
+        body = apply_params_to_json({"is_active": "{{active}}"}, params, type_map)
+
+        assert selector == "input[data-active='true']"
+        assert body == {"is_active": True}
+        assert body["is_active"] is True
+
+    def test_number_param_string_in_js_float_in_body(self) -> None:
+        """Number param is stringified in JS code, typed in body."""
+        params = {"threshold": "99.5"}
+        type_map = {"threshold": ParameterType.NUMBER}
+
+        js = apply_params_to_str("if (price > {{threshold}}) alert('expensive');", params)
+        body = apply_params_to_json({"max_price": "{{threshold}}"}, params, type_map)
+
+        assert js == "if (price > 99.5) alert('expensive');"
+        assert body == {"max_price": 99.5}
+        assert isinstance(body["max_price"], float)
+
+    def test_json_dumps_after_coercion_produces_valid_json(self) -> None:
+        """After apply_params_to_json, json.dumps produces correctly typed JSON."""
+        params = {"q": "shoes", "limit": "10", "active": "true", "score": "0.95"}
+        type_map = {
+            "q": ParameterType.STRING,
+            "limit": ParameterType.INTEGER,
+            "active": ParameterType.BOOLEAN,
+            "score": ParameterType.NUMBER,
+        }
+        body = apply_params_to_json(
+            {"query": "{{q}}", "limit": "{{limit}}", "active": "{{active}}", "score": "{{score}}"},
+            params,
+            type_map,
+        )
+        serialized = json.dumps(body)
+        parsed = json.loads(serialized)
+        assert parsed == {"query": "shoes", "limit": 10, "active": True, "score": 0.95}
+
+
+# ============================================================================
+# MEDIUM PRIORITY — apply_params_to_str edge cases
+# ============================================================================
+
+
+class TestApplyParamsToStrEdgeCases:
+    """Edge cases for apply_params_to_str."""
+
+    def test_boolean_value_stringified(self) -> None:
+        """Bool values become 'True'/'False' strings."""
+        assert apply_params_to_str("flag={{flag}}", {"flag": True}) == "flag=True"
+        assert apply_params_to_str("flag={{flag}}", {"flag": False}) == "flag=False"
+
+    def test_none_value_stringified(self) -> None:
+        """None value becomes 'None' string."""
+        assert apply_params_to_str("val={{v}}", {"v": None}) == "val=None"
+
+    def test_none_text_returns_none(self) -> None:
+        """None text input returns None (falsy check)."""
+        result = apply_params_to_str(None, {"k": "v"})
+        assert result is None
+
+
+# ============================================================================
+# MEDIUM PRIORITY — extract_placeholders_from_json_str
+# ============================================================================
+
+
+class TestExtractPlaceholdersFromJsonStr:
+    """Tests for the simplified placeholder extraction (no quote-type tracking)."""
+
+    def test_basic_extraction(self) -> None:
+        """Finds placeholders in the simplified {{param}} format."""
+        result = extract_placeholders_from_json_str('"field": "{{param}}"')
+        assert result == ["param"]
+
+    def test_multiple_placeholders(self) -> None:
+        """Finds multiple distinct placeholders."""
+        result = extract_placeholders_from_json_str('"a": "{{x}}", "b": "{{y}}"')
+        assert result == ["x", "y"]
+
+    def test_deduplication(self) -> None:
+        """Duplicate placeholders are returned only once, in first-seen order."""
+        result = extract_placeholders_from_json_str("{{a}} {{b}} {{a}}")
+        assert result == ["a", "b"]
+
+    def test_runtime_placeholders(self) -> None:
+        """Runtime placeholders like sessionStorage:key are extracted."""
+        result = extract_placeholders_from_json_str("{{sessionStorage:auth.token}}")
+        assert result == ["sessionStorage:auth.token"]
+
+    def test_whitespace_stripped(self) -> None:
+        """Whitespace inside braces is stripped."""
+        result = extract_placeholders_from_json_str("{{ spaced }}")
+        assert result == ["spaced"]
+
+    def test_no_placeholders(self) -> None:
+        """String with no placeholders returns empty list."""
+        result = extract_placeholders_from_json_str('"field": "plain value"')
+        assert result == []
+
+    def test_empty_string(self) -> None:
+        """Empty string returns empty list."""
+        result = extract_placeholders_from_json_str("")
+        assert result == []
+
+    def test_builtin_placeholders(self) -> None:
+        """Builtin placeholders like epoch_milliseconds are found."""
+        result = extract_placeholders_from_json_str("{{epoch_milliseconds}} and {{uuid}}")
+        assert result == ["epoch_milliseconds", "uuid"]
+
+    def test_placeholder_in_url(self) -> None:
+        """Placeholders embedded in URLs are extracted."""
+        result = extract_placeholders_from_json_str(
+            '"url": "https://api.example.com/{{path}}?q={{query}}&limit={{limit}}"'
+        )
+        assert result == ["path", "query", "limit"]
+
+    def test_realistic_routine_json(self) -> None:
+        """Full routine-like JSON string extracts all placeholders."""
+        routine_json = json.dumps({
+            "url": "https://example.com/{{entity_id}}",
+            "headers": {"Authorization": "{{api_key}}"},
+            "body": {
+                "query": "{{search_term}}",
+                "limit": "{{limit}}",
+                "token": "{{sessionStorage:csrf}}",
+            },
+        })
+        result = extract_placeholders_from_json_str(routine_json)
+        assert set(result) == {"entity_id", "api_key", "search_term", "limit", "sessionStorage:csrf"}
