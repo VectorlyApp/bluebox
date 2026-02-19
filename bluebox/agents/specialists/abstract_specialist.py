@@ -364,14 +364,18 @@ class AbstractSpecialist(AbstractAgent):
         try:
             jsonschema.validate(instance=output, schema=self._task_output_schema)
         except jsonschema.ValidationError as e:
+            self._finalize_with_output_failed = True
             return {
-                "error": "Output does not match expected schema",
+                "error": "VALIDATION FAILED — your output does not match the expected schema. "
+                         "You MUST fix the issue and call finalize_with_output again. "
+                         "Do NOT call finalize_failure — fix the output and retry.",
                 "validation_error": str(e.message),
                 "schema_path": list(e.absolute_schema_path),
-                "hint": "Fix the output structure and try again.",
+                "hint": "Fix the output structure and call finalize_with_output again with the corrected data.",
             }
 
-        # Store the wrapped result
+        # Store the wrapped result — clear the failure flag on success
+        self._finalize_with_output_failed = False
         self._wrapped_result = SpecialistResultWrapper(
             output=output,
             success=True,
@@ -397,6 +401,15 @@ class AbstractSpecialist(AbstractAgent):
         Args:
             reason: Explanation of why the task could not be completed.
         """
+        # If a previous finalize_with_output failed validation, force the agent to retry
+        # instead of giving up with finalize_failure.
+        if getattr(self, "_finalize_with_output_failed", False):
+            return {
+                "error": "REJECTED — you previously attempted finalize_with_output and it failed "
+                         "validation. You must fix the output and call finalize_with_output again "
+                         "with corrected data. Do NOT give up — retry with the right format.",
+            }
+
         self._wrapped_result = SpecialistResultWrapper(
             output=None,
             success=False,
@@ -530,6 +543,7 @@ class AbstractSpecialist(AbstractAgent):
         self._task_output_description = None
         self._notes = []
         self._wrapped_result = None
+        self._finalize_with_output_failed = False
 
     def reset(self) -> None:
         """Reset the conversation to a fresh state."""

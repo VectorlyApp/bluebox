@@ -1,0 +1,4 @@
+not valid json at all
+{"timestamp": 1700000001.0, "url": "https://good.example.com/", "title": "Good Page", "documents": [{"nodes": {}}], "strings": ["#document", "HTML", "BODY", "Hello World", "Good content here"], "computed_styles": ["display"]}
+{"this": "is missing required fields"}
+{"timestamp": 1700000002.0, "url": "https://good.example.com/page2", "title": "Good Page 2", "documents": [{"nodes": {}}], "strings": ["#document", "HTML", "BODY", "Another page", "More good content"], "computed_styles": ["display"]}
