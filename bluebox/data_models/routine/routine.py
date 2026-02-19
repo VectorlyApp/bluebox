@@ -68,7 +68,7 @@ class Routine(BaseModel):
 
         Validates:
         - Routine must have at least 2 operations
-        - Last operation must be 'return' or 'return_html'
+        - Last operation must be 'return', 'return_html', or 'download'
         - Return operation's session_storage_key must be set by a prior fetch or js_evaluate
         - All defined parameters must be used
         - No undefined parameters should be used
@@ -85,15 +85,15 @@ class Routine(BaseModel):
                 f"Routine must have at least 2 operations, found {len(self.operations)}"
             )
 
-        # Check 2: Last operation must be return or return_html
+        # Check 2: Last operation must be return, return_html, or download
         if self.operations:
             last_op = self.operations[-1]
-            if not isinstance(last_op, (RoutineReturnOperation, RoutineReturnHTMLOperation)):
+            if not isinstance(last_op, (RoutineReturnOperation, RoutineReturnHTMLOperation, RoutineDownloadOperation)):
                 last_op_type = last_op.type if hasattr(last_op, 'type') else type(last_op).__name__
                 errors.append(
-                    f"Last operation must be 'return' or 'return_html', found '{last_op_type}'"
+                    f"Last operation must be 'return', 'return_html', or 'download', found '{last_op_type}'"
                 )
-            else:
+            elif isinstance(last_op, (RoutineReturnOperation, RoutineReturnHTMLOperation)):
                 # Check 3: Return's session_storage_key must be set by prior fetch or js_evaluate
                 return_key = last_op.session_storage_key
                 if return_key:
@@ -177,7 +177,7 @@ class Routine(BaseModel):
         # Routine (top level)
         lines.append("### Routine (top level)")
         lines.extend(format_model_fields(Routine, skip_fields={"operations", "parameters"}))
-        lines.append("- operations: list[operation] (required) — ≥2, last must be return or return_html")
+        lines.append("- operations: list[operation] (required) — ≥2, last must be return, return_html, or download")
         lines.append("- parameters: list[parameter] = []")
         lines.append("")
 
@@ -269,12 +269,14 @@ class Routine(BaseModel):
             first_op_type = first_op.type if hasattr(first_op, 'type') else type(first_op).__name__
             warnings.append(f"First operation is '{first_op_type}', expected 'navigate'")
 
-        # 2. Second-to-last should be fetch or js_evaluate
+        # 2. Second-to-last should be fetch or js_evaluate (only relevant when last op is return/return_html)
         if len(self.operations) >= 2:
-            second_last_op = self.operations[-2]
-            if not isinstance(second_last_op, (RoutineFetchOperation, RoutineJsEvaluateOperation)):
-                second_last_type = second_last_op.type if hasattr(second_last_op, 'type') else type(second_last_op).__name__
-                warnings.append(f"Second-to-last operation is '{second_last_type}', expected 'fetch' or 'js_evaluate'")
+            last_op = self.operations[-1]
+            if isinstance(last_op, (RoutineReturnOperation, RoutineReturnHTMLOperation)):
+                second_last_op = self.operations[-2]
+                if not isinstance(second_last_op, (RoutineFetchOperation, RoutineJsEvaluateOperation)):
+                    second_last_type = second_last_op.type if hasattr(second_last_op, 'type') else type(second_last_op).__name__
+                    warnings.append(f"Second-to-last operation is '{second_last_type}', expected 'fetch' or 'js_evaluate'")
 
         # 3. Check if routine has any navigate operation
         has_navigate = any(isinstance(op, RoutineNavigateOperation) for op in self.operations)
