@@ -12,7 +12,6 @@ Contains:
 """
 
 from enum import StrEnum
-from typing import Dict, List
 from pydantic import BaseModel, Field
 
 from bluebox.utils.logger import get_logger
@@ -30,7 +29,7 @@ class IdentifierType(StrEnum):
 
 
 # Default priority mapping for selector types (lower = higher priority)
-DEFAULT_IDENTIFIER_PRIORITIES: Dict[IdentifierType, int] = {
+DEFAULT_IDENTIFIER_PRIORITIES: dict[IdentifierType, int] = {
     IdentifierType.ID: 10,           # Highest priority - IDs are unique
     IdentifierType.NAME: 20,         # Form controls by name are very stable
     IdentifierType.CSS: 30,          # CSS Identifiers (with stable attributes)
@@ -92,7 +91,7 @@ class UIElement(BaseModel):
     tag_name: str
     id: str | None = None
     name: str | None = None
-    class_names: List[str] | None = Field(default=None, description="List of CSS class names.")
+    class_names: list[str] | None = Field(default=None, description="List of CSS class names.")
 
     # Common attributes
     type_attr: str | None = Field(default=None, description="Input type, button type, etc.")
@@ -105,7 +104,7 @@ class UIElement(BaseModel):
     value: str | None = None
 
     # Full attribute map for anything else (data-*, etc.)
-    attributes: Dict[str, str] | None = Field(
+    attributes: dict[str, str] | None = Field(
         default=None,
         description="All raw attributes from the DOM element.",
     )
@@ -120,7 +119,7 @@ class UIElement(BaseModel):
     bounding_box: BoundingBox | None = None
 
     # Locators (multiple ways to find it again)
-    Identifiers: List[Identifier] | None = Field(
+    Identifiers: list[Identifier] | None = Field(
         default=None,
         description="Ordered list of Identifiers to try when locating this element.",
     )

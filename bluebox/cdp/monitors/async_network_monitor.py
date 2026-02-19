@@ -791,11 +791,9 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         if method == "Network.requestWillBeSent":
             return await self._on_request_will_be_sent(msg)
         if method == "Network.responseReceived":
-            #TODO::return await self._on_response_received(msg)
             await self._on_response_received(msg)
             return False  # don't swallow event, allow AsyncStorageMonitor handle it downstream
         if method == "Network.responseReceivedExtraInfo":
-            #TODO::return await self._on_response_received_extra_info(msg)
             await self._on_response_received_extra_info(msg)
             return False  # don't swallow event, allow AsyncStorageMonitor handle it downstream
         if method == "Network.loadingFinished":
