@@ -663,7 +663,10 @@ class TestBaseUrlExtraction:
     def test_routine_base_urls_auto_populated_download(self, make_routine) -> None:
         """Test that compute_base_urls_from_operations extracts base URLs from download operations."""
         endpoint = Endpoint(url="https://cdn.example.com/files/report.pdf", method=HTTPMethod.GET, headers={}, body={})
-        routine = make_routine(operations=[RoutineDownloadOperation(endpoint=endpoint, filename="report.pdf")])
+        routine = make_routine(operations=[
+            RoutineNavigateOperation(url="https://cdn.example.com"),
+            RoutineDownloadOperation(endpoint=endpoint, filename="report.pdf"),
+        ])
         assert routine.compute_base_urls_from_operations() == "example.com"
 
     def test_routine_base_urls_mixed_with_download(self, make_routine) -> None:
@@ -847,6 +850,116 @@ class TestPremierLeagueRoutineValidation:
         assert matchweek_param.min_value == 1
         assert matchweek_param.max_value == 38
         assert matchweek_param.examples == [10, 1, 23]
+
+
+class TestDownloadAsLastOperation:
+    """Test that download is allowed as the last operation in a routine."""
+
+    def test_download_as_last_operation_valid(self) -> None:
+        """Test that a routine ending with download validates successfully."""
+        routine = Routine(
+            name="Download PDF Report",
+            description="Download a PDF report.",
+            operations=[
+                RoutineNavigateOperation(url="https://example.com"),
+                RoutineDownloadOperation(
+                    endpoint=Endpoint(
+                        url="https://example.com/report.pdf",
+                        method=HTTPMethod.GET,
+                        headers={},
+                        body={},
+                    ),
+                    filename="report.pdf",
+                ),
+            ],
+        )
+        assert len(routine.operations) == 2
+        assert isinstance(routine.operations[-1], RoutineDownloadOperation)
+
+    def test_download_as_last_operation_with_params(self) -> None:
+        """Test download as last op with parameter placeholders in the endpoint."""
+        routine = Routine(
+            name="Download User Report",
+            description="Download a report for a specific user.",
+            operations=[
+                RoutineNavigateOperation(url="https://example.com"),
+                RoutineDownloadOperation(
+                    endpoint=Endpoint(
+                        url="https://example.com/reports/{{report_id}}.pdf",
+                        method=HTTPMethod.GET,
+                        headers={"Authorization": "Bearer {{sessionStorage:auth.token}}"},
+                        body={},
+                    ),
+                    filename="report.pdf",
+                ),
+            ],
+            parameters=[
+                Parameter(name="report_id", type=ParameterType.STRING, description="Report ID"),
+            ],
+        )
+        assert isinstance(routine.operations[-1], RoutineDownloadOperation)
+
+    def test_download_not_last_operation_raises_error(self) -> None:
+        """Test that download in the middle followed by a non-terminal op raises error."""
+        with pytest.raises(ValueError, match="Last operation must be"):
+            Routine(
+                name="Invalid Routine",
+                description="Download is not last.",
+                operations=[
+                    RoutineNavigateOperation(url="https://example.com"),
+                    RoutineDownloadOperation(
+                        endpoint=Endpoint(
+                            url="https://example.com/report.pdf",
+                            method=HTTPMethod.GET,
+                            headers={},
+                            body={},
+                        ),
+                        filename="report.pdf",
+                    ),
+                    RoutineSleepOperation(timeout_seconds=1.0),
+                ],
+            )
+
+    def test_download_last_op_no_session_storage_key_check(self) -> None:
+        """Test that download as last op does not require session_storage_key validation."""
+        # Download doesn't use session_storage_key, so no prior fetch/js_evaluate needed
+        routine = Routine(
+            name="Simple Download",
+            description="Navigate and download.",
+            operations=[
+                RoutineNavigateOperation(url="https://example.com"),
+                RoutineDownloadOperation(
+                    endpoint=Endpoint(
+                        url="https://example.com/file.zip",
+                        method=HTTPMethod.GET,
+                        headers={},
+                        body={},
+                    ),
+                    filename="file.zip",
+                ),
+            ],
+        )
+        assert len(routine.operations) == 2
+
+    def test_download_via_make_routine_fixture(self, make_routine) -> None:
+        """Test that make_routine fixture recognizes download as valid terminal op."""
+        routine = make_routine(
+            operations=[
+                RoutineNavigateOperation(url="https://example.com"),
+                RoutineDownloadOperation(
+                    endpoint=Endpoint(
+                        url="https://example.com/data.csv",
+                        method=HTTPMethod.GET,
+                        headers={},
+                        body={},
+                    ),
+                    filename="data.csv",
+                ),
+            ],
+        )
+        # make_routine should not append extra fetch+return since download is terminal
+        assert len(routine.operations) == 2
+        assert isinstance(routine.operations[-1], RoutineDownloadOperation)
 
 
 class TestAllParamTypesUniformFormat:
