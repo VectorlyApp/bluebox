@@ -79,10 +79,14 @@ class Routine(BaseModel):
 
         # === STRUCTURAL VALIDATION ===
 
-        # Check 1: Must have at least 2 operations
-        if len(self.operations) < 2:
+        # Check 1: Must have at least 2 operations (download can be standalone)
+        is_single_download = (
+            len(self.operations) == 1
+            and isinstance(self.operations[0], RoutineDownloadOperation)
+        )
+        if len(self.operations) < 2 and not is_single_download:
             errors.append(
-                f"Routine must have at least 2 operations, found {len(self.operations)}"
+                f"Routine must have at least 2 operations (or a single download), found {len(self.operations)}"
             )
 
         # Check 2: Last operation must be return, return_html, or download
@@ -177,7 +181,7 @@ class Routine(BaseModel):
         # Routine (top level)
         lines.append("### Routine (top level)")
         lines.extend(format_model_fields(Routine, skip_fields={"operations", "parameters"}))
-        lines.append("- operations: list[operation] (required) — ≥2, last must be return, return_html, or download")
+        lines.append("- operations: list[operation] (required) — ≥2 (or single download), last must be return, return_html, or download")
         lines.append("- parameters: list[parameter] = []")
         lines.append("")
 

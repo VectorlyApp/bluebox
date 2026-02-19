@@ -963,6 +963,74 @@ class TestDownloadAsLastOperation:
         assert isinstance(routine.operations[-1], RoutineDownloadOperation)
 
 
+class TestSingleDownloadOperation:
+    """Test that a single download operation is valid as a standalone routine."""
+
+    def test_single_download_operation_valid(self) -> None:
+        """Test that a routine with only a download operation validates successfully."""
+        routine = Routine(
+            name="Direct File Download",
+            description="Download a file directly.",
+            operations=[
+                RoutineDownloadOperation(
+                    endpoint=Endpoint(
+                        url="https://example.com/report.pdf",
+                        method=HTTPMethod.GET,
+                        headers={},
+                        body={},
+                    ),
+                    filename="report.pdf",
+                ),
+            ],
+        )
+        assert len(routine.operations) == 1
+        assert isinstance(routine.operations[0], RoutineDownloadOperation)
+
+    def test_single_download_with_params_valid(self) -> None:
+        """Test single download with parameter placeholders."""
+        routine = Routine(
+            name="Download User Report",
+            description="Download a report by ID.",
+            operations=[
+                RoutineDownloadOperation(
+                    endpoint=Endpoint(
+                        url="https://example.com/reports/{{report_id}}.pdf",
+                        method=HTTPMethod.GET,
+                        headers={},
+                        body={},
+                    ),
+                    filename="report.pdf",
+                ),
+            ],
+            parameters=[
+                Parameter(name="report_id", type=ParameterType.STRING, description="Report ID"),
+            ],
+        )
+        assert len(routine.operations) == 1
+
+    def test_single_non_download_operation_still_fails(self) -> None:
+        """Test that a single non-download operation still raises validation error."""
+        with pytest.raises(ValueError, match="at least 2 operations"):
+            Routine(
+                name="Invalid",
+                description="Single navigate is not enough.",
+                operations=[
+                    RoutineNavigateOperation(url="https://example.com"),
+                ],
+            )
+
+    def test_single_return_operation_still_fails(self) -> None:
+        """Test that a single return operation still raises validation error."""
+        with pytest.raises(ValueError, match="at least 2 operations"):
+            Routine(
+                name="Invalid",
+                description="Single return is not enough.",
+                operations=[
+                    RoutineReturnOperation(session_storage_key="result"),
+                ],
+            )
+
+
 class TestReturnHtmlAsLastOperation:
     """Test that return_html works as last operation without session_storage_key."""
 
