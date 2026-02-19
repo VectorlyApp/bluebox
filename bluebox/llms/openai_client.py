@@ -12,7 +12,7 @@ from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel
 
 from bluebox.config import Config
-from bluebox.data_models.llms.interaction import LLMChatResponse, LLMToolCall
+from bluebox.data_models.llms.interaction import LLMChatResponse, LLMTokenUsage, LLMToolCall
 from bluebox.data_models.llms.vendors import LLMVendor, OpenAIModel
 from bluebox.llms.abstract_llm_vendor_client import AbstractLLMVendorClient
 from bluebox.utils.logger import get_logger
@@ -312,12 +312,21 @@ class OpenAIClient(AbstractLLMVendorClient):
         if response_model is not None and parsed is None:
             raise ValueError("Failed to parse structured response from OpenAI Responses API: no content returned")
 
+        # Extract token usage
+        usage = None
+        if hasattr(response, "usage") and response.usage:
+            usage = LLMTokenUsage(
+                input_tokens=getattr(response.usage, "input_tokens", 0) or 0,
+                output_tokens=getattr(response.usage, "output_tokens", 0) or 0,
+            )
+
         return LLMChatResponse(
             content=content,
             tool_calls=tool_calls,
             response_id=response.id,
             reasoning_content=reasoning_content,
             parsed=parsed,
+            usage=usage,
         )
 
     # Public methods _______________________________________________________________________________________________________
@@ -504,6 +513,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         tool_calls_by_index: dict[int, dict[str, Any]] = {}
         reasoning_content: str | None = None
         response_id: str | None = None
+        usage: LLMTokenUsage | None = None
 
         for event in stream:
             # Handle different event types from Responses API streaming
@@ -535,6 +545,14 @@ class OpenAIClient(AbstractLLMVendorClient):
                         # Also capture arguments if already present (not streamed via delta)
                         if hasattr(event.item, "arguments") and event.item.arguments:
                             tool_calls_by_index[idx]["args"].append(event.item.arguments)
+
+                elif event.type == "response.completed":
+                    resp = getattr(event, "response", None)
+                    if resp and hasattr(resp, "usage") and resp.usage:
+                        usage = LLMTokenUsage(
+                            input_tokens=getattr(resp.usage, "input_tokens", 0) or 0,
+                            output_tokens=getattr(resp.usage, "output_tokens", 0) or 0,
+                        )
 
         # Build final response with all tool calls
         tool_calls: list[LLMToolCall] = []
@@ -571,4 +589,5 @@ class OpenAIClient(AbstractLLMVendorClient):
             tool_calls=tool_calls,
             response_id=response_id,
             reasoning_content=reasoning_content,
+            usage=usage,
         )

@@ -192,6 +192,7 @@ class AbstractAgent(ABC):
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
+        on_llm_response: Callable[[LLMChatResponse], None] | None = None,
     ) -> None:
         """
         Initialize the agent.
@@ -205,12 +206,14 @@ class AbstractAgent(ABC):
             chat_thread: Existing ChatThread to continue, or None for new.
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
+            on_llm_response: Optional callback invoked after each LLM call with the response (for token tracking).
         """
         self._emit_message_callable = emit_message_callable
         self._persist_chat_callable = persist_chat_callable
         self._persist_chat_thread_callable = persist_chat_thread_callable
         self._stream_chunk_callable = stream_chunk_callable
         self._documentation_data_loader = documentation_data_loader
+        self._on_llm_response = on_llm_response
         self._previous_response_id: str | None = None
         self._response_id_to_chat_index: dict[str, int] = {}
 
@@ -872,6 +875,9 @@ class AbstractAgent(ABC):
             messages = self._build_messages_for_llm()
             try:
                 response = self._call_llm(messages, self._get_system_prompt())
+
+                if self._on_llm_response and response.usage:
+                    self._on_llm_response(response)
 
                 if response.response_id:
                     self._previous_response_id = response.response_id

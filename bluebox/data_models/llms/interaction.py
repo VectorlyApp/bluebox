@@ -276,11 +276,20 @@ class LLMToolCall(BaseModel):
     )
 
 
+class LLMTokenUsage(BaseModel):
+    """Token usage from a single LLM call."""
+    input_tokens: int = Field(default=0, description="Number of input/prompt tokens consumed")
+    output_tokens: int = Field(default=0, description="Number of output/completion tokens consumed")
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+
 class LLMChatResponse(BaseModel):
     """
     Response from an LLM chat completion with tool support.
     """
-    # TODO: capture more metadata here returned from the LLM provider; probably standardize in this class
     content: str | None = Field(
         default=None,
         description="Text content of the response",
@@ -300,6 +309,10 @@ class LLMChatResponse(BaseModel):
     parsed: Any | None = Field(
         default=None,
         description="Parsed structured output when response_model is provided",
+    )
+    usage: LLMTokenUsage | None = Field(
+        default=None,
+        description="Token usage from the LLM call",
     )
 
 
