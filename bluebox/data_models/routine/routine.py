@@ -93,7 +93,7 @@ class Routine(BaseModel):
                 errors.append(
                     f"Last operation must be 'return', 'return_html', or 'download', found '{last_op_type}'"
                 )
-            elif isinstance(last_op, (RoutineReturnOperation, RoutineReturnHTMLOperation)):
+            elif isinstance(last_op, RoutineReturnOperation):
                 # Check 3: Return's session_storage_key must be set by prior fetch or js_evaluate
                 return_key = last_op.session_storage_key
                 if return_key:

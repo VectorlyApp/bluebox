@@ -12,6 +12,7 @@ from bluebox.data_models.routine.operation import (
     RoutineDownloadOperation,
     RoutineFetchOperation,
     RoutineNavigateOperation,
+    RoutineReturnHTMLOperation,
     RoutineSleepOperation,
     RoutineReturnOperation,
     RoutineJsEvaluateOperation,
@@ -960,6 +961,69 @@ class TestDownloadAsLastOperation:
         # make_routine should not append extra fetch+return since download is terminal
         assert len(routine.operations) == 2
         assert isinstance(routine.operations[-1], RoutineDownloadOperation)
+
+
+class TestReturnHtmlAsLastOperation:
+    """Test that return_html works as last operation without session_storage_key."""
+
+    def test_return_html_as_last_operation_valid(self) -> None:
+        """Test that a routine ending with return_html validates successfully (no session_storage_key)."""
+        routine = Routine(
+            name="HTML Scraper",
+            description="Navigate and return page HTML.",
+            operations=[
+                RoutineNavigateOperation(url="https://example.com"),
+                RoutineSleepOperation(timeout_seconds=2.0),
+                RoutineReturnHTMLOperation(scope="page"),
+            ],
+        )
+        assert len(routine.operations) == 3
+        assert isinstance(routine.operations[-1], RoutineReturnHTMLOperation)
+
+    def test_return_html_with_params_valid(self) -> None:
+        """Test return_html routine with parameter placeholders validates successfully."""
+        routine = Routine(
+            name="BostonAssessorDB-SearchByParcelID",
+            description="Search Boston property assessment records by Parcel ID.",
+            operations=[
+                RoutineNavigateOperation(
+                    url="https://www.cityofboston.gov/assessing/search/?pid={{pid}}",
+                    sleep_after_navigation_seconds=3,
+                ),
+                RoutineSleepOperation(timeout_seconds=3.0),
+                RoutineFetchOperation(
+                    endpoint=Endpoint(
+                        url="https://www.cityofboston.gov/assessing/search/?pid={{pid}}",
+                        method=HTTPMethod.GET,
+                        headers={},
+                        body=None,
+                        credentials="same-origin",
+                    ),
+                    session_storage_key="boston_assessing_html",
+                ),
+                RoutineReturnHTMLOperation(scope="page"),
+            ],
+            parameters=[
+                Parameter(name="pid", type=ParameterType.STRING, description="Parcel ID"),
+            ],
+        )
+        assert isinstance(routine.operations[-1], RoutineReturnHTMLOperation)
+
+    def test_return_html_with_ui_interactions_valid(self) -> None:
+        """Test return_html routine with UI interactions (like MassachusettsCorpDB) validates."""
+        routine = Routine(
+            name="MassachusettsCorpDB-SearchByEntityName",
+            description="Search Massachusetts Corporation DB by entity name.",
+            operations=[
+                RoutineNavigateOperation(
+                    url="https://corp.sec.state.ma.us/corpweb/CorpSearch/CorpSearch.aspx",
+                    sleep_after_navigation_seconds=3,
+                ),
+                RoutineSleepOperation(timeout_seconds=3.5),
+                RoutineReturnHTMLOperation(scope="page"),
+            ],
+        )
+        assert isinstance(routine.operations[-1], RoutineReturnHTMLOperation)
 
 
 class TestAllParamTypesUniformFormat:
