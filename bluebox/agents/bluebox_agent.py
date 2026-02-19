@@ -199,14 +199,6 @@ class BlueBoxAgent(AbstractAgent):
             )
         return None
 
-    ## Streaming helpers
-
-    def _stream_or_emit(self, text: str) -> None:
-        """Stream text as a chunk if streaming is available, and always emit a status update."""
-        if self._stream_chunk_callable:
-            self._stream_chunk_callable(text + "\n")
-        self._emit_message(StatusUpdateEmittedMessage(content=text))
-
     ## Tool handlers
 
     @agent_tool()
@@ -300,7 +292,12 @@ class BlueBoxAgent(AbstractAgent):
                 results.append(result)
 
                 status = "succeeded" if result.get("success") else "FAILED"
-                self._stream_or_emit(f"[{len(results)}/{total}] Routine '{result.get('routine_id')}' {status}.")
+                routine_id = result.get("routine_id", "")
+                cached = self._routine_cache.get(routine_id)
+                label = cached.name if cached else routine_id
+                self._emit_message(StatusUpdateEmittedMessage(
+                    content=f"[{len(results)}/{total}] Routine '{label}' {status}.",
+                ))
 
         succeeded = sum(1 for r in results if r.get("success"))
         return {
@@ -340,7 +337,9 @@ class BlueBoxAgent(AbstractAgent):
             "use_vision": True,
         }
 
-        self._stream_or_emit("Starting browser agent task. This may take a few minutes...\n")
+        self._emit_message(StatusUpdateEmittedMessage(
+            content="Starting browser agent task. This may take a few minutes...",
+        ))
 
         try:
             with requests.post(
@@ -398,20 +397,20 @@ class BlueBoxAgent(AbstractAgent):
             if isinstance(event, BrowserAgentStepEvent):
                 step_counter += 1
                 if step_counter > 1:
-                    self._stream_or_emit("")
+                    self._emit_message(StatusUpdateEmittedMessage(content=""))
                 msg = f"[Step {step_counter}]"
                 if event.next_goal:
                     msg += f" {event.next_goal}"
-                self._stream_or_emit(msg)
+                self._emit_message(StatusUpdateEmittedMessage(content=msg))
                 steps.append({"step": step_counter, "goal": event.next_goal, "is_done": event.is_done})
 
             elif isinstance(event, BrowserAgentDoneEvent):
                 status = "succeeded" if event.is_successful else "completed (not confirmed successful)"
                 if not event.is_done:
                     status = "did not finish"
-                self._stream_or_emit(
-                    f"Browser agent task {status} in {event.duration_seconds or 0:.1f}s ({event.n_steps} steps).",
-                )
+                self._emit_message(StatusUpdateEmittedMessage(
+                    content=f"Browser agent task {status} in {event.duration_seconds or 0:.1f}s ({event.n_steps} steps).",
+                ))
                 result = {
                     "success": event.is_successful or False,
                     "is_done": event.is_done,
@@ -424,7 +423,7 @@ class BlueBoxAgent(AbstractAgent):
                 }
 
             elif isinstance(event, BrowserAgentErrorEvent):
-                self._stream_or_emit(f"Browser agent error: {event.error}")
+                self._emit_message(StatusUpdateEmittedMessage(content=f"Browser agent error: {event.error}"))
                 result = {"error": event.error, "execution_id": event.execution_id, "steps": steps}
 
         return result
