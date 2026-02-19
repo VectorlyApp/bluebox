@@ -48,6 +48,7 @@ class TaskStatus(StrEnum):
 
 class SpecialistAgentType(StrEnum):
     """Types of specialist agents available for task delegation."""
+    DOM_SPECIALIST = "dom_specialist"
     JS_SPECIALIST = "js_specialist"
     NETWORK_SPECIALIST = "network_specialist"
     VALUE_TRACE_RESOLVER = "value_trace_resolver"

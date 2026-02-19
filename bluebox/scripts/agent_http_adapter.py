@@ -52,6 +52,7 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import OpenAIModel
 from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
+from bluebox.llms.data_loaders.dom_data_loader import DOMDataLoader
 from bluebox.llms.data_loaders.interactions_data_loader import InteractionsDataLoader
 from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
@@ -64,6 +65,7 @@ logger = get_logger(__name__)
 
 # Maps constructor param names → canonical data loader keys.
 _DATA_PARAM_TO_KEY: dict[str, str] = {
+    "dom_data_loader": "dom",
     "network_data_loader": "network",
     "storage_data_loader": "storage",
     "window_property_data_loader": "window_property",
@@ -402,6 +404,7 @@ def make_handler(state: AgentState) -> type[BaseHTTPRequestHandler]:
 def load_data(args: argparse.Namespace) -> dict[str, Any]:
     """Load all available CDP data loaders keyed by canonical names."""
     paths: dict[str, str | None] = {
+        "dom": args.dom_jsonl,
         "network": args.network_jsonl,
         "storage": args.storage_jsonl,
         "window_property": args.window_props_jsonl,
@@ -412,6 +415,7 @@ def load_data(args: argparse.Namespace) -> dict[str, Any]:
     if args.cdp_captures_dir:
         cdp_dir = Path(args.cdp_captures_dir)
         candidates = {
+            "dom": cdp_dir / "dom" / "events.jsonl",
             "network": cdp_dir / "network" / "events.jsonl",
             "storage": cdp_dir / "storage" / "events.jsonl",
             "window_property": cdp_dir / "window_properties" / "events.jsonl",
@@ -424,6 +428,7 @@ def load_data(args: argparse.Namespace) -> dict[str, Any]:
 
     loaders: dict[str, Any] = {}
     factories: dict[str, Any] = {
+        "dom": lambda p: DOMDataLoader(p),
         "network": lambda p: NetworkDataLoader(p),
         "storage": lambda p: StorageDataLoader(p),
         "window_property": lambda p: WindowPropertyDataLoader(p),
@@ -475,6 +480,7 @@ def main() -> None:
     parser.add_argument("--list-agents", action="store_true",
                         help="List available agents and exit")
     parser.add_argument("--cdp-captures-dir", type=str, default=None)
+    parser.add_argument("--dom-jsonl", type=str, default=None)
     parser.add_argument("--network-jsonl", type=str, default=None)
     parser.add_argument("--storage-jsonl", type=str, default=None)
     parser.add_argument("--window-props-jsonl", type=str, default=None)
