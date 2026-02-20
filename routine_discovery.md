@@ -199,14 +199,15 @@ Navigate to your target website, perform the actions you want to automate, then 
 cdp_captures/
 ├── session_summary.json
 ├── network/
-│   ├── consolidated_transactions.json
-│   ├── network.har
-│   └── transactions/
-│       └── <timestamp_url_id>/
-│           ├── request.json
-│           ├── response.json
-│           └── response_body.[ext]
-└── storage/
+│   ├── events.jsonl
+│   ├── javascript_events.jsonl
+├── storage/
+│   └── events.jsonl
+├── interaction/
+│   └── events.jsonl
+├── dom/
+│   └── events.jsonl
+└── window_properties/
     └── events.jsonl
 ```
 
@@ -237,10 +238,16 @@ Outputs (under `--output-dir`):
 
 ```
 routine_discovery_output/
+├── routine.json                    # Final Routine model (name, parameters, operations)
+├── dev_routine.json                # Intermediate DevRoutine (debugging)
+├── root_transaction.json           # Identified root endpoint
 ├── identified_transactions.json    # Chosen transaction id/url
 ├── routine_transactions.json       # Slimmed request/response samples given to LLM
 ├── resolved_variables.json         # Resolution hints for cookies/tokens (if any)
-└── routine.json                    # Final Routine model (name, parameters, operations)
+├── message_history.json            # Full agent conversation transcript
+└── transaction_N/                  # Per-transaction extracted/resolved data
+    ├── extracted_variables.json
+    └── resolved_variables.json
 ```
 
 ##### 3. Execute the Discovered Routines 🏃
