@@ -199,8 +199,6 @@ Navigate to your target website, perform the actions you want to automate, then 
 cdp_captures/
 ├── session_summary.json
 ├── network/
-│   ├── consolidated_transactions.json
-│   ├── network.har
 │   ├── events.jsonl
 │   ├── javascript_events.jsonl
 │   └── transactions/
