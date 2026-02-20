@@ -28,6 +28,7 @@ from bluebox.agents.specialists.network_specialist import NetworkSpecialist
 from bluebox.data_models.api_indexing.exploration import (
     EndpointCategory,
     EndpointCluster,
+    InterestLevel,
     NetworkExplorationSummary,
 )
 from bluebox.data_models.llms.interaction import EmittedMessage
@@ -50,7 +51,7 @@ NETWORK_EXPLORATION_OUTPUT_SCHEMA: dict[str, Any] = {
         },
         "endpoints": {
             "type": "array",
-            "description": "Discovered endpoints, sorted by interest_score descending.",
+            "description": "Discovered endpoints, sorted by interest level (high first).",
             "items": {
                 "type": "object",
                 "properties": {
@@ -75,11 +76,10 @@ NETWORK_EXPLORATION_OUTPUT_SCHEMA: dict[str, Any] = {
                         "type": "string",
                         "description": "What this endpoint does.",
                     },
-                    "interest_score": {
-                        "type": "number",
-                        "minimum": 0.0,
-                        "maximum": 1.0,
-                        "description": "How useful this endpoint likely is for routine construction (0-1).",
+                    "interest": {
+                        "type": "string",
+                        "enum": [e.value for e in InterestLevel],
+                        "description": "How relevant for routine construction: high (core business endpoints), medium (supporting/config), low (noise/analytics).",
                     },
                     "request_ids": {
                         "type": "array",
@@ -93,7 +93,7 @@ NETWORK_EXPLORATION_OUTPUT_SCHEMA: dict[str, Any] = {
                     "category",
                     "hit_count",
                     "description",
-                    "interest_score",
+                    "interest",
                     "request_ids",
                 ],
             },
@@ -144,9 +144,10 @@ Explore the full network capture and produce a structured summary that answers:
    - **navigation** endpoints (HTML page loads, redirects)
 3. **Investigate auth**: Look at request headers across multiple entries to identify
    auth patterns (Bearer tokens, cookies, CSRF headers, API keys).
-4. **Score**: Rate each endpoint's interest_score (0-1) based on how useful it would
-   be for building automations. Action and data endpoints score high; analytics and
-   static assets score near 0.
+4. **Rate interest**: Label each endpoint's interest level:
+   - **high**: Core business endpoints the routine will actually call (search, submit, book)
+   - **medium**: Supporting endpoints (reference data, config, session management, auth)
+   - **low**: Noise (analytics, tracking, ads, bot detection, static assets, CDN)
 5. **Filter noise**: Count requests that are clearly noise (analytics trackers, CDN
    resources, font/image loads, preflight OPTIONS requests).
 6. **Finalize**: Call `finalize_with_output(output={...})` with the COMPLETE JSON object
@@ -170,7 +171,7 @@ finalize_with_output(output={
       "category": "action",
       "hit_count": 2,
       "description": "Search endpoint",
-      "interest_score": 0.9,
+      "interest": "high",
       "request_ids": ["req_123"]
     }
   ],
@@ -183,12 +184,19 @@ Do NOT call finalize_failure unless you genuinely cannot find ANY endpoints in t
 
 ## Guidelines
 
+- **Focus your investigation on high and medium interest endpoints.** These are the ones
+  that matter for routine construction. Spend your tool calls understanding THESE in detail
+  — inspect their request/response bodies, headers, auth patterns, and payloads.
+- For low-interest endpoints (analytics, tracking, ads, CDN, bot detection), just list
+  them briefly. Do NOT waste tool calls investigating Dynatrace beacons, Sojern pixels,
+  or PerimeterX collectors — name them, mark them low, and move on.
 - Be thorough — examine ALL distinct URL patterns, not just the first few.
 - Group duplicate URLs (same path, different query params) into one endpoint cluster.
-- Include request_ids for each endpoint so we can drill in later.
+- Include request_ids for high and medium endpoints so we can drill in later.
+  Low-interest endpoints can have empty request_ids.
 - The narrative field is for anything that doesn't fit the structured fields:
   unexpected patterns, potential issues, rate limiting, error spikes, etc.
-- Sort endpoints by interest_score descending in your output.
+- Sort endpoints by interest level (high first, then medium, then low) in your output.
 - Keep endpoint descriptions concise (one sentence each) to stay within token limits.
 """.strip()
 
@@ -306,7 +314,7 @@ def run_network_exploration(
         "total_requests (int), endpoints (array of endpoint objects), "
         "auth_observations (array of strings), and narrative (string). "
         "Each endpoint object needs: url_pattern, method, category (action|data|auth|navigation), "
-        "hit_count, description, interest_score (0-1), request_ids (array)."
+        "hit_count, description, interest (high|medium|low), request_ids (array)."
     )
 
     config = AutonomousConfig(

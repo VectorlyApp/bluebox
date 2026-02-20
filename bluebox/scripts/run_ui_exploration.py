@@ -1,14 +1,12 @@
 """
 bluebox/scripts/run_ui_exploration.py
 
-Prototype script for Phase 1 (Exploration) — UI domain (DOM + Interactions).
+Prototype script for Phase 1 (Exploration) — UI / Interaction domain.
 
-Runs the DOMSpecialist in autonomous mode with an output schema matching
-UIExplorationSummary. The agent uses its existing tools (list_pages, get_forms,
-get_inputs, get_buttons, get_meta_tags, get_scripts, get_hidden_inputs, etc.)
-to explore captured DOM snapshots and produce a structured exploration summary.
-Interaction events are summarized and injected into the system prompt context
-so the agent can cross-reference what the user did with what the page shows.
+Runs the InteractionSpecialist in autonomous mode with an output schema
+matching UIExplorationSummary. The agent uses interaction tools (form inputs,
+clicks, elements) and optionally DOM tools (pages, forms, inputs) to
+understand what the user did and infer their intent.
 
 Usage:
     python -m bluebox.scripts.run_ui_exploration --cdp-captures-dir ./cdp_captures
@@ -24,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from bluebox.agents.specialists.abstract_specialist import AutonomousConfig, RunMode
-from bluebox.agents.specialists.dom_specialist import DOMSpecialist
+from bluebox.agents.specialists.interaction_specialist import InteractionSpecialist
 from bluebox.data_models.api_indexing.exploration import UIExplorationSummary
 from bluebox.data_models.llms.interaction import EmittedMessage
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
@@ -41,121 +39,100 @@ logger = get_logger(name=__name__)
 UI_EXPLORATION_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "total_snapshots": {
+        "total_events": {
             "type": "integer",
-            "description": "Total number of DOM snapshots in the capture.",
-        },
-        "total_interaction_events": {
-            "type": "integer",
-            "description": "Total number of UI interaction events in the capture.",
-        },
-        "pages": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": (
-                "Each entry is a freeform description of one visited page. "
-                "Include: URL, page title, what forms/inputs/buttons exist, "
-                "any embedded tokens (CSRF in meta tags, hidden inputs), "
-                "any server-side data blobs (__NEXT_DATA__, inline JSON)."
-            ),
+            "description": "Total number of interaction events in the capture.",
         },
         "user_inputs": {
             "type": "array",
             "items": {"type": "string"},
-            "description": (
-                "Each entry is a freeform description of one user input action. "
-                "Include: what element was interacted with (tag, id/name, label), "
-                "what value was entered or selected, what type of input it is."
-            ),
+            "description": "Each entry describes one user input: element, value, type.",
+        },
+        "clicks": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Each entry describes one meaningful click: element, action, page.",
+        },
+        "navigation_flow": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Ordered page transitions the user made.",
+        },
+        "inferred_intent": {
+            "type": "string",
+            "description": "What the user was trying to accomplish.",
         },
         "narrative": {
             "type": "string",
-            "description": (
-                "Freeform observations: user flow/journey, page transitions, "
-                "form submission patterns, anything else worth noting."
-            ),
+            "description": "Freeform observations about user behavior and interaction patterns.",
         },
     },
     "required": [
-        "total_snapshots",
-        "total_interaction_events",
-        "pages",
+        "total_events",
         "user_inputs",
+        "clicks",
+        "navigation_flow",
+        "inferred_intent",
         "narrative",
     ],
 }
 
 # ---------------------------------------------------------------------------
-# Autonomous system prompt override — exploration-specific
+# Autonomous system prompt — UI exploration
 # ---------------------------------------------------------------------------
 
 EXPLORATION_SYSTEM_PROMPT = """
-You are a UI exploration agent. Your job is to survey ALL captured DOM snapshots
-and UI interaction events to build a complete picture of the user's journey
-through the web application.
+You are a UI interaction exploration agent. Your job is to analyze recorded
+browser interaction events to understand what the user did on the page.
 
 ## Your Mission
 
-Explore every page snapshot and cross-reference with interaction data. Find two things:
-
-1. **Pages** — what pages were visited, what forms/inputs/buttons exist on each,
-   what tokens or data blobs are embedded in the HTML (CSRF tokens in meta tags,
-   hidden inputs, __NEXT_DATA__ blobs, inline JSON config).
-2. **User inputs** — what the user actually typed, selected, or clicked. These
-   are the actions that become routine parameters. Focus on form inputs, typed
-   values, dropdown selections, date pickers, and meaningful button clicks.
-
-Everything else (scroll events, hover, focus/blur without input, framework noise,
-analytics scripts) is noise — don't catalog it.
+1. **User inputs** — what did the user type, select, or fill in?
+2. **Clicks** — what buttons, links, or elements did the user click?
+3. **Navigation flow** — what pages did the user visit and in what order?
+4. **Intent** — what was the user trying to accomplish?
 
 ## Process
 
-1. **Survey pages**: Use `list_pages` to see all captured pages and their URLs/titles.
-2. **Scan each page**: For each page, use `get_forms`, `get_inputs`, `get_buttons`
-   to understand what interactive elements exist.
-3. **Check for embedded tokens**: Use `get_meta_tags` to find CSRF tokens, API
-   configs, verification keys. Use `get_hidden_inputs` to find hidden form tokens
-   and session IDs.
-4. **Check for data blobs**: Use `get_scripts` to find __NEXT_DATA__, inline JSON,
-   structured data (ld+json), and other server-side state embedded in the page.
-5. **Cross-reference interactions**: The interaction event summary is provided in
-   context below. Match interaction events to the DOM elements you found — which
-   inputs did the user fill in? What buttons did they click?
-6. **Track navigation**: Use `get_navigation_sequence` to understand the page flow.
-7. **Finalize**: Call `finalize_with_output(output={...})` with the COMPLETE JSON.
+1. `get_interaction_summary` -> overview of all events
+2. `get_form_inputs` -> what the user typed/selected in forms
+3. `get_unique_elements` -> which elements were interacted with
+4. `search_interactions_by_type(types=["click"])` -> button/link clicks
+5. If DOM tools available: `list_pages` + `get_forms` for page context
+6. `finalize_with_output(output={...})` with the COMPLETE JSON
 
-## CRITICAL: How to Finalize
+## How to Finalize
 
-When you call `finalize_with_output`, you MUST pass the ENTIRE output as a single
-JSON object in the `output` parameter. Do NOT call it empty or with partial data.
+Pass the ENTIRE output as a single JSON object. Example:
 
 ```
 finalize_with_output(output={
-  "total_snapshots": 5,
-  "total_interaction_events": 23,
-  "pages": [
-    "/search (Flight Search) — form with origin (text input), destination (text input), date (date picker), passengers (dropdown) + 'Search Flights' submit button. Hidden input 'csrf_token' with value rotated per page load.",
-    "/results (Search Results) — table with flight options (airline, time, price). 'Select' button per row. No forms."
-  ],
+  "total_events": 42,
   "user_inputs": [
-    "input#origin (text) — user typed 'LAX', likely an airport code parameter",
-    "input#destination (text) — user typed 'JFK', likely an airport code parameter",
-    "input#date (date) — user selected '2025-03-15', departure date parameter",
-    "button.search-btn — user clicked 'Search Flights' to submit the search form"
+    "input#origin (text) -- user typed 'LAX'",
+    "input#destination (text) -- user typed 'JFK'",
+    "input#date (date) -- user selected '2025-03-15'"
   ],
-  "narrative": "User flow: landed on /search, filled in origin/destination/date, clicked search, arrived at /results. The search form POSTs to /api/search. CSRF token found in hidden input. No __NEXT_DATA__ or framework blobs."
+  "clicks": [
+    "button.search-btn 'Search Flights' -- submits search form",
+    "a.result-link 'Select Flight' -- picks first result"
+  ],
+  "navigation_flow": [
+    "/ (Home) -> /book/flights (Search)",
+    "/book/flights (Search) -> /results (Results)"
+  ],
+  "inferred_intent": "Search for one-way flights from LAX to JFK on 2025-03-15",
+  "narrative": "User navigated to flight search, filled origin/destination/date, clicked search..."
 })
 ```
 
 ## Guidelines
 
-- Be thorough — scan ALL pages, not just the first one.
-- For pages: describe what's ON the page (forms, inputs, buttons, embedded tokens),
-  not just that it exists.
-- For user inputs: describe what the user DID, not just that the element exists.
-  "User typed 'LAX' into origin field" is useful. "Input field exists" is not.
-- The narrative should tell the story of the user's journey through the app.
-- Cross-reference DOM elements with interaction events to paint the full picture.
+- Focus on meaningful interactions — ignore scroll, hover, focus/blur noise.
+- For inputs, include the actual value the user typed/selected.
+- For clicks, include the button/link text or identifier.
+- Keep descriptions to one sentence each.
+- The inferred intent should be a single clear sentence.
 """.strip()
 
 
@@ -178,40 +155,6 @@ def _resolve_model(model_str: str) -> LLMModel:
     )
 
 
-def _build_interaction_context(interaction_loader: InteractionsDataLoader) -> str:
-    """Build a summary of interaction events for the system prompt."""
-    stats = interaction_loader.stats
-    lines: list[str] = [
-        "\n\n## Interaction Events Context",
-        f"- Total Events: {stats.total_events}",
-        f"- Unique URLs: {stats.unique_urls}",
-        f"- Unique Elements: {stats.unique_elements}",
-    ]
-
-    if stats.events_by_type:
-        type_parts = ", ".join(
-            f"{t}: {c}" for t, c in sorted(stats.events_by_type.items(), key=lambda x: -x[1])
-        )
-        lines.append(f"- Events by Type: {type_parts}")
-
-    # Include form input details so the agent can cross-reference
-    form_inputs = interaction_loader.get_form_inputs()
-    if form_inputs:
-        lines.append(f"\n### User Input Events ({len(form_inputs)} total)")
-        for inp in form_inputs[:50]:
-            tag = inp.get("tag_name", "?")
-            elem_id = inp.get("element_id", "")
-            name = inp.get("element_name", "")
-            value = inp.get("value", "")
-            event_type = inp.get("type", "")
-            identifier = elem_id or name or "unknown"
-            lines.append(f"- {tag}#{identifier} ({event_type}): value='{value}'")
-        if len(form_inputs) > 50:
-            lines.append(f"  ... and {len(form_inputs) - 50} more input events")
-
-    return "\n".join(lines)
-
-
 def run_ui_exploration(
     cdp_captures_dir: Path,
     llm_model: LLMModel = OpenAIModel.GPT_5_1,
@@ -219,11 +162,12 @@ def run_ui_exploration(
     max_iterations: int = 15,
 ) -> UIExplorationSummary | None:
     """
-    Run UI exploration on a CDP captures directory.
+    Run UI/interaction exploration on a CDP captures directory.
+
+    Requires interaction data. Optionally loads DOM data for structural context.
 
     Args:
-        cdp_captures_dir: Path to directory containing dom/events.jsonl
-            and optionally interactions/events.jsonl.
+        cdp_captures_dir: Path to directory containing interactions/events.jsonl.
         llm_model: LLM model to use.
         min_iterations: Minimum iterations before finalize is available.
         max_iterations: Maximum iterations before the loop exits.
@@ -231,38 +175,37 @@ def run_ui_exploration(
     Returns:
         UIExplorationSummary if successful, None if the agent failed or timed out.
     """
-    # Load DOM snapshots — required
-    dom_jsonl = cdp_captures_dir / "dom" / "events.jsonl"
-    if not dom_jsonl.exists():
-        logger.error("dom/events.jsonl not found in %s", cdp_captures_dir)
+    # Support both "interactions/" and "interaction/" directory names
+    interaction_jsonl = cdp_captures_dir / "interactions" / "events.jsonl"
+    if not interaction_jsonl.exists():
+        interaction_jsonl = cdp_captures_dir / "interaction" / "events.jsonl"
+    if not interaction_jsonl.exists():
+        logger.error("interactions/events.jsonl not found in %s", cdp_captures_dir)
         return None
 
-    dom_loader = DOMDataLoader(jsonl_path=str(dom_jsonl))
+    # Load interaction data (required)
+    interaction_loader = InteractionsDataLoader.from_jsonl(str(interaction_jsonl))
     logger.info(
-        "Loaded %d DOM snapshots (%d unique URLs)",
-        dom_loader.stats.total_snapshots,
-        dom_loader.stats.unique_urls,
+        "Loaded %d interaction events (%d unique elements)",
+        interaction_loader.stats.total_events,
+        interaction_loader.stats.unique_elements,
     )
 
-    # Load interaction events — optional but very useful
-    interaction_loader: InteractionsDataLoader | None = None
-    interaction_jsonl = cdp_captures_dir / "interactions" / "events.jsonl"
-    if interaction_jsonl.exists():
-        interaction_loader = InteractionsDataLoader(jsonl_path=str(interaction_jsonl))
+    # Try to load DOM data (optional, for structural context)
+    dom_loader: DOMDataLoader | None = None
+    dom_jsonl = cdp_captures_dir / "dom" / "events.jsonl"
+    if dom_jsonl.exists():
+        dom_loader = DOMDataLoader(jsonl_path=str(dom_jsonl))
         logger.info(
-            "Loaded %d interaction events (%d unique elements)",
-            interaction_loader.stats.total_events,
-            interaction_loader.stats.unique_elements,
+            "Loaded %d DOM snapshots for structural context",
+            dom_loader.stats.total_snapshots,
         )
     else:
-        logger.warning(
-            "interactions/events.jsonl not found — UI exploration will proceed "
-            "with DOM snapshots only (no user input data)"
-        )
+        logger.info("No DOM data found — will use interaction events only")
 
-    # Build the specialist — uses DOMSpecialist for rich page structure tools
-    specialist = DOMSpecialist(
+    specialist = InteractionSpecialist(
         emit_message_callable=_emit_message,
+        interaction_data_loader=interaction_loader,
         dom_data_loader=dom_loader,
         llm_model=llm_model,
         run_mode=RunMode.AUTONOMOUS,
@@ -273,26 +216,23 @@ def run_ui_exploration(
 
     # Monkey-patch the autonomous system prompt for exploration
     def _exploration_system_prompt() -> str:
-        dom_stats = dom_loader.stats
+        i_stats = interaction_loader.stats
         context_parts: list[str] = [
             EXPLORATION_SYSTEM_PROMPT,
-            "\n\n## DOM Data Context",
-            f"\n- Snapshots: {dom_stats.total_snapshots}",
-            f"\n- Unique URLs: {dom_stats.unique_urls}",
-            f"\n- Unique Titles: {dom_stats.unique_titles}",
-            f"\n- Hosts: {', '.join(dom_stats.hosts.keys())}",
+            f"\n\n## Interaction Data Context\n"
+            f"- Events: {i_stats.total_events}\n"
+            f"- Unique URLs: {i_stats.unique_urls}\n"
+            f"- Unique Elements: {i_stats.unique_elements}\n"
+            f"- Events by Type: {i_stats.events_by_type}",
         ]
 
-        if dom_stats.urls:
-            urls_list = "\n".join(f"  - {url}" for url in dom_stats.urls[:20])
-            context_parts.append(f"\n- Pages:\n{urls_list}")
-
-        if interaction_loader:
-            context_parts.append(_build_interaction_context(interaction_loader))
-        else:
+        if dom_loader:
+            d_stats = dom_loader.stats
             context_parts.append(
-                "\n\n## Interaction Events Context\n"
-                "- No interaction events available. Focus on DOM structure only."
+                f"\n\n## DOM Data (for context)\n"
+                f"- Snapshots: {d_stats.total_snapshots}\n"
+                f"- Unique URLs: {d_stats.unique_urls}\n"
+                f"- Use DOM tools (list_pages, get_forms) for structural context."
             )
 
         return (
@@ -304,16 +244,12 @@ def run_ui_exploration(
     specialist._get_autonomous_system_prompt = _exploration_system_prompt  # type: ignore[assignment]
 
     # Build task message
-    interaction_count = interaction_loader.stats.total_events if interaction_loader else 0
     task = (
-        "Explore ALL DOM snapshots and UI interaction data in this capture. "
-        "Map out every page: what forms, inputs, buttons, and embedded tokens exist. "
-        "Cross-reference with interaction events to identify what the user actually did. "
-        f"There are {dom_loader.stats.total_snapshots} DOM snapshots and "
-        f"{interaction_count} interaction events. "
-        "Then call finalize_with_output(output={...}) with a COMPLETE JSON object containing: "
-        "total_snapshots (int), total_interaction_events (int), pages (array of strings), "
-        "user_inputs (array of strings), narrative (string)."
+        "Analyze ALL interaction events in this capture. Discover what the user "
+        "typed, clicked, and selected. Map the navigation flow. Infer what the "
+        f"user was trying to accomplish. There are {interaction_loader.stats.total_events} "
+        "interaction events. "
+        "Then call finalize_with_output(output={...}) with the COMPLETE JSON."
     )
 
     config = AutonomousConfig(
@@ -326,8 +262,8 @@ def run_ui_exploration(
         config=config,
         output_schema=UI_EXPLORATION_OUTPUT_SCHEMA,
         output_description=(
-            "A UIExplorationSummary with all discovered pages and user inputs, "
-            "plus a narrative of the user's journey."
+            "A UIExplorationSummary with user inputs, clicks, navigation flow, "
+            "inferred intent, and narrative."
         ),
     )
 
@@ -343,9 +279,10 @@ def run_ui_exploration(
     try:
         summary = UIExplorationSummary(**result.output)
         logger.info(
-            "UI exploration complete: %d pages, %d user inputs discovered",
-            len(summary.pages),
+            "UI exploration complete: %d inputs, %d clicks, intent: %s",
             len(summary.user_inputs),
+            len(summary.clicks),
+            summary.inferred_intent[:80] if summary.inferred_intent else "(none)",
         )
         return summary
     except Exception as e:
@@ -357,13 +294,13 @@ def run_ui_exploration(
 def main() -> None:
     """CLI entrypoint for UI exploration."""
     parser = argparse.ArgumentParser(
-        description="Run Phase 1 UI Exploration on CDP captures",
+        description="Run Phase 1 UI/Interaction Exploration on CDP captures",
     )
     parser.add_argument(
         "--cdp-captures-dir",
         type=Path,
         required=True,
-        help="Path to CDP captures directory (expects dom/events.jsonl inside)",
+        help="Path to CDP captures directory (expects interactions/events.jsonl inside)",
     )
     parser.add_argument(
         "--model",
@@ -415,14 +352,14 @@ def main() -> None:
     )
 
     if summary is None:
-        print("Exploration failed — no output produced.", file=sys.stderr)
+        print("UI exploration failed — no output produced.", file=sys.stderr)
         sys.exit(1)
 
     output_json = summary.model_dump_json(indent=2)
 
     if args.output:
         args.output.write_text(output_json)
-        print(f"Exploration summary written to {args.output}", file=sys.stderr)
+        print(f"UI exploration summary written to {args.output}", file=sys.stderr)
     else:
         print(output_json)
 
