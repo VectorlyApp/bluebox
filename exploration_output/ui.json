@@ -1,0 +1,16 @@
+{
+  "total_events": 83,
+  "user_inputs": [],
+  "clicks": [
+    "button#onetrust-accept-btn-handler (cookie banner) — user clicked 'Accept All' to dismiss cookie consent on the Premier League home page.",
+    "svg[role=\"img\"] inside button[aria-label=\"Close Advert\"] — user clicked the close icon to dismiss an advert takeover on the home page.",
+    "a.main-nav__nav-item-link.button.button--text.button--medium (main nav item #2) — user clicked this top navigation link from the home page to open the Premier League tables page.",
+    "div.standings-row__team-name:nth-of-type(5) within table.standings-table — user clicked this team name cell in the standings table on the Premier League 2025-26 tables page, navigating to that club’s overview page (Manchester United)."
+  ],
+  "navigation_flow": [
+    "https://www.premierleague.com/en/ (Premier League Football News, Fixtures, Scores & Results) -> https://www.premierleague.com/en/tables/premier-league (Premier League Table, Standings & Form Guide)",
+    "https://www.premierleague.com/en/tables/premier-league (Premier League Table, Standings & Form Guide) -> https://www.premierleague.com/en/clubs/1/manchester-united/overview (Manchester United Team News, Fixtures & Results 2025/26 | Premier League)"
+  ],
+  "inferred_intent": "Browse the official Premier League site to view the current league table and then open the Manchester United club overview for the 2025/26 season.",
+  "narrative": "Across 83 recorded events, the user primarily generated mouseover noise while navigating the Premier League website, with only four meaningful clicks and no text or form inputs. On landing at the home page (\"Premier League Football News, Fixtures, Scores & Results\"), they first accepted the cookie banner by clicking the 'Accept All' button (button#onetrust-accept-btn-handler). They then closed an advert takeover by clicking the close icon (an SVG within a button labelled 'Close Advert'). With the page unobstructed, the user moved to the main navigation and clicked the second primary nav link (a.main-nav__nav-item-link.button.button--text.button--medium in nav item #2), which took them from the home page to the league tables page (\"Premier League Table, Standings & Form Guide\"). On the tables page for the 2025-26 Premier League season, their pointer moved over the standings table rows and cells, and they ultimately clicked on the fifth team name cell in a standings row (div.standings-row__team-name:nth-of-type(5) within table.standings-table). This click navigated to the corresponding club’s overview page, which in this capture is the Manchester United overview for the 2025/26 season (\"Manchester United Team News, Fixtures & Results 2025/26 | Premier League\"). No further interactions were recorded on that page. Overall, the interaction pattern shows a user clearing consent/advert overlays, using the main navigation to reach the league table, and then selecting Manchester United from the standings to view detailed club information for the current season."
+}

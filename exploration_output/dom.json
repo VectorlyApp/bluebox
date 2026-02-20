@@ -1,0 +1,37 @@
+{
+  "total_snapshots": 3,
+  "pages": [
+    "[0] https://www.premierleague.com/en/ — Premier League home page with global navigation, hero content, news and features blocks, and many tracking/ads scripts.",
+    "[1] https://www.premierleague.com/en/tables/premier-league — Standings page showing the Premier League table for the selected season with a standings table element and season navigation controls (likely rendered by JS).",
+    "[2] https://www.premierleague.com/en/clubs/1/manchester-united/overview — Club overview page for Manchester United with club header, fixtures/results widgets, and content sections, all driven by shared site JS bundles."
+  ],
+  "forms": [],
+  "embedded_tokens": [
+    "[meta] All three snapshots share multiple http-equiv=\"origin-trial\" meta tags whose content values are long base64-like strings (likely Chrome Origin Trial tokens) that remain consistent per feature across pages.",
+    "[meta] Each page has data-analytics meta tags (screen_page_category and screen_page_name) used as analytics routing tokens rather than security tokens.",
+    "[script inline] window.PULSE.envPaths (all pages) defines a large JSON config object including PingOne SSO client IDs, multiple PingOne environment IDs, and various service endpoints (SSO, preferences, copilotApi, contentPersonalisationApi).",
+    "[script inline] window.PULSE.envPaths.firebase on all pages exposes a Firebase config (apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId, measurementId) for the production Premier League app.",
+    "[script inline] window.PULSE.envPaths.evergent on all pages embeds Evergent integration details including apiUrl, apiKey (short ASCII token), channelPartnerID, and several request message type names.",
+    "[script inline] window.PULSE.envPaths.starHub on all pages includes StarHub auth configuration with authUrl, environmentId, clientId, and acrValues.",
+    "[script inline] BlazeSDK.Initialize on all pages is called with a fixed public Blaze SDK key (32-char hex-like string) used to initialize the embedded story SDK.",
+    "[script inline] Google Tag Manager and DoubleClick scripts across pages carry multiple IDs (e.g., GTM-MDWXC59G, G-Z815NWVZJY, DC-15326134, DC-14878961, G-X3CFNBHB32) that act as tracking identifiers rather than secrets.",
+    "[script inline] TikTok, Facebook Pixel, Spotify, Optimizely, Chartbeat, and OneTrust scripts across pages each include their own pixel IDs or keys (e.g., CQTPD5JC77U6D8VT2IE0, 348875522594632, 94feacc608ee4631a54021227966429c) used for analytics and consent management.",
+    "[meta/text] A repeated 32‑char hex string \"47001FCCDBB726297CA6D283AA55ACC8\" appears in the head text of all snapshots (likely a static site/version or verification token, not obviously CSRF-related)."
+  ],
+  "data_blobs": [
+    "[script inline] window.PULSE.envPaths (all pages) is a large JSON-like configuration blob (~2KB truncated in capture) containing keys for label, domain, cdn, api, sso (with nested PingOne clientIds and environmentIds), preferences, copilotApi, contentPersonalisationApi, firebase, evergent, starHub, and other feature flags.",
+    "[script inline] Theme bootstrap IIFE (all pages) reads localStorage('theme') and matchMedia('(prefers-color-scheme: dark)') to set a CSS class (light-theme or dark-theme) on <html>, acting as a small config blob for theming.",
+    "[script inline] Google Publisher Tag (GPT) setup on all pages defines googletag.cmd and configures pubads(), with additional OneTrust-driven GPT sizeMapping logic on the home page to build ad slot mappings based on viewport size.",
+    "[script inline] Adobe Launch / _satellite OneTrust integration scripts (all pages) register OneTrust.OnConsentChanged handlers and push 'opt in'/'opt out' events into Adobe’s _satellite tracking, effectively a consent-state data blob.",
+    "[script inline] Optimizely gating scripts (all pages) define getCookie('OptanonConsent') and use it to hold or send Optimizely events, encoding consent state logic in a small JS data blob.",
+    "[script inline] BlazeSDK initialization (all pages) passes an options object { shouldModifyUrlWithStoryId: false, prefetchingPolicy: 'low' } to Initialize, representing configuration for the MVP/Fan story SDK.",
+    "[script inline] ECAL widget scripts on the tables page define EcalWidget.init({ apiKey: '6ea09552…77979d55821c6d7217b' }) and attach a load handler, which is a calendar-integration config blob.",
+    "[script inline] Multiple analytics snippets (TikTok ttq, Facebook fbq, GTM dataLayer bootstrap, Chartbeat _sf_async_config) define small config objects (UIDs, domain, sections, authors) that are classic analytics data blobs.",
+    "[script inline] Dynamic import / SystemJS loader snippets on all pages check for support of import() and either load /resources/v1.39.12/scripts/bundle-es.min.js or a SystemJS nomodule bundle, representing the core application JS bundle loader configuration."
+  ],
+  "tables": [
+    "[1] https://www.premierleague.com/en/tables/premier-league — one <table class=\"standings-table\"> element with 21 rows (20 clubs plus header/summary row), used to display the league standings; column headers were not captured but likely include position, club, played, goal stats, and points."
+  ],
+  "inferred_framework": "Custom JS SPA / vanilla with vendor bundles (no explicit React/Next/Vue/Angular markers; core app appears in /resources/v1.39.12/scripts/bundle-es.min.js with SystemJS fallback).",
+  "narrative": "Navigation proceeds from the Premier League home page to the league tables page and then to the Manchester United club overview, all under the same www.premierleague.com host and sharing a common CSS/JS resource version (v1.39.12). The DOM shows no traditional HTML forms or hidden inputs in any snapshot; instead, interactions (search, filters, account, etc.) are likely handled entirely by JavaScript components within the main bundles. Meta tags are primarily for SEO and analytics, while numerous http-equiv=\"origin-trial\" meta tokens enable Chrome experimental features and remain consistent across pages. A substantial inline configuration object, window.PULSE.envPaths, is present on every page and centralizes environment-specific endpoints and third-party integrations (PingOne SSO, Firebase, Evergent billing, StarHub, personalisation, and AI copilot), along with a shared Firebase project configuration and several public API keys and identifiers. Each page loads a heavy set of third-party scripts for analytics, ads, consent, experimentation, and social embeds (TikTok, Facebook Pixel, Google Tag Manager/Analytics, DoubleClick GPT, Adobe Launch, Optimizely, OneTrust, Chartbeat, Spotify, BlazeSDK, ECAL, Instagram, Twitter), with consent gating wired through OneTrust events. The only explicit HTML data table captured is the standings-table on the tables page, while other content (home widgets, club fixtures/results, etc.) appears to be rendered dynamically into the DOM by the site’s own JS bundles, suggesting a custom SPA-like architecture using ES module bundles and a SystemJS fallback rather than a mainstream framework signature such as __NEXT_DATA__, data-reactroot, ng-* or data-v-* attributes."
+}
