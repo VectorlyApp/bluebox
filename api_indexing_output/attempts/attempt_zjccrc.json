@@ -1,0 +1,729 @@
+{
+  "id": "zjccrc",
+  "routine_spec_id": "956hjh",
+  "routine_json": {
+    "name": "pl_match_details",
+    "description": "Fetch detailed match events and lineups for a given matchId from the Pulselive Premier League API via direct navigation to the events and lineups endpoints.",
+    "operations": [
+      {
+        "type": "navigate",
+        "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/matches/{{matchId}}/events",
+        "sleep_after_navigation_seconds": 3.0
+      },
+      {
+        "type": "js_evaluate",
+        "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text for events' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+        "timeout_seconds": 10.0,
+        "session_storage_key": "pl_match_events_result"
+      },
+      {
+        "type": "navigate",
+        "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v3/matches/{{matchId}}/lineups",
+        "sleep_after_navigation_seconds": 3.0
+      },
+      {
+        "type": "js_evaluate",
+        "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text for lineups' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+        "timeout_seconds": 10.0,
+        "session_storage_key": "pl_match_lineups_result"
+      },
+      {
+        "type": "js_evaluate",
+        "js": "(() => { try { const eventsRaw = sessionStorage.getItem('pl_match_events_result'); const lineupsRaw = sessionStorage.getItem('pl_match_lineups_result'); const events = eventsRaw ? JSON.parse(eventsRaw) : null; const lineups = lineupsRaw ? JSON.parse(lineupsRaw) : null; return { events, lineups }; } catch (e) { return { ok: false, error: String(e) }; } })();",
+        "timeout_seconds": 5.0,
+        "session_storage_key": "pl_match_details_bundle"
+      },
+      {
+        "type": "return",
+        "session_storage_key": "pl_match_details_bundle"
+      }
+    ],
+    "parameters": [
+      {
+        "name": "matchId",
+        "type": "integer",
+        "required": true,
+        "description": "Pulselive match identifier (e.g., 2562154).",
+        "default": null,
+        "examples": [],
+        "min_length": null,
+        "max_length": null,
+        "min_value": null,
+        "max_value": null,
+        "pattern": null,
+        "enum_values": null,
+        "format": null,
+        "observed_value": null
+      }
+    ]
+  },
+  "status": "passed",
+  "test_parameters": {
+    "matchId": 2562154
+  },
+  "execution_result": {
+    "ok": true,
+    "error": null,
+    "is_base64": false,
+    "content_type": null,
+    "filename": null,
+    "data": {
+      "events": {
+        "awayTeam": {
+          "cards": [
+            {
+              "period": "SecondHalf",
+              "time": "57",
+              "type": "Yellow",
+              "playerId": "216051",
+              "timestamp": "20260210T212744+0000"
+            }
+          ],
+          "subs": [
+            {
+              "period": "SecondHalf",
+              "playerOnId": "550864",
+              "playerOffId": "95658",
+              "time": "68",
+              "timestamp": "20260210T213922+0000"
+            },
+            {
+              "period": "SecondHalf",
+              "playerOnId": "485711",
+              "playerOffId": "430871",
+              "time": "69",
+              "timestamp": "20260210T213938+0000"
+            },
+            {
+              "period": "SecondHalf",
+              "playerOnId": "458249",
+              "playerOffId": "216051",
+              "time": "82",
+              "timestamp": "20260210T215241+0000"
+            }
+          ],
+          "name": "Manchester United",
+          "id": "1",
+          "shortName": "Man Utd",
+          "goals": [
+            {
+              "goalType": "Goal",
+              "period": "SecondHalf",
+              "assistPlayerId": "446008",
+              "time": "96",
+              "playerId": "485711",
+              "timestamp": "20260210T220643+0000"
+            }
+          ]
+        },
+        "homeTeam": {
+          "cards": [
+            {
+              "period": "SecondHalf",
+              "time": "70",
+              "type": "Yellow",
+              "playerId": "551226",
+              "timestamp": "20260210T214039+0000"
+            }
+          ],
+          "subs": [
+            {
+              "period": "SecondHalf",
+              "playerOnId": "75115",
+              "playerOffId": "247670",
+              "time": "69",
+              "timestamp": "20260210T214012+0000"
+            },
+            {
+              "period": "SecondHalf",
+              "playerOnId": "564940",
+              "playerOffId": "490142",
+              "time": "79",
+              "timestamp": "20260210T215032+0000"
+            },
+            {
+              "period": "SecondHalf",
+              "playerOnId": "536109",
+              "playerOffId": "613804",
+              "time": "80",
+              "timestamp": "20260210T215042+0000"
+            },
+            {
+              "period": "SecondHalf",
+              "playerOnId": "159533",
+              "playerOffId": "450070",
+              "time": "90",
+              "timestamp": "20260210T220044+0000"
+            },
+            {
+              "period": "SecondHalf",
+              "playerOnId": "158534",
+              "playerOffId": "178186",
+              "time": "90",
+              "timestamp": "20260210T220038+0000"
+            }
+          ],
+          "name": "West Ham United",
+          "id": "21",
+          "shortName": "West Ham",
+          "goals": [
+            {
+              "goalType": "Goal",
+              "period": "SecondHalf",
+              "assistPlayerId": "178186",
+              "time": "50",
+              "playerId": "215439",
+              "timestamp": "20260210T212033+0000"
+            }
+          ]
+        }
+      },
+      "lineups": {
+        "home_team": {
+          "players": [
+            {
+              "firstName": "Mads",
+              "lastName": "Hermansen",
+              "shirtNum": "1",
+              "isCaptain": false,
+              "id": "467189",
+              "position": "Goalkeeper"
+            },
+            {
+              "firstName": "Axel",
+              "lastName": "Disasi",
+              "shirtNum": "4",
+              "isCaptain": false,
+              "id": "220362",
+              "position": "Defender"
+            },
+            {
+              "firstName": "Crysencio",
+              "lastName": "Summerville",
+              "shirtNum": "7",
+              "isCaptain": false,
+              "id": "450070",
+              "position": "Midfielder"
+            },
+            {
+              "firstName": "Valent\u00edn",
+              "lastName": "Castellanos",
+              "shirtNum": "11",
+              "isCaptain": false,
+              "id": "247670",
+              "position": "Forward"
+            },
+            {
+              "firstName": "El Hadji Malick",
+              "lastName": "Diouf",
+              "shirtNum": "12",
+              "isCaptain": false,
+              "id": "613804",
+              "position": "Defender",
+              "knownName": "El Hadji Malick Diouf"
+            },
+            {
+              "firstName": "Konstantinos",
+              "lastName": "Mavropanos",
+              "shirtNum": "15",
+              "isCaptain": false,
+              "id": "233963",
+              "position": "Defender"
+            },
+            {
+              "firstName": "Mateus Gon\u00e7alo",
+              "lastName": "Espanha Fernandes",
+              "shirtNum": "18",
+              "isCaptain": false,
+              "id": "551226",
+              "position": "Midfielder",
+              "knownName": "Mateus Fernandes"
+            },
+            {
+              "firstName": "Jarrod",
+              "lastName": "Bowen",
+              "shirtNum": "20",
+              "isCaptain": true,
+              "id": "178186",
+              "position": "Midfielder"
+            },
+            {
+              "firstName": "Tom\u00e1s",
+              "lastName": "Soucek",
+              "shirtNum": "28",
+              "isCaptain": false,
+              "id": "215439",
+              "position": "Midfielder"
+            },
+            {
+              "firstName": "Aaron",
+              "lastName": "Wan-Bissaka",
+              "shirtNum": "29",
+              "isCaptain": false,
+              "id": "214590",
+              "position": "Defender"
+            },
+            {
+              "firstName": "Freddie",
+              "lastName": "Potts",
+              "shirtNum": "32",
+              "isCaptain": false,
+              "id": "490142",
+              "position": "Midfielder"
+            },
+            {
+              "firstName": "Alphonse",
+              "lastName": "Areola",
+              "subPosition": "Goalkeeper",
+              "shirtNum": "23",
+              "isCaptain": false,
+              "id": "84182",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Kyle",
+              "lastName": "Walker-Peters",
+              "subPosition": "Defender",
+              "shirtNum": "2",
+              "isCaptain": false,
+              "id": "158534",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Maximilian",
+              "lastName": "Kilman",
+              "subPosition": "Defender",
+              "shirtNum": "3",
+              "isCaptain": false,
+              "id": "214048",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Callum",
+              "lastName": "Wilson",
+              "subPosition": "Forward",
+              "shirtNum": "9",
+              "isCaptain": false,
+              "id": "75115",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Adama",
+              "lastName": "Traor\u00e9",
+              "subPosition": "Forward",
+              "shirtNum": "17",
+              "isCaptain": false,
+              "id": "159533",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Soungoutou",
+              "lastName": "Magassa",
+              "subPosition": "Midfielder",
+              "shirtNum": "27",
+              "isCaptain": false,
+              "id": "564940",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Ollie",
+              "lastName": "Scarles",
+              "subPosition": "Defender",
+              "shirtNum": "30",
+              "isCaptain": false,
+              "id": "536109",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Mohamadou",
+              "lastName": "Kant\u00e9",
+              "subPosition": "Midfielder",
+              "shirtNum": "55",
+              "isCaptain": false,
+              "id": "630699",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Ezra",
+              "lastName": "Mayers",
+              "subPosition": "Defender",
+              "shirtNum": "63",
+              "isCaptain": false,
+              "id": "602903",
+              "position": "Substitute"
+            }
+          ],
+          "teamId": "21",
+          "formation": {
+            "subs": [
+              "84182",
+              "158534",
+              "214048",
+              "75115",
+              "159533",
+              "564940",
+              "536109",
+              "630699",
+              "602903"
+            ],
+            "teamId": "21",
+            "lineup": [
+              [
+                "467189"
+              ],
+              [
+                "214590",
+                "233963",
+                "220362",
+                "613804"
+              ],
+              [
+                "551226",
+                "490142"
+              ],
+              [
+                "178186",
+                "215439",
+                "450070"
+              ],
+              [
+                "247670"
+              ]
+            ],
+            "formation": "4-2-3-1"
+          },
+          "managers": [
+            {
+              "firstName": "Nuno Herlander",
+              "lastName": "Sim\u00f5es Esp\u00edrito Santo",
+              "id": "41809",
+              "type": "Manager",
+              "knownName": "Nuno Esp\u00edrito Santo"
+            }
+          ]
+        },
+        "away_team": {
+          "players": [
+            {
+              "firstName": "Senne",
+              "lastName": "Lammens",
+              "shirtNum": "31",
+              "isCaptain": false,
+              "id": "465247",
+              "position": "Goalkeeper"
+            },
+            {
+              "firstName": "Jos\u00e9 Diogo",
+              "lastName": "Dalot Teixeira",
+              "shirtNum": "2",
+              "isCaptain": false,
+              "id": "216051",
+              "position": "Defender",
+              "knownName": "Diogo Dalot"
+            },
+            {
+              "firstName": "Harry",
+              "lastName": "Maguire",
+              "shirtNum": "5",
+              "isCaptain": false,
+              "id": "95658",
+              "position": "Defender"
+            },
+            {
+              "firstName": "Lisandro",
+              "lastName": "Mart\u00ednez",
+              "shirtNum": "6",
+              "isCaptain": false,
+              "id": "221820",
+              "position": "Defender"
+            },
+            {
+              "firstName": "Bruno Miguel",
+              "lastName": "Borges Fernandes",
+              "shirtNum": "8",
+              "isCaptain": true,
+              "id": "141746",
+              "position": "Midfielder",
+              "knownName": "Bruno Fernandes"
+            },
+            {
+              "firstName": "Matheus",
+              "lastName": "Santos Carneiro da Cunha",
+              "shirtNum": "10",
+              "isCaptain": false,
+              "id": "430871",
+              "position": "Forward",
+              "knownName": "Matheus Cunha"
+            },
+            {
+              "firstName": "Amad",
+              "lastName": "Diallo",
+              "shirtNum": "16",
+              "isCaptain": false,
+              "id": "493250",
+              "position": "Midfielder"
+            },
+            {
+              "firstName": "Carlos Henrique",
+              "lastName": "Casimiro",
+              "shirtNum": "18",
+              "isCaptain": false,
+              "id": "61256",
+              "position": "Midfielder",
+              "knownName": "Casemiro"
+            },
+            {
+              "firstName": "Bryan",
+              "lastName": "Mbeumo",
+              "shirtNum": "19",
+              "isCaptain": false,
+              "id": "446008",
+              "position": "Midfielder"
+            },
+            {
+              "firstName": "Luke",
+              "lastName": "Shaw",
+              "shirtNum": "23",
+              "isCaptain": false,
+              "id": "106760",
+              "position": "Defender"
+            },
+            {
+              "firstName": "Kobbie",
+              "lastName": "Mainoo",
+              "shirtNum": "37",
+              "isCaptain": false,
+              "id": "516895",
+              "position": "Midfielder"
+            },
+            {
+              "firstName": "Altay",
+              "lastName": "Bayindir",
+              "subPosition": "Goalkeeper",
+              "shirtNum": "1",
+              "isCaptain": false,
+              "id": "451302",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Noussair",
+              "lastName": "Mazraoui",
+              "subPosition": "Defender",
+              "shirtNum": "3",
+              "isCaptain": false,
+              "id": "230001",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Joshua",
+              "lastName": "Zirkzee",
+              "subPosition": "Forward",
+              "shirtNum": "11",
+              "isCaptain": false,
+              "id": "458249",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Tyrell",
+              "lastName": "Malacia",
+              "subPosition": "Defender",
+              "shirtNum": "12",
+              "isCaptain": false,
+              "id": "222690",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Leny",
+              "lastName": "Yoro",
+              "subPosition": "Defender",
+              "shirtNum": "15",
+              "isCaptain": false,
+              "id": "550864",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Manuel",
+              "lastName": "Ugarte",
+              "subPosition": "Midfielder",
+              "shirtNum": "25",
+              "isCaptain": false,
+              "id": "232112",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Ayden",
+              "lastName": "Heaven",
+              "subPosition": "Defender",
+              "shirtNum": "26",
+              "isCaptain": false,
+              "id": "606745",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Benjamin",
+              "lastName": "Sesko",
+              "subPosition": "Forward",
+              "shirtNum": "30",
+              "isCaptain": false,
+              "id": "485711",
+              "position": "Substitute"
+            },
+            {
+              "firstName": "Tyler",
+              "lastName": "Fletcher",
+              "subPosition": "Midfielder",
+              "shirtNum": "39",
+              "isCaptain": false,
+              "id": "519913",
+              "position": "Substitute",
+              "knownName": "Tyler Fletcher"
+            }
+          ],
+          "teamId": "1",
+          "formation": {
+            "subs": [
+              "451302",
+              "230001",
+              "458249",
+              "222690",
+              "550864",
+              "232112",
+              "606745",
+              "485711",
+              "519913"
+            ],
+            "teamId": "1",
+            "lineup": [
+              [
+                "465247"
+              ],
+              [
+                "216051",
+                "95658",
+                "221820",
+                "106760"
+              ],
+              [
+                "516895",
+                "61256"
+              ],
+              [
+                "493250",
+                "141746",
+                "446008"
+              ],
+              [
+                "430871"
+              ]
+            ],
+            "formation": "4-2-3-1"
+          },
+          "managers": [
+            {
+              "firstName": "Michael",
+              "lastName": "Carrick",
+              "id": "56407",
+              "type": "Manager"
+            }
+          ]
+        }
+      }
+    },
+    "warnings": [],
+    "operations_metadata": [
+      {
+        "type": "navigate",
+        "duration_seconds": 3.0056322919845115,
+        "details": {},
+        "error": null
+      },
+      {
+        "type": "js_evaluate",
+        "duration_seconds": 0.013685458019608632,
+        "details": {
+          "console_logs": [],
+          "execution_error": null,
+          "storage_error": null
+        },
+        "error": null
+      },
+      {
+        "type": "navigate",
+        "duration_seconds": 3.0052999579929747,
+        "details": {},
+        "error": null
+      },
+      {
+        "type": "js_evaluate",
+        "duration_seconds": 0.008468332991469651,
+        "details": {
+          "console_logs": [],
+          "execution_error": null,
+          "storage_error": null
+        },
+        "error": null
+      },
+      {
+        "type": "js_evaluate",
+        "duration_seconds": 0.007315416994970292,
+        "details": {
+          "console_logs": [],
+          "execution_error": null,
+          "storage_error": null
+        },
+        "error": null
+      },
+      {
+        "type": "return",
+        "duration_seconds": 0.015169332997174934,
+        "details": {},
+        "error": null
+      }
+    ],
+    "placeholder_resolution": {},
+    "proxy_address": null
+  },
+  "execution_error": null,
+  "inspection_result": {
+    "overall_pass": true,
+    "overall_score": 90,
+    "dimensions": {
+      "task_completion": {
+        "score": 9,
+        "reasoning": "The routine successfully fetches both match events and lineups for the provided matchId and returns them bundled as { events, lineups }. The execution result clearly shows a rich event timeline (goals, cards, subs) and full home/away lineups with formations and managers, matching the described Pulselive endpoints. This fully satisfies the user task of creating a useful scraping API for match details; a minor deduction because there is no explicit status/ok flag in the final bundle to signal partial failures."
+      },
+      "data_quality": {
+        "score": 9,
+        "reasoning": "The data captured in execution is complete and well-structured: events include goals, cards, substitutions, timestamps, and team metadata; lineups include players, positions, captaincy, formations, subs, and managers for both teams. The JS evaluation parses raw JSON and returns the full objects without truncation or lossy transformation. One small risk is that in error cases the intermediate js_evaluate steps return an {ok:false,error} object which would still be parsed as JSON and surfaced to the caller without distinction from normal data, but this is a minor concern given the successful run."
+      },
+      "parameter_coverage": {
+        "score": 9,
+        "reasoning": "The only necessary variable for these endpoints is matchId, which is correctly exposed as a required integer parameter and used in both URLs. There are no obvious additional parameters that should be configurable for this specific task, and no hardcoded IDs or dates. Minor nit: matchId is typed as integer while the API paths are strings, but templating handles this fine in practice."
+      },
+      "routine_robustness": {
+        "score": 8,
+        "reasoning": "The routine uses direct navigation to the public JSON endpoints, which according to exploration require no auth or prior cookie setup, so skipping a site bootstrap is acceptable. It waits 3 seconds after each navigate and uses try/catch in js_evaluate to guard against parse errors, storing results in sessionStorage before combining them. However, if one fetch fails and returns HTML or an error page, the final bundle will contain an {ok:false,error} object instead of null/undefined, with no explicit indication to the caller that something went wrong; also there is no check of HTTP status codes, relying solely on body text parsing."
+      },
+      "structural_correctness": {
+        "score": 10,
+        "reasoning": "Operations are ordered correctly: navigate to events -> parse and store -> navigate to lineups -> parse and store -> read both from sessionStorage and combine -> return. session_storage_key usage is consistent: keys are written before being read, and the final return references the combined bundle key. There are no missing dependencies, and all operations conform to the expected navigate-before-js_evaluate pattern for these endpoints."
+      }
+    },
+    "blocking_issues": [],
+    "recommendations": [
+      "Consider normalizing the final output shape to include explicit status flags or error fields (e.g., { events, lineups, events_ok, lineups_ok, errors }) so callers can easily detect partial failures or parse issues.",
+      "In the js_evaluate that bundles results from sessionStorage, it may be safer to treat non-JSON or missing values as null and/or to validate that the stored objects are not error wrappers ({ok:false,...}) before returning, to avoid surprising shapes for consumers.",
+      "Optionally, reduce the fixed 3-second sleep_after_navigation_seconds to a smaller value or remove it entirely for these fast JSON endpoints, relying on the platform\u2019s navigation completion semantics for better performance."
+    ],
+    "summary": "This routine correctly implements a Premier League match details scraper by calling the documented Pulselive events and lineups endpoints and returning a combined JSON object. The structure, parameterization, and session storage usage are all sound, and the successful execution confirms that rich match data is retrieved as intended. A few non-blocking improvements around explicit error signaling and minor performance tuning would make it even more robust for edge cases."
+  },
+  "overall_pass": true,
+  "blocking_issues": [],
+  "recommendations": [
+    "Consider normalizing the final output shape to include explicit status flags or error fields (e.g., { events, lineups, events_ok, lineups_ok, errors }) so callers can easily detect partial failures or parse issues.",
+    "In the js_evaluate that bundles results from sessionStorage, it may be safer to treat non-JSON or missing values as null and/or to validate that the stored objects are not error wrappers ({ok:false,...}) before returning, to avoid surprising shapes for consumers.",
+    "Optionally, reduce the fixed 3-second sleep_after_navigation_seconds to a smaller value or remove it entirely for these fast JSON endpoints, relying on the platform\u2019s navigation completion semantics for better performance."
+  ],
+  "parent_attempt_id": null,
+  "changes_from_parent": null
+}

@@ -1,0 +1,29 @@
+{
+  "id": "n3weqf",
+  "hypothesis": "Pulselive standings endpoint works unauthenticated and returns JSON when fetched directly from the browser context.",
+  "rationale": "Network exploration shows GET https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/8/seasons/2025/standings with no auth headers. We need to confirm it can be called generically for arbitrary competitionId/seasonId and that CORS is handled by navigating to the origin first.",
+  "prompt": "1. Use browser_navigate to go to https://www.premierleague.com/en/tables/premier-league and wait for load.\n2. Then call browser_eval_js to run a fetch to \"https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/8/seasons/2025/standings\" with method GET and default headers. Parse response.json().\n3. If CORS blocks the fetch, instead navigate directly with browser_navigate to that API URL and capture the body text (it should be JSON).\n4. Report: whether the call succeeded, final URL used, and a short sample of the JSON keys at the top level (e.g. {\"tables\", ...}).",
+  "priority": 1,
+  "task_id": "npgcsz",
+  "status": "done",
+  "verdict": "confirmed",
+  "summary": "Pulselive standings endpoint for competition 8 season 2025 works unauthenticated via fetch from premierleague.com origin, returning JSON with top-level keys matchweek and tables and HTTP 200.",
+  "output": {
+    "output": {
+      "succeeded": true,
+      "finalUrl": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/8/seasons/2025/standings",
+      "topLevelKeysSample": [
+        "matchweek",
+        "tables"
+      ],
+      "details": {
+        "httpStatus": 200,
+        "corsBlocked": false,
+        "responseSnippet": "{\"matchweek\":31,\"tables\":[{\"entries\":[{\"away\":{\"goalsFor\":21,\"lost\":2,\"won\":7,\"position\":1,\"drawn\":5,\"goalsAgainst\":12,\"played\":14,\"points\":26},\"overall\":{\"goalsFor\":52,\"lost\":3,\"won\":17,\"position\":1,\"drawn\":7,\"goalsAgainst\":20,\"startingPosition\":1,\"played\":27,\"points\":58},\"team\":{\"name\":\"Arsenal\",\"id\":\"3\",\"shortName\":\"Arsenal\",\"abbr\":\"ARS\"},\"home\":{\"goalsFor\":31,\"lost\":1,\"won\":10,\"position\":2,\"drawn\":2,\"goalsAgainst\":8,\"played\":13,\"points\":32}},{\"away\":{\"goalsFor\":22,\"lost\":4,\"won\":6,\"position\""
+      }
+    },
+    "success": true,
+    "notes": [],
+    "failure_reason": null
+  }
+}

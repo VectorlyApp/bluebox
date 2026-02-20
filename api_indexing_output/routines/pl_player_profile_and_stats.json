@@ -1,0 +1,39 @@
+{
+  "name": "pl_player_profile",
+  "description": "Fetch a player profile from the Pulselive Premier League API using the public /api/v1/players/{playerId} endpoint.",
+  "operations": [
+    {
+      "type": "navigate",
+      "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/players/{{playerId}}",
+      "sleep_after_navigation_seconds": 3.0
+    },
+    {
+      "type": "js_evaluate",
+      "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+      "timeout_seconds": 10.0,
+      "session_storage_key": "pl_player_profile_result"
+    },
+    {
+      "type": "return",
+      "session_storage_key": "pl_player_profile_result"
+    }
+  ],
+  "parameters": [
+    {
+      "name": "playerId",
+      "type": "integer",
+      "required": true,
+      "description": "Pulselive player ID (e.g., 1).",
+      "default": null,
+      "examples": [],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": null,
+      "enum_values": null,
+      "format": null,
+      "observed_value": null
+    }
+  ]
+}
