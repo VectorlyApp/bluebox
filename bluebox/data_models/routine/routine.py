@@ -31,17 +31,13 @@ from bluebox.data_models.routine.operation import (
 )
 from bluebox.data_models.routine.parameter import (
     Parameter,
-    ParameterType,
     BUILTIN_PARAMETERS,
     VALID_PLACEHOLDER_PREFIXES,
 )
 from bluebox.cdp.connection import cdp_new_tab, cdp_attach_to_existing_tab, dispose_context
 from bluebox.data_models.routine.endpoint import Endpoint
 from bluebox.utils.pydantic_utils import format_model_fields
-from bluebox.data_models.routine.placeholder import (
-    PlaceholderQuoteType,
-    extract_placeholders_from_json_str,
-)
+from bluebox.data_models.routine.placeholder import extract_placeholders_from_json_str
 from bluebox.utils.data_utils import extract_base_url_from_url
 from bluebox.utils.logger import get_logger
 
@@ -72,7 +68,7 @@ class Routine(BaseModel):
 
         Validates:
         - Routine must have at least 2 operations
-        - Last operation must be 'return' or 'return_html'
+        - Last operation must be 'return', 'return_html', or 'download'
         - Return operation's session_storage_key must be set by a prior fetch or js_evaluate
         - All defined parameters must be used
         - No undefined parameters should be used
@@ -83,21 +79,25 @@ class Routine(BaseModel):
 
         # === STRUCTURAL VALIDATION ===
 
-        # Check 1: Must have at least 2 operations
-        if len(self.operations) < 2:
+        # Check 1: Must have at least 2 operations (download can be standalone)
+        is_single_download = (
+            len(self.operations) == 1
+            and isinstance(self.operations[0], RoutineDownloadOperation)
+        )
+        if len(self.operations) < 2 and not is_single_download:
             errors.append(
-                f"Routine must have at least 2 operations, found {len(self.operations)}"
+                f"Routine must have at least 2 operations (or a single download), found {len(self.operations)}"
             )
 
-        # Check 2: Last operation must be return or return_html
+        # Check 2: Last operation must be return, return_html, or download
         if self.operations:
             last_op = self.operations[-1]
-            if not isinstance(last_op, (RoutineReturnOperation, RoutineReturnHTMLOperation)):
+            if not isinstance(last_op, (RoutineReturnOperation, RoutineReturnHTMLOperation, RoutineDownloadOperation)):
                 last_op_type = last_op.type if hasattr(last_op, 'type') else type(last_op).__name__
                 errors.append(
-                    f"Last operation must be 'return' or 'return_html', found '{last_op_type}'"
+                    f"Last operation must be 'return', 'return_html', or 'download', found '{last_op_type}'"
                 )
-            else:
+            elif isinstance(last_op, RoutineReturnOperation):
                 # Check 3: Return's session_storage_key must be set by prior fetch or js_evaluate
                 return_key = last_op.session_storage_key
                 if return_key:
@@ -122,27 +122,16 @@ class Routine(BaseModel):
 
         # Build lookup maps for parameters
         defined_parameters = {param.name for param in self.parameters}
-        param_type_map = {param.name: param.type for param in self.parameters}
         builtin_parameter_names = {bp.name for bp in BUILTIN_PARAMETERS}
 
-        # Types that allow both quoted "{{...}}" and escape-quoted \"{{...}}\"
-        non_string_types = {
-            ParameterType.INTEGER,
-            ParameterType.NUMBER, 
-            ParameterType.BOOLEAN
-        }
-
-        # Extract all placeholders with their quote types
+        # Extract all placeholders (uniform {{...}} detection)
         placeholders = extract_placeholders_from_json_str(routine_json)
 
         # Track used parameters
         used_parameters: set[str] = set()
 
         # Validate each placeholder
-        for placeholder in placeholders:
-            content = placeholder.content
-            quote_type = placeholder.quote_type
-
+        for content in placeholders:
             # Check if it's a storage/meta/window placeholder (has colon prefix)
             if ":" in content:
                 prefix, path = [p.strip() for p in content.split(":", 1)]
@@ -150,43 +139,19 @@ class Routine(BaseModel):
                     errors.append(f"Invalid prefix in placeholder: {prefix}")
                 if not path:
                     errors.append(f"Path is required for {prefix}: placeholder")
-                # Storage/meta/window placeholders can use either QUOTED or ESCAPE_QUOTED - valid
                 continue
 
             # Check if it's a builtin parameter
             if content in builtin_parameter_names:
-                # Builtins can use either QUOTED or ESCAPE_QUOTED - valid
                 continue
 
             # It's a regular user-defined parameter
             used_parameters.add(content)
 
-            # Get the parameter type (if defined)
-            param_type = param_type_map.get(content)
-
-            if param_type is not None:
-                # Validate quote type based on parameter type
-                if param_type in non_string_types:
-                    # int, number, bool: can use either "{{...}}" or \"{{...}}\"
-                    pass  # Both QUOTED and ESCAPE_QUOTED are valid
-                else:
-                    # string types: MUST use escape-quoted \"{{...}}\"
-                    if quote_type != PlaceholderQuoteType.ESCAPE_QUOTED:
-                        errors.append(
-                            f"String parameter '{{{{{content}}}}}' must use escape-quoted format. "
-                            f"Use '\\\"{{{{content}}}}\\\"' instead of '\"{{{{content}}}}\"'."
-                        )
-
         # Check: All defined parameters must be used
         unused_parameters = defined_parameters - used_parameters
         if unused_parameters:
-            error_message = f"Unused parameters: {list(unused_parameters)}. "
-            for unused_parameter in unused_parameters:
-                # scan for unquoted placeholders in the routine...
-                if f"{{{{{unused_parameter}}}}}" in routine_json:
-                    error_message += f"Unquoted placeholder '{{{{{unused_parameter}}}}}' found. "
-                    error_message += "Ensure all placeholders are surrounded by quotes or escaped quotes."
-            errors.append(error_message)
+            errors.append(f"Unused parameters: {list(unused_parameters)}.")
 
         # Check: No undefined parameters should be used
         undefined_parameters = used_parameters - defined_parameters
@@ -216,7 +181,7 @@ class Routine(BaseModel):
         # Routine (top level)
         lines.append("### Routine (top level)")
         lines.extend(format_model_fields(Routine, skip_fields={"operations", "parameters"}))
-        lines.append("- operations: list[operation] (required) — ≥2, last must be return or return_html")
+        lines.append("- operations: list[operation] (required) — ≥2 (or single download), last must be return, return_html, or download")
         lines.append("- parameters: list[parameter] = []")
         lines.append("")
 
@@ -308,12 +273,14 @@ class Routine(BaseModel):
             first_op_type = first_op.type if hasattr(first_op, 'type') else type(first_op).__name__
             warnings.append(f"First operation is '{first_op_type}', expected 'navigate'")
 
-        # 2. Second-to-last should be fetch or js_evaluate
+        # 2. Second-to-last should be fetch or js_evaluate (only relevant when last op is return/return_html)
         if len(self.operations) >= 2:
-            second_last_op = self.operations[-2]
-            if not isinstance(second_last_op, (RoutineFetchOperation, RoutineJsEvaluateOperation)):
-                second_last_type = second_last_op.type if hasattr(second_last_op, 'type') else type(second_last_op).__name__
-                warnings.append(f"Second-to-last operation is '{second_last_type}', expected 'fetch' or 'js_evaluate'")
+            last_op = self.operations[-1]
+            if isinstance(last_op, (RoutineReturnOperation, RoutineReturnHTMLOperation)):
+                second_last_op = self.operations[-2]
+                if not isinstance(second_last_op, (RoutineFetchOperation, RoutineJsEvaluateOperation)):
+                    second_last_type = second_last_op.type if hasattr(second_last_op, 'type') else type(second_last_op).__name__
+                    warnings.append(f"Second-to-last operation is '{second_last_type}', expected 'fetch' or 'js_evaluate'")
 
         # 3. Check if routine has any navigate operation
         has_navigate = any(isinstance(op, RoutineNavigateOperation) for op in self.operations)
@@ -414,6 +381,9 @@ class Routine(BaseModel):
             send_cmd(browser_ws, "Network.enable", session_id=session_id)
             send_cmd(browser_ws, "DOM.enable", session_id=session_id)
 
+            # Build param type map for typed coercion
+            param_type_map = {p.name: p.type for p in self.parameters}
+
             # Create execution context
             routine_execution_context = RoutineExecutionContext(
                 session_id=session_id,
@@ -421,6 +391,7 @@ class Routine(BaseModel):
                 send_cmd=lambda method, params=None, **kwargs: send_cmd(browser_ws, method, params, **kwargs),
                 recv_until=lambda predicate, deadline: recv_until(browser_ws, predicate, deadline),
                 parameters_dict=parameters_dict,
+                param_type_map=param_type_map,
                 timeout=timeout,
             )
 

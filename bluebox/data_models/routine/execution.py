@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from websocket import WebSocket
 
 from bluebox.data_models.routine.endpoint import MimeType
+from bluebox.data_models.routine.parameter import ParameterType
 from bluebox.utils.data_utils import strip_proxy_credentials
 
 
@@ -81,6 +82,7 @@ class RoutineExecutionContext(BaseModel):
 
     # Optional inputs with defaults
     parameters_dict: dict = Field(default_factory=dict)
+    param_type_map: dict[str, ParameterType] = Field(default_factory=dict, description="Maps parameter names to ParameterType enums for typed coercion")
     timeout: float = 180.0
 
     # Current page URL (updated by navigate operations, used by fetch to detect blank page)

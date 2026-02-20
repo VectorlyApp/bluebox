@@ -45,7 +45,7 @@
     "endpoint": {
       "url": "https://api.example.com/log",
       "method": "POST",
-      "body": {"page": "\"{{sessionStorage:page_info.title}}\""}
+      "body": {"page": "{{sessionStorage:page_info.title}}"}
     }
   }
 ]
@@ -109,7 +109,7 @@ for op in result.operations_metadata:
 **User parameters ARE interpolated:**
 ```json
 {
-  "js": "(function() { return document.querySelector('\"{{selector}}\"').textContent; })()"
+  "js": "(function() { return document.querySelector('{{selector}}').textContent; })()"
 }
 ```
 

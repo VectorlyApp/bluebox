@@ -80,6 +80,7 @@ def make_routine() -> Callable[..., Routine]:
         routine = make_routine(operations=[...], parameters=[...], name="custom")
     """
     from bluebox.data_models.routine.operation import (
+        RoutineDownloadOperation,
         RoutineFetchOperation,
         RoutineReturnOperation,
         RoutineReturnHTMLOperation,
@@ -92,9 +93,9 @@ def make_routine() -> Callable[..., Routine]:
             "description": "Test routine",
         }
 
-        # Check if operations end with a return operation
+        # Check if operations end with a valid terminal operation
         has_return = operations and isinstance(
-            operations[-1], (RoutineReturnOperation, RoutineReturnHTMLOperation)
+            operations[-1], (RoutineReturnOperation, RoutineReturnHTMLOperation, RoutineDownloadOperation)
         )
 
         # If no return operation, add a fetch + return

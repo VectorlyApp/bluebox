@@ -70,7 +70,7 @@ Types text into an input element. Validates visibility to avoid hidden honeypot 
 {
   "type": "input_text",
   "selector": "input[name='username']",
-  "text": "\"{{username}}\"",
+  "text": "{{username}}",
   "clear": true
 }
 ```
@@ -84,9 +84,9 @@ Types text into an input element. Validates visibility to avoid hidden honeypot 
 
 **Examples:**
 ```json
-{"type": "input_text", "selector": "#email", "text": "\"{{email}}\"", "clear": true}
-{"type": "input_text", "selector": "input[name='q']", "text": "\"{{search_query}}\""}
-{"type": "input_text", "selector": "textarea.comment", "text": "\"{{message}}\""}
+{"type": "input_text", "selector": "#email", "text": "{{email}}", "clear": true}
+{"type": "input_text", "selector": "input[name='q']", "text": "{{search_query}}"}
+{"type": "input_text", "selector": "textarea.comment", "text": "{{message}}"}
 ```
 
 ---
@@ -159,7 +159,7 @@ Scrolls the page or a specific element.
 ```json
 [
   {"type": "click", "selector": "input[name='email']"},
-  {"type": "input_text", "selector": "input[name='email']", "text": "\"{{email}}\"", "clear": true},
+  {"type": "input_text", "selector": "input[name='email']", "text": "{{email}}", "clear": true},
   {"type": "click", "selector": "button[type='submit']"}
 ]
 ```
@@ -177,7 +177,7 @@ Scrolls the page or a specific element.
 ### Search form
 ```json
 [
-  {"type": "input_text", "selector": "#search-input", "text": "\"{{query}}\"", "clear": true},
+  {"type": "input_text", "selector": "#search-input", "text": "{{query}}", "clear": true},
   {"type": "press", "key": "enter"}
 ]
 ```

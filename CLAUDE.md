@@ -93,7 +93,7 @@ This file provides context and guidelines for working with the bluebox codebase.
 3. Run `bluebox-discover` with task description
 4. Review generated `routine.json`
 5. Test with `bluebox-execute`
-6. Fix any placeholder escaping issues (string params need `\"{{param}}\"`)
+6. Review generated `routine.json` for correct parameter types and placeholder usage
 
 ## Core Files and Utilities
 
@@ -165,15 +165,15 @@ from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 ### Important Patterns
 
 - **Routine Execution**: Operations execute sequentially, maintaining state via `RoutineExecutionContext`
-- **Placeholder Resolution**: String parameters MUST use escape-quoted format: `\"{{paramName}}\"` in JSON bodies
+- **Placeholder Resolution**: All parameters use `{{paramName}}` format; `Parameter.type` drives coercion at runtime
 - **Session Storage**: Use `session_storage_key` to store and retrieve data between operations
 - **CDP Sessions**: Use flattened sessions for multiplexing via `session_id`
 
 ### Common Gotchas
 
-- String parameters in JSON bodies need double escaping: `"field": "\"{{param}}\""` not `"field": "{{param}}"`
+- All parameters use uniform `"field": "{{param}}"` format; `Parameter.type` handles coercion
 - Chrome must be running in debug mode on `127.0.0.1:9222` before executing routines
-- Placeholder resolution for `sessionStorage`, `localStorage`, `cookie`, `meta` only works in fetch `headers` and `body` (not in URLs yet)
+- Runtime placeholders (`sessionStorage`, `localStorage`, `cookie`, `meta`) are resolved in the browser, not Python-side
 - All parameters must be used in the routine (validation enforces this)
 - Builtin parameters (`epoch_milliseconds`, `uuid`) don't need to be defined in parameters list
 
