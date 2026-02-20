@@ -1,0 +1,87 @@
+{
+  "id": "zw3sk2",
+  "hypothesis": "Pulselive teams endpoint returns the list of teams for a given competition and season without auth and is callable via fetch from premierleague.com origin.",
+  "rationale": "Network exploration shows repeated GET calls to https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/8/seasons/2025/teams with no auth headers. We need to confirm it works generically and is accessible via fetch (not just top-level navigation).",
+  "prompt": "1. Use browser_navigate to https://www.premierleague.com/en/tables/premier-league and wait for load.\n2. Use browser_eval_js to run fetch(\"https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/8/seasons/2025/teams\", { method: 'GET' }).then(r => r.json()).\n3. If fetch throws a TypeError or is blocked by CORS, instead navigate directly with browser_navigate to that API URL and then use browser_eval_js('document.body.innerText') to capture the response text and attempt JSON.parse on it.\n4. Report: whether the call succeeded, which method worked (fetch vs navigate), HTTP status if available, and a sample of top-level JSON keys (e.g. [\"teams\" or similar]).",
+  "priority": 1,
+  "task_id": "ss4vds",
+  "status": "done",
+  "verdict": "confirmed",
+  "summary": "Pulselive teams endpoint for competition 8 season 2025 works unauthenticated via fetch from premierleague.com origin, returning JSON with top-level keys pagination and data and a list of team objects.",
+  "output": {
+    "output": {
+      "summary": "Executed experiment against Premier League teams API.",
+      "steps": [
+        {
+          "step": 1,
+          "action": "browser_navigate",
+          "url": "https://www.premierleague.com/en/tables/premier-league",
+          "result": "Page loaded successfully."
+        },
+        {
+          "step": 2,
+          "action": "browser_eval_js fetch(...)",
+          "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/8/seasons/2025/teams",
+          "result": {
+            "ok": true
+          }
+        }
+      ],
+      "api_call": {
+        "method_used": "fetch_via_browser_eval_js",
+        "succeeded": true,
+        "http_status": "not exposed by fetch().json() path (status field not captured)",
+        "top_level_keys_sample": [
+          "pagination",
+          "data"
+        ],
+        "pagination_sample": {
+          "_limit": 10,
+          "_prev": null,
+          "_next": "eyJjb21wZXRpdGlvbl9pZCI6ICI4IiwgInNlYXNvbl9pZCI6ICIyMDI1IiwgInRlYW1faWQiOiAiNTQifV9fRnVsaGFt"
+        },
+        "first_few_teams_sample": [
+          {
+            "name": "Arsenal",
+            "shortName": "Arsenal",
+            "abbr": "ARS",
+            "id": 3,
+            "stadium": {
+              "country": "England",
+              "city": "London",
+              "name": "Emirates Stadium",
+              "capacity": 60272
+            }
+          },
+          {
+            "name": "Aston Villa",
+            "shortName": "A Villa",
+            "abbr": "AVL",
+            "id": 7,
+            "stadium": {
+              "country": "England",
+              "city": "Birmingham",
+              "name": "Villa Park",
+              "capacity": 42682
+            }
+          },
+          {
+            "name": "Bournemouth",
+            "shortName": "Bournemouth",
+            "abbr": "BOU",
+            "id": 91,
+            "stadium": {
+              "country": "England",
+              "city": "Bournemouth",
+              "name": "Vitality Stadium",
+              "capacity": 11286
+            }
+          }
+        ]
+      }
+    },
+    "success": true,
+    "notes": [],
+    "failure_reason": null
+  }
+}

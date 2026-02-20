@@ -42,6 +42,7 @@ from bluebox.data_models.api_indexing.exploration import (
 from bluebox.data_models.llms.interaction import EmittedMessage
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.orchestration.ledger import DiscoveryLedger, RoutineCatalog
+from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
 from bluebox.llms.data_loaders.dom_data_loader import DOMDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
@@ -53,6 +54,8 @@ from bluebox.scripts.run_ui_exploration import run_ui_exploration
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
+
+BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +287,7 @@ def run_pi_with_recovery(
     llm_model: LLMModel,
     remote_debugging_address: str,
     max_pi_iterations: int,
+    min_experiments_before_fail: int = 10,
     num_workers: int = 3,
     num_inspectors: int = 1,
 ) -> RoutineCatalog | None:
@@ -306,6 +310,22 @@ def run_pi_with_recovery(
     )
     window_prop_loader = _load_if_exists(
         WindowPropertyDataLoader, cdp_captures_dir / "window_properties" / "events.jsonl",
+    )
+
+    # Documentation loader — gives PI access to Routine schema docs and source code
+    docs_dir = str(BLUEBOX_PACKAGE_ROOT / "agent_docs")
+    code_paths = [
+        str(BLUEBOX_PACKAGE_ROOT / "data_models" / "routine"),
+        str(BLUEBOX_PACKAGE_ROOT / "data_models" / "ui_elements.py"),
+        str(BLUEBOX_PACKAGE_ROOT / "agents" / "routine_discovery_agent.py"),
+        str(BLUEBOX_PACKAGE_ROOT / "llms" / "infra" / "data_store.py"),
+        str(BLUEBOX_PACKAGE_ROOT / "utils" / "js_utils.py"),
+        str(BLUEBOX_PACKAGE_ROOT / "utils" / "data_utils.py"),
+        "!" + str(BLUEBOX_PACKAGE_ROOT / "**" / "__init__.py"),
+    ]
+    documentation_data_loader = DocumentationDataLoader(
+        documentation_paths=[docs_dir],
+        code_paths=code_paths,
     )
 
     # Persistence layer — writes to disk incrementally
@@ -332,10 +352,12 @@ def run_pi_with_recovery(
             storage_data_loader=storage_loader,
             dom_data_loader=dom_loader,
             window_property_data_loader=window_prop_loader,
+            documentation_data_loader=documentation_data_loader,
             remote_debugging_address=remote_debugging_address,
             llm_model=llm_model,
             ledger=ledger,
             max_iterations=max_pi_iterations,
+            min_experiments_before_fail=min_experiments_before_fail,
             num_workers=num_workers,
             num_inspectors=num_inspectors,
             on_ledger_change=persistence.on_ledger_change,
@@ -379,6 +401,7 @@ def run_api_indexing(
     remote_debugging_address: str = "http://127.0.0.1:9222",
     skip_exploration: bool = False,
     max_pi_iterations: int = 200,
+    min_experiments_before_fail: int = 10,
     num_workers: int = 3,
     num_inspectors: int = 1,
 ) -> RoutineCatalog | None:
@@ -396,6 +419,7 @@ def run_api_indexing(
         remote_debugging_address: Chrome debugging URL for live browser experiments.
         skip_exploration: Skip Phase 1, load existing summaries from output_dir.
         max_pi_iterations: Max PI loop iterations per session.
+        min_experiments_before_fail: Min experiments before PI can call mark_failed.
         num_workers: Max concurrent ExperimentWorker agents (default 3).
         num_inspectors: Max concurrent RoutineInspector agents (default 1).
 
@@ -444,6 +468,7 @@ def run_api_indexing(
         llm_model=llm_model,
         remote_debugging_address=remote_debugging_address,
         max_pi_iterations=max_pi_iterations,
+        min_experiments_before_fail=min_experiments_before_fail,
         num_workers=num_workers,
         num_inspectors=num_inspectors,
     )
@@ -520,6 +545,12 @@ def main() -> None:
         help="Max PI loop iterations per session (default: 200)",
     )
     parser.add_argument(
+        "--min-experiments-before-fail",
+        type=int,
+        default=10,
+        help="Min experiments before PI can abandon the pipeline (default: 10)",
+    )
+    parser.add_argument(
         "--num-workers",
         type=int,
         default=3,
@@ -557,6 +588,7 @@ def main() -> None:
         remote_debugging_address=args.remote_debugging_address,
         skip_exploration=args.skip_exploration,
         max_pi_iterations=args.max_pi_iterations,
+        min_experiments_before_fail=args.min_experiments_before_fail,
         num_workers=args.num_workers,
         num_inspectors=args.num_inspectors,
     )

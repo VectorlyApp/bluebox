@@ -1,0 +1,479 @@
+{
+  "id": "r63prf",
+  "routine_spec_id": "tuv9jd",
+  "routine_json": {
+    "name": "pl_playlist_items",
+    "description": "Fetch items for a given Premier League content playlist from the public playlist API.",
+    "operations": [
+      {
+        "type": "navigate",
+        "url": "https://api.premierleague.com/content/premierleague/playlist/en/{{playlistId}}?pageSize={{pageSize}}",
+        "sleep_after_navigation_seconds": 2.0
+      },
+      {
+        "type": "js_evaluate",
+        "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+        "timeout_seconds": 10.0,
+        "session_storage_key": "pl_playlist_items_result"
+      },
+      {
+        "type": "return",
+        "session_storage_key": "pl_playlist_items_result"
+      }
+    ],
+    "parameters": [
+      {
+        "name": "playlistId",
+        "type": "string",
+        "required": true,
+        "description": "Playlist identifier as used by the Premier League content API (e.g., 4346308).",
+        "default": null,
+        "examples": [],
+        "min_length": null,
+        "max_length": null,
+        "min_value": null,
+        "max_value": null,
+        "pattern": null,
+        "enum_values": null,
+        "format": null,
+        "observed_value": null
+      },
+      {
+        "name": "pageSize",
+        "type": "integer",
+        "required": true,
+        "description": "Number of items to return in the playlist page.",
+        "default": 20,
+        "examples": [],
+        "min_length": null,
+        "max_length": null,
+        "min_value": null,
+        "max_value": null,
+        "pattern": null,
+        "enum_values": null,
+        "format": null,
+        "observed_value": null
+      }
+    ]
+  },
+  "status": "passed",
+  "test_parameters": {
+    "playlistId": "4346308",
+    "pageSize": 20
+  },
+  "execution_result": {
+    "ok": true,
+    "error": null,
+    "is_base64": false,
+    "content_type": null,
+    "filename": null,
+    "data": {
+      "id": 4346308,
+      "accountId": 10,
+      "type": "playlist",
+      "title": "Web home page: Latest News rail - KEEP INJURIES IN FIRST FIVE IF NOT IN HERO",
+      "description": null,
+      "date": "2025-06-30T19:15:00Z",
+      "location": "",
+      "coordinates": [
+        0,
+        0
+      ],
+      "commentsOn": false,
+      "copyright": null,
+      "publishFrom": 1757858400000,
+      "publishTo": 0,
+      "tags": [],
+      "platform": "PULSE_CMS",
+      "language": "en",
+      "additionalInfo": {},
+      "canonicalUrl": "",
+      "references": [],
+      "related": [],
+      "metadata": {},
+      "titleTranslations": null,
+      "lastModified": 1771602086810,
+      "titleUrlSegment": "latest-news",
+      "visibilityOrder": [],
+      "typeRestriction": null,
+      "coverItem": {
+        "id": 4581440,
+        "accountId": 10,
+        "type": "text",
+        "title": "Match officials for Matchweek 27",
+        "description": "See who will be officiating in the next round of Premier League fixtures, including the Video Assistant Referees",
+        "date": "2026-02-16T15:00:00Z",
+        "location": "",
+        "coordinates": [
+          0,
+          0
+        ],
+        "commentsOn": false,
+        "copyright": null,
+        "publishFrom": 1771255800000,
+        "publishTo": 0,
+        "tags": [
+          {
+            "id": 12232,
+            "label": "label:Referees"
+          },
+          {
+            "id": 12286,
+            "label": "series:news"
+          },
+          {
+            "id": 12202,
+            "label": "content-format:short-read"
+          },
+          {
+            "id": 12185,
+            "label": "content-type:article"
+          },
+          {
+            "id": 775,
+            "label": "franchise:referees"
+          }
+        ],
+        "platform": "PULSE_CMS",
+        "language": "en",
+        "additionalInfo": {},
+        "canonicalUrl": "",
+        "references": [
+          {
+            "label": null,
+            "id": 2562156,
+            "type": "SDP_FOOTBALL_MATCH",
+            "sid": "2562156"
+          },
+          {
+            "label": null,
+            "id": 8,
+            "type": "SDP_FOOTBALL_COMPETITION",
+            "sid": "8"
+          },
+          {
+            "label": null,
+            "id": 2562160,
+            "type": "SDP_FOOTBALL_MATCH",
+            "sid": "2562160"
+          },
+          {
+            "label": null,
+            "id": 2562162,
+            "type": "SDP_FOOTBALL_MATCH",
+            "sid": "2562162"
+          },
+          {
+            "label": null,
+            "id": 2562164,
+            "type": "SDP_FOOTBALL_MATCH",
+            "sid": "2562164"
+          },
+          {
+            "label": null,
+            "id": 2562161,
+            "type": "SDP_FOOTBALL_MATCH",
+            "sid": "2562161"
+          },
+          {
+            "label": null,
+            "id": 2025,
+            "type": "SDP_FOOTBALL_SEASON",
+            "sid": "2025"
+          },
+          {
+            "label": null,
+            "id": 2562158,
+            "type": "SDP_FOOTBALL_MATCH",
+            "sid": "2562158"
+          },
+          {
+            "label": null,
+            "id": 2562163,
+            "type": "SDP_FOOTBALL_MATCH",
+            "sid": "2562163"
+          },
+          {
+            "label": null,
+            "id": 2562157,
+            "type": "SDP_FOOTBALL_MATCH",
+            "sid": "2562157"
+          },
+          {
+            "label": null,
+            "id": 2562155,
+            "type": "SDP_FOOTBALL_MATCH",
+            "sid": "2562155"
+          },
+          {
+            "label": null,
+            "id": 2562159,
+            "type": "SDP_FOOTBALL_MATCH",
+            "sid": "2562159"
+          }
+        ],
+        "related": [],
+        "metadata": {},
+        "titleTranslations": null,
+        "lastModified": 1771257452306,
+        "titleUrlSegment": "match-officials-for-matchweek-27",
+        "visibilityOrder": [
+          {
+            "id": 12286,
+            "type": "TAG",
+            "data": {
+              "visibilityOrderType": "TAG",
+              "id": 12286,
+              "label": "series:news"
+            }
+          }
+        ],
+        "body": "<link rel=\"stylesheet\" href=\"https://web.premierleague.pulselive.com/resources/rebrand/v7.153.79/styles/app-article.css\">\n\n<script src=\"https://web.premierleague.pulselive.com/resources/rebrand/v7.153.79/app/app-external.js\"></script>\n\n<script type=\"text/javascript\">\n    window.RESOURCE_VERSION_REBRAND = 'rebrand/v7.153.79';\n\twindow.RESOURCE_VERSION = 'rebrand/v7.153.79';\n\twindow.BASE_RESOURCE_URL = 'https://web.premierleague.pulselive.com/resources';\n\twindow.FAST_MOVING_DATA_ENABLED = 'false';\n\twindow.SPONSOR_LOGOS_TO_HIDE = 'castrol';\n\twindow.PL_COMPSEASON_ID = '777';\n</script>\n\n<div class=\"wrapper col-12\">\n\t<div class=\"standardArticle js-article__content\">\n\t    <p>The match officials for Matchweek 27 of the 2025/26 Premier League season, spanning Saturday 21, Sunday 22 and Monday 23 February, have been appointed.</p><div class=\"articleWidget full-width\">\n<div\n    data-d2c\n    class=\"embeddable-match-card\"\n    data-widget=\"match-card/embeddable-match-card\"\n    data-match-reference=\"2562155\"\n    data-title=\"\"\n>\n</div>\n</div><p><strong>Referee</strong>: Michael Oliver. <strong>Assistants</strong>: Stuart Burt, James Mainwaring. <strong>Fourth official</strong>: Andrew Kitchen. <strong>VAR</strong>: Tony Harrington. <strong>Assistant VAR</strong>: Blake Antrobus.</p><div class=\"articleWidget full-width\">\n<div\n    data-d2c\n    class=\"embeddable-match-card\"\n    data-widget=\"match-card/embeddable-match-card\"\n    data-match-reference=\"2562156\"\n    data-title=\"\"\n>\n</div>\n</div><p><strong>Referee</strong>: Jarred Gillett. <strong>Assistants</strong>: Steve Meredith, Richard West. <strong>Fourth official</strong>: Paul Tierney. <strong>VAR</strong>: Nick Hopton. <strong>Assistant VAR</strong>: Stuart Attwell.</p><div class=\"articleWidget full-width\">\n<div\n    data-d2c\n    class=\"embeddable-match-card\"\n    data-widget=\"match-card/embeddable-match-card\"\n    data-match-reference=\"2562157\"\n    data-title=\"\"\n>\n</div>\n</div><p><strong>Referee</strong>: Lewis Smith. <strong>Assistants</strong>: Adrian Holmes, Simon Long. <strong>Fourth official</strong>: Anthony Taylor. <strong>VAR</strong>: Michael Salisbury. <strong>Assistant VAR</strong>: Marc Perry.</p><div class=\"articleWidget full-width\">\n<div\n    data-d2c\n    class=\"embeddable-match-card\"\n    data-widget=\"match-card/embeddable-match-card\"\n    data-match-reference=\"2562164\"\n    data-title=\"\"\n>\n</div>\n</div><p><strong>Referee</strong>: Sam Barrott. <strong>Assistants</strong>: Tim Wood, Wade Smith. <strong>Fourth official</strong>: Darren England. <strong>VAR</strong>: John Brooks. <strong>Assistant VAR</strong>: Akil Howson.</p><div class=\"articleWidget full-width\">\n<div\n    data-d2c\n    class=\"embeddable-match-card\"\n    data-widget=\"match-card/embeddable-match-card\"\n    data-match-reference=\"2562160\"\n    data-title=\"\"\n>\n</div>\n</div><p><strong>Referee</strong>: Tom Bramall. <strong>Assistants</strong>: Ian Hussin, Constantine Hatzidakis. <strong>Fourth official</strong>: Tim Robinson. <strong>VAR</strong>: James Bell. <strong>Assistant VAR</strong>: Dan Robathan.</p><div class=\"articleWidget full-width\">\n<div\n    data-d2c\n    class=\"embeddable-match-card\"\n    data-widget=\"match-card/embeddable-match-card\"\n    data-match-reference=\"2562158\"\n    data-title=\"\"\n>\n</div>\n</div><p><strong>Referee</strong>: Tom Kirk. <strong>Assistants</strong>: Simon Bennett, Neil Davies. <strong>Fourth official</strong>: Ben Toner. <strong>VAR</strong>: Stuart Attwell. <strong>Assistant VAR</strong>: Steve Meredith.</p><div class=\"articleWidget full-width\">\n<div\n    data-d2c\n    class=\"embeddable-match-card\"\n    data-widget=\"match-card/embeddable-match-card\"\n    data-match-reference=\"2562161\"\n    data-title=\"\"\n>\n</div>\n</div><p><strong>Referee</strong>: Anthony Taylor. <strong>Assistants</strong>: Gary Beswick, Adam Nunn. <strong>Fourth official</strong>: Dean Whitestone. <strong>VAR</strong>: Paul Tierney. <strong>Assistant VAR</strong>: Adrian Holmes.</p><div class=\"articleWidget full-width\">\n<div\n    data-d2c\n    class=\"embeddable-match-card\"\n    data-widget=\"match-card/embeddable-match-card\"\n    data-match-reference=\"2562162\"\n    data-title=\"\"\n>\n</div>\n</div><p><strong>Referee</strong>: Craig Pawson. <strong>Assistants</strong>: Lee Betts, Mat Wilkes. <strong>Fourth official</strong>: Ruebyn Ricardo. <strong>VAR</strong>: Tony Harrington. <strong>Assistant VAR</strong>: Wade Smith.</p><div class=\"articleWidget full-width\">\n<div\n    data-d2c\n    class=\"embeddable-match-card\"\n    data-widget=\"match-card/embeddable-match-card\"\n    data-match-reference=\"2562163\"\n    data-title=\"\"\n>\n</div>\n</div><p><strong>Referee</strong>: Peter Bankes (pictured). <strong>Assistants</strong>: Eddie Smart, Blake Antrobus. <strong>Fourth official</strong>: Sam Barrott. <strong>VAR</strong>: Darren England. <strong>Assistant VAR</strong>: Tim Wood.</p><div class=\"articleWidget full-width\">\n<div\n    data-d2c\n    class=\"embeddable-match-card\"\n    data-widget=\"match-card/embeddable-match-card\"\n    data-match-reference=\"2562159\"\n    data-title=\"\"\n>\n</div>\n</div><p><strong>Referee</strong>: Darren England. <strong>Assistants</strong>: Scott Ledger, Akil Howson. <strong>Fourth official</strong>: Adam Herczeg. <strong>VAR</strong>: Paul Howard. <strong>Assistant VAR</strong>: Sian Massey-Ellis.</p>\n    \n        <div class=\"u-hide\" data-script=\"pl_article-table\" data-widget=\"article-table\"></div>\n\t</div>\n</div>\n\n<script src=\"https://web.premierleague.pulselive.com/resources/rebrand/v7.153.79/app/app-pulse.js\"></script>\n<script src=\"https://web.premierleague.pulselive.com/resources/rebrand/v7.153.79/app/app-widgets.js\"></script>\n<script crossorigin src=\"https://web.premierleague.pulselive.com/resources/rebrand/v7.153.79/scripts/react.bundle.js\" defer></script>",
+        "author": null,
+        "subtitle": null,
+        "summary": "See who will be officiating in the next round of Premier League fixtures, including the Video Assistant Referees",
+        "hotlinkUrl": null,
+        "duration": 148,
+        "contentSummary": null,
+        "leadMedia": {
+          "id": 4592286,
+          "accountId": 10,
+          "type": "photo",
+          "title": "A photo of referee Peter Bankes",
+          "description": null,
+          "date": "2026-02-16T15:25:00Z",
+          "location": null,
+          "coordinates": [
+            0,
+            0
+          ],
+          "commentsOn": false,
+          "copyright": null,
+          "publishFrom": 1771255539443,
+          "publishTo": 0,
+          "tags": [],
+          "platform": "PULSE_CMS",
+          "language": "en",
+          "additionalInfo": {},
+          "canonicalUrl": "",
+          "references": [],
+          "related": [],
+          "metadata": {},
+          "titleTranslations": null,
+          "lastModified": 1771255583077,
+          "titleUrlSegment": "a-photo-of-referee-peter-bankes",
+          "subtitle": null,
+          "onDemandUrl": "https://resources.premierleague.pulselive.com/photo-resources/2026/02/16/f1e437c2-94eb-4a90-8bd2-5c9a651b3190/A-photo-of-referee-Peter-Bankes.jpg",
+          "originalDetails": {
+            "width": 2106,
+            "height": 1185,
+            "aspectRatio": 1.7772152
+          },
+          "imageUrl": "https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/16/f1e437c2-94eb-4a90-8bd2-5c9a651b3190/A-photo-of-referee-Peter-Bankes.jpg"
+        },
+        "imageUrl": "https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/16/f1e437c2-94eb-4a90-8bd2-5c9a651b3190/A-photo-of-referee-Peter-Bankes.jpg",
+        "onDemandUrl": "https://resources.premierleague.pulselive.com/photo-resources/2026/02/16/f1e437c2-94eb-4a90-8bd2-5c9a651b3190/A-photo-of-referee-Peter-Bankes.jpg"
+      },
+      "coverSelection": "RANDOM",
+      "subtitle": null,
+      "items": [
+        {
+          "label": null,
+          "id": 4488319,
+          "type": "TEXT",
+          "sid": "4488319"
+        },
+        {
+          "label": null,
+          "id": 4572119,
+          "type": "TEXT",
+          "sid": "4572119"
+        },
+        {
+          "label": null,
+          "id": 4581440,
+          "type": "TEXT",
+          "sid": "4581440"
+        },
+        {
+          "label": null,
+          "id": 4562466,
+          "type": "TEXT",
+          "sid": "4562466"
+        },
+        {
+          "label": null,
+          "id": 4589078,
+          "type": "TEXT",
+          "sid": "4589078"
+        },
+        {
+          "label": null,
+          "id": 4573748,
+          "type": "TEXT",
+          "sid": "4573748"
+        },
+        {
+          "label": null,
+          "id": 4450606,
+          "type": "TEXT",
+          "sid": "4450606"
+        },
+        {
+          "label": null,
+          "id": 4592540,
+          "type": "TEXT",
+          "sid": "4592540"
+        },
+        {
+          "label": null,
+          "id": 4374289,
+          "type": "TEXT",
+          "sid": "4374289"
+        },
+        {
+          "label": null,
+          "id": 4592317,
+          "type": "TEXT",
+          "sid": "4592317"
+        },
+        {
+          "label": null,
+          "id": 4592613,
+          "type": "TEXT",
+          "sid": "4592613"
+        },
+        {
+          "label": null,
+          "id": 4592634,
+          "type": "TEXT",
+          "sid": "4592634"
+        },
+        {
+          "label": null,
+          "id": 4585718,
+          "type": "TEXT",
+          "sid": "4585718"
+        },
+        {
+          "label": null,
+          "id": 4578123,
+          "type": "TEXT",
+          "sid": "4578123"
+        },
+        {
+          "label": null,
+          "id": 4580687,
+          "type": "TEXT",
+          "sid": "4580687"
+        },
+        {
+          "label": null,
+          "id": 4581345,
+          "type": "TEXT",
+          "sid": "4581345"
+        },
+        {
+          "label": null,
+          "id": 4580697,
+          "type": "TEXT",
+          "sid": "4580697"
+        },
+        {
+          "label": null,
+          "id": 4236846,
+          "type": "TEXT",
+          "sid": "4236846"
+        },
+        {
+          "label": null,
+          "id": 1355885,
+          "type": "TEXT",
+          "sid": "1355885"
+        },
+        {
+          "label": null,
+          "id": 4573283,
+          "type": "TEXT",
+          "sid": "4573283"
+        }
+      ],
+      "pageInfo": {
+        "page": 0,
+        "numPages": 1,
+        "pageSize": 20,
+        "numEntries": 20
+      },
+      "imageUrl": "https://resources.premierleague.pulselive.com/premierleague/photo/2026/02/16/f1e437c2-94eb-4a90-8bd2-5c9a651b3190/A-photo-of-referee-Peter-Bankes.jpg",
+      "onDemandUrl": "https://resources.premierleague.pulselive.com/photo-resources/2026/02/16/f1e437c2-94eb-4a90-8bd2-5c9a651b3190/A-photo-of-referee-Peter-Bankes.jpg"
+    },
+    "warnings": [],
+    "operations_metadata": [
+      {
+        "type": "navigate",
+        "duration_seconds": 2.005029125022702,
+        "details": {},
+        "error": null
+      },
+      {
+        "type": "js_evaluate",
+        "duration_seconds": 0.01573495799675584,
+        "details": {
+          "console_logs": [],
+          "execution_error": null,
+          "storage_error": null
+        },
+        "error": null
+      },
+      {
+        "type": "return",
+        "duration_seconds": 0.029260707990033552,
+        "details": {},
+        "error": null
+      }
+    ],
+    "placeholder_resolution": {},
+    "proxy_address": null
+  },
+  "execution_error": null,
+  "inspection_result": {
+    "overall_pass": true,
+    "overall_score": 94,
+    "dimensions": {
+      "task_completion": {
+        "score": 10,
+        "reasoning": "Routine directly calls the documented public broadcasting events endpoint (https://api.premierleague.com/broadcasting/events) with from/to/page/pageSize query parameters and returns the parsed JSON. The execution result shows exactly the broadcast schedule data (pageInfo + content array of events with broadcasters/channels) that the user task requires for a given date range."
+      },
+      "data_quality": {
+        "score": 10,
+        "reasoning": "The js_evaluate step parses document.body.innerText as JSON and returns the full object without truncation or reshaping. The sample execution shows rich, structured data including pagination, event IDs, names, startDateTime, broadcasters, channels, and nested contentReference objects, matching the exploration summary for this endpoint."
+      },
+      "parameter_coverage": {
+        "score": 9,
+        "reasoning": "All meaningful query parameters for this endpoint (from, to, page, pageSize) are exposed as routine parameters with appropriate types and descriptions. A minor nit is that page and pageSize are marked required even though they have sensible defaults; they could be non-required with defaults instead, but this does not break functionality."
+      },
+      "routine_robustness": {
+        "score": 8,
+        "reasoning": "The routine uses a simple navigate to a public GET endpoint with no auth or token dependencies, aligning with exploration that these APIs are unauthenticated. It includes basic error handling in js_evaluate (returns ok:false with error message on parse failure). Slight robustness concerns: relying on document.body.innerText assumes the response is rendered as text; using response interception or contentType checks would be more resilient, but current approach worked in execution."
+      },
+      "structural_correctness": {
+        "score": 10,
+        "reasoning": "Operations are in a valid order: navigate -> js_evaluate that writes to session storage -> return that reads from the same key. The session_storage_key is consistently used, and there are no missing dependencies or misuse of placeholders. No auth or prior navigation is required for this API, so a single direct navigate is structurally appropriate."
+      }
+    },
+    "blocking_issues": [],
+    "recommendations": [
+      "Consider making page and pageSize parameters optional with defaults instead of required, to simplify typical usage when callers just want the first page with a standard size.",
+      "If available in the platform, prefer accessing the raw response body (e.g., via a fetch-style operation or responseText) instead of document.body.innerText, which could be brittle if the environment wraps JSON in additional markup or error pages."
+    ],
+    "summary": "This routine correctly wraps the Premier League broadcasting events API and returns high-quality, fully structured schedule data for a specified date range. Its parameterization aligns well with the endpoint's capabilities, and the operation sequence is structurally sound and robust enough for public, unauthenticated use. Only minor ergonomic and robustness improvements are suggested, so it is suitable to ship as-is.}}"
+  },
+  "overall_pass": true,
+  "blocking_issues": [],
+  "recommendations": [
+    "Consider making page and pageSize parameters optional with defaults instead of required, to simplify typical usage when callers just want the first page with a standard size.",
+    "If available in the platform, prefer accessing the raw response body (e.g., via a fetch-style operation or responseText) instead of document.body.innerText, which could be brittle if the environment wraps JSON in additional markup or error pages."
+  ],
+  "parent_attempt_id": null,
+  "changes_from_parent": null
+}

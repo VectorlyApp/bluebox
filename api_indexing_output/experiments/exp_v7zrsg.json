@@ -1,0 +1,46 @@
+{
+  "id": "v7zrsg",
+  "hypothesis": "We can still ship a useful player-focused routine that returns player profile data only, even though season stats are not yet proven usable.",
+  "rationale": "Experiments show /api/v1/players/{playerId} returns valid JSON (array) while the stats endpoint often returns an error wrapper and we lack concrete working ids. A profile-only routine would still be valuable and aligns with confirmed behavior.",
+  "prompt": "Design a minimal routine JSON for a `pl_player_profile` routine that: (1) navigates to https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/players/{{playerId}}, (2) uses js_evaluate to read document.body.innerText, JSON.parse it, and store the parsed value under a session_storage_key, and (3) returns that key via a return operation. Use integer parameter playerId with example 1. Do NOT execute it; just return the JSON structure you would use.",
+  "priority": 2,
+  "task_id": "56vgz8",
+  "status": "done",
+  "verdict": null,
+  "summary": null,
+  "output": {
+    "output": {
+      "routine_json": {
+        "name": "pl_player_profile",
+        "parameters": [
+          {
+            "name": "playerId",
+            "type": "integer",
+            "example": 1
+          }
+        ],
+        "steps": [
+          {
+            "id": "navigate_player_profile",
+            "type": "navigate",
+            "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/players/{{playerId}}"
+          },
+          {
+            "id": "read_and_store_profile",
+            "type": "js_evaluate",
+            "expression": "(function() {\n  const parsed = JSON.parse(document.body.innerText);\n  const key = 'pl_player_profile_' + Date.now();\n  sessionStorage.setItem(key, JSON.stringify(parsed));\n  return key;\n})()",
+            "store_result_as": "session_storage_key"
+          },
+          {
+            "id": "return_session_key",
+            "type": "return",
+            "value": "{{session_storage_key}}"
+          }
+        ]
+      }
+    },
+    "success": true,
+    "notes": [],
+    "failure_reason": null
+  }
+}

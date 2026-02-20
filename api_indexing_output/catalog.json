@@ -1,9 +1,658 @@
 {
   "site": "sdp-prem-prod.premier-league-prod.pulselive.com",
   "user_task": "Make routines of useful scraping APIs from the Premier League website",
-  "routines": [],
-  "usage_guide": "This catalog provides routines for scraping key public APIs behind premierleague.com. Use them from a browser-like context (or any HTTP client that can send standard web headers) against the documented endpoints on api.premierleague.com and sdp-prem-prod.premier-league-prod.pulselive.com.\n\nRoutines:\n1) pl_standings \u2014 Fetch Premier League standings for a competition/season via Pulselive /api/v5/competitions/{competitionId}/seasons/{seasonId}/standings. Use when you need league tables and form breakdowns. Parameters: competitionId (int, e.g. 8 for PL), seasonId (int, e.g. 2025).\n\n2) pl_fixtures_by_matchweek \u2014 Fetch fixtures for a given competition, season, and matchweek via Pulselive /api/v1/competitions/{competitionId}/seasons/{seasonId}/matchweeks/{matchweek}/matches or the generic /api/v2/matches with compSeasons, gameweeks, etc. Use when you need match lists or schedules by round.\n\n3) pl_teams_list \u2014 Fetch list of teams for a competition/season via Pulselive /api/v1/competitions/{competitionId}/seasons/{seasonId}/teams. Use this first when you need team ids/names to feed into other routines.\n\n4) pl_team_profile_bundle \u2014 Given a team id, combine: Pulselive team core (/api/v2/teams/{teamId} or /api/v2/teams-by-id?id={teamId}), metadata (/api/v1/metadata/SDP_FOOTBALL_TEAM/{teamId}), form and next fixture (/api/v1/competitions/{compId}/seasons/{seasonId}/teams/{teamId}/form and /nextfixture), plus promo/content from api.premierleague.com/content/premierleague/PROMO/en with references to the team. Use when building a rich team page.\n\n5) pl_player_profile_and_stats \u2014 Given playerId and season, call Pulselive /api/v1/players/{playerId} plus /api/v2/competitions/{compId}/seasons/{seasonId}/players/{playerId}/stats. Use for detailed player pages or comparison tools.\n\n6) pl_match_detail \u2014 Given matchId, call Pulselive /api/v1/matches/{matchId}/events and /api/v3/matches/{matchId}/lineups. Use for timelines and lineup graphics.\n\n7) pl_content_search \u2014 Use api.premierleague.com/content/premierleague/en with query parameters (contentTypes, page, pageSize, tagNames, flags) to search articles and videos. Use to surface general PL content.\n\n8) pl_playlist_detail \u2014 Use api.premierleague.com/content/premierleague/playlist/en/{playlistId} with optional pageSize/detail params to fetch curated content lists. Use for carousels and themed collections.\n\n9) pl_video_detail \u2014 Use api.premierleague.com/content/premierleague/VIDEO/en/{videoId} to fetch video metadata, and api.premierleague.com/content/premierleague/photo/PHOTO/en/{photoId} for images. Use when embedding media.\n\n10) pl_broadcast_schedule \u2014 Use api.premierleague.com/broadcasting/events and /broadcasting/match-events with dateFrom/dateTo, page, pageSize, and sportDataId filters to retrieve TV/broadcast schedules.\n\nAll core football-data and content endpoints observed are public GETs with no Authorization or cookies. In a browser, use window.fetch with default headers from a premierleague.com origin to avoid CORS issues; in non-browser clients, mimic a modern browser User-Agent and standard headers. Start with pl_teams_list and pl_standings to discover ids, then chain into team, player, match, and content routines as needed.",
+  "routines": [
+    {
+      "routine_spec_id": "rh3qnt",
+      "routine_json": {
+        "name": "pl_standings",
+        "description": "Fetch Premier League standings table for a given competition and season from Pulselive API",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://www.premierleague.com/en/",
+            "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "fetch",
+            "endpoint": {
+              "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/{{competitionId}}/seasons/{{seasonId}}/standings",
+              "description": null,
+              "method": "GET",
+              "headers": {
+                "Accept": "application/json"
+              },
+              "body": null,
+              "credentials": "same-origin"
+            },
+            "session_storage_key": "pl_standings_result"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "pl_standings_result"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "competitionId",
+            "type": "integer",
+            "required": true,
+            "description": "Competition ID as used by Pulselive (e.g. 8 for Premier League)",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "seasonId",
+            "type": "integer",
+            "required": true,
+            "description": "Season ID as used by Pulselive (e.g. 2025 for 2025/26 season)",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "pl_standings",
+      "description": "Fetch Premier League standings table for a given competition and season from Pulselive API",
+      "when_to_use": "Use to fetch premier league standings table for a given competition and season from pulselive api",
+      "parameters_summary": [],
+      "inspection_score": 86
+    },
+    {
+      "routine_spec_id": "94pai5",
+      "routine_json": {
+        "name": "pl_fixtures_by_matchweek",
+        "description": "Fetch Premier League fixtures for a given competition, season, and matchweek from the Pulselive v1 matches endpoint via top-level navigation.",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/{{competitionId}}/seasons/{{seasonId}}/matchweeks/{{matchweek}}/matches",
+            "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "js_evaluate",
+            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return { ok: true, value: parsed }; } catch (e) { return { ok: false, error: String(e) }; } })();",
+            "timeout_seconds": 10.0,
+            "session_storage_key": "pl_fixtures_matchweek_result"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "pl_fixtures_matchweek_result"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "competitionId",
+            "type": "integer",
+            "required": true,
+            "description": "Competition ID as used by Pulselive (e.g., 8 for Premier League).",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "seasonId",
+            "type": "integer",
+            "required": true,
+            "description": "Season ID as used by Pulselive (e.g., 2025 for 2025/26 season).",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "matchweek",
+            "type": "integer",
+            "required": true,
+            "description": "Matchweek number within the season (e.g., 27).",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "pl_fixtures_by_matchweek",
+      "description": "Fetch fixtures for a given competition, season, and matchweek from Pulselive API",
+      "when_to_use": "Use to fetch fixtures for a given competition, season, and matchweek from pulselive api",
+      "parameters_summary": [],
+      "inspection_score": 90
+    },
+    {
+      "routine_spec_id": "m2xcbg",
+      "routine_json": {
+        "name": "pl_teams_in_competition",
+        "description": "Fetch list of teams for a given competition and season from the Pulselive Premier League API.",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://www.premierleague.com/en/tables/premier-league",
+            "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "fetch",
+            "endpoint": {
+              "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/{{competitionId}}/seasons/{{seasonId}}/teams",
+              "description": null,
+              "method": "GET",
+              "headers": {
+                "Accept": "application/json"
+              },
+              "body": null,
+              "credentials": "same-origin"
+            },
+            "session_storage_key": "pl_teams_result"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "pl_teams_result"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "competitionId",
+            "type": "integer",
+            "required": true,
+            "description": "Competition ID as used by Pulselive (e.g., 8 for Premier League).",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "seasonId",
+            "type": "integer",
+            "required": true,
+            "description": "Season ID as used by Pulselive (e.g., 2025 for 2025/26 season).",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "pl_teams_in_competition",
+      "description": "Fetch list of teams for a given competition and season from Pulselive API",
+      "when_to_use": "Use to fetch list of teams for a given competition and season from pulselive api",
+      "parameters_summary": [],
+      "inspection_score": 88
+    },
+    {
+      "routine_spec_id": "b3hptt",
+      "routine_json": {
+        "name": "pl_team_overview_bundle",
+        "description": "Fetch team metadata for a specific team using the Pulselive metadata endpoint. (Note: core team data, form, and next fixture could not be reliably fetched via fetch() in this environment, so this routine focuses on the confirmed-metadata part of the bundle.)",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/metadata/SDP_FOOTBALL_TEAM/{{teamId}}",
+            "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "js_evaluate",
+            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+            "timeout_seconds": 10.0,
+            "session_storage_key": "pl_team_overview_result"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "pl_team_overview_result"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "teamId",
+            "type": "integer",
+            "required": true,
+            "description": "Pulselive team ID (e.g., 1 for Manchester United).",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "pl_team_overview_bundle",
+      "description": "Fetch core data, form, next fixture, and metadata for a specific team in a competition/season",
+      "when_to_use": "Use to fetch core data, form, next fixture, and metadata for a specific team in a competition/season",
+      "parameters_summary": [],
+      "inspection_score": 84
+    },
+    {
+      "routine_spec_id": "hy5wmd",
+      "routine_json": {
+        "name": "pl_player_profile",
+        "description": "Fetch a player profile from the Pulselive Premier League API using the public /api/v1/players/{playerId} endpoint.",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/players/{{playerId}}",
+            "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "js_evaluate",
+            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+            "timeout_seconds": 10.0,
+            "session_storage_key": "pl_player_profile_result"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "pl_player_profile_result"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "playerId",
+            "type": "integer",
+            "required": true,
+            "description": "Pulselive player ID (e.g., 1).",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "pl_player_profile_and_stats",
+      "description": "Fetch player profile and season stats for a given playerId in a competition/season",
+      "when_to_use": "Use to fetch player profile and season stats for a given playerid in a competition/season",
+      "parameters_summary": [],
+      "inspection_score": 86
+    },
+    {
+      "routine_spec_id": "956hjh",
+      "routine_json": {
+        "name": "pl_match_details",
+        "description": "Fetch detailed match events and lineups for a given matchId from the Pulselive Premier League API via direct navigation to the events and lineups endpoints.",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/matches/{{matchId}}/events",
+            "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "js_evaluate",
+            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text for events' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+            "timeout_seconds": 10.0,
+            "session_storage_key": "pl_match_events_result"
+          },
+          {
+            "type": "navigate",
+            "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v3/matches/{{matchId}}/lineups",
+            "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "js_evaluate",
+            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text for lineups' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+            "timeout_seconds": 10.0,
+            "session_storage_key": "pl_match_lineups_result"
+          },
+          {
+            "type": "js_evaluate",
+            "js": "(() => { try { const eventsRaw = sessionStorage.getItem('pl_match_events_result'); const lineupsRaw = sessionStorage.getItem('pl_match_lineups_result'); const events = eventsRaw ? JSON.parse(eventsRaw) : null; const lineups = lineupsRaw ? JSON.parse(lineupsRaw) : null; return { events, lineups }; } catch (e) { return { ok: false, error: String(e) }; } })();",
+            "timeout_seconds": 5.0,
+            "session_storage_key": "pl_match_details_bundle"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "pl_match_details_bundle"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "matchId",
+            "type": "integer",
+            "required": true,
+            "description": "Pulselive match identifier (e.g., 2562154).",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "pl_match_details",
+      "description": "Fetch events and lineups for a given matchId",
+      "when_to_use": "Use to fetch events and lineups for a given matchid",
+      "parameters_summary": [],
+      "inspection_score": 90
+    },
+    {
+      "routine_spec_id": "ykf9sw",
+      "routine_json": {
+        "name": "pl_broadcast_schedule",
+        "description": "Fetch Premier League broadcasting events schedule for a given date range from the public broadcasting/events API.",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://api.premierleague.com/broadcasting/events?from={{from}}&to={{to}}&pageSize={{pageSize}}&page={{page}}",
+            "sleep_after_navigation_seconds": 2.0
+          },
+          {
+            "type": "js_evaluate",
+            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+            "timeout_seconds": 10.0,
+            "session_storage_key": "pl_broadcast_schedule_result"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "pl_broadcast_schedule_result"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "type": "date",
+            "required": true,
+            "description": "Start date (YYYY-MM-DD) for the broadcast schedule window.",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "to",
+            "type": "date",
+            "required": true,
+            "description": "End date (YYYY-MM-DD) for the broadcast schedule window.",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "page",
+            "type": "integer",
+            "required": true,
+            "description": "Zero-based page index for pagination.",
+            "default": 0,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "pageSize",
+            "type": "integer",
+            "required": true,
+            "description": "Number of events per page.",
+            "default": 50,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "pl_broadcast_schedule",
+      "description": "Fetch broadcasting events schedule for a date range",
+      "when_to_use": "Use to fetch broadcasting events schedule for a date range",
+      "parameters_summary": [],
+      "inspection_score": 94
+    },
+    {
+      "routine_spec_id": "4kvvv7",
+      "routine_json": {
+        "name": "pl_content_search",
+        "description": "Search Premier League content (articles and videos) using the public content search API with pagination and basic filters.",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://api.premierleague.com/content/premierleague/en?offset={{offset}}&pageSize={{pageSize}}&contentTypes={{contentTypes}}&sort={{sort}}&sortOrder={{sortOrder}}",
+            "sleep_after_navigation_seconds": 2.0
+          },
+          {
+            "type": "js_evaluate",
+            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+            "timeout_seconds": 10.0,
+            "session_storage_key": "pl_content_search_result"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "pl_content_search_result"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offset",
+            "type": "integer",
+            "required": true,
+            "description": "Zero-based offset into the result set for pagination.",
+            "default": 0,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "pageSize",
+            "type": "integer",
+            "required": true,
+            "description": "Number of content items per page.",
+            "default": 20,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "contentTypes",
+            "type": "string",
+            "required": true,
+            "description": "Comma-separated list of content types to include (e.g., VIDEO,TEXT).",
+            "default": "VIDEO,TEXT",
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "sort",
+            "type": "string",
+            "required": true,
+            "description": "Field to sort by (e.g., publishDate).",
+            "default": "publishDate",
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "sortOrder",
+            "type": "string",
+            "required": true,
+            "description": "Sort order, ASC or DESC.",
+            "default": "DESC",
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "pl_content_search",
+      "description": "Search Premier League content (articles/videos) with filters and pagination",
+      "when_to_use": "Use to search premier league content (articles/videos) with filters and pagination",
+      "parameters_summary": [],
+      "inspection_score": 94
+    },
+    {
+      "routine_spec_id": "tuv9jd",
+      "routine_json": {
+        "name": "pl_playlist_items",
+        "description": "Fetch items for a given Premier League content playlist from the public playlist API.",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://api.premierleague.com/content/premierleague/playlist/en/{{playlistId}}?pageSize={{pageSize}}",
+            "sleep_after_navigation_seconds": 2.0
+          },
+          {
+            "type": "js_evaluate",
+            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+            "timeout_seconds": 10.0,
+            "session_storage_key": "pl_playlist_items_result"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "pl_playlist_items_result"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "playlistId",
+            "type": "string",
+            "required": true,
+            "description": "Playlist identifier as used by the Premier League content API (e.g., 4346308).",
+            "default": null,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "pageSize",
+            "type": "integer",
+            "required": true,
+            "description": "Number of items to return in the playlist page.",
+            "default": 20,
+            "examples": [],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "pl_playlist_items",
+      "description": "Fetch items for a given Premier League content playlist",
+      "when_to_use": "Use to fetch items for a given premier league content playlist",
+      "parameters_summary": [],
+      "inspection_score": 94
+    }
+  ],
+  "usage_guide": "This catalog exposes a set of high-value, read-only scraping routines around the public Premier League (Pulselive + api.premierleague.com) APIs observed on premierleague.com. They are designed to be composed together.\n\n1) pl_standings \u2014 league tables\n- Purpose: Get the official standings table for a competition/season.\n- Inputs: competitionId (e.g., 8 for Premier League), seasonId (e.g., 2025).\n- Output: JSON with matchweek and tables[].entries including team object and overall/home/away stats (played, won, drawn, lost, goals, points, positions).\n- Use when: You need league tables, form guides, or to derive team ranks/points for analytics.\n\n2) pl_fixtures_by_matchweek \u2014 fixtures/schedule by round\n- Purpose: List all matches in a given matchweek for a competition/season.\n- Inputs: competitionId, seasonId, matchweek.\n- Output: JSON with pagination and data[] matches (kickoff time, teams, ground, matchId, etc.).\n- Use when: Building matchweek views, schedule pages, or selecting a matchId for deeper inspection.\n- Combine with: pl_match_details (for a chosen matchId), pl_team_overview_bundle (for team branding), pl_player_profile_and_stats (for key players).\n\n3) pl_teams_in_competition \u2014 club directory\n- Purpose: Get the list of teams in a competition/season with core metadata.\n- Inputs: competitionId, seasonId.\n- Output: JSON with pagination and data[] team objects (id, name, shortName, abbr, stadium details).\n- Notes: Paginated; routine returns first page and a _next token. For all teams, page manually using that token.\n- Use when: You need to map Pulselive team IDs to human-readable clubs, build club pickers, or join with standings/fixtures.\n\n4) pl_team_overview_bundle \u2014 club metadata/branding\n- Purpose: Retrieve rich club metadata from the Pulselive metadata endpoint.\n- Inputs: teamId.\n- Output: JSON with top-level metadata containing club_established, club_stadium, club_website, social handles, shirt URLs, etc.\n- Use when: Building team overview cards or enriching tables/fixtures with official branding and external links.\n- Combine with: pl_teams_in_competition (to discover teamId), pl_standings (for performance context).\n\n5) pl_player_profile_and_stats \u2014 player profiles (profile-focused)\n- Purpose: Fetch detailed player profile data from /api/v1/players/{playerId}.\n- Inputs: playerId.\n- Output: Array of season records with currentTeam, country, name, shirt number, physical attributes, dates, and id fields (competitionId, seasonId, playerId).\n- Notes: Stats endpoint could not be reliably validated; treat this as a profile-only scraper despite the name.\n- Use when: You have a playerId (e.g., from match lineups) and need biography/history info.\n\n6) pl_match_details \u2014 events + lineups bundle\n- Purpose: Get rich per-match detail: event timeline plus lineups.\n- Inputs: matchId.\n- Output: { events, lineups } combined from Pulselive events and lineups endpoints, each including home_team and away_team structures with players, goals, cards, substitutions, etc.\n- Use when: Powering match-centre UIs, analytics, or highlight tools that need full context for a single match.\n- Combine with: pl_fixtures_by_matchweek (to discover matchIds), pl_player_profile_and_stats (for players in the lineups).\n\n7) pl_broadcast_schedule \u2014 TV/broadcast listings\n- Purpose: Retrieve official broadcasting events for a date range.\n- Inputs: from, to (YYYY-MM-DD), page, pageSize.\n- Output: JSON with pageInfo and content[] broadcasting events (id, name, startDateTime, broadcasters, channels, contentReference linking to matches/content).\n- Use when: Building TV listings, broadcast planners, or adding broadcast context to fixtures.\n\n8) pl_content_search \u2014 content discovery\n- Purpose: Search Premier League articles and videos with pagination and filters.\n- Inputs: offset, pageSize, contentTypes (e.g., VIDEO,TEXT), sort, sortOrder.\n- Output: JSON with pageInfo and content[] items (id, type, title, description, metadata, etc.).\n- Use when: Building news feeds, search pages, or editorial dashboards.\n\n9) pl_playlist_items \u2014 curated rails/playlists\n- Purpose: Fetch the items in a specific Premier League content playlist.\n- Inputs: playlistId, pageSize.\n- Output: Playlist object with metadata and items[] (id, type, sid) plus pageInfo.\n- Use when: Reproducing curated rails (e.g., Latest News, Featured Videos) or reusing editorial groupings in your own UI.\n\nHow to use these together\n- League dashboard: pl_standings + pl_teams_in_competition + pl_team_overview_bundle.\n- Matchweek hub: pl_fixtures_by_matchweek \u2192 for each match, pl_match_details; enrich players via pl_player_profile_and_stats.\n- Club page: pl_team_overview_bundle for branding, pl_standings for table position, pl_fixtures_by_matchweek filtered client-side for that team, and relevant content via pl_content_search or pl_playlist_items.\n- Media/broadcast view: pl_broadcast_schedule for TV slots, link events to matches via contentReference, and surface related articles/videos via pl_content_search or pl_playlist_items.\n\nGeneral notes\n- All routines wrap public GET endpoints; no auth tokens are required.\n- IDs (competitionId, seasonId, teamId, playerId, matchId, playlistId) come from these APIs themselves; use list-style routines (teams, fixtures, content search, playlists) to discover them.\n- Responses are returned as close as possible to the upstream JSON; your application should handle pagination and any error envelopes as needed.",
   "failed_routines": [],
-  "total_experiments": 2,
-  "total_attempts": 0
+  "total_experiments": 12,
+  "total_attempts": 10
 }

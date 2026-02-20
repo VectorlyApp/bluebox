@@ -1,0 +1,46 @@
+{
+  "id": "5tdyva",
+  "hypothesis": "Premier League broadcasting schedule endpoint works unauthenticated and returns JSON when hit via direct navigation with date-range query parameters.",
+  "rationale": "Network exploration shows GET https://api.premierleague.com/broadcasting/events called multiple times without auth headers, filtered by date range and page size. We need to confirm the required query parameters and JSON shape so we can wrap it in a routine.",
+  "prompt": "1. Use browser_navigate to go directly to https://api.premierleague.com/broadcasting/events?from=2026-02-01&to=2026-02-29&pageSize=50&page=0.\n2. After the page loads, use browser_eval_js('document.body.innerText') to capture the raw body text.\n3. In the same eval, attempt JSON.parse on the body; if it parses, return an object with { ok: true, topLevelKeys: Object.keys(parsed), sampleItem: parsed.data ? parsed.data[0] : null }.\n4. Report whether navigation succeeded, whether the body was valid JSON, HTTP-like status if visible, and the top-level keys/sample item.",
+  "priority": 1,
+  "task_id": "95t7gk",
+  "status": "done",
+  "verdict": "confirmed",
+  "summary": "Direct navigation to the broadcasting events endpoint with from/to/pageSize/page parameters returns valid JSON with top-level keys pageInfo and content, confirming it works unauthenticated for schedule queries.",
+  "output": {
+    "output": {
+      "navigation": {
+        "url": "https://api.premierleague.com/broadcasting/events?from=2026-02-01&to=2026-02-29&pageSize=50&page=0",
+        "succeeded": true
+      },
+      "body": {
+        "wasValidJSON": true,
+        "httpLikeStatus": null,
+        "rawBodyTruncated": true
+      },
+      "parseResult": {
+        "ok": true,
+        "topLevelKeys": [
+          "pageInfo",
+          "content"
+        ],
+        "sampleItem": {
+          "id": 934,
+          "name": "Aston Villa v Newcastle United",
+          "startDateTime": "2025-04-19T17:30:00Z",
+          "broadcasters": [],
+          "channels": [],
+          "contentReference": {
+            "id": 2444790,
+            "providerId": "2444790",
+            "type": "SDP_FOOTBALL_MATCH"
+          }
+        }
+      }
+    },
+    "success": true,
+    "notes": [],
+    "failure_reason": null
+  }
+}

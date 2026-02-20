@@ -1,0 +1,55 @@
+{
+  "name": "pl_playlist_items",
+  "description": "Fetch items for a given Premier League content playlist from the public playlist API.",
+  "operations": [
+    {
+      "type": "navigate",
+      "url": "https://api.premierleague.com/content/premierleague/playlist/en/{{playlistId}}?pageSize={{pageSize}}",
+      "sleep_after_navigation_seconds": 2.0
+    },
+    {
+      "type": "js_evaluate",
+      "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+      "timeout_seconds": 10.0,
+      "session_storage_key": "pl_playlist_items_result"
+    },
+    {
+      "type": "return",
+      "session_storage_key": "pl_playlist_items_result"
+    }
+  ],
+  "parameters": [
+    {
+      "name": "playlistId",
+      "type": "string",
+      "required": true,
+      "description": "Playlist identifier as used by the Premier League content API (e.g., 4346308).",
+      "default": null,
+      "examples": [],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": null,
+      "enum_values": null,
+      "format": null,
+      "observed_value": null
+    },
+    {
+      "name": "pageSize",
+      "type": "integer",
+      "required": true,
+      "description": "Number of items to return in the playlist page.",
+      "default": 20,
+      "examples": [],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": null,
+      "enum_values": null,
+      "format": null,
+      "observed_value": null
+    }
+  ]
+}

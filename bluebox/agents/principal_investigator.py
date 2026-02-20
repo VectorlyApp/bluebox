@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from datetime import datetime
 from textwrap import dedent
 from typing import Any, Callable, TYPE_CHECKING
@@ -128,6 +128,10 @@ class PrincipalInvestigator(AbstractAgent):
     when to switch routines, and when to call it done.
     """
 
+    # Maximum time (seconds) a single worker or inspector can run before being killed.
+    # Covers both LLM call hangs and browser/CDP hangs.
+    WORKER_TIMEOUT_SECONDS: int = 180  # 3 minutes
+
     AGENT_CARD = AgentCard(
         description=(
             "Orchestrates experiment-driven routine construction. Reads exploration "
@@ -156,11 +160,27 @@ class PrincipalInvestigator(AbstractAgent):
         8. Ship routines that pass, iterate on ones that fail
         9. Call mark_complete when all routines are addressed
 
+        ## MANDATORY: Review Documentation First
+
+        BEFORE planning or dispatching ANY experiments, you MUST review the routine
+        documentation to understand the full capabilities available to you. Call:
+
+        1. search_docs("operation") — to see all operation types (navigate, fetch,
+           click, input_text, js_evaluate, get_cookies, download, etc.)
+        2. get_doc_file on the Routine and operation model files to understand
+           what each operation can do and its required fields
+
+        This is NOT optional. You cannot dispatch experiments until you have reviewed
+        the documentation. Routines are much more powerful than simple fetch calls —
+        they support UI automation (click, type, scroll), JavaScript evaluation,
+        cookie extraction, file downloads, and more. Understanding these capabilities
+        BEFORE you plan will lead to better routine designs.
+
         ## Catalog-First Thinking
 
-        Your FIRST job after reading exploration summaries is to call plan_routines
-        to declare what routines you intend to build. The exploration data reveals
-        the API surface — each distinct capability can be a routine.
+        AFTER reviewing docs, call plan_routines to declare what routines you intend
+        to build. The exploration data reveals the API surface — each distinct
+        capability can be a routine.
 
         Then work through routines by priority, starting with shared dependencies
         (auth, navigation) that apply across routines.
@@ -177,28 +197,31 @@ class PrincipalInvestigator(AbstractAgent):
 
         ## Strategy
 
-        1. Call plan_routines early to declare your catalog plan
-        2. Start with shared experiments: auth, base navigation, tokens
-        3. For each routine: experiment → prove → assemble → submit_routine → ship or fix
-        4. Use follow_up to ask the SAME worker clarifying questions (preserves context)
-        5. submit_routine REQUIRES test_parameters — provide realistic values for EVERY parameter!
+        1. Review documentation with search_docs and get_doc_file (MANDATORY first step)
+        2. Call plan_routines to declare your catalog plan
+        3. Use dispatch_experiments_batch to test ALL priority-1 routines in parallel
+        4. Record findings, then batch the next round of experiments
+        5. For each routine: experiment → prove → assemble → submit_routine → ship or fix
+        6. Use follow_up to ask the SAME worker clarifying questions (preserves context)
+        7. submit_routine REQUIRES test_parameters — provide realistic values for EVERY parameter!
            The routine will be executed in a live browser and reviewed by an independent inspector.
-        6. When a routine passes inspection: mark_routine_shipped
-        7. When a routine is hopeless: mark_routine_failed
-        8. When all routines are addressed: mark_complete with a usage guide
+        7. When a routine passes inspection: mark_routine_shipped
+        8. When a routine is hopeless: mark_routine_failed
+        9. When all routines are addressed: mark_complete with a usage guide
 
-        ## Parallel Experiments
+        ## Parallel Experiments — ALWAYS PREFER BATCH
 
-        Use dispatch_experiments_batch to run multiple INDEPENDENT experiments at the
-        same time on separate workers. This is much faster than sequential dispatch.
+        ALWAYS use dispatch_experiments_batch instead of dispatch_experiment when you
+        have 2+ experiments to run. This runs them IN PARALLEL on separate workers —
+        N experiments complete in the time of 1.
 
-        Good candidates for parallel dispatch:
-        - Testing multiple API endpoints that don't depend on each other
-        - Probing different auth strategies simultaneously
-        - Validating multiple routines' core fetches at once
+        dispatch_experiment (singular) should ONLY be used when you need follow_up
+        on a specific worker's prior context. For all new experiments, batch them.
 
-        Each batch experiment gets its own worker and browser tab. Use dispatch_experiment
-        (singular) only when you need to follow_up on a specific worker's context.
+        Batch aggressively:
+        - After plan_routines, immediately batch experiments for all priority-1 routines
+        - When testing multiple API endpoints, batch them all at once
+        - When probing auth + multiple data endpoints, batch everything together
 
         ## CRITICAL RULES
 
@@ -261,6 +284,7 @@ class PrincipalInvestigator(AbstractAgent):
         max_iterations: int = 200,
         worker_max_loops: int = 10,
         max_attempts_per_routine: int = 5,
+        min_experiments_before_fail: int = 10,
         # Agent pool sizes
         num_workers: int = 3,
         num_inspectors: int = 1,
@@ -279,6 +303,7 @@ class PrincipalInvestigator(AbstractAgent):
         self._max_iterations = max_iterations
         self._worker_max_loops = worker_max_loops
         self._max_attempts_per_routine = max_attempts_per_routine
+        self._min_experiments_before_fail = min_experiments_before_fail
 
         # Exploration context
         self._exploration_summaries = exploration_summaries or {}
@@ -314,6 +339,7 @@ class PrincipalInvestigator(AbstractAgent):
         self._is_done = False
         self._pipeline_result: RoutineCatalog | None = None
         self._recent_tool_calls: list[str] = []  # Track recent tool names for loop detection
+        self._docs_reviewed: bool = False  # Gate: must review docs before dispatching experiments
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -338,6 +364,43 @@ class PrincipalInvestigator(AbstractAgent):
 
     def _get_system_prompt(self) -> str:
         parts: list[str] = [self.SYSTEM_PROMPT_CORE]
+
+        # Routine JSON schema — auto-generated from the Pydantic models
+        parts.append("\n## Routine JSON Schema\n\n")
+        parts.append("When calling submit_routine, the routine_json MUST conform to this schema.\n")
+        parts.append("Every operation needs a 'type' field as discriminator.\n\n")
+        parts.append(Routine.model_schema_markdown())
+        parts.append("\n\n### Example routine_json (fetch a parameterized API)\n\n")
+        parts.append(dedent("""\
+            ```json
+            {
+              "name": "get_standings",
+              "description": "Fetch league standings for a competition and season",
+              "parameters": [
+                {"name": "competitionId", "type": "integer", "description": "Competition ID"},
+                {"name": "seasonId", "type": "integer", "description": "Season ID"}
+              ],
+              "operations": [
+                {
+                  "type": "navigate",
+                  "url": "https://www.example.com"
+                },
+                {
+                  "type": "fetch",
+                  "endpoint": {
+                    "url": "https://api.example.com/competitions/{{competitionId}}/seasons/{{seasonId}}/standings",
+                    "method": "GET"
+                  },
+                  "session_storage_key": "standings_result"
+                },
+                {
+                  "type": "return",
+                  "session_storage_key": "standings_result"
+                }
+              ]
+            }
+            ```
+        """))
 
         # Worker capabilities
         parts.append(WORKER_CAPABILITIES)
@@ -394,13 +457,19 @@ class PrincipalInvestigator(AbstractAgent):
         else:
             initial_message = (
                 f"TASK: {self._task}\n\n"
-                "Start by analyzing the exploration summaries. Then:\n"
-                "1. Call plan_routines to declare what routines to build\n"
-                "2. Dispatch experiments for shared dependencies (auth, navigation)\n"
-                "3. Work through routines by priority\n"
-                "4. Call mark_complete when all routines are addressed\n\n"
-                "Use dispatch_experiment to send experiments to workers, then "
-                "record_finding to log what you learned."
+                "MANDATORY FIRST STEP: Review the routine documentation before doing anything else.\n"
+                "Call search_docs('operation') and get_doc_file on the Routine/operation model files\n"
+                "to understand ALL operation types (fetch, click, input_text, js_evaluate, download, etc.).\n"
+                "You CANNOT dispatch experiments until you understand the full routine capabilities.\n\n"
+                "After reviewing docs:\n"
+                "1. Analyze the exploration summaries\n"
+                "2. Call plan_routines to declare what routines to build\n"
+                "3. Use dispatch_experiments_batch to test ALL priority-1 routines IN PARALLEL\n"
+                "4. Record findings for each, then batch the next round\n"
+                "5. Build and submit_routine for each proven routine\n"
+                "6. Call mark_complete when all routines are shipped or failed\n\n"
+                "IMPORTANT: Always use dispatch_experiments_batch (not dispatch_experiment) "
+                "to run multiple experiments in parallel. This is much faster."
             )
         self._add_chat(ChatRole.USER, initial_message)
 
@@ -425,8 +494,17 @@ class PrincipalInvestigator(AbstractAgent):
                 llm_provider_response_id=response.response_id,
             )
 
+            # Persist PI thread after every iteration
+            self._dump_agent_thread("principal_investigator", self)
+
             if response.tool_calls:
                 self._process_tool_calls(response.tool_calls)
+
+                # Track docs review — any docs tool call satisfies the gate
+                _DOCS_TOOLS = {"search_docs", "get_doc_file", "search_docs_by_terms", "search_docs_by_regex"}
+                for tc in response.tool_calls:
+                    if tc.tool_name in _DOCS_TOOLS:
+                        self._docs_reviewed = True
 
                 # Loop detection: track recent tool calls
                 for tc in response.tool_calls:
@@ -486,24 +564,28 @@ class PrincipalInvestigator(AbstractAgent):
             return
         try:
             chats = agent.get_chats()
-            messages = [
-                {
-                    "id": c.id,
-                    "role": c.role.value,
-                    "content": c.content,
-                    "tool_calls": [
-                        {"tool_name": tc.tool_name, "arguments": tc.tool_arguments, "call_id": tc.call_id}
-                        for tc in c.tool_calls
-                    ] if c.tool_calls else [],
-                    "tool_call_id": c.tool_call_id,
-                    "created_at": str(c.created_at) if c.created_at else None,
-                }
-                for c in chats
-            ]
+            messages = []
+            for c in chats:
+                try:
+                    msg = {
+                        "id": c.id,
+                        "role": c.role.value if c.role else "unknown",
+                        "content": c.content or "",
+                        "tool_calls": [
+                            {"tool_name": tc.tool_name, "arguments": tc.tool_arguments, "call_id": tc.call_id}
+                            for tc in (c.tool_calls or [])
+                        ],
+                        "tool_call_id": c.tool_call_id,
+                        "created_at": str(c.created_at) if c.created_at else None,
+                    }
+                    messages.append(msg)
+                except Exception as chat_err:
+                    logger.warning("Failed to serialize chat %s for %s: %s", c.id, agent_label, chat_err)
+                    messages.append({"id": c.id, "role": "unknown", "content": f"[serialization error: {chat_err}]"})
             thread_id = agent.get_thread().id if agent.get_thread() else "unknown"
             self._on_agent_thread(agent_label, thread_id, messages)
         except Exception as e:
-            logger.warning("on_agent_thread callback failed for %s: %s", agent_label, e)
+            logger.warning("on_agent_thread callback failed for %s: %s", agent_label, e, exc_info=True)
 
     # ===================================================================
     # CATALOG PLANNING TOOLS
@@ -594,6 +676,18 @@ class PrincipalInvestigator(AbstractAgent):
             output_description: Description of expected output.
             priority: 1=critical, 2=important, 3=nice-to-have.
         """
+        # Gate: must review docs first
+        if not self._docs_reviewed and self._documentation_data_loader is not None:
+            return {
+                "error": (
+                    "You must review the routine documentation BEFORE dispatching experiments. "
+                    "Call search_docs('operation') and get_doc_file to understand all available "
+                    "operation types (fetch, click, input_text, js_evaluate, get_cookies, "
+                    "download, etc.). This ensures you design experiments that leverage the "
+                    "full routine capabilities."
+                )
+            }
+
         # Create experiment entry
         experiment = ExperimentEntry(
             hypothesis=hypothesis,
@@ -673,6 +767,18 @@ class PrincipalInvestigator(AbstractAgent):
         if not experiments:
             return {"error": "No experiments provided"}
 
+        # Gate: must review docs first
+        if not self._docs_reviewed and self._documentation_data_loader is not None:
+            return {
+                "error": (
+                    "You must review the routine documentation BEFORE dispatching experiments. "
+                    "Call search_docs('operation') and get_doc_file to understand all available "
+                    "operation types (fetch, click, input_text, js_evaluate, get_cookies, "
+                    "download, etc.). This ensures you design experiments that leverage the "
+                    "full routine capabilities."
+                )
+            }
+
         # Cap at num_workers to avoid overwhelming the system
         max_parallel = self._num_workers
         if len(experiments) > max_parallel:
@@ -732,6 +838,10 @@ class PrincipalInvestigator(AbstractAgent):
             task.agent_id = subagent.id
             subagent.task_ids.append(task.id)
 
+            # Wire up real-time thread persistence
+            agent_label = f"worker_{subagent.id}"
+            worker._on_chat_added = lambda: self._dump_agent_thread(agent_label, worker)
+
             try:
                 task.status = TaskStatus.IN_PROGRESS
                 task.started_at = datetime.now()
@@ -782,11 +892,24 @@ class PrincipalInvestigator(AbstractAgent):
                 pool.submit(_run_one, pair): pair
                 for pair in task_experiment_pairs
             }
-            for future in as_completed(futures):
+            for future in as_completed(futures, timeout=self.WORKER_TIMEOUT_SECONDS + 30):
+                pair = futures[future]
                 try:
-                    results.append(future.result())
+                    results.append(future.result(timeout=self.WORKER_TIMEOUT_SECONDS))
+                except FuturesTimeoutError:
+                    _, experiment = pair
+                    logger.error(
+                        "Batch experiment %s timed out after %ds",
+                        experiment.id, self.WORKER_TIMEOUT_SECONDS,
+                    )
+                    experiment.status = ExperimentStatus.FAILED
+                    experiment.output = {"error": f"Worker timed out after {self.WORKER_TIMEOUT_SECONDS}s"}
+                    results.append({
+                        "experiment_id": experiment.id,
+                        "status": "failed",
+                        "error": f"Worker timed out after {self.WORKER_TIMEOUT_SECONDS}s",
+                    })
                 except Exception as e:
-                    pair = futures[future]
                     logger.error("Batch experiment failed: %s", e)
                     results.append({
                         "experiment_id": pair[1].id,
@@ -934,13 +1057,27 @@ class PrincipalInvestigator(AbstractAgent):
         Add a proven artifact to the ledger. Call this when an experiment confirms
         a fetch, navigation, token, or parameter that will be part of a routine.
 
+        IMPORTANT: The 'details' parameter MUST be a JSON object (dict), NOT a string.
+
         Args:
             artifact_type: One of 'fetch', 'navigation', 'token', 'parameter'.
-            details: Artifact-specific info. Examples:
-                fetch: {url, method, headers, body, response_preview}
-                navigation: {url, sets_up: [cookies, storage_keys]}
-                token: {name, source, storage_type, key_name}
-                parameter: {name, type, description, example_value}
+            details: A JSON object with artifact-specific info. NOT a string.
+
+        Example calls:
+            record_proven_artifact({
+                "artifact_type": "fetch",
+                "details": {"url": "https://api.example.com/data", "method": "GET",
+                            "headers": {}, "response_preview": "200 OK with JSON"}
+            })
+            record_proven_artifact({
+                "artifact_type": "navigation",
+                "details": {"url": "https://example.com", "sets_up": ["session_cookie"]}
+            })
+            record_proven_artifact({
+                "artifact_type": "parameter",
+                "details": {"name": "seasonId", "type": "number",
+                            "description": "Season identifier", "example_value": 2025}
+            })
         """
         try:
             atype = ArtifactType(artifact_type)
@@ -983,9 +1120,36 @@ class PrincipalInvestigator(AbstractAgent):
         every parameter defined in the routine. The routine will be executed
         in a live browser and the result sent to an independent inspector.
 
+        The routine_json MUST match the Routine schema (see system prompt).
+        Key rules:
+        - Use "operations" (not "steps"), each with a "type" discriminator
+        - fetch operations need "endpoint": {"url": "...", "method": "GET"}
+        - Last operation must be "return", "return_html", or "download"
+        - Must have ≥2 operations (navigate + fetch + return is typical)
+        - Use {{paramName}} placeholders in URLs/headers/body for parameters
+        - fetch needs session_storage_key to save results for the return op
+
+        Example:
+            submit_routine({
+                "spec_id": "abc123",
+                "routine_json": {
+                    "name": "get_data",
+                    "description": "Fetch data from API",
+                    "parameters": [
+                        {"name": "query", "type": "string", "description": "Search query"}
+                    ],
+                    "operations": [
+                        {"type": "navigate", "url": "https://www.example.com"},
+                        {"type": "fetch", "endpoint": {"url": "https://api.example.com/search?q={{query}}", "method": "GET"}, "session_storage_key": "result"},
+                        {"type": "return", "session_storage_key": "result"}
+                    ]
+                },
+                "test_parameters": {"query": "test search"}
+            })
+
         Args:
             spec_id: Which RoutineSpec this routine fulfills.
-            routine_json: The complete routine as a dict.
+            routine_json: The complete routine dict matching the Routine schema.
             test_parameters: Parameter values for test execution. REQUIRED —
                 must include a value for every parameter in the routine.
         """
@@ -1016,6 +1180,16 @@ class PrincipalInvestigator(AbstractAgent):
                 "stage": "validation",
                 "validation_errors": [str(e)],
                 "routine_json": routine_json,
+                "hint": (
+                    "Routine validation failed. BEFORE retrying, use your documentation "
+                    "tools to review the correct schema: call search_docs('Routine operation "
+                    "endpoint fetch') or get_doc_file to read the Routine and operation "
+                    "model source code. Key reminders: each operation needs 'type' "
+                    "(e.g. 'fetch'), fetch operations need 'endpoint': {'url': '...', "
+                    "'method': 'GET'}, last operation must be type 'return' or "
+                    "'return_html' or 'download', and the routine needs at least 2 "
+                    "operations. Check the schema in your system prompt carefully."
+                ),
             }
 
         # Create attempt record
@@ -1056,10 +1230,14 @@ class PrincipalInvestigator(AbstractAgent):
         inspection_result = self._run_inspection(routine, execution_result, spec)
 
         if inspection_result is not None:
-            attempt.inspection_result = inspection_result
-            attempt.overall_pass = inspection_result.get("overall_pass", False)
-            attempt.blocking_issues = inspection_result.get("blocking_issues", [])
-            attempt.recommendations = inspection_result.get("recommendations", [])
+            # run_autonomous returns a SpecialistResultWrapper dict with the actual
+            # inspection data nested under "output". Unwrap it so downstream code
+            # can read overall_pass / blocking_issues / recommendations directly.
+            inner = inspection_result.get("output", inspection_result)
+            attempt.inspection_result = inner
+            attempt.overall_pass = inner.get("overall_pass", False)
+            attempt.blocking_issues = inner.get("blocking_issues", [])
+            attempt.recommendations = inner.get("recommendations", [])
 
             if attempt.overall_pass:
                 attempt.status = RoutineAttemptStatus.PASSED
@@ -1097,10 +1275,10 @@ class PrincipalInvestigator(AbstractAgent):
         if inspection_result is not None:
             response["inspection"] = {
                 "overall_pass": attempt.overall_pass,
-                "overall_score": inspection_result.get("overall_score"),
+                "overall_score": inner.get("overall_score"),
                 "blocking_issues": attempt.blocking_issues,
                 "recommendations": attempt.recommendations,
-                "summary": inspection_result.get("summary"),
+                "summary": inner.get("summary"),
             }
         else:
             response["inspection"] = {"overall_pass": None, "note": "Inspector unavailable"}
@@ -1292,7 +1470,7 @@ class PrincipalInvestigator(AbstractAgent):
             s for s in self._ledger.routine_specs
             if s.status not in (RoutineSpecStatus.SHIPPED, RoutineSpecStatus.FAILED)
         ]
-        if total_experiments < 5 and unaddressed_specs:
+        if total_experiments < self._min_experiments_before_fail and unaddressed_specs:
             return {
                 "error": (
                     f"Cannot mark pipeline as failed after only {total_experiments} experiment(s). "
@@ -1445,6 +1623,10 @@ class PrincipalInvestigator(AbstractAgent):
         task.agent_id = subagent.id
         subagent.task_ids.append(task.id)
 
+        # Wire up real-time thread persistence
+        agent_label = f"worker_{subagent.id}"
+        agent._on_chat_added = lambda: self._dump_agent_thread(agent_label, agent)
+
         return agent
 
     def _get_or_create_inspector(self) -> RoutineInspector:
@@ -1469,6 +1651,9 @@ class PrincipalInvestigator(AbstractAgent):
             )
             self._orchestration_state.subagents[subagent.id] = subagent
             self._agent_instances[subagent.id] = inspector
+            # Wire up real-time thread persistence
+            inspector_label = f"inspector_{subagent.id}"
+            inspector._on_chat_added = lambda: self._dump_agent_thread(inspector_label, inspector)
             return inspector
 
         # Pool full — reuse round-robin with fresh conversation
@@ -1540,13 +1725,25 @@ class PrincipalInvestigator(AbstractAgent):
         inspection_prompt = "\n".join(prompt_parts)
 
         try:
-            config = AutonomousConfig(min_iterations=1, max_iterations=5)
-            result = inspector.run_autonomous(
-                task=inspection_prompt,
-                config=config,
-                output_schema=INSPECTION_OUTPUT_SCHEMA,
-                output_description="RoutineInspectionResult with scores, blocking issues, and verdict",
-            )
+            config = AutonomousConfig(min_iterations=1, max_iterations=10)
+
+            # Run inspector with timeout to prevent indefinite hangs
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    inspector.run_autonomous,
+                    task=inspection_prompt,
+                    config=config,
+                    output_schema=INSPECTION_OUTPUT_SCHEMA,
+                    output_description="RoutineInspectionResult with scores, blocking issues, and verdict",
+                )
+                try:
+                    result = future.result(timeout=self.WORKER_TIMEOUT_SECONDS)
+                except FuturesTimeoutError:
+                    logger.error(
+                        "Inspector timed out for %s after %ds", spec.name, self.WORKER_TIMEOUT_SECONDS,
+                    )
+                    self._dump_agent_thread(f"inspector_{spec.name}", inspector)
+                    return None
 
             # Dump inspector thread
             self._dump_agent_thread(f"inspector_{spec.name}", inspector)
@@ -1559,7 +1756,7 @@ class PrincipalInvestigator(AbstractAgent):
             return None
 
     def _execute_task(self, task: Task) -> dict[str, Any]:
-        """Execute a task using an ExperimentWorker."""
+        """Execute a task using an ExperimentWorker with a timeout guard."""
         task.status = TaskStatus.IN_PROGRESS
         task.started_at = datetime.now()
 
@@ -1577,12 +1774,26 @@ class PrincipalInvestigator(AbstractAgent):
                 max_iterations=remaining_loops,
             )
 
-            result = agent.run_autonomous(
-                task=task.prompt,
-                config=config,
-                output_schema=task.output_schema,
-                output_description=task.output_description,
-            )
+            # Run with timeout to prevent indefinite hangs (LLM or browser)
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    agent.run_autonomous,
+                    task=task.prompt,
+                    config=config,
+                    output_schema=task.output_schema,
+                    output_description=task.output_description,
+                )
+                try:
+                    result = future.result(timeout=self.WORKER_TIMEOUT_SECONDS)
+                except FuturesTimeoutError:
+                    logger.error(
+                        "Task %s timed out after %ds", task.id, self.WORKER_TIMEOUT_SECONDS,
+                    )
+                    task.status = TaskStatus.FAILED
+                    task.error = f"Worker timed out after {self.WORKER_TIMEOUT_SECONDS}s"
+                    task.completed_at = datetime.now()
+                    self._dump_agent_thread(f"worker_{task.agent_id}", agent)
+                    return {"success": False, "error": task.error}
 
             task.loops_used += agent.autonomous_iteration
 

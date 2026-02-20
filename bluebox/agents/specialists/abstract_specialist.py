@@ -36,6 +36,7 @@ from bluebox.data_models.llms.interaction import (
     EmittedMessage,
     ChatResponseEmittedMessage,
     ErrorEmittedMessage,
+    LLMToolCall,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.utils.logger import get_logger
@@ -122,6 +123,9 @@ class AbstractSpecialist(AbstractAgent):
         self._notes: list[str] = []
         self._wrapped_result: SpecialistResultWrapper | None = None
 
+        # Optional callback fired on every chat addition (for real-time thread persistence)
+        self._on_chat_added: Callable[[], None] | None = None
+
         # call parent init
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -133,6 +137,29 @@ class AbstractSpecialist(AbstractAgent):
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
         )
+
+    def _add_chat(
+        self,
+        role: ChatRole,
+        content: str,
+        tool_call_id: str | None = None,
+        tool_calls: list[LLMToolCall] | None = None,
+        llm_provider_response_id: str | None = None,
+    ) -> Chat:
+        """Override to fire on_chat_added callback for real-time thread persistence."""
+        chat = super()._add_chat(
+            role=role,
+            content=content,
+            tool_call_id=tool_call_id,
+            tool_calls=tool_calls,
+            llm_provider_response_id=llm_provider_response_id,
+        )
+        if self._on_chat_added is not None:
+            try:
+                self._on_chat_added()
+            except Exception:
+                pass  # Never let persistence failures break the agent loop
+        return chat
 
     def __init_subclass__(cls: type[AbstractSpecialist], **kwargs: NamedTuple) -> None:
         """Register subclass when it's defined."""
@@ -433,10 +460,25 @@ class AbstractSpecialist(AbstractAgent):
         Finalize and return the result of your analysis.
 
         Use this to submit your findings when you have completed the task.
-        The output should contain all relevant information discovered.
+
+        IMPORTANT: The output parameter MUST be a JSON object (dict), NOT a string.
+
+        Example call:
+            finalize_result({
+                "output": {
+                    "summary": "Found 3 API endpoints that work without auth",
+                    "endpoints": [{"url": "...", "status": 200}],
+                    "conclusions": "All endpoints accessible via plain fetch"
+                }
+            })
+
+        WRONG (will be rejected):
+            finalize_result({})                    — missing 'output' parameter
+            finalize_result({"output": "a string"}) — output must be a dict, not a string
 
         Args:
-            output: Dictionary containing your findings and analysis results.
+            output: A JSON object (dict) containing your findings and analysis results.
+                Must be a dict like {"summary": "...", "key": "value"}, NOT a string.
         """
         self._wrapped_result = SpecialistResultWrapper(
             output=output,

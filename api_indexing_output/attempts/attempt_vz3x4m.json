@@ -1,0 +1,148 @@
+{
+  "id": "vz3x4m",
+  "routine_spec_id": "b3hptt",
+  "routine_json": {
+    "name": "pl_team_overview_bundle",
+    "description": "Fetch team metadata and basic club info for a specific team using the Pulselive metadata endpoint, suitable for building a team overview card.",
+    "operations": [
+      {
+        "type": "navigate",
+        "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/metadata/SDP_FOOTBALL_TEAM/{{teamId}}",
+        "sleep_after_navigation_seconds": 3.0
+      },
+      {
+        "type": "js_evaluate",
+        "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
+        "timeout_seconds": 10.0,
+        "session_storage_key": "pl_team_overview_result"
+      },
+      {
+        "type": "return",
+        "session_storage_key": "pl_team_overview_result"
+      }
+    ],
+    "parameters": [
+      {
+        "name": "teamId",
+        "type": "integer",
+        "required": true,
+        "description": "Pulselive team ID (e.g., 1 for Manchester United).",
+        "default": null,
+        "examples": [],
+        "min_length": null,
+        "max_length": null,
+        "min_value": null,
+        "max_value": null,
+        "pattern": null,
+        "enum_values": null,
+        "format": null,
+        "observed_value": null
+      }
+    ]
+  },
+  "status": "failed",
+  "test_parameters": {
+    "teamId": 1
+  },
+  "execution_result": {
+    "ok": true,
+    "error": null,
+    "is_base64": false,
+    "content_type": null,
+    "filename": null,
+    "data": {
+      "metadata": {
+        "club_established": "1878",
+        "club_instagram_handle": "manchesterunited?utm_source=premier-league&utm_medium=referral&utm_campaign=pl-referral-always-on&utm_term=club-profile&utm_content=instagram",
+        "club_stadium": "Old Trafford",
+        "club_tiktok_handle": "@manutd?utm_source=premier-league&utm_medium=referral&utm_campaign=pl-referral-always-on&utm_term=club-profile&utm_content=tiktok",
+        "club_website": "https://www.manutd.com?utm_source=premier-league&utm_medium=referral&utm_campaign=pl-referral-always-on&utm_term=club-profile&utm_content=club-website",
+        "club_x_handle": "manutd?utm_source=premier-league&utm_medium=referral&utm_campaign=pl-referral-always-on&utm_content=x",
+        "shirt_url": "https://store.manutd.com/?utm_source=premier-league&utm_medium=referral&utm_campaign=pl-referral-always-on&utm_term=fantasy&utm_content=buy-player-shirt",
+        "shirt_url_pl": "https://store.manutd.com/?utm_source=premier-league&utm_medium=referral&utm_campaign=pl-referral-always-on&utm_term=player-profile&utm_content=buy-player-shirt"
+      }
+    },
+    "warnings": [],
+    "operations_metadata": [
+      {
+        "type": "navigate",
+        "duration_seconds": 3.001496709010098,
+        "details": {},
+        "error": null
+      },
+      {
+        "type": "js_evaluate",
+        "duration_seconds": 0.0073687910044100136,
+        "details": {
+          "console_logs": [],
+          "execution_error": null,
+          "storage_error": null
+        },
+        "error": null
+      },
+      {
+        "type": "return",
+        "duration_seconds": 0.01296474999981001,
+        "details": {},
+        "error": null
+      }
+    ],
+    "placeholder_resolution": {},
+    "proxy_address": null
+  },
+  "execution_error": null,
+  "inspection_result": {
+    "overall_pass": false,
+    "overall_score": 64,
+    "dimensions": {
+      "task_completion": {
+        "score": 6,
+        "reasoning": "The routine successfully calls the Pulselive metadata endpoint and returns the JSON metadata for a given teamId, as evidenced by the execution result. However, the user task and routine description for this bundle explicitly mention fetching core data, form, next fixture, and metadata for a specific team; this implementation only returns the metadata endpoint and therefore does not yet fulfill the intended \"overview bundle\" behavior."
+      },
+      "data_quality": {
+        "score": 7,
+        "reasoning": "The data returned from the metadata endpoint is clean, well-structured JSON that matches the exploration summary for /api/v1/metadata/SDP_FOOTBALL_TEAM/{teamId}. The js_evaluate step attempts to parse the full body text as JSON and handles parse errors. However, it wraps errors in a custom {ok:false,error} object and may not surface HTTP status codes or non-JSON error bodies cleanly; and it does not normalize or enrich the data into a higher-level overview structure."
+      },
+      "parameter_coverage": {
+        "score": 6,
+        "reasoning": "The routine correctly parameterizes teamId, which is the only variable required for the chosen metadata endpoint. But given the stated goal (core data, form, next fixture, and metadata for a team in a competition/season), it is missing parameters for competitionId and seasonId that would be needed to call endpoints like /competitions/{competitionId}/seasons/{seasonId}/teams/{teamId}/form and /nextfixture. Additionally, it hardcodes the metadata endpoint path rather than bundling the other relevant endpoints for an overview card."
+      },
+      "routine_robustness": {
+        "score": 7,
+        "reasoning": "The routine uses a simple GET to a public, unauthenticated endpoint that does not require cookies or tokens, so auth handling is adequate. The JS evaluation includes basic error handling around JSON.parse and stores the result under a session_storage_key before returning it. However, relying on a full-page navigate to a JSON API and then scraping document.body.innerText is brittle compared to using a fetch-style operation; it also assumes the response is pure JSON with no surrounding markup, which could break if the endpoint behavior changes."
+      },
+      "structural_correctness": {
+        "score": 6,
+        "reasoning": "The operation order is internally consistent: navigate first, then js_evaluate, then return using the same session_storage_key. There is no misuse of storage keys or missing dependencies. That said, using a browser navigation to hit a JSON API is structurally suboptimal when compared to a dedicated fetch operation, and the routine ignores the broader \"bundle\" requirement to orchestrate multiple dependent calls (core team data, form, next fixture) that are visible in the exploration summaries."
+      }
+    },
+    "blocking_issues": [
+      "The implemented routine does not match its own high-level description or the user task: it only fetches team metadata from /api/v1/metadata/SDP_FOOTBALL_TEAM/{teamId} and does not include core team data, form, or next fixture endpoints, so it cannot yet serve as a true \"team overview bundle\".",
+      "Competition and season context are entirely missing from the parameters and operations, even though the exploration summaries show that form and next fixture endpoints are scoped by competitionId and seasonId; this misalignment will prevent the routine from being extended cleanly to cover those aspects.",
+      "The routine scrapes JSON via document.body.innerText after a navigate instead of using a direct data fetch operation, which is fragile and may fail if the endpoint ever returns non-JSON content or additional markup."
+    ],
+    "recommendations": [
+      "Extend the routine to call the key endpoints needed for an overview card: /api/v2/teams/{teamId} (core team data), /api/v1/competitions/{competitionId}/seasons/{seasonId}/teams/{teamId}/form (recent form), and /api/v1/competitions/{competitionId}/seasons/{seasonId}/teams/{teamId}/nextfixture (next fixture), alongside the existing metadata endpoint.",
+      "Add competitionId and seasonId parameters (with sensible defaults for Premier League, e.g., competitionId=8, seasonId=2025) so the routine can be reused across seasons and competitions instead of hardcoding them later.",
+      "Replace the navigate+js_evaluate scraping pattern with a proper fetch-style operation that directly consumes JSON from the Pulselive API, returning HTTP status and JSON body without relying on DOM text extraction.",
+      "Standardize the returned structure into a single JSON object that groups metadata, core team info, form summary, and next fixture under clear keys, making it more convenient for clients to build a team overview card.",
+      "Improve error handling by surfacing HTTP errors and per-endpoint failures explicitly (e.g., include which sub-call failed) rather than returning a generic {ok:false,error} from the js_evaluate step."
+    ],
+    "summary": "This routine correctly hits the Pulselive team metadata endpoint and returns usable JSON for a given teamId, but it falls short of the stated goal of a full team overview bundle. It omits core team data, recent form, and next fixture calls, and relies on a brittle navigate+DOM-text parsing pattern rather than a direct JSON fetch. To be shippable, it needs to be expanded into a true multi-endpoint bundle with competition/season parameters, more robust fetching, and a consolidated output structure."
+  },
+  "overall_pass": false,
+  "blocking_issues": [
+    "The implemented routine does not match its own high-level description or the user task: it only fetches team metadata from /api/v1/metadata/SDP_FOOTBALL_TEAM/{teamId} and does not include core team data, form, or next fixture endpoints, so it cannot yet serve as a true \"team overview bundle\".",
+    "Competition and season context are entirely missing from the parameters and operations, even though the exploration summaries show that form and next fixture endpoints are scoped by competitionId and seasonId; this misalignment will prevent the routine from being extended cleanly to cover those aspects.",
+    "The routine scrapes JSON via document.body.innerText after a navigate instead of using a direct data fetch operation, which is fragile and may fail if the endpoint ever returns non-JSON content or additional markup."
+  ],
+  "recommendations": [
+    "Extend the routine to call the key endpoints needed for an overview card: /api/v2/teams/{teamId} (core team data), /api/v1/competitions/{competitionId}/seasons/{seasonId}/teams/{teamId}/form (recent form), and /api/v1/competitions/{competitionId}/seasons/{seasonId}/teams/{teamId}/nextfixture (next fixture), alongside the existing metadata endpoint.",
+    "Add competitionId and seasonId parameters (with sensible defaults for Premier League, e.g., competitionId=8, seasonId=2025) so the routine can be reused across seasons and competitions instead of hardcoding them later.",
+    "Replace the navigate+js_evaluate scraping pattern with a proper fetch-style operation that directly consumes JSON from the Pulselive API, returning HTTP status and JSON body without relying on DOM text extraction.",
+    "Standardize the returned structure into a single JSON object that groups metadata, core team info, form summary, and next fixture under clear keys, making it more convenient for clients to build a team overview card.",
+    "Improve error handling by surfacing HTTP errors and per-endpoint failures explicitly (e.g., include which sub-call failed) rather than returning a generic {ok:false,error} from the js_evaluate step."
+  ],
+  "parent_attempt_id": null,
+  "changes_from_parent": null
+}

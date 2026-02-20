@@ -1,0 +1,63 @@
+{
+  "name": "pl_teams_in_competition",
+  "description": "Fetch list of teams for a given competition and season from the Pulselive Premier League API.",
+  "operations": [
+    {
+      "type": "navigate",
+      "url": "https://www.premierleague.com/en/tables/premier-league",
+      "sleep_after_navigation_seconds": 3.0
+    },
+    {
+      "type": "fetch",
+      "endpoint": {
+        "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/{{competitionId}}/seasons/{{seasonId}}/teams",
+        "description": null,
+        "method": "GET",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null,
+        "credentials": "same-origin"
+      },
+      "session_storage_key": "pl_teams_result"
+    },
+    {
+      "type": "return",
+      "session_storage_key": "pl_teams_result"
+    }
+  ],
+  "parameters": [
+    {
+      "name": "competitionId",
+      "type": "integer",
+      "required": true,
+      "description": "Competition ID as used by Pulselive (e.g., 8 for Premier League).",
+      "default": null,
+      "examples": [],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": null,
+      "enum_values": null,
+      "format": null,
+      "observed_value": null
+    },
+    {
+      "name": "seasonId",
+      "type": "integer",
+      "required": true,
+      "description": "Season ID as used by Pulselive (e.g., 2025 for 2025/26 season).",
+      "default": null,
+      "examples": [],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": null,
+      "enum_values": null,
+      "format": null,
+      "observed_value": null
+    }
+  ]
+}

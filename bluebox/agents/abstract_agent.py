@@ -320,13 +320,32 @@ class AbstractAgent(ABC):
 
         # validate required parameters
         required = tool_meta.parameters.get("required", [])
+        valid_params = set(tool_meta.parameters.get("properties", {}).keys())
         missing = [p for p in required if p not in tool_arguments or tool_arguments[p] is None]
+        extra = set(tool_arguments.keys()) - valid_params
+
+        # Auto-wrap: if the tool expects a single "output" dict parameter and the LLM
+        # passed the dict contents as top-level kwargs instead, wrap them automatically.
+        # This is the #1 cause of finalize_with_output / finalize_result failures.
+        if (
+            missing
+            and valid_params == {"output"}
+            and "output" not in tool_arguments
+            and tool_arguments  # LLM passed *something*
+        ):
+            logger.info(
+                "Auto-wrapping %d top-level arg(s) into 'output' for tool '%s'",
+                len(tool_arguments), tool_name,
+            )
+            tool_arguments = {"output": dict(tool_arguments)}
+            missing = []
+            extra = set()
+
         if missing:
-            return {"error": f"Missing required parameter(s): {', '.join(missing)}"}
+            return {"error": f"Missing required parameter(s): {', '.join(missing)}. "
+                    f"Expected parameters: {', '.join(sorted(valid_params))}"}
 
         # validate no extra parameters
-        valid_params = set(tool_meta.parameters.get("properties", {}).keys())
-        extra = set(tool_arguments.keys()) - valid_params
         if extra:
             return {"error": f"Unknown parameter(s) for '{tool_name}': {', '.join(sorted(extra))}"}
 
@@ -342,11 +361,19 @@ class AbstractAgent(ABC):
                 else:
                     validated_arguments[param_name] = value
         except ValidationError as e:
-            # extract readable error message
+            # extract readable error message with actionable guidance
             errors = e.errors()
             if errors:
                 err = errors[0]
-                msg = f"{param_name}: expected {err.get('type', 'valid type')}, got {type(value).__name__}"
+                got_type = type(value).__name__
+                expected = err.get("type", "valid type")
+                msg = f"{param_name}: expected {expected}, got {got_type}"
+                # Add actionable hint for common dict vs string confusion
+                if got_type == "str" and "dict" in expected:
+                    msg += (
+                        ". You passed a string but this parameter requires a JSON object. "
+                        'Example: {"key": "value", "nested": {"a": 1}} — NOT a string.'
+                    )
             else:
                 msg = str(e)
             return {"error": f"Invalid argument type: {msg}"}
