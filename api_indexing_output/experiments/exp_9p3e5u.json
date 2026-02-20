@@ -1,0 +1,59 @@
+{
+  "id": "9p3e5u",
+  "hypothesis": "Core Pulselive standings endpoint is fully public and can be called directly via HTTPS GET without auth or special headers.",
+  "rationale": "Network exploration shows repeated unauthenticated GETs to https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/8/seasons/2025/standings with no Authorization or cookies. We need to confirm this holds in a fresh browser context and whether any required headers (e.g. Origin, Referer, User-Agent) matter.",
+  "prompt": "1. Use browser_navigate to open https://www.premierleague.com/en/ just to establish a realistic origin context.\n2. Then, using browser_eval_js, run a fetch to \"https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/8/seasons/2025/standings\" with method GET and no custom headers (let the browser send defaults). Capture and return:\n   - HTTP status\n   - Any CORS errors or exceptions\n   - A truncated (first 2KB) JSON body if the response is OK.\n3. If the fetch fails due to CORS, retry by:\n   a) Navigating directly to the API URL with browser_navigate and capturing the raw response body text.\n   b) If that still fails, use capture_search_transactions with a query for \"standings\" to pull the exact recorded request, then use browser_cdp_command (Network.enable + Page.navigate or Fetch.enable) to replicate the working request as closely as possible and capture the JSON response.\nReturn a concise report of what worked, including final method used and any required headers or preconditions.",
+  "priority": 1,
+  "task_id": "wrc4ye",
+  "status": "done",
+  "verdict": "confirmed",
+  "summary": "Standings endpoint is publicly accessible via simple GET from premierleague.com origin with no custom headers or auth; fetch returns 200 OK and JSON standings data without CORS issues.",
+  "output": {
+    "output": {
+      "summary": "Experiment on Premier League standings API from realistic origin context.",
+      "steps": [
+        {
+          "step": 1,
+          "description": "Establish origin context by navigating to Premier League site.",
+          "action": "browser_navigate",
+          "details": {
+            "url": "https://www.premierleague.com/en/",
+            "status": "ok"
+          }
+        },
+        {
+          "step": 2,
+          "description": "Call fetch to standings API from page context with default headers.",
+          "action": "browser_eval_js",
+          "request": {
+            "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/8/seasons/2025/standings",
+            "method": "GET",
+            "headers": "none (browser defaults only)"
+          },
+          "response": {
+            "status": 200,
+            "ok": true,
+            "corsError": null,
+            "exception": null,
+            "bodySnippet": "{\"matchweek\":31,\"tables\":[{\"entries\":[{\"away\":{\"goalsFor\":21,\"lost\":2,\"won\":7,\"position\":1,\"drawn\":5,\"goalsAgainst\":12,\"played\":14,\"points\":26},\"overall\":{\"goalsFor\":52,\"lost\":3,\"won\":17,\"position\":1,\"drawn\":7,\"goalsAgainst\":20,\"startingPosition\":1,\"played\":27,\"points\":58},\"team\":{\"name\":\"Arsenal\",\"id\":\"3\",\"shortName\":\"Arsenal\",\"abbr\":\"ARS\"},\"home\":{\"goalsFor\":31,\"lost\":1,\"won\":10,\"position\":2,\"drawn\":2,\"goalsAgainst\":8,\"played\":13,\"points\":32}},{\"away\":{\"goalsFor\":22,\"lost\":4,\"won\":6,\"position\":4,\"drawn\":3,\"goalsAgainst\":16,\"played\":13,\"points\":21},\"overall\":{\"goalsFor\":54,\"lost\":5,\"won\":16,\"position\":2,\"drawn\":5,\"goalsAgainst\":24,\"startingPosition\":2,\"played\":26,\"points\":53},\"team\":{\"name\":\"Manchester City\",\"id\":\"43\",\"shortName\":\"Man City\",\"abbr\":\"MCI\"},\"home\":{\"goalsFor\":32,\"lost\":1,\"won\":10,\"position\":1,\"drawn\":2,\"goalsAgainst\":8,\"played\":13,\"points\":32}},{\"away\":{\"goalsFor\":18,\"lost\":3,\"won\":6,\"position\":3,\"drawn\":4,\"goalsAgainst\":17,\"played\":13,\"points\":22},\"overall\":{\"goalsFor\":37,\"lost\":6,\"won\":15,\"position\":3,\"drawn\":5,\"goalsAgainst\":27,\"startingPosition\":3,\"played\":26,\"points\":50},\"team\":{\"name\":\"Aston Villa\",\"id\":\"7\",\"shortName\":\"Aston Villa\",\"abbr\":\"AVL\"},\"home\":{\"goalsFor\":19,\"lost\":3,\"won\":9,\"position\":3,\"drawn\":1,\"goalsAgainst\":10,\"played\":13,\"points\":28}},{\"away\":{\"goalsFor\":22,\"lost\":3,\"won\":4,\"position\":8,\"drawn\":6,\"goalsAgainst\":22,\"played\":13,\"points\":18},\"overall\":{\"goalsFor\":47,\"lost\":5,\"won\":12,\"position\":4,\"drawn\":9,\"goalsAgainst\":37,\"startingPosition\":4,\"played\":26,\"points\":45},\"team\":{\"name\":\"Manchester United\",\"id\":\"1\",\"shortName\":\"Man Utd\",\"abbr\":\"MUN\"},\"home\":{\"goalsFor\":25,\"lost\":2,\"won\":8,\"position\":4,\"drawn\":3,\"goalsAgainst\":15,\"played\":13,\"points\":27}},{\"away\":{\"goalsFor\":25,\"lost\":3,\"won\":6,\"position\":2,\"drawn\":4,\"goalsAgainst\":15,\"played\":13,\"points\":22},\"overall\":{\"goalsFor\":47,\"lost\":6,\"won\":12,\"position\":5,\"drawn\":8,\"goalsAgainst\":30,\"startingPosition\":5,\"played\":26,\"points\":44},\"team\":{\"name\":\"Chelsea\",\"id\":\"8\",\"shortName\":\"Chelsea\",\"abbr\":\"CHE\"},\"home\":{\"goalsFor\":22,\"lost\"..."
+          }
+        },
+        {
+          "step": 3,
+          "description": "Fallback if CORS failure: navigate directly to API URL and/or replay from capture via CDP.",
+          "executed": false,
+          "reasonNotExecuted": "Not needed; initial fetch succeeded with 200 OK and no CORS errors."
+        }
+      ],
+      "finalOutcome": {
+        "methodUsed": "window.fetch from https://www.premierleague.com/en/ origin",
+        "corsStatus": "No CORS errors; cross-origin request permitted from this origin to sdp-prem-prod.premier-league-prod.pulselive.com for this endpoint.",
+        "requiredHeaders": "None beyond browser defaults; no custom Authorization or other headers were supplied.",
+        "notes": "The API returned valid JSON standings data for competition 8, season 2025. Only the first ~2KB of the body were captured as requested."
+      }
+    },
+    "success": true,
+    "notes": [],
+    "failure_reason": null
+  }
+}

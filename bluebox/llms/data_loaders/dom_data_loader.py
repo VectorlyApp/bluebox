@@ -461,7 +461,110 @@ class DOMDataLoader(AbstractDataLoader[DOMSnapshotEvent, DOMStats]):
 
         return results
 
+    # Public methods — Unified element extraction
+
+    # Maps element_type strings to (tag_set, post_filter, output_key)
+    ELEMENT_TYPE_MAP: dict[str, set[str]] = {
+        "inputs": FORM_INPUT_TAGS,       # INPUT, SELECT, TEXTAREA
+        "buttons": BUTTON_TAGS,           # BUTTON (+ INPUT type=submit/button via post-filter)
+        "links": LINK_TAGS,              # A
+        "headings": HEADING_TAGS,        # H1-H6
+        "meta_tags": META_TAGS,          # META
+        "hidden_inputs": frozenset({"INPUT"}),  # INPUT (filtered to type=hidden)
+    }
+
+    VALID_ELEMENT_TYPES: list[str] = [
+        "inputs", "buttons", "links", "headings",
+        "meta_tags", "hidden_inputs", "clickable",
+    ]
+
+    def get_elements(
+        self,
+        element_type: str,
+        snapshot_index: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Unified element extraction — get elements of a given type from snapshots.
+
+        Replaces the individual get_inputs/get_buttons/get_links/etc. methods
+        with a single entry point.
+
+        Args:
+            element_type: One of 'inputs', 'buttons', 'links', 'headings',
+                          'meta_tags', 'hidden_inputs', 'clickable'.
+            snapshot_index: If provided, only search this specific snapshot.
+
+        Returns:
+            List of dicts with snapshot_index, url, and elements.
+
+        Raises:
+            ValueError: If element_type is not recognized.
+        """
+        if element_type not in self.VALID_ELEMENT_TYPES:
+            raise ValueError(
+                f"Unknown element_type: {element_type!r}. "
+                f"Valid types: {self.VALID_ELEMENT_TYPES}"
+            )
+
+        # Special case: clickable uses the isClickable index, not tag matching
+        if element_type == "clickable":
+            return self.get_clickable_elements(snapshot_index)
+
+        tag_set = self.ELEMENT_TYPE_MAP[element_type]
+        results: list[dict[str, Any]] = []
+
+        for idx, entry in self._get_entries_to_search(snapshot_index):
+            elements = self._extract_elements_by_tag(entry, tag_set)
+
+            # Post-filters for special types
+            if element_type == "buttons":
+                # Also include <input type="submit"> and <input type="button">
+                inputs = self._extract_elements_by_tag(entry, {"INPUT"})
+                for inp in inputs:
+                    input_type = inp["attrs"].get("type", "").lower()
+                    if input_type in ("submit", "button"):
+                        elements.append(inp)
+
+            elif element_type == "hidden_inputs":
+                elements = [
+                    el for el in elements
+                    if el["attrs"].get("type", "").lower() == "hidden"
+                ]
+
+            elif element_type == "meta_tags":
+                # Simplify: meta tags don't need is_clickable or input_value
+                elements = [
+                    {"node_index": el["node_index"], "attrs": el["attrs"]}
+                    for el in elements
+                ]
+
+            elif element_type == "headings":
+                # Headings need child text extraction
+                if not entry.documents:
+                    continue
+                doc = entry.documents[0]
+                nodes = doc.get("nodes", {})
+                elements = [
+                    {
+                        "tag": el["tag"],
+                        "node_index": el["node_index"],
+                        "text": self._get_child_text(nodes, el["node_index"], entry.strings),
+                    }
+                    for el in elements
+                ]
+
+            if elements:
+                results.append({
+                    "snapshot_index": idx,
+                    "url": entry.url,
+                    "elements": elements,
+                })
+
+        return results
+
     # Public methods — Element extraction (tree-walking)
+    # NOTE: Legacy per-type methods kept for backward compatibility.
+    # Prefer get_elements(element_type, ...) for new code.
 
     def get_inputs(self, snapshot_index: int | None = None) -> list[dict[str, Any]]:
         """

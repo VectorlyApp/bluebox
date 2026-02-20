@@ -1,0 +1,16 @@
+{
+  "total_events": 83,
+  "user_inputs": [],
+  "clicks": [
+    "button#onetrust-accept-btn-handler (cookie banner) -- user clicked 'Accept' to dismiss cookies on the Premier League home page",
+    "svg[role=\"img\"] inside button[aria-label=\"Close Advert\"] -- user clicked the close icon to dismiss an advert takeover on the home page",
+    "a.main-nav__nav-item-link.button.button--text.button--medium (main nav item #2) -- user clicked a primary navigation link from the main nav on the home page, leading to the Premier League tables page",
+    "div.standings-row__team-name:nth-of-type(5) inside table.standings-table -- user clicked a club name in the league table on the Premier League tables page to open that club's overview page"
+  ],
+  "navigation_flow": [
+    "https://www.premierleague.com/en/ (Premier League home page) -> https://www.premierleague.com/en/tables/premier-league (Premier League Table, Standings & Form Guide)",
+    "https://www.premierleague.com/en/tables/premier-league (Premier League Table, Standings & Form Guide) -> https://www.premierleague.com/en/clubs/1/manchester-united/overview (Manchester United Team News, Fixtures & Results 2025/26)"
+  ],
+  "inferred_intent": "Browse the Premier League site to view the league table and then open a specific club's (Manchester United) overview page, after clearing cookie and advert overlays.",
+  "narrative": "Across 83 interaction events, the user mostly generated mouseover and focus noise while browsing the Premier League website. They first landed on the home page, where they interacted with the cookie consent banner and clicked the 'Accept' button to clear it. They also interacted with an advert takeover overlay and clicked the close icon within a 'Close Advert' button to dismiss the ad sheet. With overlays removed, the user moved to the main navigation bar and clicked the second main navigation item (a text-style button link), which navigated them from the home page to the 'Premier League Table, Standings & Form Guide' page. On the tables page, the user hovered over the standings table rows and then clicked on the fifth team name cell within a standings row, which corresponds to a specific club entry. This click navigated them to the club overview page at /clubs/1/manchester-united/overview, where they likely intended to view that club's news, fixtures, and results for the 2025/26 season. No form fields were filled and no text was typed; all meaningful actions were cookie/ad dismissal, navigation via the main menu, and selection of a club from the league table."
+}
