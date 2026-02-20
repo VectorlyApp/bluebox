@@ -1,0 +1,901 @@
+{
+  "total_requests": 346,
+  "endpoints": [
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/8/seasons/2025/standings",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Returns Premier League 2025 season standings table (league table data) for competition 8.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-720.0",
+        "65312.1279",
+        "interception-job-1220.0",
+        "65312.2025"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v2/matches",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 8,
+      "description": "Returns match listings for competition and season, filtered by matchweek or period/team depending on query parameters.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-722.0",
+        "65312.1281",
+        "interception-job-1223.0",
+        "65312.2027",
+        "interception-job-1196.0",
+        "65312.2001",
+        "interception-job-368.0",
+        "65312.452"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/8/seasons/2025/matchweeks/27/matches",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 6,
+      "description": "Returns detailed match list for matchweek 27 of the 2025 Premier League season (competition 8).",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-198.0",
+        "65312.272",
+        "interception-job-647.0",
+        "65312.1204",
+        "interception-job-984.0",
+        "65312.1727"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/8/seasons/2025/teams",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 8,
+      "description": "Returns list of teams in competition 8, season 2025 (club metadata for the league).",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-208.0",
+        "65312.281",
+        "interception-job-691.0",
+        "65312.1250",
+        "interception-job-1028.0",
+        "65312.1770",
+        "interception-job-1198.0",
+        "65312.2005"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/8/seasons/2025/teamform",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns aggregate form information for teams in competition 8, season 2025.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-723.0",
+        "65312.1282"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/8/seasons/2025/teams/1/form",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns recent form statistics for team 1 in competition 8, season 2025.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-1199.0",
+        "65312.2000"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v2/teams/1",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns core data for team 1 (club profile and attributes).",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-977.0",
+        "65312.1721"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v2/teams-by-id",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns team details when queried by team id parameter (here used for id=1).",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-1197.0",
+        "65312.1999"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/metadata/SDP_FOOTBALL_TEAM/1",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns metadata for football team 1 used for content linking and configuration.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-1184.0",
+        "65312.1992"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/8/seasons/2025/teams/1/nextfixture",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns the next scheduled fixture for team 1 in competition 8, season 2025.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-1200.0",
+        "65312.1998"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/8/seasons/2025/teams/players/stats/leaderboard",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 6,
+      "description": "Returns player stats leaderboard for a team with different sort metrics (goals, assists, passes).",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-1224.0",
+        "65312.2030",
+        "interception-job-1262.0",
+        "65312.2029",
+        "interception-job-1225.0",
+        "65312.2031"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/matches/2562154/events",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns event timeline for match 2562154 (goals, cards, substitutions).",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-1320.0",
+        "65312.2118"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v3/matches/2562154/lineups",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns lineups and related information for match 2562154.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-1280.0",
+        "65312.2070"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v2/competitions/8/seasons/2025/players/{playerId}/stats",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 8,
+      "description": "Returns season statistics for a specific player in competition 8, season 2025 (several players queried).",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-328.0",
+        "65312.400",
+        "interception-job-332.0",
+        "65312.404",
+        "interception-job-330.0",
+        "65312.402",
+        "interception-job-334.0",
+        "65312.406",
+        "interception-job-336.0",
+        "65312.408"
+      ]
+    },
+    {
+      "url_pattern": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/players/{playerId}",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 10,
+      "description": "Returns profile data for a specific player (several players requested).",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-329.0",
+        "65312.401",
+        "interception-job-333.0",
+        "65312.405",
+        "interception-job-335.0",
+        "65312.407",
+        "interception-job-331.0",
+        "65312.403",
+        "interception-job-337.0",
+        "65312.409",
+        "interception-job-1279.0",
+        "65312.2042",
+        "interception-job-1316.0",
+        "65312.2099",
+        "interception-job-1317.0",
+        "65312.2100"
+      ]
+    },
+    {
+      "url_pattern": "https://api.premierleague.com/broadcasting/events",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 6,
+      "description": "Returns broadcasting events schedule filtered by date range and page size.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-197.0",
+        "65312.271",
+        "interception-job-646.0",
+        "65312.1203",
+        "interception-job-983.0",
+        "65312.1726"
+      ]
+    },
+    {
+      "url_pattern": "https://api.premierleague.com/broadcasting/match-events",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Returns broadcasting-related match events for one or more sportDataId values with pagination.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-451.0",
+        "65312.685",
+        "interception-job-1287.0",
+        "65312.2040"
+      ]
+    },
+    {
+      "url_pattern": "https://api.premierleague.com/content/premierleague/en",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 12,
+      "description": "Generic content search endpoint returning Premier League articles and videos filtered by contentTypes, pagination, and flags.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-222.0",
+        "65312.293",
+        "interception-job-271.0",
+        "65312.340",
+        "interception-job-234.0",
+        "65312.305",
+        "interception-job-237.0",
+        "65312.308",
+        "interception-job-273.0",
+        "65312.342",
+        "interception-job-269.0",
+        "65312.338",
+        "interception-job-275.0",
+        "65312.344"
+      ]
+    },
+    {
+      "url_pattern": "https://api.premierleague.com/content/premierleague/playlist/en/{playlistId}",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 22,
+      "description": "Returns a curated playlist of content items (videos/text) given a playlist id, with optional pageSize and detail level.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-224.0",
+        "65312.295",
+        "interception-job-648.0",
+        "65312.1205",
+        "interception-job-1016.0",
+        "65312.1759",
+        "interception-job-223.0",
+        "65312.294",
+        "interception-job-235.0",
+        "65312.306",
+        "interception-job-236.0",
+        "65312.307",
+        "interception-job-238.0",
+        "65312.309",
+        "interception-job-274.0",
+        "65312.343",
+        "interception-job-277.0",
+        "65312.346",
+        "interception-job-276.0",
+        "65312.345",
+        "interception-job-270.0",
+        "65312.339",
+        "interception-job-272.0",
+        "65312.341",
+        "interception-job-338.0",
+        "65312.410",
+        "interception-job-270.0",
+        "65312.339",
+        "interception-job-276.0",
+        "65312.345",
+        "interception-job-274.0",
+        "65312.343",
+        "interception-job-277.0",
+        "65312.346"
+      ]
+    },
+    {
+      "url_pattern": "https://api.premierleague.com/content/premierleague/VIDEO/en/{videoId}",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 26,
+      "description": "Returns detailed metadata for a specific Premier League video asset.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-404.0",
+        "65312.563",
+        "interception-job-410.0",
+        "65312.569",
+        "interception-job-408.0",
+        "65312.567",
+        "interception-job-399.0",
+        "65312.558",
+        "interception-job-400.0",
+        "65312.559",
+        "interception-job-411.0",
+        "65312.570",
+        "interception-job-418.0",
+        "65312.577",
+        "interception-job-417.0",
+        "65312.576",
+        "interception-job-402.0",
+        "65312.561",
+        "interception-job-413.0",
+        "65312.572",
+        "interception-job-403.0",
+        "65312.562",
+        "interception-job-405.0",
+        "65312.564",
+        "interception-job-414.0",
+        "65312.573",
+        "interception-job-416.0",
+        "65312.575",
+        "interception-job-401.0",
+        "65312.560",
+        "interception-job-407.0",
+        "65312.566",
+        "interception-job-409.0",
+        "65312.568",
+        "interception-job-415.0",
+        "65312.574",
+        "interception-job-412.0",
+        "65312.571",
+        "interception-job-406.0",
+        "65312.565"
+      ]
+    },
+    {
+      "url_pattern": "https://api.premierleague.com/content/premierleague/TEXT/en/{textId}",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns detailed metadata for a specific text article by id.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-649.0",
+        "65312.1206"
+      ]
+    },
+    {
+      "url_pattern": "https://api.premierleague.com/content/premierleague/TEXT/en",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns list of text content filtered by tag names (e.g. External, OptaID).",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-1189.0",
+        "65312.2003"
+      ]
+    },
+    {
+      "url_pattern": "https://api.premierleague.com/content/premierleague/PROMO/en",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 12,
+      "description": "Returns promotional content blocks for a team, filtered by referenceExpression/references and tagNames/tagExpression.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-1185.0",
+        "65312.1996",
+        "interception-job-1183.0",
+        "65312.1991",
+        "interception-job-1181.0",
+        "65312.1989",
+        "interception-job-1188.0",
+        "65312.2002",
+        "interception-job-1182.0",
+        "65312.1990",
+        "interception-job-1186.0",
+        "65312.1997",
+        "interception-job-1190.0",
+        "65312.2004",
+        "interception-job-1235.0",
+        "65312.2028"
+      ]
+    },
+    {
+      "url_pattern": "https://api.premierleague.com/content/premierleague/photo/en/{photoId}",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 6,
+      "description": "Returns image asset metadata and URLs for a specific photo id.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-279.0",
+        "65312.348",
+        "interception-job-692.0",
+        "65312.1251",
+        "interception-job-1031.0",
+        "65312.1772"
+      ]
+    },
+    {
+      "url_pattern": "https://api.premierleague.com/content/premierleague/PHOTO/en/{photoId}",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns detailed metadata for a specific photo in DETAILED mode.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-1318.0",
+        "65312.2098"
+      ]
+    },
+    {
+      "url_pattern": "https://api.premierleague.com/country",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 12,
+      "description": "Returns country detection or configuration, likely used to localize content or enforce geo rules.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-141.0",
+        "65312.216",
+        "interception-job-196.0",
+        "65312.270",
+        "interception-job-585.0",
+        "65312.1145",
+        "interception-job-645.0",
+        "65312.1202",
+        "interception-job-957.0",
+        "65312.1701",
+        "interception-job-982.0",
+        "65312.1725"
+      ]
+    },
+    {
+      "url_pattern": "https://resources.premierleague.com/premierleague25/config/current-gameweek.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 8,
+      "description": "Static JSON configuration describing the current gameweek.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-37.0",
+        "65312.63",
+        "interception-job-140.0",
+        "65312.215",
+        "interception-job-584.0",
+        "65312.1144",
+        "interception-job-956.0",
+        "65312.1700"
+      ]
+    },
+    {
+      "url_pattern": "https://resources.premierleague.com/premierleague25/config/clubs-metadata.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 6,
+      "description": "Static JSON metadata for all clubs (names, ids, branding).",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-38.0",
+        "65312.64",
+        "interception-job-139.0",
+        "65312.214",
+        "interception-job-583.0",
+        "65312.1143"
+      ]
+    },
+    {
+      "url_pattern": "https://resources.premierleague.com/premierleague25/config/season-config/competitions/8.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Static JSON configuration for competition 8 (Premier League) for the season.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-40.0",
+        "65312.66",
+        "interception-job-138.0",
+        "65312.213"
+      ]
+    },
+    {
+      "url_pattern": "https://ipapi.co/country/",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Third-party service returning the user country code based on IP.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-34.0",
+        "interception-job-127.0",
+        "interception-job-578.0",
+        "interception-job-950.0"
+      ]
+    },
+    {
+      "url_pattern": "https://blazesdk-prod-cdn.clipro.tv/api/blazesdk/v1.3/AppConfigurations",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 6,
+      "description": "Returns Blaze SDK application configuration for video/moments integration.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-204.0",
+        "65312.277",
+        "interception-job-689.0",
+        "65312.1248",
+        "interception-job-1026.0",
+        "65312.1768"
+      ]
+    },
+    {
+      "url_pattern": "https://blazesdk-prod-cdn.clipro.tv/api/blazesdk/v1.3/stories",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns Blaze SDK stories (short video reels) filtered by labels for club profile videos.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-1205.0",
+        "65312.2007"
+      ]
+    },
+    {
+      "url_pattern": "https://blazesdk-prod-cdn.clipro.tv/api/blazesdk/v1.3/moments",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 8,
+      "description": "Returns Blaze SDK video moments filtered by different label expressions (e.g. most-viewed, archive, interview).",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-205.0",
+        "65312.278",
+        "interception-job-690.0",
+        "65312.1249",
+        "interception-job-1027.0",
+        "65312.1769",
+        "interception-job-1204.0",
+        "65312.2006"
+      ]
+    },
+    {
+      "url_pattern": "https://www.premierleague.com/",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 2,
+      "description": "Root HTML page load for premierleague.com.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-1.0",
+        "AFCAB243DF5C38562A4AD7E088D03387"
+      ]
+    },
+    {
+      "url_pattern": "https://www.premierleague.com/en/",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 2,
+      "description": "English locale landing page for premierleague.com.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-39.0",
+        "B0C9D155A0CD802E1F029449AAF6E296"
+      ]
+    },
+    {
+      "url_pattern": "https://www.premierleague.com/en/tables/premier-league",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 2,
+      "description": "HTML page for the Premier League table view.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-719.0",
+        "65312.1278"
+      ]
+    },
+    {
+      "url_pattern": "https://www.premierleague.com/en/clubs/1/manchester-united/overview",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 2,
+      "description": "HTML page for Manchester United club overview.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-977.0",
+        "65312.1721"
+      ]
+    },
+    {
+      "url_pattern": "https://firebaseinstallations.googleapis.com/v1/projects/premier-league-app-v2-prod/installations",
+      "method": "POST",
+      "category": "auth",
+      "hit_count": 2,
+      "description": "Creates or updates a Firebase installation id for the Premier League app (used for messaging/analytics).",
+      "interest": "medium",
+      "request_ids": [
+        "A86C17CDC9C51CF5AA8B022494E26678",
+        "65312.1615"
+      ]
+    },
+    {
+      "url_pattern": "https://firebaseremoteconfig.googleapis.com/v1/projects/premier-league-app-v2-prod/namespaces/firebase:fetch",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 6,
+      "description": "Fetches Firebase Remote Config parameters for the Premier League app.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-69.0",
+        "interception-job-70.0",
+        "interception-job-913.0",
+        "interception-job-914.0",
+        "65312.1616",
+        "65312.1617"
+      ]
+    },
+    {
+      "url_pattern": "https://blaze-audit.clipro.tv/api/eventaudit/v1/events",
+      "method": "POST",
+      "category": "action",
+      "hit_count": 8,
+      "description": "Blaze audit endpoint receiving client playback and interaction events for video content.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-203.0",
+        "interception-job-688.0",
+        "interception-job-1025.0",
+        "interception-job-1203.0",
+        "65312.276",
+        "65312.1247",
+        "65312.1767",
+        "65312.2008"
+      ]
+    },
+    {
+      "url_pattern": "https://analytics.tiktok.com/api/v2/pixel",
+      "method": "POST",
+      "category": "action",
+      "hit_count": 5,
+      "description": "TikTok pixel endpoint receiving analytics events from the page.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-182.0",
+        "interception-job-183.0",
+        "interception-job-184.0",
+        "interception-job-185.0",
+        "interception-job-186.0"
+      ]
+    },
+    {
+      "url_pattern": "https://analytics.tiktok.com/api/v2/pixel/act",
+      "method": "POST",
+      "category": "action",
+      "hit_count": 8,
+      "description": "TikTok pixel action endpoint receiving user interaction events.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-187.0",
+        "interception-job-188.0",
+        "interception-job-189.0",
+        "interception-job-190.0",
+        "interception-job-191.0",
+        "interception-job-192.0",
+        "interception-job-193.0",
+        "interception-job-194.0"
+      ]
+    },
+    {
+      "url_pattern": "https://analytics-ipv6.tiktokw.us/ipv6/enrich_ipv6",
+      "method": "POST",
+      "category": "action",
+      "hit_count": 1,
+      "description": "TikTok IPv6 enrichment endpoint for analytics.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-195.0"
+      ]
+    },
+    {
+      "url_pattern": "https://pixels.spotify.com/v1/config/{configId}",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 6,
+      "description": "Spotify tracking configuration endpoint.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-211.0",
+        "interception-job-212.0",
+        "interception-job-213.0",
+        "interception-job-214.0",
+        "interception-job-215.0",
+        "interception-job-216.0"
+      ]
+    },
+    {
+      "url_pattern": "https://pixels.spotify.com/v1/ingest",
+      "method": "POST",
+      "category": "action",
+      "hit_count": 6,
+      "description": "Spotify pixel ingest endpoint for analytics events.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-217.0",
+        "interception-job-218.0",
+        "interception-job-219.0",
+        "interception-job-220.0",
+        "interception-job-221.0",
+        "interception-job-225.0"
+      ]
+    },
+    {
+      "url_pattern": "https://ep1.adtrafficquality.google/getconfig/sodar",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 6,
+      "description": "Google ad traffic quality configuration endpoint (Sodar).",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-241.0",
+        "interception-job-242.0",
+        "interception-job-243.0",
+        "65312.311",
+        "65312.312",
+        "65312.313"
+      ]
+    },
+    {
+      "url_pattern": "https://ep2.adtrafficquality.google/sodar/sodar2/237/runner.html",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 3,
+      "description": "Google Sodar runner iframe for ad traffic quality.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-244.0",
+        "interception-job-245.0",
+        "interception-job-246.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.google.com/recaptcha/api2/aframe",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 3,
+      "description": "Google reCAPTCHA iframe for bot protection.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-247.0",
+        "interception-job-248.0",
+        "interception-job-249.0"
+      ]
+    },
+    {
+      "url_pattern": "https://edge.adobedc.net/ee/va6/v1/interact",
+      "method": "POST",
+      "category": "action",
+      "hit_count": 2,
+      "description": "Adobe Experience Cloud interact endpoint for analytics/personalization.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-250.0",
+        "interception-job-251.0"
+      ]
+    },
+    {
+      "url_pattern": "https://edge.adobedc.net/ee/va6/v1/privacy/set-consent",
+      "method": "POST",
+      "category": "action",
+      "hit_count": 2,
+      "description": "Adobe Experience Cloud consent endpoint for privacy settings.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-252.0",
+        "interception-job-253.0"
+      ]
+    },
+    {
+      "url_pattern": "https://o4504101252104192.ingest.us.sentry.io/api/4508676591910912/envelope/",
+      "method": "POST",
+      "category": "action",
+      "hit_count": 2,
+      "description": "Sentry error tracking envelope ingest endpoint.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-254.0",
+        "interception-job-255.0"
+      ]
+    },
+    {
+      "url_pattern": "https://sync.ecal.com/",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 1,
+      "description": "ECAL sync endpoint likely used for calendar integrations.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-256.0"
+      ]
+    },
+    {
+      "url_pattern": "https://blaze-audit.clipro.tv/api/eventaudit/v1/events",
+      "method": "OPTIONS",
+      "category": "action",
+      "hit_count": 8,
+      "description": "CORS preflight for Blaze audit events endpoint.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-202.0",
+        "interception-job-687.0",
+        "interception-job-1024.0",
+        "interception-job-1202.0",
+        "65312.275",
+        "65312.1246",
+        "65312.1766",
+        "65312.2009"
+      ]
+    },
+    {
+      "url_pattern": "https://firebaseremoteconfig.googleapis.com/v1/projects/premier-league-app-v2-prod/namespaces/firebase:fetch",
+      "method": "OPTIONS",
+      "category": "action",
+      "hit_count": 8,
+      "description": "CORS preflight for Firebase Remote Config fetch endpoint.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-67.0",
+        "interception-job-68.0",
+        "interception-job-911.0",
+        "interception-job-912.0",
+        "65312.1614",
+        "65312.1615",
+        "65312.1618",
+        "65312.1619"
+      ]
+    },
+    {
+      "url_pattern": "https://firebaseinstallations.googleapis.com/v1/projects/premier-league-app-v2-prod/installations",
+      "method": "OPTIONS",
+      "category": "action",
+      "hit_count": 3,
+      "description": "CORS preflight for Firebase installations endpoint.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-66.0",
+        "interception-job-910.0",
+        "65312.1613"
+      ]
+    }
+  ],
+  "auth_observations": [
+    "No Authorization, Cookie, CSRF, or API-key-style auth headers were observed on core Premier League or Pulselive API requests; all appear to be public, unauthenticated GETs.",
+    "BlazeSDK requests include an ApiKey query parameter in the URL (public SDK key) rather than a secret Authorization header.",
+    "Firebase-related endpoints (installations and remote config) are called without explicit auth headers from the browser; they rely on embedded API keys in the URL and Firebase platform rules.",
+    "Analytics and tracking endpoints (TikTok, Spotify, Adobe, Sentry, Google adtrafficquality) similarly do not show explicit Authorization headers; they identify the app via pixel ids or keys in the URL or body.",
+    "CORS preflight (OPTIONS) requests are present for several POST endpoints (Blaze audit, Firebase), but they do not carry auth tokens either."
+  ],
+  "narrative": "346 total requests were captured across 18 hosts. Core business traffic is concentrated on api.premierleague.com (132 requests) and sdp-prem-prod.premier-league-prod.pulselive.com (84 requests), which together account for 216 requests. Static config from resources.premierleague.com contributes 18 requests. Roughly 80 requests are clear analytics/tracking noise (TikTok, Spotify, Adobe, Sentry, Blaze audit, Google adtrafficquality, Firebase infra), and about 32 are other supporting or navigation requests (HTML pages, reCAPTCHA, ECAL, ipapi).\n\nDistinct API patterns were grouped by URL and normalized query parameters. On the data side, Pulselive provides the structured football data: standings, matches, teams, team form, next fixtures, player profiles and stats, and match events/lineups. The most central endpoints for automating league-table and match-related tasks are:\n- /api/v5/competitions/8/seasons/2025/standings (league table)\n- /api/v2/matches and /api/v1/competitions/8/seasons/2025/matchweeks/27/matches (fixtures by competition/season/matchweek or other filters)\n- /api/v1/competitions/8/seasons/2025/teams and /api/v2/teams/1, /api/v2/teams-by-id (club lists and details)\n- /api/v1/competitions/8/seasons/2025/teams/players/stats/leaderboard and /api/v2/competitions/8/seasons/2025/players/{playerId}/stats (player statistics)\n- /api/v1/matches/2562154/events and /api/v3/matches/2562154/lineups (per-match timelines and lineups).\n\napi.premierleague.com complements this with content and media endpoints: generic content search (/content/premierleague/en), playlists, text and video detail endpoints, promo blocks tied to team metadata, and photo endpoints, plus broadcasting schedule and match-events endpoints. These are high-value for automating content discovery and linking to the structured data from Pulselive.\n\nNo explicit authentication is used for these football data/content APIs: they are all simple GET requests over HTTPS with standard browser headers. There are no Authorization or Cookie headers on the core APIs in this capture, implying the data is public-read. Third-party SDKs (Blaze, Firebase, TikTok, Spotify, Adobe, Sentry) use embedded keys or ids in URLs/bodies and do not expose bearer tokens.\n\nFor automation, the main endpoint that returns the league-table data needed for table-related tasks is sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/8/seasons/2025/standings, which surfaces the current standings for competition 8. Combined with the matches and team endpoints on the same host, and the broadcasting/content endpoints on api.premierleague.com, it is possible to reconstruct tables, fixtures, and rich content around each club or match programmatically. Noise endpoints (analytics pixels, tracking, CORS preflights, reCAPTCHA, adtrafficquality) can be safely ignored when building such automations."
+}

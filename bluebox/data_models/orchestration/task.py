@@ -53,6 +53,8 @@ class SpecialistAgentType(StrEnum):
     NETWORK_SPECIALIST = "network_specialist"
     VALUE_TRACE_RESOLVER = "value_trace_resolver"
     INTERACTION_SPECIALIST = "interaction_specialist"
+    EXPERIMENT_WORKER = "experiment_worker"
+    ROUTINE_INSPECTOR = "routine_inspector"
 
 
 class Task(BaseModel):

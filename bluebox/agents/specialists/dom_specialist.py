@@ -53,15 +53,9 @@ class DOMSpecialist(AbstractSpecialist):
         ## What You Analyze
 
         - **Forms**: Login forms, search forms, checkout forms — with their inputs, actions, and methods
-        - **Inputs**: Text fields, dropdowns, checkboxes, date pickers — anything the user can fill in
-        - **Buttons**: Submit buttons, action buttons, navigation buttons
-        - **Links**: Navigation links, action links, external links
+        - **Elements**: Inputs, buttons, links, headings, meta tags, hidden inputs, clickable elements
         - **Tables**: Data tables with headers and row counts
-        - **Headings**: Page titles and section headers (H1-H6)
-        - **Clickable elements**: Anything the browser marked as interactive
-        - **Meta tags**: CSRF tokens, API endpoints, verification keys, OG tags, page config
         - **Script tags**: Server-side data blobs (__NEXT_DATA__, __NUXT__), inline JSON config, structured data (ld+json)
-        - **Hidden inputs**: CSRF tokens, session IDs, form tokens — security-relevant values
 
         ## What to Ignore
 
@@ -71,10 +65,10 @@ class DOMSpecialist(AbstractSpecialist):
         ## How to Work
 
         1. Start with `list_pages` to see all captured pages
-        2. Use element extraction tools to scan for forms, inputs, buttons, links
-        3. Use `get_meta_tags` to find CSRF tokens, API configs, and page metadata
-        4. Use `get_scripts` to find server-side data blobs and inline configuration
-        5. Use `get_hidden_inputs` to find hidden tokens and session IDs
+        2. Use `get_elements(element_type=...)` to scan for inputs, buttons, links, headings, meta_tags, hidden_inputs, or clickable elements
+        3. Use `get_forms` for forms with their child inputs
+        4. Use `get_tables` for data tables
+        5. Use `get_scripts` to find server-side data blobs and inline configuration
         6. Use `get_snapshot_diff` to understand what changed between pages
         7. Use `search_strings` to find specific content across snapshots
 
@@ -97,16 +91,18 @@ class DOMSpecialist(AbstractSpecialist):
 
         1. **Survey**: Use `list_pages` to see all captured pages
         2. **Scan forms**: Use `get_forms` to find all forms with their inputs
-        3. **Scan inputs**: Use `get_inputs` for standalone inputs outside forms
-        4. **Scan buttons**: Use `get_buttons` for all action triggers
-        5. **Scan links**: Use `get_links` for navigation options
-        6. **Scan tables**: Use `get_tables` for data displays
-        7. **Scan headings**: Use `get_headings` for page structure
-        8. **Scan meta tags**: Use `get_meta_tags` to find CSRF tokens, API configs, verification keys
-        9. **Scan scripts**: Use `get_scripts` to find __NEXT_DATA__, inline JSON, framework state blobs
-        10. **Scan hidden inputs**: Use `get_hidden_inputs` to find CSRF tokens and session IDs
-        11. **Check diffs**: Use `get_snapshot_diff` between consecutive pages to see what changed
-        12. **Finalize**: Call the appropriate finalize tool with your findings
+        3. **Scan elements**: Use `get_elements(element_type=...)` for each type:
+           - `inputs` — text fields, dropdowns, checkboxes, date pickers
+           - `buttons` — submit buttons, action buttons
+           - `links` — anchor links with href values
+           - `headings` — H1-H6 page structure
+           - `meta_tags` — CSRF tokens, API configs, verification keys
+           - `hidden_inputs` — CSRF tokens, session IDs, form tokens
+           - `clickable` — anything the browser marked as interactive
+        4. **Scan tables**: Use `get_tables` for data displays
+        5. **Scan scripts**: Use `get_scripts` to find __NEXT_DATA__, inline JSON, framework state blobs
+        6. **Check diffs**: Use `get_snapshot_diff` between consecutive pages to see what changed
+        7. **Finalize**: Call the appropriate finalize tool with your findings
 
         ## Output Focus
 
@@ -201,54 +197,33 @@ class DOMSpecialist(AbstractSpecialist):
 
     @agent_tool()
     @token_optimized
-    def _get_inputs(self, snapshot_index: int | None = None) -> dict[str, Any]:
+    def _get_elements(self, element_type: str, snapshot_index: int | None = None) -> dict[str, Any]:
         """
-        Get all input fields (INPUT, SELECT, TEXTAREA) from snapshots.
+        Get elements of a specific type from DOM snapshots.
 
-        Returns elements with their attributes (name, type, placeholder, value).
-
-        Args:
-            snapshot_index: If provided, only search this specific snapshot. Otherwise searches all.
-        """
-        results = self._dom_data_loader.get_inputs(snapshot_index)
-        total = sum(len(r["elements"]) for r in results)
-        return {
-            "total_inputs": total,
-            "snapshots_with_inputs": len(results),
-            "results": results,
-        }
-
-    @agent_tool()
-    @token_optimized
-    def _get_buttons(self, snapshot_index: int | None = None) -> dict[str, Any]:
-        """
-        Get all buttons from snapshots (BUTTON elements and INPUT type=submit/button).
+        A single tool that replaces individual per-type tools. Supports:
+        - 'inputs' — INPUT, SELECT, TEXTAREA fields with their attributes and values
+        - 'buttons' — BUTTON elements and INPUT type=submit/button
+        - 'links' — anchor links (<a>) with href values
+        - 'headings' — H1-H6 elements with their text content
+        - 'meta_tags' — META elements (CSRF tokens, API endpoints, OG tags, page config)
+        - 'hidden_inputs' — INPUT type=hidden (CSRF tokens, session IDs, form tokens)
+        - 'clickable' — all elements marked as clickable by the browser
 
         Args:
+            element_type: One of 'inputs', 'buttons', 'links', 'headings', 'meta_tags', 'hidden_inputs', 'clickable'.
             snapshot_index: If provided, only search this specific snapshot. Otherwise searches all.
         """
-        results = self._dom_data_loader.get_buttons(snapshot_index)
+        try:
+            results = self._dom_data_loader.get_elements(element_type, snapshot_index)
+        except ValueError as e:
+            return {"error": str(e)}
+
         total = sum(len(r["elements"]) for r in results)
         return {
-            "total_buttons": total,
-            "snapshots_with_buttons": len(results),
-            "results": results,
-        }
-
-    @agent_tool()
-    @token_optimized
-    def _get_links(self, snapshot_index: int | None = None) -> dict[str, Any]:
-        """
-        Get all anchor links (<a>) from snapshots with their href values.
-
-        Args:
-            snapshot_index: If provided, only search this specific snapshot. Otherwise searches all.
-        """
-        results = self._dom_data_loader.get_links(snapshot_index)
-        total = sum(len(r["elements"]) for r in results)
-        return {
-            "total_links": total,
-            "snapshots_with_links": len(results),
+            "element_type": element_type,
+            "total_elements": total,
+            "snapshots_with_elements": len(results),
             "results": results,
         }
 
@@ -288,59 +263,6 @@ class DOMSpecialist(AbstractSpecialist):
 
     @agent_tool()
     @token_optimized
-    def _get_headings(self, snapshot_index: int | None = None) -> dict[str, Any]:
-        """
-        Get all heading elements (H1-H6) with their text content.
-
-        Args:
-            snapshot_index: If provided, only search this specific snapshot. Otherwise searches all.
-        """
-        results = self._dom_data_loader.get_headings(snapshot_index)
-        total = sum(len(r["headings"]) for r in results)
-        return {
-            "total_headings": total,
-            "snapshots_with_headings": len(results),
-            "results": results,
-        }
-
-    @agent_tool()
-    @token_optimized
-    def _get_clickable_elements(self, snapshot_index: int | None = None) -> dict[str, Any]:
-        """
-        Get all elements marked as clickable by the browser (via event listeners or default behavior).
-
-        Args:
-            snapshot_index: If provided, only search this specific snapshot. Otherwise searches all.
-        """
-        results = self._dom_data_loader.get_clickable_elements(snapshot_index)
-        total = sum(len(r["elements"]) for r in results)
-        return {
-            "total_clickable": total,
-            "snapshots_with_clickable": len(results),
-            "results": results,
-        }
-
-    @agent_tool()
-    @token_optimized
-    def _get_meta_tags(self, snapshot_index: int | None = None) -> dict[str, Any]:
-        """
-        Get all <meta> elements with their attributes (name, content, property, charset).
-
-        Useful for finding CSRF tokens, API endpoints, OG tags, verification keys, and page config.
-
-        Args:
-            snapshot_index: If provided, only search this specific snapshot. Otherwise searches all.
-        """
-        results = self._dom_data_loader.get_meta_tags(snapshot_index)
-        total = sum(len(r["meta_tags"]) for r in results)
-        return {
-            "total_meta_tags": total,
-            "snapshots_with_meta": len(results),
-            "results": results,
-        }
-
-    @agent_tool()
-    @token_optimized
     def _get_scripts(self, snapshot_index: int | None = None, max_inline_chars: int = 2000) -> dict[str, Any]:
         """
         Get all <script> elements with their attributes and inline content.
@@ -357,26 +279,6 @@ class DOMSpecialist(AbstractSpecialist):
         return {
             "total_scripts": total,
             "snapshots_with_scripts": len(results),
-            "results": results,
-        }
-
-    @agent_tool()
-    @token_optimized
-    def _get_hidden_inputs(self, snapshot_index: int | None = None) -> dict[str, Any]:
-        """
-        Get all <input type="hidden"> elements.
-
-        Hidden inputs often carry CSRF tokens, session IDs, form tokens, and other
-        security-relevant values submitted with forms.
-
-        Args:
-            snapshot_index: If provided, only search this specific snapshot. Otherwise searches all.
-        """
-        results = self._dom_data_loader.get_hidden_inputs(snapshot_index)
-        total = sum(len(r["elements"]) for r in results)
-        return {
-            "total_hidden_inputs": total,
-            "snapshots_with_hidden_inputs": len(results),
             "results": results,
         }
 

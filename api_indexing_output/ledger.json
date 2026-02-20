@@ -1,0 +1,124 @@
+{
+  "user_task": "Make routines of useful scraping APIs from the Premier League website",
+  "routine_specs": [
+    {
+      "id": "fuvitv",
+      "name": "nav_base_pl_site",
+      "description": "Navigate to premierleague.com English homepage and confirm core JS/config is loaded (window.PULSE.envPaths, ACTIVE_PL_SEASON_ID, SDP_API).",
+      "status": "planned",
+      "priority": 1,
+      "depends_on_specs": [],
+      "experiment_ids": [],
+      "attempt_ids": [],
+      "shipped_attempt_id": null,
+      "failure_reason": null
+    },
+    {
+      "id": "a9igpy",
+      "name": "pl_standings_table",
+      "description": "Fetch Premier League standings table for a given competition and season using Pulselive standings API.",
+      "status": "planned",
+      "priority": 1,
+      "depends_on_specs": [],
+      "experiment_ids": [],
+      "attempt_ids": [],
+      "shipped_attempt_id": null,
+      "failure_reason": null
+    },
+    {
+      "id": "9h4fqb",
+      "name": "pl_fixtures_by_matchweek",
+      "description": "Fetch fixtures for a given competition, season, and matchweek using Pulselive matches APIs.",
+      "status": "planned",
+      "priority": 1,
+      "depends_on_specs": [],
+      "experiment_ids": [],
+      "attempt_ids": [],
+      "shipped_attempt_id": null,
+      "failure_reason": null
+    },
+    {
+      "id": "rpbd2j",
+      "name": "pl_teams_list",
+      "description": "Fetch list of teams for a given competition and season using Pulselive teams API.",
+      "status": "planned",
+      "priority": 2,
+      "depends_on_specs": [],
+      "experiment_ids": [],
+      "attempt_ids": [],
+      "shipped_attempt_id": null,
+      "failure_reason": null
+    },
+    {
+      "id": "3h2qaz",
+      "name": "pl_team_profile_bundle",
+      "description": "Given a team id, fetch core team details, form, next fixture, promo content, and media using Pulselive and api.premierleague.com content endpoints.",
+      "status": "planned",
+      "priority": 2,
+      "depends_on_specs": [],
+      "experiment_ids": [],
+      "attempt_ids": [],
+      "shipped_attempt_id": null,
+      "failure_reason": null
+    },
+    {
+      "id": "ezjyen",
+      "name": "pl_player_profile_and_stats",
+      "description": "Given a player id, fetch player profile and season stats for a given competition and season.",
+      "status": "planned",
+      "priority": 2,
+      "depends_on_specs": [],
+      "experiment_ids": [],
+      "attempt_ids": [],
+      "shipped_attempt_id": null,
+      "failure_reason": null
+    },
+    {
+      "id": "pkigdd",
+      "name": "pl_match_details",
+      "description": "Given a match id, fetch match events timeline and lineups.",
+      "status": "planned",
+      "priority": 3,
+      "depends_on_specs": [],
+      "experiment_ids": [],
+      "attempt_ids": [],
+      "shipped_attempt_id": null,
+      "failure_reason": null
+    },
+    {
+      "id": "dhtq4h",
+      "name": "pl_content_search",
+      "description": "Search Premier League content (articles and videos) with filters like contentTypes, tags, and pagination.",
+      "status": "planned",
+      "priority": 3,
+      "depends_on_specs": [],
+      "experiment_ids": [],
+      "attempt_ids": [],
+      "shipped_attempt_id": null,
+      "failure_reason": null
+    },
+    {
+      "id": "4bqtn9",
+      "name": "pl_playlist_items",
+      "description": "Fetch items for a given Premier League content playlist id.",
+      "status": "planned",
+      "priority": 3,
+      "depends_on_specs": [],
+      "experiment_ids": [],
+      "attempt_ids": [],
+      "shipped_attempt_id": null,
+      "failure_reason": null
+    }
+  ],
+  "active_spec_id": "fuvitv",
+  "experiments": [],
+  "proven": {
+    "fetches": [],
+    "navigations": [],
+    "tokens": [],
+    "parameters": []
+  },
+  "unresolved": [],
+  "attempts": [],
+  "catalog": null
+}
