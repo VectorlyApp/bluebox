@@ -44,8 +44,6 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.orchestration.task import Task, SubAgent, TaskStatus, SpecialistAgentType
 from bluebox.data_models.orchestration.state import AgentOrchestrationState
 from bluebox.data_models.routine.endpoint import HTTPMethod
-from bluebox.data_models.routine.parameter import VALID_PLACEHOLDER_PREFIXES, BUILTIN_PARAMETERS
-from bluebox.data_models.routine.placeholder import extract_placeholders_from_json_str
 from bluebox.data_models.routine.routine import Routine
 from bluebox.data_models.routine_discovery.state import RoutineDiscoveryState, DiscoveryPhase
 from bluebox.data_models.routine_discovery.llm_responses import (
@@ -178,8 +176,7 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
 
         1. Use `get_discovery_context` to see all processed data (includes CRITICAL_OBSERVED_VALUES)
         2. Review the **Routine Schema Reference** below for required fields and operation types
-        3. Use `validate_placeholders` on your fetch bodies/headers to catch quoting errors early
-        4. Use `construct_routine` with the routine definition:
+        3. Use `construct_routine` with the routine definition:
            - `routine`: the routine definition (name, description, parameters, operations)
 
         **If browser is connected (validation available):**
@@ -1775,107 +1772,6 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
         return context
 
     ## Tools - Routine Construction
-
-    @agent_tool(
-        description=(
-            "Validate placeholder syntax in a JSON string before constructing a routine. "
-            "Checks quoting, prefixes, and parameter type compatibility. "
-            "Pass the JSON body/headers you plan to use and the parameter definitions."
-        ),
-        parameters={
-            "type": "object",
-            "properties": {
-                "json_string": {
-                    "type": "string",
-                    "description": (
-                        "The JSON string containing placeholders to validate. "
-                        "Example: '{\"query\": \"{{search_term}}\", \"page\": \"{{page_number}}\"}'"
-                    ),
-                },
-                "parameters": {
-                    "type": "array",
-                    "description": (
-                        "Parameter definitions. Each needs 'name' and 'type'. "
-                        "Example: [{\"name\": \"search_term\", \"type\": \"string\"}, {\"name\": \"page_number\", \"type\": \"integer\"}]"
-                    ),
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "type": {"type": "string"},
-                        },
-                        "required": ["name", "type"],
-                    },
-                },
-            },
-            "required": ["json_string"],
-        },
-        availability=lambda self: self._discovery_state.root_transaction is not None,
-    )
-    def _validate_placeholders(
-        self,
-        json_string: str,
-        parameters: list[dict[str, str]] | None = None,
-    ) -> dict[str, Any]:
-        """
-        Validate placeholder syntax in a JSON string before routine construction.
-
-        Checks that placeholders have valid prefixes and that all defined
-        parameters are used.
-
-        Args:
-            json_string: JSON string containing {{...}} placeholders to validate.
-            parameters: Optional parameter definitions with 'name' and 'type' fields.
-        """
-        placeholders = extract_placeholders_from_json_str(json_string)
-
-        if not placeholders:
-            return {"valid": True, "placeholders_found": 0, "message": "No placeholders found in string."}
-
-        # Build param name set from provided definitions
-        defined_param_names: set[str] = set()
-        if parameters:
-            for p in parameters:
-                if "name" in p:
-                    defined_param_names.add(p["name"])
-
-        builtin_names = {bp.name for bp in BUILTIN_PARAMETERS}
-        errors: list[str] = []
-        validated: list[dict[str, str]] = []
-
-        for content in placeholders:
-            # Storage/meta/window prefix check
-            if ":" in content:
-                prefix, path = [s.strip() for s in content.split(":", 1)]
-                if prefix not in VALID_PLACEHOLDER_PREFIXES:
-                    errors.append(
-                        f"Invalid prefix '{prefix}' in placeholder '{{{{{content}}}}}'. "
-                        f"Valid: {sorted(VALID_PLACEHOLDER_PREFIXES)}"
-                    )
-                elif not path:
-                    errors.append(f"Path is required after '{prefix}:' in placeholder '{{{{{content}}}}}'.")
-                else:
-                    validated.append({"placeholder": content, "type": "storage/meta", "status": "ok"})
-                continue
-
-            # Builtin check
-            if content in builtin_names:
-                validated.append({"placeholder": content, "type": "builtin", "status": "ok"})
-                continue
-
-            # User-defined parameter — check if defined
-            if parameters is not None and content not in defined_param_names:
-                errors.append(f"Placeholder '{{{{{content}}}}}' not found in parameter definitions.")
-                continue
-
-            validated.append({"placeholder": content, "type": "param", "status": "ok"})
-
-        return {
-            "valid": len(errors) == 0,
-            "placeholders_found": len(placeholders),
-            "validated": validated,
-            "errors": errors,
-        }
 
     @agent_tool(
         description="Construct a routine from discovered data. After constructing, use validate_routine to test it.",
