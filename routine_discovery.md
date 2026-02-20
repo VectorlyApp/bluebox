@@ -247,8 +247,6 @@ routine_discovery_output/
 
 ⚠️ **Prerequisite:** Chrome must still be running in debug mode (`127.0.0.1:9222`).
 
-> **String escaping gotcha:** If a string parameter appears in a JSON body as `"{{PARAM}}"`, it may need to be `"\"{{PARAM}}\""` to ensure proper JSON string escaping.
-
 ```bash
 # Run an example routine (from a parameters file):
 bluebox-execute \
@@ -309,7 +307,7 @@ bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.js
 
 - Defined as typed inputs (see [`Parameter`](https://github.com/VectorlyApp/bluebox/blob/main/bluebox/data_models/routine/parameter.py) class).
 - Each parameter has required `name` and `description` fields. Optional fields include `type` (defaults to `string`), `required` (defaults to `true`), `default`, and `examples`.
-- Parameters are referenced inside `operations` using placeholder tokens like `"{{paramName}}"` or `\"{{paramName}}\"` (see [Placeholder Interpolation](#placeholder-interpolation) below).
+- Parameters are referenced inside `operations` using `"{{paramName}}"` placeholder tokens (see [Placeholder Interpolation](#placeholder-interpolation) below). `Parameter.type` drives coercion at runtime.
 - **Parameter Types**: Supported types include `string`, `integer`, `number`, `boolean`, `date`, `datetime`, `email`, `url`, and `enum`.
 - **Parameter Validation**: Parameters support validation constraints such as `min_length`, `max_length`, `min_value`, `max_value`, `pattern` (regex), `enum_values`, and `format`.
 - **Reserved Prefixes**: Parameter names cannot start with reserved prefixes: `sessionStorage`, `localStorage`, `cookie`, `meta`, `windowProperty`, `uuid`, `epoch_milliseconds`.
@@ -377,7 +375,7 @@ Each operation specifies a `type` and its parameters:
   ```
 - **input_text** — type text into an input element. Validates visibility before typing.
   ```json
-  { "type": "input_text", "selector": "#username", "text": "\"{{username}}\"", "clear": false }
+  { "type": "input_text", "selector": "#username", "text": "{{username}}", "clear": false }
   ```
 - **press** — press a keyboard key (enter, tab, escape, etc.).
   ```json
@@ -422,7 +420,7 @@ Each operation specifies a `type` and its parameters:
     "endpoint": {
       "method": "POST",
       "url": "/auth",
-      "body": { "username": "\"{{user}}\"", "password": "\"{{pass}}\"" }
+      "body": { "username": "{{user}}", "password": "{{pass}}" }
     },
     "session_storage_key": "token"
   },
@@ -436,7 +434,7 @@ This defines a deterministic flow: open → wait → authenticate → return a s
 
 Placeholders inside operation fields are resolved at runtime:
 
-- **Parameter placeholders**: `"{{paramName}}"` or `\"{{paramName}}\"` → substituted from routine parameters
+- **Parameter placeholders**: `"{{paramName}}"` → substituted from routine parameters. `Parameter.type` drives coercion (standalone `"{{param}}"` → typed value; substring `"prefix {{param}}"` → string)
 - **Storage placeholders** (read values from the current session):
   - `{{sessionStorage:myKey.path.to.value}}` — access nested values in sessionStorage
   - `{{localStorage:myKey}}` — access localStorage values
@@ -444,7 +442,7 @@ Placeholders inside operation fields are resolved at runtime:
   - `{{meta:name}}` — read meta tag content (e.g., `<meta name="csrf-token">`)
   - `{{windowProperty:path.to.value}}` — access window property values
 
-**Important:** Currently, `sessionStorage`, `localStorage`, `cookie`, `meta`, and `windowProperty` placeholder resolution is supported only inside fetch `headers` and `body`. Future versions will support interpolation anywhere in operations.
+**Important:** Currently, `sessionStorage`, `localStorage`, `cookie`, `meta`, and `windowProperty` placeholder resolution is supported only inside fetch `headers` and `body`.
 
 Interpolation occurs before an operation executes. For example, a fetch endpoint might be:
 
@@ -453,7 +451,7 @@ Interpolation occurs before an operation executes. For example, a fetch endpoint
   "type": "fetch",
   "endpoint": {
     "method": "GET",
-    "url": "https://api.example.com/search?paramName1=\"{{paramName1}}\"&paramName2=\"{{paramName1}}\"",
+    "url": "https://api.example.com/search?paramName1={{paramName1}}&paramName2={{paramName1}}",
     "headers": {
       "Authorization": "Bearer {{cookie:auth_token}}"
     },

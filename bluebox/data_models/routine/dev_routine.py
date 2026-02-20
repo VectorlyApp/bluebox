@@ -12,7 +12,7 @@ Key differences from production Routine:
 """
 
 import re
-from typing import Union, Literal
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -66,12 +66,7 @@ class DevReturnOperation(BaseModel):
 
 
 # Dev routine operation union
-DevOperationUnion = Union[
-    DevNavigateOperation,
-    DevSleepOperation,
-    DevFetchOperation,
-    DevReturnOperation,
-]
+DevOperationUnion = DevNavigateOperation | DevSleepOperation | DevFetchOperation | DevReturnOperation
 
 
 class DevRoutine(BaseModel):

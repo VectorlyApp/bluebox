@@ -15,7 +15,7 @@ Executes an HTTP request using the browser's fetch API. Supports full placeholde
     "url": "https://api.example.com/search",
     "method": "POST",
     "headers": {"Content-Type": "application/json"},
-    "body": {"query": "\"{{search_term}}\""},
+    "body": {"query": "{{search_term}}"},
     "credentials": "same-origin"
   },
   "session_storage_key": "search_results"
@@ -46,12 +46,12 @@ Executes an HTTP request using the browser's fetch API. Supports full placeholde
 
 | Source         | Example                                                 |
 | -------------- | ------------------------------------------------------- |
-| User params    | `"query": "\"{{search_term}}\""`                      |
-| sessionStorage | `"token": "\"{{sessionStorage:auth.access_token}}\""` |
-| localStorage   | `"theme": "\"{{localStorage:user.theme}}\""`          |
-| Cookies        | `"session": "\"{{cookie:session_id}}\""`              |
-| Window props   | `"key": "\"{{windowProperty:__CONFIG__.apiKey}}\""`   |
-| Builtins       | `"id": "\"{{uuid}}\""`                                |
+| User params    | `"query": "{{search_term}}"`                      |
+| sessionStorage | `"token": "{{sessionStorage:auth.access_token}}"` |
+| localStorage   | `"theme": "{{localStorage:user.theme}}"`          |
+| Cookies        | `"session": "{{cookie:session_id}}"`              |
+| Window props   | `"key": "{{windowProperty:__CONFIG__.apiKey}}"`   |
+| Builtins       | `"id": "{{uuid}}"`                                |
 
 ### Credentials Modes
 
@@ -121,7 +121,7 @@ Use `session_storage_key` to store the response for use in later operations:
       "url": "https://api.example.com/data",
       "method": "GET",
       "headers": {
-        "Authorization": "Bearer \"{{sessionStorage:auth_response.token}}\""
+        "Authorization": "Bearer {{sessionStorage:auth_response.token}}"
       }
     },
     "session_storage_key": "data_response"
@@ -150,7 +150,7 @@ Use dot notation for nested paths, numeric indices for arrays:
 {
   "type": "fetch",
   "endpoint": {
-    "url": "https://api.example.com/users/\"{{user_id}}\"",
+    "url": "https://api.example.com/users/{{user_id}}",
     "method": "GET",
     "headers": {"Accept": "application/json"},
     "credentials": "same-origin"
@@ -169,7 +169,7 @@ Use dot notation for nested paths, numeric indices for arrays:
     "method": "POST",
     "headers": {"Content-Type": "application/json"},
     "body": {
-      "query": "\"{{search_term}}\"",
+      "query": "{{search_term}}",
       "limit": "{{limit}}",
       "filters": {"active": true}
     },
@@ -188,8 +188,8 @@ Use dot notation for nested paths, numeric indices for arrays:
     "url": "https://api.example.com/protected",
     "method": "GET",
     "headers": {
-      "Authorization": "Bearer \"{{sessionStorage:login.token}}\"",
-      "X-Request-ID": "\"{{uuid}}\""
+      "Authorization": "Bearer {{sessionStorage:login.token}}",
+      "X-Request-ID": "{{uuid}}"
     },
     "credentials": "include"
   },
@@ -207,8 +207,8 @@ Use dot notation for nested paths, numeric indices for arrays:
     "method": "POST",
     "headers": {"Content-Type": "application/x-www-form-urlencoded"},
     "body": {
-      "username": "\"{{username}}\"",
-      "password": "\"{{password}}\""
+      "username": "{{username}}",
+      "password": "{{password}}"
     },
     "credentials": "same-origin"
   },
@@ -247,11 +247,11 @@ Downloads a binary file (PDF, image, etc.) and returns it as base64. Typically t
 {
   "type": "download",
   "endpoint": {
-    "url": "https://arxiv.org/pdf/\"{{paper_id}}\"",
+    "url": "https://arxiv.org/pdf/{{paper_id}}",
     "method": "GET",
     "credentials": "omit"
   },
-  "filename": "\"{{paper_id}}\".pdf"
+  "filename": "{{paper_id}}.pdf"
 }
 ```
 
@@ -289,7 +289,7 @@ Returns array of cookie objects with `name`, `value`, `domain`, `path`, etc.
       "url": "https://api.example.com/auth",
       "method": "POST",
       "headers": {"Content-Type": "application/json"},
-      "body": {"api_key": "\"{{api_key}}\""}
+      "body": {"api_key": "{{api_key}}"}
     },
     "session_storage_key": "auth"
   },
@@ -298,7 +298,7 @@ Returns array of cookie objects with `name`, `value`, `domain`, `path`, etc.
     "endpoint": {
       "url": "https://api.example.com/data",
       "method": "GET",
-      "headers": {"Authorization": "Bearer \"{{sessionStorage:auth.token}}\""}
+      "headers": {"Authorization": "Bearer {{sessionStorage:auth.token}}"}
     },
     "session_storage_key": "result"
   },
@@ -333,4 +333,4 @@ Returns array of cookie objects with `name`, `value`, `domain`, `path`, etc.
 2. **Use `credentials: "include"`** - When you need the site's session cookies
 3. **Chain with sessionStorage** - Store intermediate results, access via `{{sessionStorage:key.path}}`
 4. **Copy headers from network traffic** - Match the real request headers
-5. **Escape-quote string placeholders** - Use `"\"{{param}}\""` for strings in body/headers
+5. **Match parameter types to CDP** - If the raw request sends `"5"` (string), use `type=string`
