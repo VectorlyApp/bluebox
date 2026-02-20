@@ -201,11 +201,6 @@ cdp_captures/
 ├── network/
 │   ├── events.jsonl
 │   ├── javascript_events.jsonl
-│   └── transactions/
-│       └── <timestamp_url_id>/
-│           ├── request.json
-│           ├── response.json
-│           └── response_body.[ext]
 ├── storage/
 │   └── events.jsonl
 ├── interaction/
