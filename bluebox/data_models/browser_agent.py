@@ -36,6 +36,9 @@ class BrowserAgentDoneEvent(BrowserAgentSSEEvent):
     n_steps: int = Field(default=0, description="Number of steps executed")
     execution_id: str | None = Field(default=None, description="Unique execution identifier")
     duration_seconds: float | None = Field(default=None, description="Total execution duration in seconds")
+    prompt_tokens: int | None = Field(default=None, description="Total input tokens consumed by the browser agent LLM")
+    completion_tokens: int | None = Field(default=None, description="Total output tokens consumed by the browser agent LLM")
+    total_tokens: int | None = Field(default=None, description="Total tokens consumed by the browser agent LLM")
 
 
 class BrowserAgentErrorEvent(BrowserAgentSSEEvent):

@@ -32,6 +32,7 @@ from bluebox.data_models.llms.interaction import (
     ChatResponseEmittedMessage,
     ChatThread,
     EmittedMessage,
+    LLMChatResponse,
     StatusUpdateEmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
@@ -101,6 +102,7 @@ class BlueBoxAgent(AbstractAgent):
         existing_chats: list[Chat] | None = None,
         workspace: AgentWorkspace | None = None,
         auth_headers_provider: Callable[[], dict[str, str]] | None = None,
+        on_llm_response: Callable[[LLMChatResponse], None] | None = None,
     ) -> None:
         """
         Initialize the BlueBox Agent.
@@ -116,6 +118,7 @@ class BlueBoxAgent(AbstractAgent):
             workspace: Workspace for file I/O. Defaults to LocalWorkspace if not provided.
             auth_headers_provider: Optional callback that returns auth headers for
                 downstream API calls. If not provided, falls back to Config.VECTORLY_SERVICE_TOKEN.
+            on_llm_response: Optional callback invoked after each LLM call with the response (for token tracking).
         """
         # Validate required config
         self._auth_headers_provider = auth_headers_provider
@@ -134,6 +137,7 @@ class BlueBoxAgent(AbstractAgent):
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=None,
+            on_llm_response=on_llm_response,
         )
 
         logger.debug(
@@ -420,6 +424,9 @@ class BlueBoxAgent(AbstractAgent):
                     "duration_seconds": event.duration_seconds,
                     "execution_id": event.execution_id,
                     "steps": steps,
+                    "prompt_tokens": event.prompt_tokens,
+                    "completion_tokens": event.completion_tokens,
+                    "total_tokens": event.total_tokens,
                 }
 
             elif isinstance(event, BrowserAgentErrorEvent):

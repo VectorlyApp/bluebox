@@ -15,7 +15,7 @@ from anthropic import Anthropic, AsyncAnthropic, APIStatusError, RateLimitError
 from pydantic import BaseModel
 
 from bluebox.config import Config
-from bluebox.data_models.llms.interaction import LLMChatResponse, LLMToolCall
+from bluebox.data_models.llms.interaction import LLMChatResponse, LLMTokenUsage, LLMToolCall
 from bluebox.data_models.llms.vendors import AnthropicModel, LLMVendor
 from bluebox.llms.abstract_llm_vendor_client import AbstractLLMVendorClient
 from bluebox.utils.logger import get_logger
@@ -372,6 +372,14 @@ class AnthropicClient(AbstractLLMVendorClient):
                         call_id=block.id,
                     ))
 
+        # Extract token usage
+        usage = None
+        if hasattr(response, "usage") and response.usage:
+            usage = LLMTokenUsage(
+                input_tokens=getattr(response.usage, "input_tokens", 0) or 0,
+                output_tokens=getattr(response.usage, "output_tokens", 0) or 0,
+            )
+
         # NOTE: We intentionally do NOT return response_id for Anthropic.
         # Anthropic doesn't support response ID chaining like OpenAI's Responses API.
         # Returning an ID would cause NetworkSpecialist to skip messages (via _previous_response_id),
@@ -382,6 +390,7 @@ class AnthropicClient(AbstractLLMVendorClient):
             response_id=None,
             reasoning_content=reasoning_content,
             parsed=parsed,
+            usage=usage,
         )
 
     # Public methods _______________________________________________________________________________________________________
@@ -641,6 +650,15 @@ class AnthropicClient(AbstractLLMVendorClient):
                                 current_tool = None
                                 current_tool_input = []
 
+                    # Extract token usage from the final message
+                    final_message = stream.get_final_message()
+                    usage: LLMTokenUsage | None = None
+                    if hasattr(final_message, "usage") and final_message.usage:
+                        usage = LLMTokenUsage(
+                            input_tokens=getattr(final_message.usage, "input_tokens", 0) or 0,
+                            output_tokens=getattr(final_message.usage, "output_tokens", 0) or 0,
+                        )
+
                 # Yield final response
                 # NOTE: We intentionally do NOT return response_id for Anthropic.
                 # See _parse_response for explanation.
@@ -649,6 +667,7 @@ class AnthropicClient(AbstractLLMVendorClient):
                     tool_calls=tool_calls,
                     response_id=None,
                     reasoning_content=reasoning_content,
+                    usage=usage,
                 )
                 return  # Success, exit retry loop
 

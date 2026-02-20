@@ -192,6 +192,7 @@ class AbstractAgent(ABC):
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
+        on_llm_response: Callable[[LLMChatResponse], None] | None = None,
     ) -> None:
         """
         Initialize the agent.
@@ -205,12 +206,14 @@ class AbstractAgent(ABC):
             chat_thread: Existing ChatThread to continue, or None for new.
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
+            on_llm_response: Optional callback invoked after each LLM call with the response (for token tracking).
         """
         self._emit_message_callable = emit_message_callable
         self._persist_chat_callable = persist_chat_callable
         self._persist_chat_thread_callable = persist_chat_thread_callable
         self._stream_chunk_callable = stream_chunk_callable
         self._documentation_data_loader = documentation_data_loader
+        self._on_llm_response = on_llm_response
         self._previous_response_id: str | None = None
         self._response_id_to_chat_index: dict[str, int] = {}
 
@@ -227,6 +230,7 @@ class AbstractAgent(ABC):
         self._thread = chat_thread or ChatThread()
         self._thread_persisted = chat_thread is not None
         self._chats: dict[str, Chat] = {}
+        self._current_assistant_chat_id: str | None = None
         if existing_chats:
             for chat in existing_chats:
                 self._chats[chat.id] = chat
@@ -696,7 +700,10 @@ class AbstractAgent(ABC):
         self._emit_message_callable(message)
         # Persist status updates as Chat objects
         if isinstance(message, StatusUpdateEmittedMessage):
-            self._add_chat(role=ChatRole.SYSTEM_STATUS_UPDATE, content=message.content)
+            metadata = None
+            if self._current_assistant_chat_id:
+                metadata = {"associated_chat_id": self._current_assistant_chat_id}
+            self._add_chat(role=ChatRole.SYSTEM_STATUS_UPDATE, content=message.content, metadata=metadata)
 
     def _add_chat(
         self,
@@ -705,6 +712,7 @@ class AbstractAgent(ABC):
         tool_call_id: str | None = None,
         tool_calls: list[LLMToolCall] | None = None,
         llm_provider_response_id: str | None = None,
+        metadata: dict | None = None,
     ) -> Chat:
         """Create and store a new Chat, update thread, persist if callbacks set."""
         # Lazy-persist thread on first chat (avoids creating empty threads on connect)
@@ -719,6 +727,7 @@ class AbstractAgent(ABC):
             tool_call_id=tool_call_id,
             tool_calls=tool_calls or [],
             llm_provider_response_id=llm_provider_response_id,
+            metadata=metadata,
         )
 
         if self._persist_chat_callable:
@@ -867,6 +876,9 @@ class AbstractAgent(ABC):
             try:
                 response = self._call_llm(messages, self._get_system_prompt())
 
+                if self._on_llm_response and response.usage:
+                    self._on_llm_response(response)
+
                 if response.response_id:
                     self._previous_response_id = response.response_id
 
@@ -890,7 +902,11 @@ class AbstractAgent(ABC):
                     logger.debug("Agent loop complete - no more tool calls")
                     return
 
-                self._process_tool_calls(response.tool_calls)
+                self._current_assistant_chat_id = chat.id
+                try:
+                    self._process_tool_calls(response.tool_calls)
+                finally:
+                    self._current_assistant_chat_id = None
 
             except Exception as e:
                 logger.exception("Error in agent loop: %s", e)
