@@ -85,33 +85,6 @@ APP_CSS = dedent("""\
         layout: vertical;
     }
 
-    *:focus {
-        tint: initial;
-    }
-
-    *:focus-within {
-        tint: initial;
-    }
-
-    RichLog#chat-log:focus {
-        border: solid $accent;
-        border-title-color: $accent;
-    }
-
-    Tree#tool-log:focus {
-        border: solid $secondary;
-        border-title-color: $secondary;
-    }
-
-    RichLog#saved-files-log:focus {
-        border: solid $warning;
-        border-title-color: $warning;
-    }
-
-    Input#user-input:focus {
-        border: tall $accent;
-    }
-
     #main-row {
         height: 1fr;
         layout: horizontal;
