@@ -290,6 +290,62 @@ class AbstractSpecialist(AbstractAgent):
         """Whether an output schema has been set by the orchestrator."""
         return self._task_output_schema is not None
 
+    ## Tool sync — enrich finalize_with_output with the actual output schema
+
+    def _sync_tools(self) -> None:
+        """
+        Override to dynamically inject the orchestrator's output schema into the
+        finalize_with_output tool parameters.
+
+        Without this, the LLM only sees ``output: {"type": "object"}`` — no
+        information about required fields. This causes the LLM to call the tool
+        with empty arguments on the first 1-2 attempts. By injecting the actual
+        schema into the tool parameter definition, the LLM sees exactly what
+        fields are required and their types.
+        """
+        self.llm_client.clear_tools()
+        self._registered_tool_names = set()
+        collected_tools = self._collect_tools()
+        if not collected_tools:
+            return
+
+        for tool_meta, _ in collected_tools:
+            available = tool_meta.availability(self) if callable(tool_meta.availability) else tool_meta.availability
+            if not available:
+                continue
+
+            parameters = tool_meta.parameters
+            description = tool_meta.description
+
+            # Enrich finalize_with_output with the actual expected schema
+            if tool_meta.name == "finalize_with_output" and self._task_output_schema:
+                parameters = {
+                    "type": "object",
+                    "properties": {
+                        "output": self._task_output_schema,
+                    },
+                    "required": ["output"],
+                }
+                desc_suffix = (
+                    f" Output description: {self._task_output_description}"
+                    if self._task_output_description
+                    else ""
+                )
+                description = (
+                    "Finalize with output matching the expected schema. "
+                    "The output parameter MUST include all required fields "
+                    "defined in the schema — do NOT call with empty arguments."
+                    + desc_suffix
+                )
+
+            self.llm_client.register_tool(
+                name=tool_meta.name,
+                description=description,
+                parameters=parameters,
+            )
+            self._registered_tool_names.add(tool_meta.name)
+        logger.debug("Synced %s total tools: %s", len(collected_tools), self._registered_tool_names)
+
     ## Output Schema Methods
 
     def set_output_schema(

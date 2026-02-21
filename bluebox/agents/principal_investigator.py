@@ -16,6 +16,7 @@ The PI has NO browser and NO domain tools. It only:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
@@ -199,21 +200,152 @@ class PrincipalInvestigator(AbstractAgent):
 
         1. Review documentation with search_docs and get_doc_file (MANDATORY first step)
         2. Call plan_routines to declare your catalog plan
-        3. Use dispatch_experiments_batch to test ALL priority-1 routines in parallel
-        4. Record findings, then batch the next round of experiments
-        5. For each routine: experiment → prove → assemble → submit_routine → ship or fix
-        6. Use follow_up to ask the SAME worker clarifying questions (preserves context)
-        7. submit_routine REQUIRES test_parameters — provide realistic values for EVERY parameter!
+        3. IDENTIFY AUTH DEPENDENCIES FIRST (see below) — solve auth before data endpoints
+        4. Use dispatch_experiments_batch to test routines in parallel (respecting dependencies)
+        5. Record findings, then batch the next round of experiments
+        6. For each routine: experiment → prove → assemble → submit_routine → ship or fix
+        7. Use follow_up to ask the SAME worker clarifying questions (preserves context)
+        8. submit_routine REQUIRES test_parameters — provide realistic values for EVERY parameter!
            The routine will be executed in a live browser and reviewed by an independent inspector.
-        7. When a routine passes inspection: mark_routine_shipped
-        8. When a routine is hopeless: mark_routine_failed
-        9. When all routines are addressed: mark_complete with a usage guide
+           If the routine has 0 parameters, pass test_parameters: {}
+        9. When a routine passes inspection: mark_routine_shipped
+        10. When a routine is hopeless: mark_routine_failed
+        11. When all routines are addressed: mark_complete with a usage guide
 
-        ## Parallel Experiments — ALWAYS PREFER BATCH
+        ## Auth-First Dependency Ordering — CRITICAL
+
+        Most APIs require authentication (tokens, API keys, session cookies). If the
+        exploration summaries mention ANY of these patterns:
+        - JWT / Bearer tokens
+        - API keys / subscription keys (e.g. Ocp-Apim-Subscription-Key)
+        - Session tokens / CSRF tokens
+        - OAuth flows
+        - Login/cookie-based auth
+
+        Then you MUST follow this order:
+
+        **Phase A — Solve auth FIRST (before any data endpoints):**
+        1. Dispatch experiments ONLY for the auth/token routine
+        2. The worker must: find the token endpoint in captures, extract the exact
+           headers/body/key needed, call it live, and prove it returns a valid token
+        3. Record the proven auth artifact (token URL, required headers, subscription key)
+        4. Only proceed to Phase B after auth is CONFIRMED working
+
+        **Phase B — Test data endpoints WITH proven auth:**
+        1. NOW batch experiments for data endpoints
+        2. Each experiment prompt must include the proven auth details from Phase A
+           so the worker can authenticate before calling the data endpoint
+        3. Workers are independent — they do NOT share state. You must pass the
+           auth instructions (token URL, headers, key) in every experiment prompt.
+
+        **NEVER do this:**
+        - Batch auth + data experiments in parallel (data will fail without auth)
+        - Skip auth and hope data endpoints are public (check exploration first)
+        - Give up on data endpoints because they 401'd — solve auth first, then retry
+
+        **For public endpoints** (no auth required): batch freely in parallel.
+
+        ## Auth Token Resolution — Where Tokens Come From
+
+        Tokens and API keys can live in MANY places. When designing auth experiments,
+        you MUST explore MULTIPLE resolution strategies, not just one. If one fails,
+        try the next. Include observed values from captures so workers know what to
+        look for.
+
+        **Source 1: Network captures (token endpoints)**
+        The most common pattern — a dedicated API endpoint returns a token.
+        - Search captures for URLs containing "token", "auth", "login", "oauth"
+        - Get the EXACT headers and body from the capture with capture_get_transaction
+        - Tell the worker: "Call POST {token_url} with these headers: {headers} and
+          body: {body}. In the capture the response had a field called {field} with
+          a token that looked like '{first_20_chars}...'"
+        - The routine chains this: fetch token → store → use in subsequent fetches
+
+        **Source 2: DOM (inline scripts, meta tags, data attributes)**
+        Sites embed tokens/keys directly in the HTML page.
+        - Meta tags: `<meta name="csrf-token" content="...">`
+        - Inline config: `window.__CONFIG__ = { apiKey: "..." }`
+        - Data attributes: `<div data-api-key="...">`
+        - Experiment prompt: "Navigate to {url}, then run JS to check:
+          document.querySelector('meta[name=csrf-token]'), window.__CONFIG__,
+          window.__INITIAL_STATE__, window.ENV. We saw a key like '{observed_value}'
+          in the captured session — is it still the same or has it changed?"
+        - Routine uses: `{{meta:csrf-token}}` or `{{windowProperty:__CONFIG__.apiKey}}`
+
+        **Source 3: Browser storage (localStorage / sessionStorage)**
+        Sites store tokens after their JS authenticates on page load.
+        - Experiment prompt: "Navigate to {url}, wait 3 seconds for JS to execute,
+          then dump sessionStorage and localStorage. Look for keys containing
+          'token', 'auth', 'jwt', 'session'. In the capture we saw '{key_name}'
+          with value starting '{prefix}...'"
+        - Routine uses: `{{localStorage:auth.access_token}}` or
+          `{{sessionStorage:token.jwt}}`
+
+        **Source 4: Cookies**
+        Some sites use cookie-based auth — navigation establishes the session.
+        - Experiment prompt: "Navigate to {url}, then try calling {data_endpoint}
+          with credentials:'include'. If it works, auth is cookie-based and the
+          routine just needs navigate + fetch with credentials:'include'. If it
+          fails, dump cookies with get_cookies to see what exists."
+        - Routine uses: `credentials: "include"` or `{{cookie:XSRF-TOKEN}}`
+
+        **Source 5: Window properties (JS globals)**
+        Sites set global variables with config and auth.
+        - Experiment prompt: "Navigate to {url}, run JS to check window.__CONFIG__,
+          window.__INITIAL_STATE__, window.ENV, window.__NEXT_DATA__"
+        - Routine uses: `{{windowProperty:__CONFIG__.apiKey}}`
+
+        **Source 6: JS evaluation (compute from page state)**
+        When tokens are derived/computed by the site's JS and stored in non-obvious places.
+        - Experiment prompt: "Navigate to {url}, wait for page load. The site's JS
+          likely stores auth state somewhere. Try: JSON.parse(sessionStorage.getItem(
+          'persist:root')).auth, or look through all sessionStorage keys for anything
+          containing 'token'. Extract the value and try using it."
+        - Routine uses: js_evaluate operation to extract + store in sessionStorage
+
+        **CRITICAL: When dispatching auth experiments, ALWAYS include:**
+        1. The observed token/key value (or first 20 chars) from the captured session
+        2. Where you found it in captures (which header, which response field)
+        3. Whether it appears static (same across captures) or dynamic (different each time)
+        4. Multiple strategies to try — "First try X, if that fails try Y, then Z"
+
+        ## Hardcoding Site-Level Credentials — CRITICAL
+
+        Many sites use API keys, subscription keys, or client IDs that are NOT user
+        secrets — they are site-wide constants baked into the website's JavaScript,
+        HTML meta tags, or network requests. Examples:
+        - Ocp-Apim-Subscription-Key
+        - x-api-key / apiKey / client_id
+        - Firebase API keys
+        - Public OAuth client IDs
+
+        These MUST be resolved from captures (network headers, DOM, storage) and
+        HARDCODED directly into the routine. They must NEVER be exposed as user
+        parameters — no user would know where to find them.
+
+        **Resolution order for static keys:**
+        1. Network captures: check request headers from capture_get_transaction
+        2. DOM: check inline scripts, meta tags, window.* config objects
+        3. Storage: check localStorage/sessionStorage for cached keys
+        4. If found in captures, hardcode the value directly in routine headers/body
+
+        **JWT/Bearer tokens are DIFFERENT** — they expire and must be fetched at
+        runtime via a fetch operation within the routine. But the API key USED TO
+        fetch the token should itself be hardcoded.
+
+        **When building routines:** only parameterize values that a USER would
+        naturally provide (search terms, dates, IDs, locations). Everything else
+        should be hardcoded from captures.
+
+        ## Parallel Experiments — ALWAYS PREFER BATCH (within dependency order)
 
         ALWAYS use dispatch_experiments_batch instead of dispatch_experiment when you
-        have 2+ experiments to run. This runs them IN PARALLEL on separate workers —
-        N experiments complete in the time of 1.
+        have 2+ INDEPENDENT experiments to run. This runs them IN PARALLEL on separate
+        workers — N experiments complete in the time of 1.
+
+        But NEVER batch experiments that have unresolved dependencies on each other.
+        Auth must be solved before data endpoints. Reference data (e.g. station lists)
+        should be solved before parameterized endpoints that depend on those IDs.
 
         dispatch_experiment (singular) should ONLY be used when you need follow_up
         on a specific worker's prior context. For all new experiments, batch them.
@@ -223,6 +355,61 @@ class PrincipalInvestigator(AbstractAgent):
         - When testing multiple API endpoints, batch them all at once
         - When probing auth + multiple data endpoints, batch everything together
 
+        ## Routine Naming & Documentation Standards
+
+        These routines will be VECTORIZED and stored in databases for other agents to
+        discover via semantic search. Poor names and vague descriptions make routines
+        invisible and unusable. Follow these rules strictly:
+
+        **Routine name** — snake_case, verb_noun pattern, 3+ segments, MUST include site context:
+          The name must make sense in isolation — another agent reading ONLY the name
+          should know what site/service this targets and what it does. Include a short
+          site identifier as a prefix or qualifier.
+
+          GOOD: get_premierleague_standings, search_premierleague_matches_by_season,
+                fetch_amtrak_train_schedules, download_arxiv_paper_pdf,
+                list_espn_upcoming_fixtures, get_github_repo_stars
+          BAD:  get_standings (standings from where?), get_content_item (what content?
+                what site?), fetch_data (completely generic), search_matches (which sport?
+                which site?), get_league_standings (which league? which site?)
+
+        **Routine description** — ≥8 words, must explain:
+          1. What it does (the action)
+          2. What inputs it accepts (parameters)
+          3. What data it returns (the output)
+          GOOD: "Fetches Premier League standings for a given competition ID and
+                 season ID, returning team names, positions, wins, draws, losses,
+                 goals scored, goals conceded, and total points."
+          BAD:  "Get standings" (too short, no input/output info)
+          BAD:  "A routine for the Premier League" (doesn't say what it does or returns)
+
+        **Parameter names** — snake_case, descriptive:
+          GOOD: competition_id, season_year, team_name, departure_date
+          BAD:  id (ambiguous), param1 (meaningless), x (cryptic)
+
+        **Parameter descriptions** — ≥3 words, explain what the value represents:
+          GOOD: "The unique competition identifier (e.g. 1 for Premier League)"
+          GOOD: "Season year in YYYY format (e.g. 2024)"
+          BAD:  "ID" (too terse)
+          BAD:  "The season" (doesn't explain format or expected values)
+
+        **Non-obvious parameter sourcing** — CRITICAL for opaque IDs and codes:
+          If a parameter is NOT something a human would naturally know (e.g. an internal
+          numeric ID, a slug, an encoded token, a UUID), the description MUST explain
+          WHERE to get that value. The user calling this routine has no idea what
+          "competition_id: 1" means unless you tell them how to find it.
+
+          GOOD: "Internal competition ID. Obtain from the get_competitions routine or
+                 the /competitions API endpoint. Example: 1 = Premier League, 2 = Championship."
+          GOOD: "Season ID as used by the Premier League API. Use the get_seasons routine
+                 to list valid season IDs for a competition. Example: 418 = 2023-24 season."
+          GOOD: "Team slug as it appears in the site URL path (e.g. 'arsenal', 'manchester-united').
+                 Find by calling get_teams or navigating to the team page."
+          BAD:  "The competition ID" (where do I get it?)
+          BAD:  "Season identifier" (what values are valid? how do I look them up?)
+
+          Rule of thumb: if you can't google the value, the description must say how to get it.
+
         ## CRITICAL RULES
 
         - NEVER guess at request details. Always dispatch experiments to verify.
@@ -231,7 +418,14 @@ class PrincipalInvestigator(AbstractAgent):
         - If an experiment is ambiguous, use follow_up — don't dispatch a new one.
         - ALWAYS provide test_parameters when calling submit_routine — the routine
           WILL be executed and inspected. Use realistic values the experiments proved work.
-        - Prioritize: auth → main API calls → parameters → assembly.
+          If the routine has 0 parameters, pass test_parameters: {}
+        - DEPENDENCY ORDER IS SACRED: auth → reference data → data endpoints → assembly.
+          NEVER dispatch data endpoint experiments until auth is CONFIRMED working.
+          NEVER give up on data endpoints just because they returned 401 — that means
+          you need to solve auth first, not that the endpoint is broken.
+        - Workers do NOT share browser state. When an endpoint requires auth, your
+          experiment prompt must include FULL auth instructions (token URL, headers,
+          subscription key) so the worker can authenticate within its own session.
 
         ## Resilience — NEVER Give Up Early
 
@@ -291,6 +485,7 @@ class PrincipalInvestigator(AbstractAgent):
         # Persistence callbacks
         on_ledger_change: Callable[[DiscoveryLedger, str], None] | None = None,
         on_agent_thread: Callable[[str, str, list[dict[str, Any]]], None] | None = None,
+        on_attempt_record: Callable[[dict[str, Any]], None] | None = None,
         # Standard agent args
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
@@ -330,6 +525,7 @@ class PrincipalInvestigator(AbstractAgent):
         # Persistence callbacks
         self._on_ledger_change = on_ledger_change
         self._on_agent_thread = on_agent_thread
+        self._on_attempt_record = on_attempt_record
 
         # Internal state — the Discovery Ledger tracks everything
         # Accept an existing ledger for resume after context exhaustion
@@ -374,11 +570,11 @@ class PrincipalInvestigator(AbstractAgent):
         parts.append(dedent("""\
             ```json
             {
-              "name": "get_standings",
-              "description": "Fetch league standings for a competition and season",
+              "name": "get_premierleague_standings",
+              "description": "Fetches Premier League standings for a given competition and season, returning team names, positions, wins, draws, losses, goals scored, goals conceded, and total points.",
               "parameters": [
-                {"name": "competitionId", "type": "integer", "description": "Competition ID"},
-                {"name": "seasonId", "type": "integer", "description": "Season ID"}
+                {"name": "competition_id", "type": "integer", "description": "Internal competition identifier. Obtain from the get_premierleague_competitions routine. Example: 1 = Premier League."},
+                {"name": "season_id", "type": "integer", "description": "Season identifier as used by the Premier League API. Obtain from the get_premierleague_seasons routine. Example: 418 = 2023-24 season."}
               ],
               "operations": [
                 {
@@ -506,31 +702,56 @@ class PrincipalInvestigator(AbstractAgent):
                     if tc.tool_name in _DOCS_TOOLS:
                         self._docs_reviewed = True
 
-                # Loop detection: track recent tool calls
+                # Loop detection: track recent tool calls (name + whether it errored)
                 for tc in response.tool_calls:
                     self._recent_tool_calls.append(tc.tool_name)
-                # Keep only last 5
-                self._recent_tool_calls = self._recent_tool_calls[-5:]
+                # Keep only last 6
+                self._recent_tool_calls = self._recent_tool_calls[-6:]
 
-                # If last 3+ calls are the same non-productive tool, nudge
-                if (
-                    len(self._recent_tool_calls) >= 3
-                    and len(set(self._recent_tool_calls[-3:])) == 1
-                    and self._recent_tool_calls[-1] in ("set_active_routine", "get_ledger", "get_experiment_result")
-                ):
-                    stuck_tool = self._recent_tool_calls[-1]
+                # Detect stuck patterns:
+                # 1. Same tool called 3+ times in a row (any tool)
+                # 2. Alternating pair (e.g. mark_routine_failed + get_ledger)
+                _is_stuck = False
+                _stuck_msg = ""
+
+                if len(self._recent_tool_calls) >= 3:
+                    last3 = self._recent_tool_calls[-3:]
+                    # Same tool 3x in a row
+                    if len(set(last3)) == 1:
+                        _is_stuck = True
+                        _stuck_msg = f"calling {last3[0]} repeatedly"
+
+                if not _is_stuck and len(self._recent_tool_calls) >= 4:
+                    last4 = self._recent_tool_calls[-4:]
+                    # Alternating pair: A B A B
+                    if last4[0] == last4[2] and last4[1] == last4[3] and last4[0] != last4[1]:
+                        _is_stuck = True
+                        _stuck_msg = f"alternating between {last4[0]} and {last4[1]}"
+
+                if _is_stuck:
                     self._recent_tool_calls.clear()
                     shipped = sum(1 for s in self._ledger.routine_specs if s.status == RoutineSpecStatus.SHIPPED)
-                    total_attempts = len(self._ledger.attempts)
+                    failed = sum(1 for s in self._ledger.routine_specs if s.status == RoutineSpecStatus.FAILED)
+                    unaddressed = [
+                        s for s in self._ledger.routine_specs
+                        if s.status not in (RoutineSpecStatus.SHIPPED, RoutineSpecStatus.FAILED)
+                    ]
+                    unaddressed_names = [f"{s.name} ({s.status.value})" for s in unaddressed]
                     self._add_chat(
                         ChatRole.USER,
-                        f"You appear stuck calling {stuck_tool} repeatedly. "
-                        f"Current progress: {shipped} shipped, {total_attempts} attempts. "
-                        "To make progress you MUST either:\n"
-                        "1. dispatch_experiment or dispatch_experiments_batch to run more experiments\n"
-                        "2. submit_routine with a COMPLETE routine_json dict AND test_parameters to create an attempt\n"
-                        "3. mark_routine_failed for routines you've proven can't work (requires 2+ experiments)\n"
-                        "Pick the next actionable step and execute it NOW.",
+                        f"STOP — you are stuck {_stuck_msg}. This is wasting iterations.\n\n"
+                        f"Current progress: {shipped} shipped, {failed} failed, "
+                        f"{len(unaddressed)} unaddressed.\n"
+                        f"Unaddressed routines: {', '.join(unaddressed_names) or 'none'}\n\n"
+                        "If a tool keeps returning an error, do NOT retry the same call. "
+                        "Read the error message and change your approach.\n\n"
+                        "To make progress you MUST do ONE of these:\n"
+                        "1. dispatch_experiments_batch for unaddressed routines\n"
+                        "2. submit_routine with VALID routine_json AND test_parameters "
+                        "(if routine has 0 params, pass test_parameters: {})\n"
+                        "3. mark_routine_failed for routines that truly can't work\n"
+                        "4. mark_complete if all routines are shipped or failed\n\n"
+                        "Pick ONE action for a DIFFERENT routine than the one you're stuck on.",
                     )
             else:
                 # Nudge the PI to act
@@ -557,6 +778,42 @@ class PrincipalInvestigator(AbstractAgent):
                 self._on_ledger_change(self._ledger, reason)
             except Exception as e:
                 logger.warning("on_ledger_change callback failed: %s", e)
+
+    def _record_attempt(
+        self,
+        spec: RoutineSpec,
+        attempt: RoutineAttempt,
+        routine_json: dict[str, Any],
+        test_parameters: dict[str, Any],
+        execution_result: RoutineExecutionResultWithMetadata | None,
+        inspection_result: dict[str, Any] | None,
+    ) -> None:
+        """Persist a unified attempt record via the on_attempt_record callback."""
+        if self._on_attempt_record is None:
+            return
+        try:
+            # Count which attempt number this is for the spec
+            spec_attempts = self._ledger.get_attempts_for_spec(spec.id)
+            attempt_number = len(spec_attempts)
+
+            record: dict[str, Any] = {
+                "attempt_id": attempt.id,
+                "spec_id": spec.id,
+                "spec_name": spec.name,
+                "spec_description": spec.description,
+                "attempt_number": attempt_number,
+                "timestamp": str(datetime.now()),
+                "verdict": attempt.status.value,
+                "routine_json": routine_json,
+                "test_parameters": test_parameters,
+                "execution_result": (
+                    execution_result.model_dump() if execution_result is not None else None
+                ),
+                "inspection_result": inspection_result,
+            }
+            self._on_attempt_record(record)
+        except Exception as e:
+            logger.warning("on_attempt_record callback failed: %s", e)
 
     def _dump_agent_thread(self, agent_label: str, agent: AbstractAgent | AbstractSpecialist) -> None:
         """Dump an agent's full message history via the on_agent_thread callback."""
@@ -1133,18 +1390,18 @@ class PrincipalInvestigator(AbstractAgent):
             submit_routine({
                 "spec_id": "abc123",
                 "routine_json": {
-                    "name": "get_data",
-                    "description": "Fetch data from API",
+                    "name": "search_examplesite_products",
+                    "description": "Searches the ExampleSite product catalog by query string, returning product names, prices, ratings, and availability.",
                     "parameters": [
-                        {"name": "query", "type": "string", "description": "Search query"}
+                        {"name": "search_query", "type": "string", "description": "Free-text search query to find products (e.g. 'wireless headphones', 'running shoes')"}
                     ],
                     "operations": [
                         {"type": "navigate", "url": "https://www.example.com"},
-                        {"type": "fetch", "endpoint": {"url": "https://api.example.com/search?q={{query}}", "method": "GET"}, "session_storage_key": "result"},
+                        {"type": "fetch", "endpoint": {"url": "https://api.example.com/search?q={{search_query}}", "method": "GET"}, "session_storage_key": "result"},
                         {"type": "return", "session_storage_key": "result"}
                     ]
                 },
-                "test_parameters": {"query": "test search"}
+                "test_parameters": {"search_query": "wireless headphones"}
             })
 
         Args:
@@ -1157,10 +1414,57 @@ class PrincipalInvestigator(AbstractAgent):
         if spec is None:
             return {"error": f"No spec found with ID: {spec_id}"}
 
-        if not test_parameters:
+        if test_parameters is None:
             return {
                 "error": "test_parameters is required. Provide realistic values "
-                "for every parameter so the routine can be executed and inspected."
+                "for every parameter so the routine can be executed and inspected. "
+                "If the routine has no parameters, pass an empty object: {}"
+            }
+
+        # ----- Documentation quality gate (before Pydantic validation) -----
+        doc_issues = self._check_routine_documentation_quality(routine_json)
+        if doc_issues:
+            return {
+                "success": False,
+                "stage": "documentation_quality",
+                "issues": doc_issues,
+                "hint": (
+                    "These routines will be vectorized and stored in databases for other "
+                    "agents to discover and use. Names and descriptions must be precise "
+                    "enough for semantic search and unambiguous enough for autonomous use. "
+                    "Fix the issues above and resubmit."
+                ),
+            }
+
+        # ----- Site-credential parameter gate -----
+        # Reject parameters that look like site-level API keys / subscription keys.
+        # These should be hardcoded from captures, not exposed as user parameters.
+        _CREDENTIAL_PATTERNS = {
+            "api_key", "apikey", "api-key", "subscription_key", "subscriptionkey",
+            "subscription-key", "client_secret", "client_id", "app_key", "appkey",
+            "app_secret", "secret_key", "secretkey", "access_key", "accesskey",
+        }
+        params = routine_json.get("parameters", [])
+        suspect_params = [
+            p["name"] for p in params
+            if isinstance(p, dict) and p.get("name", "").lower().replace("-", "_") in _CREDENTIAL_PATTERNS
+        ]
+        if suspect_params:
+            return {
+                "success": False,
+                "stage": "credential_parameter_check",
+                "suspect_parameters": suspect_params,
+                "error": (
+                    f"Parameter(s) {suspect_params} look like site-level API keys or "
+                    "subscription keys. These are NOT user secrets — they are constants "
+                    "baked into the website's JavaScript or network requests. "
+                    "You MUST: (1) find the actual value from captures using "
+                    "capture_get_transaction to inspect request headers, "
+                    "(2) hardcode it directly in the routine's headers/body, "
+                    "(3) remove it from parameters. "
+                    "Only parameterize values a USER would naturally provide "
+                    "(search terms, dates, IDs, locations)."
+                ),
             }
 
         # Check attempt limit
@@ -1170,6 +1474,34 @@ class PrincipalInvestigator(AbstractAgent):
                 "error": f"Max attempts ({self._max_attempts_per_routine}) reached for {spec.name}. "
                 "Consider mark_routine_failed if this routine can't be built."
             }
+
+        # ----- Duplicate routine check -----
+        # Hash the operations list to detect identical resubmissions.
+        # This prevents wasting inspector tokens on the exact same broken routine.
+        new_ops_hash = hashlib.sha256(
+            json.dumps(routine_json.get("operations", []), sort_keys=True).encode()
+        ).hexdigest()
+        for prev_attempt in existing_attempts:
+            prev_ops_hash = hashlib.sha256(
+                json.dumps(prev_attempt.routine_json.get("operations", []), sort_keys=True).encode()
+            ).hexdigest()
+            if new_ops_hash == prev_ops_hash:
+                prev_issues = prev_attempt.blocking_issues or []
+                return {
+                    "error": (
+                        f"This routine has IDENTICAL operations to attempt #{prev_attempt.id} "
+                        f"which already FAILED inspection. Resubmitting the same routine wastes "
+                        f"tokens and will produce the same result. You MUST change the operations "
+                        f"to address the previous blocking issues before resubmitting."
+                    ),
+                    "previous_blocking_issues": prev_issues,
+                    "hint": (
+                        "Review the blocking issues above. Common fixes: add auth/token "
+                        "operations, add missing headers, fix endpoint URLs, resolve "
+                        "placeholder issues. The routine must be STRUCTURALLY DIFFERENT "
+                        "from previous failed attempts."
+                    ),
+                }
 
         # Step 1: Validate routine JSON against the Routine model
         try:
@@ -1285,6 +1617,16 @@ class PrincipalInvestigator(AbstractAgent):
 
         response["verdict"] = attempt.status.value
 
+        # ----- Persist unified attempt record -----
+        self._record_attempt(
+            spec=spec,
+            attempt=attempt,
+            routine_json=routine_json,
+            test_parameters=test_parameters,
+            execution_result=execution_result,
+            inspection_result=inspection_result,
+        )
+
         return response
 
     @agent_tool()
@@ -1339,6 +1681,21 @@ class PrincipalInvestigator(AbstractAgent):
         spec = self._ledger.get_spec(spec_id)
         if spec is None:
             return {"error": f"No spec found with ID: {spec_id}"}
+
+        # Reject if already failed — stop the PI from looping on the same spec
+        if spec.status == RoutineSpecStatus.FAILED:
+            return {
+                "error": (
+                    f"Routine '{spec.name}' is ALREADY marked as failed. "
+                    "Do not call mark_routine_failed again. Move on to the next "
+                    "unaddressed routine — call get_ledger to see which routines "
+                    "still need work, then dispatch_experiment or submit_routine for those."
+                )
+            }
+
+        # Reject if already shipped
+        if spec.status == RoutineSpecStatus.SHIPPED:
+            return {"error": f"Routine '{spec.name}' is already shipped. Cannot mark as failed."}
 
         # Guardrail: require minimum experimentation before giving up
         spec_experiments = self._ledger.get_experiments_for_spec(spec_id)
@@ -1701,8 +2058,10 @@ class PrincipalInvestigator(AbstractAgent):
         inspector = self._get_or_create_inspector()
 
         # Build inspection prompt with all context
+        # NOTE: User task is intentionally excluded — the inspector should judge
+        # the routine on its own merits (correctness, robustness, data quality),
+        # not whether it fulfills the user's high-level goal.
         prompt_parts: list[str] = [
-            f"## User Task\n{self._task}\n",
             f"## Routine Name\n{spec.name}\n",
             f"## Routine Description\n{spec.description}\n",
             f"## Routine JSON\n```json\n{json.dumps(routine.model_dump(), indent=2, default=str)}\n```\n",
@@ -1820,6 +2179,127 @@ class PrincipalInvestigator(AbstractAgent):
             task.completed_at = datetime.now()
             logger.error("Task %s failed: %s", task.id, e)
             return {"success": False, "error": str(e)}
+
+    # ===================================================================
+    # Internal — documentation quality checks
+    # ===================================================================
+
+    @staticmethod
+    def _check_routine_documentation_quality(routine_json: dict[str, Any]) -> list[str]:
+        """
+        Validate that routine metadata is detailed enough for vectorized storage
+        and discovery by other agents. Returns a list of issues (empty = pass).
+        """
+        issues: list[str] = []
+
+        # --- Routine name ---
+        name = routine_json.get("name", "")
+        if not name:
+            issues.append("Routine name is missing.")
+        else:
+            # Must be snake_case (lowercase + underscores)
+            if not re.match(r'^[a-z][a-z0-9]*(_[a-z0-9]+)*$', name):
+                issues.append(
+                    f"Routine name '{name}' must be snake_case (e.g. 'get_premierleague_standings', "
+                    "'search_amtrak_trains'). No camelCase, no spaces, no uppercase."
+                )
+            # Must be descriptive — at least 3 underscore-separated segments
+            # (verb + site/context + noun, e.g. get_premierleague_standings)
+            segments = name.split("_")
+            if len(segments) < 3:
+                issues.append(
+                    f"Routine name '{name}' needs more context ({len(segments)} segments, need ≥3). "
+                    "The name must include the site/service so it makes sense in isolation. "
+                    "Pattern: verb_site_noun (e.g. 'get_premierleague_standings', "
+                    "'search_espn_scores', 'fetch_amtrak_schedules'). "
+                    "Another agent reading ONLY the name should know what site this targets."
+                )
+            # Reject overly generic names that lack site context
+            _GENERIC_NOUNS = {
+                "data", "items", "item", "content", "results", "result",
+                "info", "details", "list", "response", "output", "records",
+            }
+            # Check if the non-verb segments are all generic
+            non_verb_segments = segments[1:] if len(segments) > 1 else []
+            if non_verb_segments and all(seg in _GENERIC_NOUNS for seg in non_verb_segments):
+                issues.append(
+                    f"Routine name '{name}' uses only generic nouns ({non_verb_segments}). "
+                    "Include the site/domain name and a specific noun. "
+                    "Example: 'get_content_item' → 'get_premierleague_article', "
+                    "'fetch_data' → 'fetch_espn_game_scores'."
+                )
+
+        # --- Routine description ---
+        desc = routine_json.get("description", "")
+        if not desc:
+            issues.append("Routine description is missing.")
+        else:
+            word_count = len(desc.split())
+            if word_count < 8:
+                issues.append(
+                    f"Routine description is too short ({word_count} words). Must be ≥8 words. "
+                    "Describe: what the routine does, what inputs it takes, and what data it returns. "
+                    "Example: 'Fetches Premier League standings for a given competition and season, "
+                    "returning team names, positions, wins, draws, losses, and points.'"
+                )
+            # Should mention what it returns
+            desc_lower = desc.lower()
+            return_keywords = ("return", "fetch", "retriev", "get", "extract", "download", "output", "produc", "yield")
+            if not any(kw in desc_lower for kw in return_keywords):
+                issues.append(
+                    "Routine description should explain what data it returns. "
+                    "Include words like 'returns', 'fetches', 'retrieves', or 'extracts'."
+                )
+
+        # --- Parameter descriptions ---
+        # Suffixes/keywords that signal an opaque, non-obvious parameter value
+        _OPAQUE_SIGNALS = ("_id", "_ids", "_slug", "_code", "_token", "_key", "_hash", "_uuid")
+        _SOURCE_KEYWORDS = (
+            "obtain", "from the", "get from", "found in", "returned by",
+            "use the", "listed by", "provided by", "available via", "see the",
+            "look up", "call the", "via the", "endpoint", "routine",
+        )
+
+        params = routine_json.get("parameters", [])
+        for param in params:
+            if not isinstance(param, dict):
+                continue
+            pname = param.get("name", "unknown")
+            pdesc = param.get("description", "")
+            if not pdesc:
+                issues.append(f"Parameter '{pname}' is missing a description.")
+                continue
+
+            if len(pdesc.split()) < 3:
+                issues.append(
+                    f"Parameter '{pname}' description is too terse: '{pdesc}'. "
+                    "Descriptions must be ≥3 words and explain what the value represents "
+                    "and its expected format (e.g. 'The unique season identifier, typically a 4-digit year like 2024')."
+                )
+                continue
+
+            # Check if this looks like an opaque/non-obvious parameter
+            pname_lower = pname.lower()
+            ptype = param.get("type", "string")
+            is_opaque = (
+                any(pname_lower.endswith(sig) for sig in _OPAQUE_SIGNALS)
+                or ptype in ("integer", "number") and pname_lower.endswith("id")
+            )
+
+            if is_opaque:
+                pdesc_lower = pdesc.lower()
+                has_source = any(kw in pdesc_lower for kw in _SOURCE_KEYWORDS)
+                if not has_source:
+                    issues.append(
+                        f"Parameter '{pname}' looks like an opaque/internal identifier but its "
+                        f"description doesn't explain WHERE to get valid values. "
+                        f"Current description: '{pdesc}'. "
+                        "For non-obvious IDs, slugs, and codes, the description MUST say how "
+                        "to obtain valid values — e.g. 'Obtain from the get_competitions routine' "
+                        "or 'Found in the /api/seasons endpoint response'."
+                    )
+
+        return issues
 
     def close(self) -> None:
         """Clean up all worker agent instances."""

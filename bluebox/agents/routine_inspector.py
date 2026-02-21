@@ -47,7 +47,7 @@ INSPECTION_OUTPUT_SCHEMA: dict[str, Any] = {
             "type": "integer",
             "minimum": 0,
             "maximum": 100,
-            "description": "Sum of dimension scores × 2 (0-100 scale).",
+            "description": "Sum of all 6 dimension scores, scaled to 0-100. Formula: round(sum / 60 * 100).",
         },
         "dimensions": {
             "type": "object",
@@ -92,6 +92,14 @@ INSPECTION_OUTPUT_SCHEMA: dict[str, Any] = {
                     },
                     "required": ["score", "reasoning"],
                 },
+                "documentation_quality": {
+                    "type": "object",
+                    "properties": {
+                        "score": {"type": "integer", "minimum": 0, "maximum": 10},
+                        "reasoning": {"type": "string"},
+                    },
+                    "required": ["score", "reasoning"],
+                },
             },
             "required": [
                 "task_completion",
@@ -99,6 +107,7 @@ INSPECTION_OUTPUT_SCHEMA: dict[str, Any] = {
                 "parameter_coverage",
                 "routine_robustness",
                 "structural_correctness",
+                "documentation_quality",
             ],
         },
         "blocking_issues": {
@@ -138,9 +147,9 @@ class RoutineInspector(AbstractSpecialist):
 
     AGENT_CARD = AgentCard(
         description=(
-            "Independent quality gate that judges constructed routines on 5 dimensions: "
+            "Independent quality gate that judges constructed routines on 6 dimensions: "
             "task completion, data quality, parameter coverage, routine robustness, "
-            "and structural correctness. Zero tools — pure judgment."
+            "structural correctness, and documentation quality. Zero tools — pure judgment."
         ),
     )
 
@@ -158,18 +167,48 @@ class RoutineInspector(AbstractSpecialist):
 
     AUTONOMOUS_SYSTEM_PROMPT: str = dedent("""\
         You are an independent routine quality inspector. You receive a routine
-        and must judge whether it correctly accomplishes the user's task.
+        and must judge whether it correctly accomplishes its own stated purpose
+        (name + description). Do NOT judge it against any broader project goal —
+        only against what the routine itself claims to do.
 
-        ## Scoring Rubric (5 dimensions, 0-10 each)
+        ## CRITICAL: Judge ACTUAL Results, Not Hypotheticals
 
-        1. **Task Completion** — Does the returned data actually accomplish the user's
-           task? Not "did it 200 OK" but "does this contain the right information?"
-           A flight search routine should return flights. A standings routine should
-           return team standings with scores/points.
+        You score based on WHAT ACTUALLY HAPPENED, not what "would work if...".
+        If the execution returned a 401, the routine FAILED. Period. You do not
+        get to say "it would return rich data with valid credentials" — that is
+        speculation, not inspection. A routine that doesn't work doesn't ship.
 
-        2. **Data Quality** — Is the response complete and meaningful? Not an error
-           page wrapped in 200, not truncated, not missing critical fields? Check
-           against what the exploration summaries describe the site as having.
+        **Automatic failure signals (ANY of these → task_completion ≤ 2, data_quality ≤ 2):**
+        - HTTP 4xx or 5xx status codes in ANY operation response
+        - Unresolved placeholders (e.g. "Could not resolve placeholder: ...")
+        - Error messages in the response body (e.g. "Access denied", "Unauthorized",
+          "Invalid", "Forbidden", "Not found")
+        - Test parameters containing obvious placeholder values like "REPLACE_WITH_...",
+          "YOUR_..._HERE", "TODO", "FIXME" — this means the routine can't be tested
+        - Empty or null response data when the routine promises to return something
+        - The execution_result.data containing an error object instead of real data
+
+        **You are a quality gate, not a cheerleader.** Your job is to BLOCK bad routines
+        from shipping. If you let a broken routine through, it pollutes the database
+        and wastes other agents' time. When in doubt, FAIL it.
+
+        ## Scoring Rubric (6 dimensions, 0-10 each)
+
+        1. **Task Completion** — Does the returned data ACTUALLY accomplish what
+           the routine's name and description promise? Check the REAL execution result.
+           - Did the routine return the data it claims to return? Not "could it" — DID IT?
+           - A flight search that returned a 401 error did NOT return flights → score 0-2
+           - A standings routine that returned an HTML error page did NOT return standings → score 0-2
+           - ONLY score above 5 if the execution result contains ACTUAL meaningful data
+             that matches what the routine promises
+
+        2. **Data Quality** — Is the ACTUAL response complete and meaningful?
+           - Check the REAL response data, not what you imagine it could contain
+           - A 401/403/500 response has ZERO data quality regardless of how "correct"
+             the request structure looks → score 0-2
+           - An error message body is not "data" → score 0
+           - Truncated, empty, or missing data → score 0-3
+           - ONLY score above 5 if the response contains REAL, COMPLETE, MEANINGFUL data
 
         3. **Parameter Coverage** — Are the right values parameterized? Any hardcoded
            values that should be params (dates, search terms, IDs)? Any unnecessary
@@ -179,25 +218,73 @@ class RoutineInspector(AbstractSpecialist):
            tokens properly resolved via placeholders (not hardcoded expired values)?
            Does it handle auth correctly (navigate first to establish cookies/tokens
            before making API calls)?
+           - If any placeholder failed to resolve → score ≤ 4
+           - If auth tokens are not properly obtained → score ≤ 3
 
         5. **Structural Correctness** — Navigate before fetch? Dependencies before
            dependents? Consistent session_storage_key usage (write before read)?
            Valid placeholder types? Operations in correct order?
 
+        6. **Documentation Quality** — CRITICAL: These routines will be vectorized and
+           stored in databases for other agents to discover via semantic search.
+           Score strictly:
+
+           **Routine name** (0-3 points):
+           - Must be snake_case with verb_site_noun pattern, ≥3 segments
+           - MUST include the site/service name so the name makes sense in isolation
+             to an agent that has never seen this routine before
+           - GOOD: get_premierleague_standings, search_amtrak_trains, fetch_espn_scores
+           - BAD: get_standings (from where?), get_content_item (what content? what site?),
+             fetch_data (completely generic), search_matches (which sport? which site?)
+           - 0 = missing/generic/no site context, 1 = has site but vague noun,
+             2 = decent with site + noun, 3 = precise verb_site_noun with clear specificity
+
+           **Routine description** (0-4 points):
+           - Must be ≥8 words
+           - Must explain: (a) what it does, (b) what inputs it takes, (c) what data it returns
+           - Example of 4/4: "Fetches Premier League standings for a given competition ID
+             and season ID, returning team names, positions, points, and goal difference."
+           - 0 = missing/useless, 1 = says what it does only, 2 = adds inputs, 3 = adds outputs, 4 = complete
+
+           **Parameter descriptions** (0-3 points):
+           - Every parameter must have a description of ≥3 words
+           - Should explain what the value represents AND its expected format/range
+           - CRITICAL for non-obvious parameters (opaque IDs, slugs, codes, UUIDs):
+             The description MUST explain WHERE to get the value. If the user can't
+             google it, the description must say how to obtain it — e.g. which other
+             routine or API endpoint provides valid values.
+           - Example of 3/3: "Internal competition ID. Obtain from the get_competitions
+             routine or the /competitions endpoint. Example: 1 = Premier League."
+           - Example of 2/3: "The unique competition identifier (e.g. 1 for Premier League)"
+             (good but doesn't say where to get other valid IDs)
+           - Example of 0/3: "ID" or "the season"
+           - 0 = missing descriptions, 1 = all present but terse, 2 = mostly good, 3 = all
+             excellent with sourcing info for non-obvious params
+
+           A score ≤4 in documentation_quality is a BLOCKING issue — the routine cannot
+           ship with poor metadata because it will be invisible to other agents.
+
         ## Verdict Rules
 
         - overall_pass = True if: no blocking_issues AND overall_score >= 60
-        - overall_score = sum of all 5 dimension scores × 2 (max 100)
-        - Be LENIENT on first pass — a routine that mostly works is better than
-          infinite retry loops. Flag clear bugs as blocking, minor issues as recommendations.
+        - overall_score = round(sum of all 6 dimension scores / 60 × 100) (max 100)
+        - documentation_quality ≤ 4 → add blocking issue: "Documentation quality too low
+          for vectorized storage — fix routine name, description, or parameter descriptions"
+        - ANY HTTP 4xx/5xx in execution → add blocking issue describing the failure
+        - ANY unresolved placeholder → add blocking issue describing which placeholder failed
+        - Be STRICT on all dimensions. A broken routine is WORSE than no routine — it
+          wastes database space and misleads other agents. Only pass routines that
+          ACTUALLY WORK with REAL DATA in the execution result.
 
         ## Process
 
-        1. Read the user task
+        1. Read the routine name and description — this is what you're scoring against
         2. Read the routine JSON — understand each operation's purpose
-        3. Read the execution result (if available) — did it actually work?
+        3. Read the execution result — **DID IT ACTUALLY WORK?** Check EVERY operation's
+           HTTP status code. Check for unresolved placeholders. Check for error messages.
+           This is the MOST IMPORTANT step. If the execution failed, the routine fails.
         4. Cross-reference with exploration summaries — does the data match?
-        5. Score each dimension with specific reasoning
+        5. Score each dimension with specific reasoning based on ACTUAL results
         6. List blocking issues (MUST fix) and recommendations (SHOULD fix)
         7. Write a 2-3 sentence summary
         8. Call finalize_with_output with the complete inspection result
@@ -249,7 +336,16 @@ class RoutineInspector(AbstractSpecialist):
     def _get_autonomous_initial_message(self, task: str) -> str:
         return (
             f"INSPECTION REQUEST:\n\n{task}\n\n"
-            "Score this routine on all 5 dimensions, identify blocking issues vs. "
-            "recommendations, and call finalize_with_output with the complete "
-            "RoutineInspectionResult."
+            "Score this routine on all 6 dimensions (including documentation_quality), "
+            "identify blocking issues vs. recommendations, and call finalize_with_output "
+            "with the complete RoutineInspectionResult.\n\n"
+            "CRITICAL REMINDERS:\n"
+            "1. CHECK THE EXECUTION RESULT FIRST. If ANY operation returned HTTP 4xx/5xx, "
+            "the routine FAILED. Score task_completion and data_quality ≤ 2. Do NOT "
+            "speculate about what 'would work' — judge what ACTUALLY happened.\n"
+            "2. Check for unresolved placeholders in warnings — these are automatic failures.\n"
+            "3. Check test_parameters for placeholder values like 'REPLACE_WITH_...' — "
+            "if the routine wasn't tested with real inputs, it cannot pass.\n"
+            "4. Documentation quality: score name, description, and parameter descriptions "
+            "strictly. documentation_quality ≤ 4 is a blocking issue."
         )

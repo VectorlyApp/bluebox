@@ -357,6 +357,21 @@ class TestSearchEntriesByTerms:
             # total_hits can be greater (multiple occurrences of same term)
             assert r["total_hits"] >= r["unique_terms_found"]
 
+    def test_search_matches_url_path(self, search_store: NetworkDataLoader) -> None:
+        """Search terms in URL paths should match even if absent from response body."""
+        # "api/stations" appears in search-002's URL but NOT in its response body
+        results = search_store.search_entries_by_terms(["api/stations"])
+        assert len(results) > 0
+        matched_urls = [r["url"] for r in results]
+        assert any("api/stations" in url for url in matched_urls)
+
+    def test_search_url_only_term_finds_entry(self, search_store: NetworkDataLoader) -> None:
+        """An entry whose response body has no matching terms is still found via URL."""
+        # "v1/prices" appears only in search-005's URL, not in its response body text
+        results = search_store.search_entries_by_terms(["v1/prices"])
+        assert len(results) > 0
+        assert any(r["id"] == "search-005" for r in results)
+
 
 # --- Host Stats Tests ---
 
