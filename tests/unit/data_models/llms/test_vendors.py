@@ -26,8 +26,8 @@ class TestGetModelByValue:
         assert result.vendor == LLMVendor.OPENAI
 
     def test_get_openai_gpt5_1(self) -> None:
-        """Test resolving gpt-5.2 model."""
-        result = get_model_by_value("gpt-5.2")
+        """Test resolving gpt-5.1 model."""
+        result = get_model_by_value("gpt-5.1")
         assert result is not None
         assert result == OpenAIModel.GPT_5_1
         assert result.vendor == LLMVendor.OPENAI
