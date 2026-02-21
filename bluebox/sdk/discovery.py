@@ -60,7 +60,7 @@ class RoutineDiscovery:
         task: str,
         cdp_captures_dir: str = "./cdp_captures",
         output_dir: str = "./routine_discovery_output",
-        llm_model: str = "gpt-5.1",
+        llm_model: str = "gpt-5.2",
         message_callback: Callable[[RoutineDiscoveryMessage], None] | None = None,
         remote_debugging_address: str | None = None,
     ):

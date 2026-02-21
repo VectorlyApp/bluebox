@@ -85,8 +85,8 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default="gpt-5.1",
-        help="LLM model to use for routine discovery (default: gpt-5.1)"
+        default="gpt-5.2",
+        help="LLM model to use for routine discovery (default: gpt-5.2)"
     )
     parser.add_argument(
         "--output-dir",

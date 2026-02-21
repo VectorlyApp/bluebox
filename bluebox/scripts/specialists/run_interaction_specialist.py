@@ -15,7 +15,7 @@ Layout:
 
 Usage:
     bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl
-    bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl --model gpt-5.1
+    bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl --model gpt-5.2
 """
 
 from __future__ import annotations

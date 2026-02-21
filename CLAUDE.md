@@ -22,7 +22,7 @@ This file provides context and guidelines for working with the bluebox codebase.
 ### CLI Tools
 
 - `bluebox-monitor --host 127.0.0.1 --port 9222 --output-dir ./cdp_captures --url about:blank --incognito` - Start browser monitoring
-- `bluebox-discover --task "your task description" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5.1` - Discover routines from captures
+- `bluebox-discover --task "your task description" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5.2` - Discover routines from captures
 - `bluebox-execute --routine-path example_data/example_routines/amtrak_one_way_train_search_routine.json --parameters-path example_data/example_routines/amtrak_one_way_train_search_input.json` - Execute a routine
 - `bluebox-agent-adapter --agent RoutineDiscoveryAgentBeta --cdp-captures-dir ./cdp_captures` - Start HTTP adapter for programmatic agent interaction (see Agent HTTP Adapter section below)
 - `bluebox-agent-adapter --list-agents` - List all available agents and their required data

@@ -35,7 +35,7 @@ def main() -> None:
     parser.add_argument("--task", type=str, required=True, help="The description of the task to discover routines for.")
     parser.add_argument("--cdp-captures-dir", type=str, default="./cdp_captures", help="The directory containing the CDP captures.")
     parser.add_argument("--output-dir", type=str, default="./routine_discovery_output", help="The directory to save the output to.")
-    parser.add_argument("--llm-model", type=str, default="gpt-5.1", help="The LLM model to use.")
+    parser.add_argument("--llm-model", type=str, default="gpt-5.2", help="The LLM model to use.")
     parser.add_argument("--remote-debugging-address", type=str, default=None, help="Chrome remote debugging address for routine validation (e.g., http://127.0.0.1:9222). If provided, the agent will execute the routine to validate it works.")
     args = parser.parse_args()
 

@@ -85,6 +85,33 @@ APP_CSS = dedent("""\
         layout: vertical;
     }
 
+    *:focus {
+        tint: initial;
+    }
+
+    *:focus-within {
+        tint: initial;
+    }
+
+    RichLog#chat-log:focus {
+        border: solid $accent;
+        border-title-color: $accent;
+    }
+
+    Tree#tool-log:focus {
+        border: solid $secondary;
+        border-title-color: $secondary;
+    }
+
+    RichLog#saved-files-log:focus {
+        border: solid $warning;
+        border-title-color: $warning;
+    }
+
+    Input#user-input:focus {
+        border: tall $accent;
+    }
+
     #main-row {
         height: 1fr;
         layout: horizontal;
@@ -247,6 +274,7 @@ class AbstractAgentTUI(App):
         self._last_seen_chat_count: int = 0
         self._seen_call_ids: set[str] = set()  # dedup CALL nodes in tool tree
         self._saved_file_paths: list[str] = []
+        self._saved_file_set: set[str] = set()  # dedup guard
 
     # ── Abstract / hook methods ──────────────────────────────────────────
 
@@ -309,6 +337,9 @@ class AbstractAgentTUI(App):
 
     def _add_saved_file(self, filepath: str) -> None:
         """Write a timestamped entry to the saved-files pane."""
+        if filepath in self._saved_file_set:
+            return
+        self._saved_file_set.add(filepath)
         self._saved_file_paths.append(filepath)
         if not self.SHOW_SAVED_FILES_PANE:
             return
@@ -814,6 +845,7 @@ class AbstractAgentTUI(App):
             self._last_seen_chat_count = 0
             self._seen_call_ids.clear()
             self._saved_file_paths.clear()
+            self._saved_file_set.clear()
             self._on_reset()
             chat.write(Text.from_markup("[yellow]\u21ba Conversation reset[/yellow]"))
             self._update_status()

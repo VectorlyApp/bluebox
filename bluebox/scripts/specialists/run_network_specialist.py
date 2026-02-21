@@ -15,7 +15,7 @@ Layout:
 
 Usage:
     bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl
-    bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl --model gpt-5.1
+    bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl --model gpt-5.2
     bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl --model claude-sonnet-4-5
 """
 

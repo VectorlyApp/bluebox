@@ -15,7 +15,7 @@ Layout:
 
 Usage:
     bluebox-agent
-    bluebox-agent --model gpt-5.1
+    bluebox-agent --model gpt-5.2
 """
 
 from __future__ import annotations
@@ -113,12 +113,20 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
         """Surface output_file paths at the top of RESULT nodes."""
         if not isinstance(tool_result, dict):
             return []
+        seen: set[str] = set()
         paths: list[str] = []
-        if tool_result.get("output_file"):
-            paths.append(f"📄 {tool_result['output_file']}")
+
+        def _add(p: str) -> None:
+            if p and p not in seen:
+                seen.add(p)
+                paths.append(f"📄 {p}")
+
+        _add(tool_result.get("output_file", ""))
+        for f in tool_result.get("files_created", []):
+            _add(f)
         for r in tool_result.get("results", []):
-            if isinstance(r, dict) and r.get("output_file"):
-                paths.append(f"📄 {r['output_file']}")
+            if isinstance(r, dict):
+                _add(r.get("output_file", ""))
         return paths
 
 

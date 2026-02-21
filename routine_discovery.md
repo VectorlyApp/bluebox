@@ -224,7 +224,7 @@ bluebox-discover \
   --task "Recover API endpoints for searching for trains and their prices" \
   --cdp-captures-dir ./cdp_captures \
   --output-dir ./routine_discovery_output \
-  --llm-model gpt-5.1
+  --llm-model gpt-5.2
 ```
 
 Arguments:
@@ -232,7 +232,7 @@ Arguments:
 - **--task**: A clear description of what you want to automate. This guides the AI agent to identify which network requests to extract and convert into a Routine. Examples: searching for products, booking appointments, submitting forms, etc.
 - **--cdp-captures-dir**: Root of prior CDP capture output (default: `./cdp_captures`)
 - **--output-dir**: Directory to write results (default: `./routine_discovery_output`)
-- **--llm-model**: LLM to use for reasoning/parsing (default: `gpt-5.1`)
+- **--llm-model**: LLM to use for reasoning/parsing (default: `gpt-5.2`)
 
 Outputs (under `--output-dir`):
 

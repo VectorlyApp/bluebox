@@ -16,7 +16,7 @@ Layout:
 Usage:
     bluebox-routine-discovery-agent-beta --cdp-captures-dir ./cdp_captures
     bluebox-routine-discovery-agent-beta --cdp-captures-dir ./cdp_captures --task "Search for trains from NYC to Boston"
-    bluebox-routine-discovery-agent-beta --cdp-captures-dir ./cdp_captures --model gpt-5.1
+    bluebox-routine-discovery-agent-beta --cdp-captures-dir ./cdp_captures --model gpt-5.2
     bluebox-routine-discovery-agent-beta --cdp-captures-dir ./cdp_captures --remote-debugging-address http://127.0.0.1:9222
 """
 
