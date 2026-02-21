@@ -1,62 +1,50 @@
 {
-  "site": "sdp-prem-prod.premier-league-prod.pulselive.com",
-  "user_task": "Make routines of useful scraping APIs from the Premier League website",
+  "site": "api.nasdaq.com",
+  "user_task": "need a set of routines that scrape useful data from nasdaq.com this is a good source of financial data",
   "routines": [
     {
-      "routine_spec_id": "rh3qnt",
+      "routine_spec_id": "73x553",
       "routine_json": {
-        "name": "pl_standings",
-        "description": "Fetch Premier League standings table for a given competition and season from Pulselive API",
+        "name": "search_nasdaq_symbols",
+        "description": "Searches Nasdaq symbols (stocks, indexes, ETFs) by partial query text using the public autocomplete API, returning a list of matching tickers and associated metadata fields.",
         "operations": [
           {
             "type": "navigate",
-            "url": "https://www.premierleague.com/en/",
+            "url": "https://www.nasdaq.com",
             "sleep_after_navigation_seconds": 3.0
           },
           {
             "type": "fetch",
             "endpoint": {
-              "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v5/competitions/{{competitionId}}/seasons/{{seasonId}}/standings",
+              "url": "https://api.nasdaq.com/api/autocomplete/slookup/10?search={{query}}",
               "description": null,
               "method": "GET",
               "headers": {
-                "Accept": "application/json"
+                "Accept": "application/json, text/plain, */*"
               },
               "body": null,
               "credentials": "same-origin"
             },
-            "session_storage_key": "pl_standings_result"
+            "session_storage_key": "nasdaq_symbol_search_raw"
           },
           {
             "type": "return",
-            "session_storage_key": "pl_standings_result"
+            "session_storage_key": "nasdaq_symbol_search_raw"
           }
         ],
         "parameters": [
           {
-            "name": "competitionId",
-            "type": "integer",
+            "name": "query",
+            "type": "string",
             "required": true,
-            "description": "Competition ID as used by Pulselive (e.g. 8 for Premier League)",
+            "description": "Partial search text for the symbol or company name, such as a ticker prefix (\"AA\") or company name fragment (\"Apple\"). At least 1\u20132 characters are recommended for useful results.",
             "default": null,
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          },
-          {
-            "name": "seasonId",
-            "type": "integer",
-            "required": true,
-            "description": "Season ID as used by Pulselive (e.g. 2025 for 2025/26 season)",
-            "default": null,
-            "examples": [],
-            "min_length": null,
+            "examples": [
+              "A",
+              "Appl",
+              "Apple"
+            ],
+            "min_length": 1,
             "max_length": null,
             "min_value": null,
             "max_value": null,
@@ -67,145 +55,73 @@
           }
         ]
       },
-      "name": "pl_standings",
-      "description": "Fetch Premier League standings table for a given competition and season from Pulselive API",
-      "when_to_use": "Use to fetch premier league standings table for a given competition and season from pulselive api",
+      "name": "search_nasdaq_symbols",
+      "description": "Search Nasdaq symbols (stocks, indexes, ETFs) by partial text query using the public autocomplete API, returning matching tickers and basic metadata.",
+      "when_to_use": "Use to search nasdaq symbols (stocks, indexes, etfs) by partial text query using the public autocomplete api, returning matching tickers and basic metadata.",
       "parameters_summary": [],
-      "inspection_score": 86
+      "inspection_score": 93
     },
     {
-      "routine_spec_id": "94pai5",
+      "routine_spec_id": "m6ca4m",
       "routine_json": {
-        "name": "pl_fixtures_by_matchweek",
-        "description": "Fetch Premier League fixtures for a given competition, season, and matchweek from the Pulselive v1 matches endpoint via top-level navigation.",
+        "name": "get_nasdaq_basic_quotes",
+        "description": "Fetches basic real-time quote snapshots for one or more Nasdaq symbols using the public https://api.nasdaq.com/api/quote/basic endpoint, returning date metadata and an array of records with ticker, last sale price, change, percent change, volume, and related fields.",
         "operations": [
           {
             "type": "navigate",
-            "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/{{competitionId}}/seasons/{{seasonId}}/matchweeks/{{matchweek}}/matches",
+            "url": "https://www.nasdaq.com",
             "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "fetch",
+            "endpoint": {
+              "url": "https://api.nasdaq.com/api/quote/basic",
+              "description": null,
+              "method": "GET",
+              "headers": {
+                "Accept": "application/json, text/plain, */*"
+              },
+              "body": null,
+              "credentials": "same-origin"
+            },
+            "session_storage_key": "nasdaq_basic_quotes_fetch"
           },
           {
             "type": "js_evaluate",
-            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return { ok: true, value: parsed }; } catch (e) { return { ok: false, error: String(e) }; } })();",
-            "timeout_seconds": 10.0,
-            "session_storage_key": "pl_fixtures_matchweek_result"
-          },
-          {
-            "type": "return",
-            "session_storage_key": "pl_fixtures_matchweek_result"
-          }
-        ],
-        "parameters": [
-          {
-            "name": "competitionId",
-            "type": "integer",
-            "required": true,
-            "description": "Competition ID as used by Pulselive (e.g., 8 for Premier League).",
-            "default": null,
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          },
-          {
-            "name": "seasonId",
-            "type": "integer",
-            "required": true,
-            "description": "Season ID as used by Pulselive (e.g., 2025 for 2025/26 season).",
-            "default": null,
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          },
-          {
-            "name": "matchweek",
-            "type": "integer",
-            "required": true,
-            "description": "Matchweek number within the season (e.g., 27).",
-            "default": null,
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          }
-        ]
-      },
-      "name": "pl_fixtures_by_matchweek",
-      "description": "Fetch fixtures for a given competition, season, and matchweek from Pulselive API",
-      "when_to_use": "Use to fetch fixtures for a given competition, season, and matchweek from pulselive api",
-      "parameters_summary": [],
-      "inspection_score": 90
-    },
-    {
-      "routine_spec_id": "m2xcbg",
-      "routine_json": {
-        "name": "pl_teams_in_competition",
-        "description": "Fetch list of teams for a given competition and season from the Pulselive Premier League API.",
-        "operations": [
-          {
-            "type": "navigate",
-            "url": "https://www.premierleague.com/en/tables/premier-league",
-            "sleep_after_navigation_seconds": 3.0
+            "js": "(() => { const param = `{{symbols}}`; const parts = param.split(',').map(s => s.trim()).filter(Boolean); const url = new URL('https://api.nasdaq.com/api/quote/basic'); for (const p of parts) { url.searchParams.append('symbol', p); } return { builtUrl: url.toString() }; })();",
+            "timeout_seconds": 5.0,
+            "session_storage_key": "nasdaq_basic_quotes_meta"
           },
           {
             "type": "fetch",
             "endpoint": {
-              "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/competitions/{{competitionId}}/seasons/{{seasonId}}/teams",
+              "url": "{{sessionStorage:nasdaq_basic_quotes_meta.builtUrl}}",
               "description": null,
               "method": "GET",
               "headers": {
-                "Accept": "application/json"
+                "Accept": "application/json, text/plain, */*"
               },
               "body": null,
               "credentials": "same-origin"
             },
-            "session_storage_key": "pl_teams_result"
+            "session_storage_key": "nasdaq_basic_quotes_result"
           },
           {
             "type": "return",
-            "session_storage_key": "pl_teams_result"
+            "session_storage_key": "nasdaq_basic_quotes_result"
           }
         ],
         "parameters": [
           {
-            "name": "competitionId",
-            "type": "integer",
+            "name": "symbols",
+            "type": "string",
             "required": true,
-            "description": "Competition ID as used by Pulselive (e.g., 8 for Premier League).",
+            "description": "One or more Nasdaq symbols with asset class, formatted as a pipe-delimited list separated by commas, e.g. \"AAPL|STOCKS\" or \"AAPL|STOCKS,COMP|INDEX\". Use search_nasdaq_symbols to discover valid symbols and asset classes.",
             "default": null,
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          },
-          {
-            "name": "seasonId",
-            "type": "integer",
-            "required": true,
-            "description": "Season ID as used by Pulselive (e.g., 2025 for 2025/26 season).",
-            "default": null,
-            "examples": [],
+            "examples": [
+              "AAPL|STOCKS",
+              "AAPL|STOCKS,COMP|INDEX"
+            ],
             "min_length": null,
             "max_length": null,
             "min_value": null,
@@ -217,153 +133,92 @@
           }
         ]
       },
-      "name": "pl_teams_in_competition",
-      "description": "Fetch list of teams for a given competition and season from Pulselive API",
-      "when_to_use": "Use to fetch list of teams for a given competition and season from pulselive api",
+      "name": "get_nasdaq_basic_quotes",
+      "description": "Fetch basic real-time quote snapshots for one or more Nasdaq symbols using the /api/quote/basic endpoint.",
+      "when_to_use": "Use to fetch basic real-time quote snapshots for one or more nasdaq symbols using the /api/quote/basic endpoint.",
       "parameters_summary": [],
       "inspection_score": 88
     },
     {
-      "routine_spec_id": "b3hptt",
+      "routine_spec_id": "hdpk92",
       "routine_json": {
-        "name": "pl_team_overview_bundle",
-        "description": "Fetch team metadata for a specific team using the Pulselive metadata endpoint. (Note: core team data, form, and next fixture could not be reliably fetched via fetch() in this environment, so this routine focuses on the confirmed-metadata part of the bundle.)",
+        "name": "get_nasdaq_symbol_overview",
+        "description": "Retrieves detailed overview metadata and key stats for a single Nasdaq symbol by calling the public /api/quote/{symbol}/info and /api/quote/{symbol}/summary endpoints, returning combined instrument profile and summary statistics.",
         "operations": [
           {
             "type": "navigate",
-            "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/metadata/SDP_FOOTBALL_TEAM/{{teamId}}",
+            "url": "https://www.nasdaq.com",
             "sleep_after_navigation_seconds": 3.0
           },
           {
-            "type": "js_evaluate",
-            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
-            "timeout_seconds": 10.0,
-            "session_storage_key": "pl_team_overview_result"
+            "type": "fetch",
+            "endpoint": {
+              "url": "https://api.nasdaq.com/api/quote/{{symbol}}/info?assetclass={{asset_class}}",
+              "description": null,
+              "method": "GET",
+              "headers": {
+                "Accept": "application/json, text/plain, */*"
+              },
+              "body": null,
+              "credentials": "same-origin"
+            },
+            "session_storage_key": "nasdaq_symbol_info"
           },
           {
-            "type": "return",
-            "session_storage_key": "pl_team_overview_result"
-          }
-        ],
-        "parameters": [
-          {
-            "name": "teamId",
-            "type": "integer",
-            "required": true,
-            "description": "Pulselive team ID (e.g., 1 for Manchester United).",
-            "default": null,
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          }
-        ]
-      },
-      "name": "pl_team_overview_bundle",
-      "description": "Fetch core data, form, next fixture, and metadata for a specific team in a competition/season",
-      "when_to_use": "Use to fetch core data, form, next fixture, and metadata for a specific team in a competition/season",
-      "parameters_summary": [],
-      "inspection_score": 84
-    },
-    {
-      "routine_spec_id": "hy5wmd",
-      "routine_json": {
-        "name": "pl_player_profile",
-        "description": "Fetch a player profile from the Pulselive Premier League API using the public /api/v1/players/{playerId} endpoint.",
-        "operations": [
-          {
-            "type": "navigate",
-            "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/players/{{playerId}}",
-            "sleep_after_navigation_seconds": 3.0
+            "type": "fetch",
+            "endpoint": {
+              "url": "https://api.nasdaq.com/api/quote/{{symbol}}/summary?assetclass={{asset_class}}",
+              "description": null,
+              "method": "GET",
+              "headers": {
+                "Accept": "application/json, text/plain, */*"
+              },
+              "body": null,
+              "credentials": "same-origin"
+            },
+            "session_storage_key": "nasdaq_symbol_summary"
           },
           {
             "type": "js_evaluate",
-            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
-            "timeout_seconds": 10.0,
-            "session_storage_key": "pl_player_profile_result"
-          },
-          {
-            "type": "return",
-            "session_storage_key": "pl_player_profile_result"
-          }
-        ],
-        "parameters": [
-          {
-            "name": "playerId",
-            "type": "integer",
-            "required": true,
-            "description": "Pulselive player ID (e.g., 1).",
-            "default": null,
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          }
-        ]
-      },
-      "name": "pl_player_profile_and_stats",
-      "description": "Fetch player profile and season stats for a given playerId in a competition/season",
-      "when_to_use": "Use to fetch player profile and season stats for a given playerid in a competition/season",
-      "parameters_summary": [],
-      "inspection_score": 86
-    },
-    {
-      "routine_spec_id": "956hjh",
-      "routine_json": {
-        "name": "pl_match_details",
-        "description": "Fetch detailed match events and lineups for a given matchId from the Pulselive Premier League API via direct navigation to the events and lineups endpoints.",
-        "operations": [
-          {
-            "type": "navigate",
-            "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v1/matches/{{matchId}}/events",
-            "sleep_after_navigation_seconds": 3.0
-          },
-          {
-            "type": "js_evaluate",
-            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text for events' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
-            "timeout_seconds": 10.0,
-            "session_storage_key": "pl_match_events_result"
-          },
-          {
-            "type": "navigate",
-            "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v3/matches/{{matchId}}/lineups",
-            "sleep_after_navigation_seconds": 3.0
-          },
-          {
-            "type": "js_evaluate",
-            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text for lineups' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
-            "timeout_seconds": 10.0,
-            "session_storage_key": "pl_match_lineups_result"
-          },
-          {
-            "type": "js_evaluate",
-            "js": "(() => { try { const eventsRaw = sessionStorage.getItem('pl_match_events_result'); const lineupsRaw = sessionStorage.getItem('pl_match_lineups_result'); const events = eventsRaw ? JSON.parse(eventsRaw) : null; const lineups = lineupsRaw ? JSON.parse(lineupsRaw) : null; return { events, lineups }; } catch (e) { return { ok: false, error: String(e) }; } })();",
+            "js": "(() => { const infoRaw = sessionStorage.getItem('nasdaq_symbol_info'); const summaryRaw = sessionStorage.getItem('nasdaq_symbol_summary'); const info = infoRaw ? JSON.parse(infoRaw) : null; const summary = summaryRaw ? JSON.parse(summaryRaw) : null; return { symbolOverview: { info, summary } }; })();",
             "timeout_seconds": 5.0,
-            "session_storage_key": "pl_match_details_bundle"
+            "session_storage_key": "nasdaq_symbol_overview_combined"
           },
           {
             "type": "return",
-            "session_storage_key": "pl_match_details_bundle"
+            "session_storage_key": "nasdaq_symbol_overview_combined"
           }
         ],
         "parameters": [
           {
-            "name": "matchId",
-            "type": "integer",
+            "name": "symbol",
+            "type": "string",
             "required": true,
-            "description": "Pulselive match identifier (e.g., 2562154).",
+            "description": "Ticker symbol for the instrument, e.g. \"AAPL\" for Apple stock or \"COMP\" for the Nasdaq Composite index. Use search_nasdaq_symbols to discover valid symbols.",
             "default": null,
-            "examples": [],
+            "examples": [
+              "AAPL",
+              "COMP"
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "asset_class",
+            "type": "string",
+            "required": true,
+            "description": "Asset class for the symbol as used by Nasdaq APIs (e.g. \"stocks\" or \"index\"). Obtain this from search_nasdaq_symbols (field asset) and pass in lowercase.",
+            "default": null,
+            "examples": [
+              "stocks",
+              "index"
+            ],
             "min_length": null,
             "max_length": null,
             "min_value": null,
@@ -375,42 +230,338 @@
           }
         ]
       },
-      "name": "pl_match_details",
-      "description": "Fetch events and lineups for a given matchId",
-      "when_to_use": "Use to fetch events and lineups for a given matchid",
+      "name": "get_nasdaq_symbol_overview",
+      "description": "Retrieve detailed overview/metadata and key stats for a single Nasdaq symbol using /api/quote/{symbol}/info and /summary endpoints.",
+      "when_to_use": "Use to retrieve detailed overview/metadata and key stats for a single nasdaq symbol using /api/quote/{symbol}/info and /summary endpoints.",
+      "parameters_summary": [],
+      "inspection_score": 92
+    },
+    {
+      "routine_spec_id": "4u7b9u",
+      "routine_json": {
+        "name": "get_nasdaq_symbol_chart",
+        "description": "Fetches chart time-series data for a given Nasdaq symbol using the public /api/quote/{symbol}/chart endpoint, returning an array of data points with timestamps, prices, volumes, and related metadata.",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://www.nasdaq.com",
+            "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "fetch",
+            "endpoint": {
+              "url": "https://api.nasdaq.com/api/quote/{{symbol}}/chart?assetclass={{asset_class}}&charttype=rs",
+              "description": null,
+              "method": "GET",
+              "headers": {
+                "Accept": "application/json, text/plain, */*"
+              },
+              "body": null,
+              "credentials": "same-origin"
+            },
+            "session_storage_key": "nasdaq_symbol_chart_raw"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "nasdaq_symbol_chart_raw"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true,
+            "description": "Ticker symbol for the instrument, e.g. \"AAPL\" for Apple stock or \"COMP\" for the Nasdaq Composite index. Use search_nasdaq_symbols to discover valid symbols.",
+            "default": null,
+            "examples": [
+              "AAPL",
+              "COMP"
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "asset_class",
+            "type": "string",
+            "required": true,
+            "description": "Asset class for the symbol as used by Nasdaq APIs (e.g. \"stocks\" or \"index\"). Obtain this from search_nasdaq_symbols (field asset) and pass in lowercase.",
+            "default": null,
+            "examples": [
+              "stocks",
+              "index"
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "get_nasdaq_symbol_chart",
+      "description": "Fetch chart time-series data for a given Nasdaq symbol over a specified time range using /api/quote/{symbol}/chart.",
+      "when_to_use": "Use to fetch chart time-series data for a given nasdaq symbol over a specified time range using /api/quote/{symbol}/chart.",
+      "parameters_summary": [],
+      "inspection_score": 93
+    },
+    {
+      "routine_spec_id": "cjnum6",
+      "routine_json": {
+        "name": "get_nasdaq_symbol_dividends",
+        "description": "Retrieves dividend history and related header statistics for a single Nasdaq symbol using the public /api/quote/{symbol}/dividends endpoint, returning header values and a structured dividends table.",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://www.nasdaq.com",
+            "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "fetch",
+            "endpoint": {
+              "url": "https://api.nasdaq.com/api/quote/{{symbol}}/dividends?assetclass={{asset_class}}",
+              "description": null,
+              "method": "GET",
+              "headers": {
+                "Accept": "application/json, text/plain, */*"
+              },
+              "body": null,
+              "credentials": "same-origin"
+            },
+            "session_storage_key": "nasdaq_symbol_dividends_raw"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "nasdaq_symbol_dividends_raw"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true,
+            "description": "Ticker symbol for the instrument, e.g. \"AAPL\" for Apple stock. Use search_nasdaq_symbols to discover valid symbols.",
+            "default": null,
+            "examples": [
+              "AAPL",
+              "MSFT"
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "asset_class",
+            "type": "string",
+            "required": true,
+            "description": "Asset class for the symbol as used by Nasdaq APIs (e.g. \"stocks\" or other classes). Obtain this from search_nasdaq_symbols (field asset) and pass in lowercase.",
+            "default": null,
+            "examples": [
+              "stocks"
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "get_nasdaq_symbol_dividends",
+      "description": "Retrieve dividend history and upcoming dividend data for a given Nasdaq symbol using /api/quote/{symbol}/dividends.",
+      "when_to_use": "Use to retrieve dividend history and upcoming dividend data for a given nasdaq symbol using /api/quote/{symbol}/dividends.",
+      "parameters_summary": [],
+      "inspection_score": 92
+    },
+    {
+      "routine_spec_id": "sytgnt",
+      "routine_json": {
+        "name": "get_nasdaq_symbol_historical",
+        "description": "Retrieves historical OHLCV price data for a given Nasdaq symbol over a specified date range using the public /api/quote/{symbol}/historical endpoint, returning a trades table with date, open, high, low, close, and volume.",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://www.nasdaq.com",
+            "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "fetch",
+            "endpoint": {
+              "url": "https://api.nasdaq.com/api/quote/{{symbol}}/historical?assetclass={{asset_class}}&fromdate={{from_date}}&limit={{limit}}&todate={{to_date}}",
+              "description": null,
+              "method": "GET",
+              "headers": {
+                "Accept": "application/json, text/plain, */*"
+              },
+              "body": null,
+              "credentials": "same-origin"
+            },
+            "session_storage_key": "nasdaq_symbol_historical_raw"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "nasdaq_symbol_historical_raw"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true,
+            "description": "Ticker symbol for the instrument, e.g. \"AAPL\" for Apple stock or \"MSFT\" for Microsoft. Use search_nasdaq_symbols to discover valid symbols.",
+            "default": null,
+            "examples": [
+              "AAPL",
+              "MSFT"
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "asset_class",
+            "type": "string",
+            "required": true,
+            "description": "Asset class for the symbol as used by Nasdaq APIs (e.g. \"stocks\"). Obtain this from search_nasdaq_symbols (field asset) and pass in lowercase.",
+            "default": null,
+            "examples": [
+              "stocks"
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "from_date",
+            "type": "date",
+            "required": true,
+            "description": "Start date for the historical window in YYYY-MM-DD format. Must be on or before to_date.",
+            "default": null,
+            "examples": [
+              "2026-01-20"
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "to_date",
+            "type": "date",
+            "required": true,
+            "description": "End date for the historical window in YYYY-MM-DD format. Must be on or after from_date.",
+            "default": null,
+            "examples": [
+              "2026-02-20"
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "limit",
+            "type": "integer",
+            "required": true,
+            "description": "Maximum number of historical records (rows) to return for the requested date range. Use a reasonable value such as 10\u001100 depending on needs.",
+            "default": null,
+            "examples": [
+              10,
+              30,
+              100
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": 1,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "get_nasdaq_symbol_historical",
+      "description": "Retrieve historical OHLCV price data for a given Nasdaq symbol over a date range using /api/quote/{symbol}/historical.",
+      "when_to_use": "Use to retrieve historical ohlcv price data for a given nasdaq symbol over a date range using /api/quote/{symbol}/historical.",
       "parameters_summary": [],
       "inspection_score": 90
     },
     {
-      "routine_spec_id": "ykf9sw",
+      "routine_spec_id": "8bd6xt",
       "routine_json": {
-        "name": "pl_broadcast_schedule",
-        "description": "Fetch Premier League broadcasting events schedule for a given date range from the public broadcasting/events API.",
+        "name": "get_nasdaq_symbol_historical_nocp",
+        "description": "Retrieves recent Nasdaq Closing Price (NOCP) historical data for a given Nasdaq symbol using the public /api/company/{symbol}/historical-nocp endpoint, returning both a NOCP table and chart-ready time series for a configurable recent timeframe.",
         "operations": [
           {
             "type": "navigate",
-            "url": "https://api.premierleague.com/broadcasting/events?from={{from}}&to={{to}}&pageSize={{pageSize}}&page={{page}}",
-            "sleep_after_navigation_seconds": 2.0
+            "url": "https://www.nasdaq.com",
+            "sleep_after_navigation_seconds": 3.0
           },
           {
-            "type": "js_evaluate",
-            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
-            "timeout_seconds": 10.0,
-            "session_storage_key": "pl_broadcast_schedule_result"
+            "type": "fetch",
+            "endpoint": {
+              "url": "https://api.nasdaq.com/api/company/{{symbol}}/historical-nocp?timeframe={{timeframe}}",
+              "description": null,
+              "method": "GET",
+              "headers": {
+                "Accept": "application/json, text/plain, */*"
+              },
+              "body": null,
+              "credentials": "same-origin"
+            },
+            "session_storage_key": "nasdaq_symbol_nocp_raw"
           },
           {
             "type": "return",
-            "session_storage_key": "pl_broadcast_schedule_result"
+            "session_storage_key": "nasdaq_symbol_nocp_raw"
           }
         ],
         "parameters": [
           {
-            "name": "from",
-            "type": "date",
+            "name": "symbol",
+            "type": "string",
             "required": true,
-            "description": "Start date (YYYY-MM-DD) for the broadcast schedule window.",
+            "description": "Ticker symbol for the instrument, e.g. \"AAPL\" for Apple stock or \"MSFT\" for Microsoft. Use search_nasdaq_symbols to discover valid symbols.",
             "default": null,
-            "examples": [],
+            "examples": [
+              "AAPL",
+              "MSFT"
+            ],
             "min_length": null,
             "max_length": null,
             "min_value": null,
@@ -421,44 +572,14 @@
             "observed_value": null
           },
           {
-            "name": "to",
-            "type": "date",
+            "name": "timeframe",
+            "type": "string",
             "required": true,
-            "description": "End date (YYYY-MM-DD) for the broadcast schedule window.",
+            "description": "Relative timeframe code controlling how many recent trading days are returned, as expected by the Nasdaq NOCP API (e.g. \"d5\" for last 5 days). Inspect the site or experiment with values if you need other windows.",
             "default": null,
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          },
-          {
-            "name": "page",
-            "type": "integer",
-            "required": true,
-            "description": "Zero-based page index for pagination.",
-            "default": 0,
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          },
-          {
-            "name": "pageSize",
-            "type": "integer",
-            "required": true,
-            "description": "Number of events per page.",
-            "default": 50,
-            "examples": [],
+            "examples": [
+              "d5"
+            ],
             "min_length": null,
             "max_length": null,
             "min_value": null,
@@ -470,156 +591,215 @@
           }
         ]
       },
-      "name": "pl_broadcast_schedule",
-      "description": "Fetch broadcasting events schedule for a date range",
-      "when_to_use": "Use to fetch broadcasting events schedule for a date range",
+      "name": "get_nasdaq_symbol_historical_nocp",
+      "description": "Retrieve historical NOCP (non-official closing price) data for a given Nasdaq symbol over a recent timeframe using /api/company/{symbol}/historical-nocp.",
+      "when_to_use": "Use to retrieve historical nocp (non-official closing price) data for a given nasdaq symbol over a recent timeframe using /api/company/{symbol}/historical-nocp.",
       "parameters_summary": [],
-      "inspection_score": 94
+      "inspection_score": 93
     },
     {
-      "routine_spec_id": "4kvvv7",
+      "routine_spec_id": "8pw7rv",
       "routine_json": {
-        "name": "pl_content_search",
-        "description": "Search Premier League content (articles and videos) using the public content search API with pagination and basic filters.",
+        "name": "get_nasdaq_market_overview",
+        "description": "Fetches overall U.S. market status and trading session timings from Nasdaq using the public /api/market-info endpoint, returning fields like marketIndicator, open/close times, previous and next trade dates, and business-day flags.",
         "operations": [
           {
             "type": "navigate",
-            "url": "https://api.premierleague.com/content/premierleague/en?offset={{offset}}&pageSize={{pageSize}}&contentTypes={{contentTypes}}&sort={{sort}}&sortOrder={{sortOrder}}",
-            "sleep_after_navigation_seconds": 2.0
+            "url": "https://www.nasdaq.com",
+            "sleep_after_navigation_seconds": 3.0
           },
           {
-            "type": "js_evaluate",
-            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
-            "timeout_seconds": 10.0,
-            "session_storage_key": "pl_content_search_result"
+            "type": "fetch",
+            "endpoint": {
+              "url": "https://api.nasdaq.com/api/market-info",
+              "description": null,
+              "method": "GET",
+              "headers": {
+                "Accept": "application/json, text/plain, */*"
+              },
+              "body": null,
+              "credentials": "same-origin"
+            },
+            "session_storage_key": "nasdaq_market_overview_raw"
           },
           {
             "type": "return",
-            "session_storage_key": "pl_content_search_result"
+            "session_storage_key": "nasdaq_market_overview_raw"
+          }
+        ],
+        "parameters": []
+      },
+      "name": "get_nasdaq_market_overview",
+      "description": "Fetch overall market status and high-level market information using /api/market-info and related homepage widgets.",
+      "when_to_use": "Use to fetch overall market status and high-level market information using /api/market-info and related homepage widgets.",
+      "parameters_summary": [],
+      "inspection_score": 90
+    },
+    {
+      "routine_spec_id": "i76jwf",
+      "routine_json": {
+        "name": "get_nasdaq_trending_symbols",
+        "description": "Fetches trending Nasdaq symbols for a given asset class using the public /api/ga/trending-symbols endpoint on www.nasdaq.com, returning an array of records with symbol, asset class, page views, and display name.",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://www.nasdaq.com",
+            "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "fetch",
+            "endpoint": {
+              "url": "https://www.nasdaq.com/api/ga/trending-symbols?assetclass={{asset_class}}&limit={{limit}}",
+              "description": null,
+              "method": "GET",
+              "headers": {
+                "Accept": "application/json, text/plain, */*"
+              },
+              "body": null,
+              "credentials": "same-origin"
+            },
+            "session_storage_key": "nasdaq_trending_symbols_raw"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "nasdaq_trending_symbols_raw"
           }
         ],
         "parameters": [
+          {
+            "name": "asset_class",
+            "type": "string",
+            "required": true,
+            "description": "Asset class filter for trending symbols as used by Nasdaq (for example \"index\" or \"stocks\"). Use values observed from search_nasdaq_symbols or the site (e.g., INDEX, STOCKS) but pass in lowercase where required by the API.",
+            "default": null,
+            "examples": [
+              "index",
+              "stocks"
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "limit",
+            "type": "integer",
+            "required": true,
+            "description": "Maximum number of trending symbols to return for the requested asset class.",
+            "default": null,
+            "examples": [
+              10,
+              20
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": 1,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          }
+        ]
+      },
+      "name": "get_nasdaq_trending_symbols",
+      "description": "Fetch trending symbols for a given asset class using /api/ga/trending-symbols.",
+      "when_to_use": "Use to fetch trending symbols for a given asset class using /api/ga/trending-symbols.",
+      "parameters_summary": [],
+      "inspection_score": 95
+    },
+    {
+      "routine_spec_id": "97u2qe",
+      "routine_json": {
+        "name": "get_nasdaq_news_by_symbol",
+        "description": "Retrieves recent Nasdaq news articles for a given symbol and asset class using the public /api/news/topic/articlebysymbol endpoint, returning the raw data/message/status envelope from Nasdaq including article metadata.",
+        "operations": [
+          {
+            "type": "navigate",
+            "url": "https://www.nasdaq.com",
+            "sleep_after_navigation_seconds": 3.0
+          },
+          {
+            "type": "js_evaluate",
+            "js": "(() => { const symbol = `{{symbol}}`.trim().toUpperCase(); const asset = `{{asset_class}}`.trim().toUpperCase(); const q = `${symbol}|${asset}`; const offset = {{offset}}; const limit = {{limit}}; const fallback = 'true'; const url = new URL('https://www.nasdaq.com/api/news/topic/articlebysymbol'); url.searchParams.set('q', q); url.searchParams.set('offset', String(offset)); url.searchParams.set('limit', String(limit)); url.searchParams.set('fallback', fallback); return { builtUrl: url.toString() }; })();",
+            "timeout_seconds": 5.0,
+            "session_storage_key": "nasdaq_news_url_meta"
+          },
+          {
+            "type": "fetch",
+            "endpoint": {
+              "url": "{{sessionStorage:nasdaq_news_url_meta.builtUrl}}",
+              "description": null,
+              "method": "GET",
+              "headers": {
+                "Accept": "application/json, text/plain, */*"
+              },
+              "body": null,
+              "credentials": "same-origin"
+            },
+            "session_storage_key": "nasdaq_news_by_symbol_raw"
+          },
+          {
+            "type": "return",
+            "session_storage_key": "nasdaq_news_by_symbol_raw"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true,
+            "description": "Ticker symbol for the instrument, e.g. \"AAPL\" for Apple stock. Use search_nasdaq_symbols to discover valid symbols.",
+            "default": null,
+            "examples": [
+              "AAPL",
+              "MSFT"
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
+          {
+            "name": "asset_class",
+            "type": "string",
+            "required": true,
+            "description": "Asset class for the symbol as used by Nasdaq news APIs (e.g. \"STOCKS\" or \"INDEX\"). Obtain this from search_nasdaq_symbols (field asset) and pass it in uppercase to match observed q parameter format.",
+            "default": null,
+            "examples": [
+              "STOCKS",
+              "INDEX"
+            ],
+            "min_length": null,
+            "max_length": null,
+            "min_value": null,
+            "max_value": null,
+            "pattern": null,
+            "enum_values": null,
+            "format": null,
+            "observed_value": null
+          },
           {
             "name": "offset",
             "type": "integer",
             "required": true,
-            "description": "Zero-based offset into the result set for pagination.",
-            "default": 0,
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          },
-          {
-            "name": "pageSize",
-            "type": "integer",
-            "required": true,
-            "description": "Number of content items per page.",
-            "default": 20,
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          },
-          {
-            "name": "contentTypes",
-            "type": "string",
-            "required": true,
-            "description": "Comma-separated list of content types to include (e.g., VIDEO,TEXT).",
-            "default": "VIDEO,TEXT",
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          },
-          {
-            "name": "sort",
-            "type": "string",
-            "required": true,
-            "description": "Field to sort by (e.g., publishDate).",
-            "default": "publishDate",
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          },
-          {
-            "name": "sortOrder",
-            "type": "string",
-            "required": true,
-            "description": "Sort order, ASC or DESC.",
-            "default": "DESC",
-            "examples": [],
-            "min_length": null,
-            "max_length": null,
-            "min_value": null,
-            "max_value": null,
-            "pattern": null,
-            "enum_values": null,
-            "format": null,
-            "observed_value": null
-          }
-        ]
-      },
-      "name": "pl_content_search",
-      "description": "Search Premier League content (articles/videos) with filters and pagination",
-      "when_to_use": "Use to search premier league content (articles/videos) with filters and pagination",
-      "parameters_summary": [],
-      "inspection_score": 94
-    },
-    {
-      "routine_spec_id": "tuv9jd",
-      "routine_json": {
-        "name": "pl_playlist_items",
-        "description": "Fetch items for a given Premier League content playlist from the public playlist API.",
-        "operations": [
-          {
-            "type": "navigate",
-            "url": "https://api.premierleague.com/content/premierleague/playlist/en/{{playlistId}}?pageSize={{pageSize}}",
-            "sleep_after_navigation_seconds": 2.0
-          },
-          {
-            "type": "js_evaluate",
-            "js": "(() => { try { const text = document.body && document.body.innerText ? document.body.innerText : null; if (!text) { return { ok: false, error: 'No body text found' }; } const parsed = JSON.parse(text); return parsed; } catch (e) { return { ok: false, error: String(e) }; } })();",
-            "timeout_seconds": 10.0,
-            "session_storage_key": "pl_playlist_items_result"
-          },
-          {
-            "type": "return",
-            "session_storage_key": "pl_playlist_items_result"
-          }
-        ],
-        "parameters": [
-          {
-            "name": "playlistId",
-            "type": "string",
-            "required": true,
-            "description": "Playlist identifier as used by the Premier League content API (e.g., 4346308).",
+            "description": "Zero-based index of the first article to return, used for pagination. Use 0 for the first page.",
             "default": null,
-            "examples": [],
+            "examples": [
+              0,
+              10
+            ],
             "min_length": null,
             "max_length": null,
-            "min_value": null,
+            "min_value": 0,
             "max_value": null,
             "pattern": null,
             "enum_values": null,
@@ -627,15 +807,18 @@
             "observed_value": null
           },
           {
-            "name": "pageSize",
+            "name": "limit",
             "type": "integer",
             "required": true,
-            "description": "Number of items to return in the playlist page.",
-            "default": 20,
-            "examples": [],
+            "description": "Maximum number of news articles to return starting from offset.",
+            "default": null,
+            "examples": [
+              10,
+              20
+            ],
             "min_length": null,
             "max_length": null,
-            "min_value": null,
+            "min_value": 1,
             "max_value": null,
             "pattern": null,
             "enum_values": null,
@@ -644,15 +827,15 @@
           }
         ]
       },
-      "name": "pl_playlist_items",
-      "description": "Fetch items for a given Premier League content playlist",
-      "when_to_use": "Use to fetch items for a given premier league content playlist",
+      "name": "get_nasdaq_news_by_symbol",
+      "description": "Retrieve recent Nasdaq news articles filtered by symbol using /api/news/topic/articlebysymbol.",
+      "when_to_use": "Use to retrieve recent nasdaq news articles filtered by symbol using /api/news/topic/articlebysymbol.",
       "parameters_summary": [],
-      "inspection_score": 94
+      "inspection_score": 92
     }
   ],
-  "usage_guide": "This catalog exposes a set of high-value, read-only scraping routines around the public Premier League (Pulselive + api.premierleague.com) APIs observed on premierleague.com. They are designed to be composed together.\n\n1) pl_standings \u2014 league tables\n- Purpose: Get the official standings table for a competition/season.\n- Inputs: competitionId (e.g., 8 for Premier League), seasonId (e.g., 2025).\n- Output: JSON with matchweek and tables[].entries including team object and overall/home/away stats (played, won, drawn, lost, goals, points, positions).\n- Use when: You need league tables, form guides, or to derive team ranks/points for analytics.\n\n2) pl_fixtures_by_matchweek \u2014 fixtures/schedule by round\n- Purpose: List all matches in a given matchweek for a competition/season.\n- Inputs: competitionId, seasonId, matchweek.\n- Output: JSON with pagination and data[] matches (kickoff time, teams, ground, matchId, etc.).\n- Use when: Building matchweek views, schedule pages, or selecting a matchId for deeper inspection.\n- Combine with: pl_match_details (for a chosen matchId), pl_team_overview_bundle (for team branding), pl_player_profile_and_stats (for key players).\n\n3) pl_teams_in_competition \u2014 club directory\n- Purpose: Get the list of teams in a competition/season with core metadata.\n- Inputs: competitionId, seasonId.\n- Output: JSON with pagination and data[] team objects (id, name, shortName, abbr, stadium details).\n- Notes: Paginated; routine returns first page and a _next token. For all teams, page manually using that token.\n- Use when: You need to map Pulselive team IDs to human-readable clubs, build club pickers, or join with standings/fixtures.\n\n4) pl_team_overview_bundle \u2014 club metadata/branding\n- Purpose: Retrieve rich club metadata from the Pulselive metadata endpoint.\n- Inputs: teamId.\n- Output: JSON with top-level metadata containing club_established, club_stadium, club_website, social handles, shirt URLs, etc.\n- Use when: Building team overview cards or enriching tables/fixtures with official branding and external links.\n- Combine with: pl_teams_in_competition (to discover teamId), pl_standings (for performance context).\n\n5) pl_player_profile_and_stats \u2014 player profiles (profile-focused)\n- Purpose: Fetch detailed player profile data from /api/v1/players/{playerId}.\n- Inputs: playerId.\n- Output: Array of season records with currentTeam, country, name, shirt number, physical attributes, dates, and id fields (competitionId, seasonId, playerId).\n- Notes: Stats endpoint could not be reliably validated; treat this as a profile-only scraper despite the name.\n- Use when: You have a playerId (e.g., from match lineups) and need biography/history info.\n\n6) pl_match_details \u2014 events + lineups bundle\n- Purpose: Get rich per-match detail: event timeline plus lineups.\n- Inputs: matchId.\n- Output: { events, lineups } combined from Pulselive events and lineups endpoints, each including home_team and away_team structures with players, goals, cards, substitutions, etc.\n- Use when: Powering match-centre UIs, analytics, or highlight tools that need full context for a single match.\n- Combine with: pl_fixtures_by_matchweek (to discover matchIds), pl_player_profile_and_stats (for players in the lineups).\n\n7) pl_broadcast_schedule \u2014 TV/broadcast listings\n- Purpose: Retrieve official broadcasting events for a date range.\n- Inputs: from, to (YYYY-MM-DD), page, pageSize.\n- Output: JSON with pageInfo and content[] broadcasting events (id, name, startDateTime, broadcasters, channels, contentReference linking to matches/content).\n- Use when: Building TV listings, broadcast planners, or adding broadcast context to fixtures.\n\n8) pl_content_search \u2014 content discovery\n- Purpose: Search Premier League articles and videos with pagination and filters.\n- Inputs: offset, pageSize, contentTypes (e.g., VIDEO,TEXT), sort, sortOrder.\n- Output: JSON with pageInfo and content[] items (id, type, title, description, metadata, etc.).\n- Use when: Building news feeds, search pages, or editorial dashboards.\n\n9) pl_playlist_items \u2014 curated rails/playlists\n- Purpose: Fetch the items in a specific Premier League content playlist.\n- Inputs: playlistId, pageSize.\n- Output: Playlist object with metadata and items[] (id, type, sid) plus pageInfo.\n- Use when: Reproducing curated rails (e.g., Latest News, Featured Videos) or reusing editorial groupings in your own UI.\n\nHow to use these together\n- League dashboard: pl_standings + pl_teams_in_competition + pl_team_overview_bundle.\n- Matchweek hub: pl_fixtures_by_matchweek \u2192 for each match, pl_match_details; enrich players via pl_player_profile_and_stats.\n- Club page: pl_team_overview_bundle for branding, pl_standings for table position, pl_fixtures_by_matchweek filtered client-side for that team, and relevant content via pl_content_search or pl_playlist_items.\n- Media/broadcast view: pl_broadcast_schedule for TV slots, link events to matches via contentReference, and surface related articles/videos via pl_content_search or pl_playlist_items.\n\nGeneral notes\n- All routines wrap public GET endpoints; no auth tokens are required.\n- IDs (competitionId, seasonId, teamId, playerId, matchId, playlistId) come from these APIs themselves; use list-style routines (teams, fixtures, content search, playlists) to discover them.\n- Responses are returned as close as possible to the upstream JSON; your application should handle pagination and any error envelopes as needed.",
+  "usage_guide": "This Nasdaq routine catalog gives you end-to-end coverage for discovering symbols and pulling quotes, fundamentals-style overviews, charts, dividends, historical prices, NOCP series, market-wide status, trending symbols, and symbol-specific news.\n\nRecommended flow:\n1) Discover symbols\n   - Use search_nasdaq_symbols first when you have partial text (ticker prefix or company name) and need valid Nasdaq instruments.\n   - It returns symbol, name, exchange, asset (e.g., STOCKS, INDEX), and industry; use these fields to drive subsequent calls.\n\n2) Get real-time and overview data\n   - get_nasdaq_basic_quotes: when you need lightweight, real-time quote snapshots for one or more instruments (last price, change, % change, volume). Pass one or more \"SYMBOL|ASSET\" pairs (e.g., \"AAPL|STOCKS,COMP|INDEX\").\n   - get_nasdaq_symbol_overview: when you need a rich, single-symbol profile (company name, exchange, market status, key stats, and summary metrics). Pass symbol (e.g., \"AAPL\") and asset_class (e.g., \"stocks\" or \"index\").\n\n3) Time-series and historical pricing\n   - get_nasdaq_symbol_chart: for intraday/recent chart time series (timestamps, prices, volumes) suitable for plotting or technical analysis. Pass symbol and asset_class.\n   - get_nasdaq_symbol_historical: for daily OHLCV history over a specific calendar window. Pass symbol, asset_class, from_date, to_date, and a row limit.\n   - get_nasdaq_symbol_historical_nocp: for recent Nasdaq Closing Price (NOCP) history over a relative timeframe (e.g., last 5 days). Pass symbol and a timeframe code like \"d5\".\n\n4) Income and dividends\n   - get_nasdaq_symbol_dividends: when you need dividend history and related header stats (ex-div date, yield, annual dividend, payout ratio) for a symbol. Pass symbol and asset_class (typically \"stocks\").\n\n5) Market-wide context\n   - get_nasdaq_market_overview: to understand overall U.S. market status and trading session timings (open/closed, countdown, pre/regular/after-hours windows). No parameters.\n   - get_nasdaq_trending_symbols: to see which symbols are currently trending by page views for a given asset class (e.g., indexes vs. stocks). Pass asset_class (e.g., \"index\", \"stocks\") and a limit.\n\n6) News and research\n   - get_nasdaq_news_by_symbol: when you need recent Nasdaq news articles for a given symbol, with pagination. Pass symbol, asset_class (e.g., \"STOCKS\"), offset, and limit.\n\nComposition tips:\n- Typical analysis starts with search_nasdaq_symbols \u2192 get_nasdaq_basic_quotes or get_nasdaq_symbol_overview, then branches to historical/NOCP/dividends as needed.\n- For dashboards, combine get_nasdaq_market_overview, get_nasdaq_trending_symbols, and a small set of get_nasdaq_basic_quotes calls.\n- For research on one name, chain: search_nasdaq_symbols (if needed) \u2192 get_nasdaq_symbol_overview \u2192 get_nasdaq_symbol_historical (pricing) \u2192 get_nasdaq_symbol_dividends (income) \u2192 get_nasdaq_news_by_symbol (news flow).\n- All routines return Nasdaq\u2019s raw JSON envelopes, so downstream code should inspect data, message, and status.rCode for robust error handling.",
   "failed_routines": [],
-  "total_experiments": 12,
+  "total_experiments": 8,
   "total_attempts": 10
 }

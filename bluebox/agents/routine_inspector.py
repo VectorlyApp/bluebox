@@ -3,9 +3,10 @@ bluebox/agents/routine_inspector.py
 
 RoutineInspector — independent quality gate for constructed routines.
 
-The inspector is a zero-tool specialist that receives ALL context in the task
-prompt and returns a structured RoutineInspectionResult. It has no knowledge
-of the discovery process — it judges the OUTPUT, not the PROCESS.
+The inspector receives ALL context in the task prompt and returns a structured
+RoutineInspectionResult. It has no knowledge of the discovery process — it
+judges the OUTPUT, not the PROCESS. When equipped with documentation tools,
+it can search common-issues docs to provide specific remediation advice.
 
 Think of it as a peer reviewer: reads the routine cold, checks if the claims
 hold up, and decides: publish, revise, or reject.
@@ -140,16 +141,18 @@ class RoutineInspector(AbstractSpecialist):
     """
     Independent quality gate for constructed routines.
 
-    Zero domain tools — pure judgment. Receives routine + execution result +
-    exploration context as the task prompt, scores on 5 dimensions, and returns
-    a RoutineInspectionResult via finalize_with_output.
+    Receives routine + execution result + exploration context as the task prompt,
+    scores on 6 dimensions, and returns a RoutineInspectionResult via
+    finalize_with_output. Has optional access to documentation tools to provide
+    specific, actionable remediation advice in recommendations.
     """
 
     AGENT_CARD = AgentCard(
         description=(
             "Independent quality gate that judges constructed routines on 6 dimensions: "
             "task completion, data quality, parameter coverage, routine robustness, "
-            "structural correctness, and documentation quality. Zero tools — pure judgment."
+            "structural correctness, and documentation quality. Can reference routine "
+            "documentation to provide actionable fix recommendations."
         ),
     )
 
@@ -276,6 +279,31 @@ class RoutineInspector(AbstractSpecialist):
           wastes database space and misleads other agents. Only pass routines that
           ACTUALLY WORK with REAL DATA in the execution result.
 
+        ## Documentation-Backed Recommendations
+
+        When you have access to documentation tools (search_docs, get_doc_file),
+        use them to provide SPECIFIC, actionable remediation advice in your
+        recommendations. Don't just say "fix the auth" — search for the relevant
+        doc and cite the exact fix pattern.
+
+        Common patterns to search for:
+        - "TypeError: Failed to fetch" → search_docs("cors-failed-to-fetch") →
+          the fix is adding a navigate operation to the allowed origin
+        - 401/403 errors → search_docs("unauthenticated") → the fix is adding
+          auth token fetch + js_evaluate extraction before data fetches
+        - Placeholder issues → search_docs("placeholder-not-resolved") →
+          check placeholder syntax and resolution types
+        - HTML instead of JSON → search_docs("fetch-returns-html") → wrong URL
+          or CORS redirect
+
+        Your recommendations should include: (1) what's wrong, (2) the specific
+        fix from documentation with example operations if applicable.
+
+        IMPORTANT: Only search docs when you identify a blocking issue that has
+        a known fix pattern. Do NOT search docs for every inspection — only when
+        you can provide actionable remediation. Keep doc searches to 1-2 max per
+        inspection to stay within iteration limits.
+
         ## Process
 
         1. Read the routine name and description — this is what you're scoring against
@@ -286,6 +314,8 @@ class RoutineInspector(AbstractSpecialist):
         4. Cross-reference with exploration summaries — does the data match?
         5. Score each dimension with specific reasoning based on ACTUAL results
         6. List blocking issues (MUST fix) and recommendations (SHOULD fix)
+           - If docs are available and you identified a fixable issue, search the
+             common-issues docs to include a specific fix in recommendations
         7. Write a 2-3 sentence summary
         8. Call finalize_with_output with the complete inspection result
     """)
@@ -330,6 +360,7 @@ class RoutineInspector(AbstractSpecialist):
         return (
             self.AUTONOMOUS_SYSTEM_PROMPT
             + self._get_output_schema_prompt_section()
+            + self._get_documentation_prompt_section()
             + self._get_urgency_notice()
         )
 

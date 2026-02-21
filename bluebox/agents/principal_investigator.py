@@ -450,6 +450,34 @@ class PrincipalInvestigator(AbstractAgent):
           unless every single routine has been individually addressed.
         - Use follow_up liberally — it's cheaper than dispatching a new experiment and
           preserves the worker's browser state and context.
+
+        ## Common Execution Failures — MUST READ
+
+        ### TypeError: Failed to fetch (CORS)
+        If a routine's fetch operation fails with "TypeError: Failed to fetch", this
+        almost always means the browser's current origin doesn't match the API's
+        CORS Access-Control-Allow-Origin header. Routines start from about:blank
+        (origin = null), so ANY cross-origin fetch will fail without navigation.
+
+        The fix is to add a `navigate` operation BEFORE the first fetch to set the
+        browser origin to the allowed domain.
+
+        Example: If the API is at https://api.example.com but CORS only allows
+        https://www.example.com, the routine MUST start with:
+          {"type": "navigate", "url": "https://www.example.com"}
+        before any fetch to https://api.example.com/...
+
+        RULE: Every routine that calls an external API MUST start with a navigate
+        operation. This is cheap (one page load) and prevents CORS issues. If you
+        see "Failed to fetch" in an inspection blocking issue, ADD A NAVIGATE OP.
+
+        For more details: search_docs("cors-failed-to-fetch")
+
+        ### HTTP 401/403 (Authentication)
+        If a fetch returns 401/403, the routine is missing authentication. Check
+        experiment findings for auth token endpoints and subscription keys. The
+        routine must obtain a token (via fetch + js_evaluate) before calling
+        protected endpoints. For more details: search_docs("unauthenticated")
     """)
 
     # -----------------------------------------------------------------------
@@ -1617,6 +1645,36 @@ class PrincipalInvestigator(AbstractAgent):
 
         response["verdict"] = attempt.status.value
 
+        # ----- Remediation hints for failed inspections -----
+        if not attempt.overall_pass and attempt.blocking_issues:
+            hints: list[str] = []
+            issues_text = " ".join(attempt.blocking_issues).lower()
+            if "failed to fetch" in issues_text or "typeerror" in issues_text:
+                hints.append(
+                    "CORS FIX: Add a 'navigate' operation to the API's allowed origin "
+                    "BEFORE any fetch. Routines start from about:blank (origin=null) so "
+                    "all cross-origin fetches fail. Example: if API is at api.example.com "
+                    "but CORS allows www.example.com, add {\"type\": \"navigate\", "
+                    "\"url\": \"https://www.example.com\"} as the FIRST operation. "
+                    "Review docs: search_docs('cors-failed-to-fetch')."
+                )
+            if "401" in issues_text or "403" in issues_text or "unauthorized" in issues_text or "access denied" in issues_text:
+                hints.append(
+                    "AUTH FIX: The routine is missing authentication. Add a fetch "
+                    "operation to obtain a token/key, then a js_evaluate to extract "
+                    "it, then include it in subsequent fetch headers via a "
+                    "sessionStorage placeholder. Review docs: "
+                    "search_docs('unauthenticated')."
+                )
+            if "documentation quality" in issues_text:
+                hints.append(
+                    "DOCS FIX: Improve routine name (verb_site_noun, 3+ segments), "
+                    "description (>=8 words, explain action+inputs+outputs), and "
+                    "parameter descriptions (>=3 words, explain where to get values)."
+                )
+            if hints:
+                response["remediation_hints"] = hints
+
         # ----- Persist unified attempt record -----
         self._record_attempt(
             spec=spec,
@@ -1934,6 +1992,7 @@ class PrincipalInvestigator(AbstractAgent):
             emit_message_callable=self._emit_message_callable,
             llm_model=self._worker_llm_model,
             run_mode=RunMode.AUTONOMOUS,
+            documentation_data_loader=self._documentation_data_loader,
         )
 
     def _get_or_create_agent(self, task: Task) -> AbstractSpecialist:
