@@ -1,542 +1,609 @@
 {
-  "total_requests": 452,
+  "total_requests": 484,
   "endpoints": [
     {
-      "url_pattern": "/api/quote/AAPL/info",
+      "url_pattern": "https://apim.carvana.io/vehicle-details-api/api/v1/vehicledetails",
       "method": "GET",
       "category": "data",
-      "hit_count": 24,
-      "description": "Fetches detailed info/metadata for the AAPL stock instrument.",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/quote/basic",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 14,
-      "description": "Returns basic quote snapshots for one or more symbols (stocks and indexes).",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/quote/COMP/info",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 14,
-      "description": "Fetches detailed info/metadata for the NASDAQ Composite index (COMP).",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/market-info",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 10,
-      "description": "Provides overall market status and high-level market information.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/quote/watchlist",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 10,
-      "description": "Returns quote data for a set of symbols in a watchlist (stocks and indexes).",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/autocomplete/slookup/10",
-      "method": "GET",
-      "category": "action",
-      "hit_count": 6,
-      "description": "Symbol search/autocomplete endpoint returning matching instruments for a partial query string.",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/quote/AAPL/summary",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 4,
-      "description": "Summary quote and key stats for AAPL stock.",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/quote/basic (indexes batch)",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 4,
-      "description": "Batch basic quotes for multiple index symbols (e.g., COMP, NDX, NQUS500LC).",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/calendar/upcoming",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Upcoming events calendar for a given date.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/quote/list-type-extended/RTAT",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Extended list of quotes for a predefined list type (likely real-time most active or similar).",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/marketmovers",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Market movers list for stocks filtered by exchange status.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/quote/COMP/chart",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Chart data time series for COMP index.",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/quote/COMP/summary",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Summary quote and key stats for COMP index.",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/quote/AAPL/chart",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Chart data time series for AAPL stock (relative strength chart type).",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/quote/AAPL/dividends",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Dividend history and upcoming dividends for AAPL stock.",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/quote/AAPL/historical",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Historical OHLCV data for AAPL over a date range with pagination.",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/company/AAPL/historical-nocp",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Historical NOCP (non-official closing price) data for AAPL over a timeframe (e.g., last 5 days).",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/nasdaq-bell-notifications/current-events",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 6,
-      "description": "Returns current bell ceremony and notification events for the Nasdaq site.",
-      "interest": "medium",
-      "request_ids": [
-        "interception-job-2177.0"
-      ]
-    },
-    {
-      "url_pattern": "/api/news/topic/articlebysymbol",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "News articles feed filtered by symbol (e.g., AAPL).",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/home/api/v1/market-status/{id}",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Home page market status widget data, keyed by a UUID.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/home/api/v1/upcoming-event-by-date/events",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Home page upcoming events for a specific date.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/ga/trending-symbols",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Trending symbols list for a given asset class (e.g., index).",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/market-activity/index/comp",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 2,
-      "description": "HTML page for NASDAQ Composite index overview, which then triggers API data calls.",
-      "interest": "medium",
-      "request_ids": [
-        "interception-job-2226.0"
-      ]
-    },
-    {
-      "url_pattern": "/market-activity/stocks/aapl",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 2,
-      "description": "HTML page for AAPL stock overview, which then triggers quote and chart API calls.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/market-activity/stocks/aapl/dividend-history",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 2,
-      "description": "HTML page for AAPL dividend history, which triggers /quote/AAPL/dividends API.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/market-activity/stocks/aapl/historical",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 2,
-      "description": "HTML page for AAPL historical data, which triggers /quote/AAPL/historical API.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/market-activity/stocks/aapl/historical-nocp",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 2,
-      "description": "HTML page for AAPL historical NOCP data, which triggers /company/AAPL/historical-nocp API.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/nd/index.php/form/XDFrame",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 10,
-      "description": "Nasdaq iframe-based form endpoint likely used for embedded tools or widgets.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/ai-search/external/indexer-api/clickstream/publish",
-      "method": "POST",
-      "category": "action",
-      "hit_count": 12,
-      "description": "Clickstream analytics ingestion endpoint publishing user view/click events with Bearer JWT auth.",
-      "interest": "low",
-      "request_ids": [
-        "interception-job-2410.0"
-      ]
-    },
-    {
-      "url_pattern": "/ee/va6/v1/interact",
-      "method": "POST",
-      "category": "action",
-      "hit_count": 36,
-      "description": "Adobe/analytics interaction beacons from smetrics.nasdaq.com capturing user behavior.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/ee/va6/v1/collect",
-      "method": "POST",
-      "category": "action",
-      "hit_count": 3,
-      "description": "Adobe/analytics collection beacons from smetrics.nasdaq.com.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/WRSiteInterceptEngine/*",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 8,
-      "description": "Qualtrics site intercept configuration and asset retrieval endpoints.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/sr-data-ingestion-service/v2/sessions/*",
-      "method": "POST",
-      "category": "action",
-      "hit_count": 24,
-      "description": "Qualtrics session recording and validation endpoints for UX replay.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/pixels/{id}/config",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 12,
-      "description": "Reddit pixel configuration for ad/analytics tracking.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/attribution_trigger",
-      "method": "GET",
-      "category": "action",
-      "hit_count": 12,
-      "description": "LinkedIn ads attribution pixel requests tied to Nasdaq page views.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/action/0",
-      "method": "GET",
-      "category": "action",
-      "hit_count": 19,
-      "description": "Bing tracking pixel for page load and consent events.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/actionp/0",
-      "method": "GET",
-      "category": "action",
-      "hit_count": 12,
-      "description": "Bing tracking pixel for consent updates.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/ccm/form-data/*",
-      "method": "POST",
-      "category": "action",
-      "hit_count": 60,
-      "description": "Google consent and measurement beacons (GTM/CCM).",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/webevents/visitWebPage",
-      "method": "POST",
-      "category": "action",
-      "hit_count": 6,
-      "description": "Marketo web page visit tracking events for Nasdaq site.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/webevents/clickLink",
-      "method": "POST",
-      "category": "action",
       "hit_count": 1,
-      "description": "Marketo click tracking event for a link on Nasdaq site.",
-      "interest": "low",
-      "request_ids": []
+      "description": "Returns detailed vehicle information for a specific vehicleId (core VDP data).",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-5525.0"
+      ]
     },
     {
-      "url_pattern": "/akam/13/pixel_8908b73",
+      "url_pattern": "https://apik.carvana.io/merch/search/api/v2/search",
       "method": "POST",
       "category": "action",
-      "hit_count": 2,
-      "description": "Akamai pixel beacon for performance/monitoring.",
-      "interest": "low",
+      "hit_count": 16,
+      "description": "Search endpoint for inventory on the cars SRP (search results page); only OPTIONS preflights are visible due to Cloudflare blocking.",
+      "interest": "high",
       "request_ids": [
-        "interception-job-1926.0"
+        "interception-job-4954.0",
+        "94BC36B18ECFE6FDC6697B9C5709EF4F"
       ]
     },
     {
-      "url_pattern": "/themes/nsdq/onetrust/consent/*",
-      "method": "GET",
+      "url_pattern": "https://apik.carvana.io/merch/search/api/v2/search/facets",
+      "method": "POST",
       "category": "data",
-      "hit_count": 36,
-      "description": "OneTrust cookie consent configuration JSON for Nasdaq site.",
-      "interest": "low",
+      "hit_count": 16,
+      "description": "Returns facet/aggregation data for the vehicle search (filters, counts); only OPTIONS preflights are captured.",
+      "interest": "high",
       "request_ids": [
-        "interception-job-2386.0"
+        "interception-job-4954.0",
+        "94BC36B18ECFE6FDC6697B9C5709EF4F"
       ]
     },
     {
-      "url_pattern": "/themes/nsdq/onetrust/scripttemplates/*",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 12,
-      "description": "OneTrust script template configuration for cookie banners.",
-      "interest": "low",
-      "request_ids": [
-        "interception-job-1924.0"
-      ]
-    },
-    {
-      "url_pattern": "/themes/nsdq/dist/assets/fonts/nasdaq-icons.woff",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 6,
-      "description": "Static font asset for Nasdaq icon set.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/api/nasdaq-bell-notifications/current-events",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 6,
-      "description": "Returns current Nasdaq bell event notifications for the homepage banner.",
-      "interest": "medium",
-      "request_ids": [
-        "interception-job-2177.0"
-      ]
-    },
-    {
-      "url_pattern": "/v2/playlists/{id}",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 4,
-      "description": "JWPlayer playlist metadata for embedded Nasdaq videos.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/tracks/{id}.srt",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 4,
-      "description": "JWPlayer subtitle track file for embedded video.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/strips/{id}.vtt",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "JWPlayer thumbnail strip VTT for video scrubbing preview.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/v1/jwplayer6/ping.gif",
-      "method": "GET",
-      "category": "action",
-      "hit_count": 2,
-      "description": "JWPlayer analytics ping for video playback events.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "/activation",
-      "method": "GET",
+      "url_pattern": "https://apik.carvana.io/merch/search/api/v2/pricing",
+      "method": "POST",
       "category": "data",
       "hit_count": 8,
-      "description": "Adobe Hummingbird activation endpoint for personalization/experimentation.",
-      "interest": "low",
-      "request_ids": []
+      "description": "Pricing endpoint for search results, likely returning price breakdowns for vehicles on SRP; only OPTIONS preflights visible.",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-4750.0",
+        "E0552F206C4713E631BCA4A686C99F2C",
+        "interception-job-5000.0"
+      ]
     },
     {
-      "url_pattern": "/stylesettings",
+      "url_pattern": "https://apik.carvana.io/merch/vehicledetails/api/v1/availability",
       "method": "GET",
       "category": "data",
-      "hit_count": 4,
-      "description": "Adobe Hummingbird style settings retrieval for experiments.",
-      "interest": "low",
+      "hit_count": 2,
+      "description": "Returns availability and delivery options for a specific vehicle and zip code on the VDP.",
+      "interest": "high",
       "request_ids": []
     },
     {
-      "url_pattern": "/localization",
+      "url_pattern": "https://apik.carvana.io/merch/vehicledetails/api/v1/inspection/report/{vehicleId}",
       "method": "GET",
       "category": "data",
-      "hit_count": 4,
-      "description": "Adobe Hummingbird localization data retrieval.",
-      "interest": "low",
+      "hit_count": 2,
+      "description": "Returns vehicle inspection report data for a specific vehicle.",
+      "interest": "high",
       "request_ids": []
     },
     {
-      "url_pattern": "/eum/results.txt",
+      "url_pattern": "https://apik.carvana.io/merch/merchui/api/servicecontracts/v1/get",
       "method": "GET",
-      "category": "action",
-      "hit_count": 4,
-      "description": "Akamai RUM (real user monitoring) beacon results.",
-      "interest": "low",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns available service contract options for a vehicle given VIN and effective date.",
+      "interest": "high",
       "request_ids": []
     },
     {
-      "url_pattern": "/events",
+      "url_pattern": "https://apimpub.carvana.com/ancillary-products-api/api/v2/GapWaiver/availability",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Determines GAP waiver product availability for a given vehicle, state, and financing context.",
+      "interest": "high",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://apik.carvana.io/merch/buffering/api/v1/soonestavailabilitybulk",
       "method": "POST",
-      "category": "action",
+      "category": "data",
       "hit_count": 6,
-      "description": "Google/measurement events endpoint (mpc2-prod-25-is5qnl632q-wl.a.run.app) for additional analytics.",
-      "interest": "low",
+      "description": "Returns soonest availability dates in bulk for multiple vehicles (delivery/pickup timing).",
+      "interest": "medium",
       "request_ids": []
     },
     {
-      "url_pattern": "/index.php/form/XDFrame",
+      "url_pattern": "https://apik.carvana.io/core/discount/api/v1/discount",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns discount information for a given state and user context.",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://apik.carvana.io/merch/carvanamerchcontextapi/api/v3/delivery",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 6,
+      "description": "Returns delivery context/options for a given zip code (delivery windows, eligibility).",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://apik.carvana.io/merch/carvanamerchcontextapi/api/v3/distance",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns distance-related context for a given zip code (likely shipping distance from hub).",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://apik.carvana.io/merch/reviews/api/review/sv",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns vehicle or site reviews summary data for display on SRP/VDP.",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://apik.carvana.io/merch/vehicledetails/api/v1/recall",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Returns recall information for a specific vehicleId.",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://apik.carvana.io/merch/search/api/v1/recommendations/personalized-recs",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Returns personalized vehicle recommendations for the user on the home/SRP experience.",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://apik.carvana.io/merch/search/api/v1/suggest/filters",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 24,
+      "description": "Returns suggested filters for search (likely dynamic filter suggestions based on inventory and user behavior); only OPTIONS captured.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-4794.0",
+        "B78E58205CC0B29A73E3B77AFB3EE650",
+        "interception-job-4955.0"
+      ]
+    },
+    {
+      "url_pattern": "https://apik.carvana.io/merch/search/api/v4/suggest",
       "method": "GET",
       "category": "data",
       "hit_count": 10,
-      "description": "Nasdaq XDFrame form endpoint for embedded widgets or ads.",
-      "interest": "low",
-      "request_ids": []
+      "description": "Autosuggest search endpoint (query-based suggestions like 'a', 'au', 'audi').",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-4989.0",
+        "C170A892FF656FB83001DDB14BA01551",
+        "interception-job-4990.0"
+      ]
     },
     {
-      "url_pattern": "/",
+      "url_pattern": "https://apik.carvana.io/core/headerapi/api/v2/header",
       "method": "GET",
-      "category": "navigation",
-      "hit_count": 2,
-      "description": "Nasdaq homepage HTML.",
+      "category": "data",
+      "hit_count": 8,
+      "description": "Returns header configuration and app settings (partner, device, appsettings).",
       "interest": "medium",
       "request_ids": []
     },
     {
-      "url_pattern": "/ai-search/external/indexer-api/clickstream/publish",
+      "url_pattern": "https://apik.carvana.io/core/consent-api/api/v1/consent/disclosures",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 24,
+      "description": "Returns consent disclosure content for legal/privacy banners.",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://apik.carvana.io/traffic/content",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Returns CMS content for the /cars page (copy/marketing content).",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://apik.carvana.io/traffic/links/v3/kill/byurl",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Returns kill-switch/link configuration for a given URL path.",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://apik.carvana.io/traffic/reviews/v4",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Returns review aggregates/content for the /cars page context.",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://apim.carvana.io/web-eventable/api/graph",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 10,
+      "description": "Ingests first-party behavioral events such as carvana-page-load and header nav clicks (internal analytics).",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 60,
+      "description": "Carvana analytics event ingestion endpoint used for dozens of UI/performance events (SRP Viewed, Suggested filters, etc.).",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/split-test/api/v2/buckets",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 16,
+      "description": "Retrieves experiment bucket assignments for A/B tests.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/split-test/api/v2/buckets/bundle",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 6,
+      "description": "Retrieves bundled experiment bucket data for multiple experiments at once.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/device-detection/api/v1/devicedetection",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Sends device fingerprinting data for analytics/optimization.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?performance-metrics",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 20,
+      "description": "Grouped performance metric events (first-contentful-paint, dom-interactive, time-to-first-byte, etc.) to analytics.graph endpoint.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?user-journey-events",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 40,
+      "description": "Grouped user journey/UI interaction events (SRP Viewed, Vehicle Details, Search Bar, etc.) to analytics.graph endpoint.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.audioeye.com/v1/send",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Accessibility/AudioEye analytics beacon endpoint.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://pixels.spotify.com/v1/ingest",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 8,
+      "description": "Spotify marketing pixel event ingestion.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://pixels.spotify.com/v1/config/{id}",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 8,
+      "description": "Spotify pixel configuration fetch.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://t.getletterpress.com/com.snowplowanalytics.snowplow/tp2",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 8,
+      "description": "Snowplow tracking pixel for marketing/analytics.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://bat.bing.com/action",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 5,
+      "description": "Bing tracking pixel for page load/custom events.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://bat.bing.com/action",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Bing tracking pixel POST for custom event data.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://www.google.com/pagead/form-data/{id}",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 3,
+      "description": "Google Ads tracking/measurement beacons.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://www.google.com/ccm/form-data/{id}",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Google consent/measurement beacons.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://api.consentjs.datagrail.io/save_open",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 4,
+      "description": "ConsentJS endpoint for saving consent banner open/non-open state.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?experiments",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Analytics events related to experiment exposure.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://storage.googleapis.com/chat-ui-ngcp-prod/build/assets-manifest.json",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 8,
+      "description": "Static manifest for Carvana chat UI bundle.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://static.fastly.carvana.io/{module}/assets-manifest.json",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 42,
+      "description": "Static JS/CSS asset manifests for various Carvana microfrontends (header, footer, appraisal, etc.).",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://assets.fastly.carvana.io/{module}/assets-manifest.json",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 30,
+      "description": "Static asset manifests for Carvana UI modules (auth flows, footer, spinner, etc.).",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://assets.fastly.carvana.io/merchui/_next/static/prefetch-manifest.json",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 2,
+      "description": "Next.js prefetch manifest for Carvana merch UI.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://assets.fastly.carvana.io/spinner/standalone/64/latest/version.txt",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 2,
+      "description": "Spinner component version metadata.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://spinnerdata.carvana.io/spinnerdata/{id}/spinnerData.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Returns 360-degree spinner image metadata for a vehicle.",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://wsv3cdn.audioeye.com/static-scripts/v2/{date}/locales/en/compliance.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 8,
+      "description": "AudioEye accessibility compliance configuration.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?Sebastian%20Questions",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Analytics events for Sebastian vehicle questions widget.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://descartes-external.ngcp.prod.cvna.info/vehicle-questions/",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Fetches vehicle questions content (Sebastian Q&A) for the VDP.",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://accounts.google.com/gsi/fedcm.json",
+      "method": "GET",
+      "category": "auth",
+      "hit_count": 1,
+      "description": "Google Identity Services FedCM configuration for one-tap sign-in.",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://accounts.google.com/gsi/fedcm/listaccounts",
       "method": "POST",
       "category": "auth",
-      "hit_count": 12,
-      "description": "Clickstream ingestion with Bearer JWT; demonstrates internal auth pattern for analytics APIs.",
+      "hit_count": 1,
+      "description": "Google Identity Services endpoint to list Google accounts for one-tap sign-in.",
       "interest": "medium",
-      "request_ids": [
-        "interception-job-2410.0"
-      ]
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://google.com/.well-known/web-identity",
+      "method": "GET",
+      "category": "auth",
+      "hit_count": 1,
+      "description": "Web identity discovery endpoint used with FedCM/Google Identity.",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://www.carvana.com/",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 5,
+      "description": "Main Carvana home page HTML navigation endpoint.",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://www.carvana.com/cars",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 2,
+      "description": "Cars SRP page navigation endpoint (HTML).",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://www.carvana.com/cars/suv",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 2,
+      "description": "SUV SRP page navigation endpoint (HTML).",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://www.carvana.com/vehicle/{vehicleId}",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 2,
+      "description": "Vehicle details page navigation endpoint (HTML VDP).",
+      "interest": "medium",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://carvana.com/",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 2,
+      "description": "Alternate host for Carvana homepage, likely redirect/HTML.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://www.carvana.com/cdn-cgi/challenge-platform",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 6,
+      "description": "Cloudflare challenge/anti-bot endpoints used before allowing access to Carvana pages/APIs.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?mega-srp-vehicle-data",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Analytics events summarizing vehicle data shown on mega SRP (not the raw data itself).",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?mega-vdp",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Analytics events for the mega vehicle details page experience.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?mega-srp-user-info",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 4,
+      "description": "Analytics events containing user-info context for mega SRP (not primary data).",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?search_bar_viewed",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Analytics event for search bar viewed.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?search_bar",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 3,
+      "description": "Analytics events for search bar interactions.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?SRP%20Viewed",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 10,
+      "description": "Analytics events for SRP viewed state.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?Vehicle%20Details",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Analytics events when vehicle details section is viewed.",
+      "interest": "low",
+      "request_ids": []
     }
   ],
   "auth_observations": [
-    "Most core market data APIs under https://api.nasdaq.com/api/* are accessed with anonymous GET requests using only standard browser headers and a large cookie jar; no Authorization or CSRF headers are present.",
-    "A dedicated clickstream analytics endpoint at https://www.nasdaq.com/ai-search/external/indexer-api/clickstream/publish uses an Authorization: Bearer <JWT> header, indicating an internal service token for indexing/AI search rather than end-user auth.",
-    "Extensive use of cookies for tracking, personalization, and consent (Adobe Experience Cloud IDs, Marketo _mkto_trk, OneTrust OptanonConsent, analytics cookies like _ga, _fbp, _uetsid) but none function as explicit API auth tokens for market data.",
-    "No evidence of CSRF tokens or custom API keys in headers for api.nasdaq.com calls; access control for these endpoints appears to rely on public/unauthenticated read access with possible server-side rate limiting.",
-    "Qualtrics and other third-party analytics/UX tools rely on cookies and their own session identifiers but do not expose additional auth schemes in this capture."
+    "No first-party Bearer or API key headers are visible on captured API calls; access to apik.carvana.io and apim.carvana.io is blocked by Cloudflare, so authenticated calls likely include additional headers or cookies not seen here.",
+    "CORS preflight OPTIONS requests to apik.carvana.io include Access-Control-Request-Headers: authorization,content-type,correlation-context, indicating that actual POST calls carry an Authorization header and a correlation-context header for tracing.",
+    "All blocked API responses from apim.carvana.io and apik.carvana.io return Cloudflare HTML with no Set-Cookie or auth tokens, confirming that the blocking happens before app-level auth.",
+    "Google Identity Services (accounts.google.com gsi/fedcm.json and fedcm/listaccounts plus google.com/.well-known/web-identity) are used for optional Google One Tap sign-in, but no Carvana-specific auth token exchange is visible in this capture.",
+    "Most analytics and tracking endpoints (analytics.carvana.io, pixels.spotify.com, t.getletterpress.com, bat.bing.com, analytics.audioeye.com, api.consentjs.datagrail.io) use anonymous or cookie-based tracking; no reusable API tokens are exposed in headers."
   ],
-  "narrative": "This capture contains 452 total requests across 160 unique URLs and 20 hosts. Roughly 240 requests are clear noise or analytics (Google CCM, Bing, Adobe/Marketo/Qualtrics beacons, Reddit/LinkedIn pixels, JWPlayer telemetry, Akamai RUM, etc.), leaving around ~210 requests that contribute to page rendering or core market data.\n\nThe main business API surface is on api.nasdaq.com under the /api/ path. Within that, the highest-volume and most central endpoint for the observed task (viewing AAPL and COMP data, including historical series) is GET /api/quote/AAPL/info (24 hits), which provides detailed instrument metadata for AAPL stock. Closely related core endpoints include:\n- GET /api/quote/AAPL/summary (summary quote and key stats)\n- GET /api/quote/AAPL/chart (time-series chart data)\n- GET /api/quote/AAPL/historical (paginated historical OHLCV)\n- GET /api/company/AAPL/historical-nocp (NOCP-specific history)\n- GET /api/quote/AAPL/dividends (dividend history)\n- GET /api/quote/basic (multi-symbol basic quotes, used for watchlists and key panels)\n- GET /api/quote/COMP/info, /summary, and /chart for the COMP index\n\nFor finding instruments by name or ticker, the autocomplete search endpoint GET /api/autocomplete/slookup/10 is the key action-style endpoint, returning candidate symbols based on partial text such as 'A', 'Appl', or 'Apple'. This would be the primary entry point to automate symbol discovery before calling quote endpoints.\n\nAll of these market-data endpoints are simple GETs that accept query parameters (e.g., assetclass, date ranges, symbol lists) and return JSON. They are invoked by navigation page loads from www.nasdaq.com/market-activity/* pages, which themselves are HTML shells that rely on these APIs to fill in dynamic data.\n\nNo login, token refresh, or CSRF-fetch endpoints are present in this capture. The only explicit Authorization header appears on the /ai-search/external/indexer-api/clickstream/publish endpoint, which carries a Bearer JWT clearly intended for internal analytics/indexing rather than user-level auth. For routine construction, this endpoint is low-interest in terms of business logic but medium-interest as an example of how Nasdaq secures internal services.\n\nThe remainder of the traffic is dominated by consent-management and analytics infrastructure: OneTrust consent JSON and templates, Adobe smetrics /interact and /collect beacons, Marketo /webevents tracking, Qualtrics site intercept and session recording, Google CCM form-data posts, Bing /action and /actionp pixels, Reddit and LinkedIn pixels, JWPlayer playlist and tracking, and Akamai RUM /eum/results.txt. These endpoints are all categorized as low interest for automation, as they do not affect core user tasks.\n\nIn summary, the main API endpoint family needed for this task is the set of GET endpoints under https://api.nasdaq.com/api/quote/* and related historical/dividend/company paths, with /api/quote/AAPL/info and /api/quote/basic standing out as the most central for retrieving instrument details and basic quotes. The environment uses largely unauthenticated public GET access for market data, with heavy use of cookies and third-party analytics for tracking and personalization but no visible auth requirements for these data APIs in this capture."
+  "narrative": "484 total requests were captured across 20 hosts. Method distribution is POST 191, OPTIONS 168, GET 125. Using host and path heuristics, roughly 290 requests are clear noise (analytics beacons, static assets, CDNs, tracking pixels, Cloudflare challenges). The remaining ~190 are to Carvana business APIs and HTML navigation endpoints.\n\nThe most important business APIs are under apik.carvana.io and apim.carvana.io. However, Cloudflare blocked access to these APIs from the capture environment, so nearly all calls to these hosts are either OPTIONS preflight requests or 403 HTML responses. Despite this, the URL patterns and query parameters clearly reveal the intended API surface.\n\nFor the user task of browsing/searching inventory and inspecting a specific vehicle, the main high-interest endpoints are:\n- apik.carvana.io/merch/search/api/v2/search (POST): the core search endpoint for the SRP, taking a JSON body (not visible) and returning matching vehicles.\n- apik.carvana.io/merch/search/api/v2/search/facets (POST): complementary endpoint returning facets/filters for the current search.\n- apik.carvana.io/merch/search/api/v2/pricing (POST): returns pricing information for vehicles on the SRP.\n- apim.carvana.io/vehicle-details-api/api/v1/vehicledetails (GET): the primary vehicle details API for a given vehicleId; this is the main endpoint for VDP data, though the single captured request returns a Cloudflare block page.\n- Several supporting vehicle endpoints on apik.carvana.io/merch/vehicledetails (availability, inspection report, recall) and merchui/servicecontracts plus apimpub GapWaiver for add-on products.\n\nThese patterns indicate a fairly standard separation: apik.carvana.io hosts merchandising/search and vehicle-detail microservices, while apim.carvana.io hosts a composite vehicle-details-api. The capture includes one GET to apim.carvana.io/vehicle-details-api/api/v1/vehicledetails?vehicleId=4195259 which is the clearest candidate for \"main API endpoint that returns the data needed\" for a vehicle details page. For search results, /merch/search/api/v2/search is the core data provider, with facets and pricing as adjuncts.\n\nAuth-wise, no Bearer tokens or explicit API keys appear in the captured headers, likely because Cloudflare blocked the calls before they reached app-level authentication. CORS preflights to apik.carvana.io request authorization and correlation-context headers, strongly suggesting that real POST requests include an Authorization header (probably a JWT or opaque token) plus a correlation ID. Google Identity Services FedCM endpoints are present for optional Google One Tap sign-in, but no downstream Carvana auth token exchange is visible.\n\nMost other endpoints are low-interest analytics and tracking: analytics.carvana.io's web-eventable/graph and split-test APIs, Snowplow at t.getletterpress.com, Spotify pixels, Bing and Google Ads beacons, AudioEye accessibility analytics, and ConsentJS. Static asset manifests and spinner data live on static.fastly.carvana.io, assets.fastly.carvana.io, storage.googleapis.com, and spinnerdata.carvana.io.\n\nIn summary, the capture is heavily impacted by Cloudflare blocking, but still reveals the primary Carvana APIs. For automation, the key endpoints are apim.carvana.io/vehicle-details-api/api/v1/vehicledetails for detailed vehicle data and apik.carvana.io/merch/search/api/v2/search (plus facets and pricing) for search results. Any real automation against these endpoints will need to replicate whatever auth and anti-bot mechanisms Carvana uses (likely cookies, Authorization headers, and Cloudflare challenges), which are not fully observable in this trace."
 }

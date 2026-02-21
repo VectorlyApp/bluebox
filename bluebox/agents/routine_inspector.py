@@ -195,6 +195,21 @@ class RoutineInspector(AbstractSpecialist):
         from shipping. If you let a broken routine through, it pollutes the database
         and wastes other agents' time. When in doubt, FAIL it.
 
+        ## CRITICAL: Spec Description Downgrade Detection
+
+        When the inspection prompt includes a "Spec vs Routine Description Comparison"
+        section, you MUST check whether the routine's own description has been watered
+        down from the original spec. If the spec promises rich, detailed data but the
+        routine description claims to return only minimal fields, this is a BLOCKING issue:
+
+        - Add blocking issue: "Routine description is significantly weaker than the spec
+          description. Spec promises: '<spec desc>'. Routine claims: '<routine desc>'.
+          The routine must deliver on the original spec or the spec should be updated."
+        - Cap task_completion at 4 — the routine may work for what it claims, but it
+          does NOT fulfill the originally planned capability.
+        - Cap data_quality at 4 — returning 2 fields when 15 were promised is not
+          quality data.
+
         ## Scoring Rubric (6 dimensions, 0-10 each)
 
         1. **Task Completion** — Does the returned data ACTUALLY accomplish what

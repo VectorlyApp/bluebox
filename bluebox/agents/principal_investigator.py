@@ -133,6 +133,19 @@ class PrincipalInvestigator(AbstractAgent):
     # Covers both LLM call hangs and browser/CDP hangs.
     WORKER_TIMEOUT_SECONDS: int = 180  # 3 minutes
 
+    # Error patterns → common-issues doc paths.
+    # When an experiment result contains these keywords, the matching doc is
+    # auto-injected into the get_experiment_result response so the PI sees
+    # remediation guidance without having to search for it.
+    _ERROR_DOC_PATTERNS: list[tuple[list[str], str]] = [
+        (["failed to fetch", "typeerror: failed", "cors"], "common-issues/cors-failed-to-fetch.md"),
+        (["401", "403", "unauthorized", "forbidden"], "common-issues/unauthenticated.md"),
+        (["<html", "<!doctype", "cloudflare"], "common-issues/fetch-returns-html.md"),
+        (["element not found", "selector"], "common-issues/element-not-found.md"),
+        (["timeout", "timed out"], "common-issues/execution-timeout.md"),
+        (["placeholder", "unresolved"], "common-issues/placeholder-not-resolved.md"),
+    ]
+
     AGENT_CARD = AgentCard(
         description=(
             "Orchestrates experiment-driven routine construction. Reads exploration "
@@ -1214,6 +1227,41 @@ class PrincipalInvestigator(AbstractAgent):
             "experiments": results,
         }
 
+    def _get_remediation_docs_for_experiment(
+        self, experiment: ExperimentEntry,
+    ) -> str | None:
+        """Scan experiment output for known error patterns and return relevant doc content."""
+        if self._documentation_data_loader is None:
+            return None
+
+        # Build searchable text from output + summary
+        output_text = json.dumps(experiment.output, default=str).lower() if experiment.output else ""
+        summary_text = (experiment.summary or "").lower()
+        searchable = output_text + " " + summary_text
+
+        matched_paths: list[str] = []
+        for keywords, doc_path in self._ERROR_DOC_PATTERNS:
+            if any(kw in searchable for kw in keywords):
+                matched_paths.append(doc_path)
+
+        if not matched_paths:
+            return None
+
+        doc_sections: list[str] = []
+        for doc_path in matched_paths:
+            content = self._documentation_data_loader.get_file_content(doc_path)
+            if content:
+                doc_sections.append(f"--- {doc_path} ---\n{content}")
+
+        if not doc_sections:
+            return None
+
+        return (
+            "IMPORTANT: The following documentation covers known fixes for the "
+            "errors observed in this experiment. Read carefully before deciding "
+            "to give up on this routine spec.\n\n" + "\n\n".join(doc_sections)
+        )
+
     @agent_tool()
     def _get_experiment_result(self, experiment_id: str) -> dict[str, Any]:
         """
@@ -1226,7 +1274,7 @@ class PrincipalInvestigator(AbstractAgent):
         if experiment is None:
             return {"error": f"No experiment found with ID: {experiment_id}"}
 
-        return {
+        result: dict[str, Any] = {
             "experiment_id": experiment.id,
             "hypothesis": experiment.hypothesis,
             "status": experiment.status.value,
@@ -1234,6 +1282,13 @@ class PrincipalInvestigator(AbstractAgent):
             "summary": experiment.summary,
             "output": experiment.output,
         }
+
+        # Auto-inject relevant common-issues docs when experiment has errors
+        remediation_docs = self._get_remediation_docs_for_experiment(experiment)
+        if remediation_docs:
+            result["remediation_docs"] = remediation_docs
+
+        return result
 
     @agent_tool()
     def _follow_up(
@@ -2126,6 +2181,19 @@ class PrincipalInvestigator(AbstractAgent):
             f"## Routine JSON\n```json\n{json.dumps(routine.model_dump(), indent=2, default=str)}\n```\n",
         ]
 
+        # Flag description downgrades — if the routine's own description is weaker
+        # than the spec description, the inspector must catch this.
+        routine_description = routine.description
+        if routine_description != spec.description:
+            prompt_parts.append(
+                f"## Spec vs Routine Description Comparison\n"
+                f"**Original spec description:** {spec.description}\n\n"
+                f"**Routine's own description:** {routine_description}\n\n"
+                f"IMPORTANT: If the routine's description is significantly weaker or narrower "
+                f"than the original spec description, this is a BLOCKING issue. The routine must "
+                f"deliver on the spec's promise, not just its own watered-down claims.\n"
+            )
+
         if execution_result is not None:
             exec_data = execution_result.model_dump()
             prompt_parts.append(
@@ -2141,6 +2209,16 @@ class PrincipalInvestigator(AbstractAgent):
                 prompt_parts.append(f"### {domain}\n{summary}\n")
 
         inspection_prompt = "\n".join(prompt_parts)
+
+        # Truncate if too large to avoid overwhelming the inspector LLM
+        max_chars = 50_000
+        if len(inspection_prompt) > max_chars:
+            logger.warning(
+                "Inspection prompt too large (%d chars), truncating to %d",
+                len(inspection_prompt),
+                max_chars,
+            )
+            inspection_prompt = inspection_prompt[:max_chars] + "\n\n... [TRUNCATED — prompt exceeded 50,000 characters]"
 
         try:
             config = AutonomousConfig(min_iterations=1, max_iterations=10)
