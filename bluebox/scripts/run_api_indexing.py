@@ -198,6 +198,9 @@ class PipelinePersistence:
         ├── attempts/
         │   ├── attempt_xyz789.json  # Each routine attempt
         │   └── ...
+        ├── attempt_records/
+        │   ├── get_standings_attempt_1_abc12345.json   # Unified record per attempt
+        │   └── search_matches_attempt_2_def67890.json  # routine + params + exec + inspection
         ├── routines/
         │   ├── get_standings.json   # Shipped routine files
         │   └── ...
@@ -215,9 +218,13 @@ class PipelinePersistence:
         self._attempts_dir = output_dir / "attempts"
         self._routines_dir = output_dir / "routines"
         self._threads_dir = output_dir / "agent_threads"
+        self._attempt_records_dir = output_dir / "attempt_records"
 
         # Create directories
-        for d in [self._experiments_dir, self._attempts_dir, self._routines_dir, self._threads_dir]:
+        for d in [
+            self._experiments_dir, self._attempts_dir, self._routines_dir,
+            self._threads_dir, self._attempt_records_dir,
+        ]:
             d.mkdir(parents=True, exist_ok=True)
 
     def on_ledger_change(self, ledger: DiscoveryLedger, reason: str) -> None:
@@ -257,6 +264,23 @@ class PipelinePersistence:
             _write_json(self._output_dir / "catalog.json", ledger.catalog.model_dump())
 
         logger.debug("Persisted ledger to disk (reason: %s)", reason)
+
+    def on_attempt_record(self, record: dict[str, Any]) -> None:
+        """
+        Called by the PI after every submit_routine attempt completes
+        (execution + inspection). Writes a unified record with routine JSON,
+        test parameters, execution result, and inspection result in one file.
+        """
+        attempt_id = record.get("attempt_id", "unknown")
+        spec_name = record.get("spec_name", "unknown")
+        attempt_number = record.get("attempt_number", 0)
+        filename = f"{spec_name}_attempt_{attempt_number}_{attempt_id[:8]}.json"
+        record_path = self._attempt_records_dir / filename
+        _write_json(record_path, record)
+        logger.debug(
+            "Persisted attempt record: %s (pass=%s)",
+            filename, record.get("inspection", {}).get("overall_pass"),
+        )
 
     def on_agent_thread(
         self,
@@ -362,6 +386,7 @@ def run_pi_with_recovery(
             num_inspectors=num_inspectors,
             on_ledger_change=persistence.on_ledger_change,
             on_agent_thread=persistence.on_agent_thread,
+            on_attempt_record=persistence.on_attempt_record,
         )
 
         try:
@@ -448,7 +473,7 @@ def run_api_indexing(
         return None
 
     # Clean up Phase 2 artifacts from previous runs (preserve exploration/)
-    for subdir in ["experiments", "attempts", "routines", "agent_threads"]:
+    for subdir in ["experiments", "attempts", "attempt_records", "routines", "agent_threads"]:
         p = output_dir / subdir
         if p.exists():
             shutil.rmtree(p)

@@ -289,7 +289,20 @@ class DiscoveryLedger(BaseModel):
             lines.append("## Routine Catalog Plan")
             for i, spec in enumerate(self.routine_specs, 1):
                 status_badge = f"[{spec.status.value}]"
-                lines.append(f"  {i}. {status_badge:16s} {spec.name} — \"{spec.description}\"")
+                spec_attempts = self.get_attempts_for_spec(spec.id)
+                attempt_count = len(spec_attempts)
+                latest_failed = (
+                    spec_attempts[-1]
+                    if spec_attempts and spec_attempts[-1].status == RoutineAttemptStatus.FAILED
+                    else None
+                )
+                suffix = ""
+                if attempt_count > 0:
+                    suffix = f" ({attempt_count} attempt{'s' if attempt_count > 1 else ''})"
+                lines.append(f"  {i}. {status_badge:16s} {spec.name} — \"{spec.description}\"{suffix}")
+                # Surface the latest failure reason inline so the PI sees it at a glance
+                if latest_failed and latest_failed.blocking_issues:
+                    lines.append(f"      ⚠ LAST FAILURE: {latest_failed.blocking_issues[0]}")
             if self.active_spec_id:
                 active = self.get_active_spec()
                 if active:
@@ -299,12 +312,30 @@ class DiscoveryLedger(BaseModel):
                     lines.append(
                         f"    Experiments: {len(spec_exps)} run ({confirmed} confirmed)"
                     )
-                    spec_attempts = self.get_attempts_for_spec(active.id)
-                    if spec_attempts:
-                        latest = spec_attempts[-1]
+                    active_attempts = self.get_attempts_for_spec(active.id)
+                    if active_attempts:
+                        latest = active_attempts[-1]
                         lines.append(
                             f"    Latest attempt: {latest.id} [{latest.status.value}]"
                         )
+                        if latest.blocking_issues:
+                            lines.append("    BLOCKING ISSUES (from inspector):")
+                            for issue in latest.blocking_issues:
+                                lines.append(f"      - {issue}")
+                        if latest.recommendations:
+                            lines.append("    RECOMMENDATIONS (from inspector):")
+                            for rec in latest.recommendations:
+                                lines.append(f"      - {rec}")
+                        # Show attempt history count so PI knows how many tries are left
+                        if len(active_attempts) > 1:
+                            failed_count = sum(
+                                1 for a in active_attempts
+                                if a.status == RoutineAttemptStatus.FAILED
+                            )
+                            lines.append(
+                                f"    Attempt history: {len(active_attempts)} total, "
+                                f"{failed_count} failed"
+                            )
             lines.append("")
 
         # Shipped routines
