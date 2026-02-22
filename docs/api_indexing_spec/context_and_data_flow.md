@@ -78,12 +78,13 @@ DataLoaders (parse + index)
 
 | Context Source | How It's Provided | Contents |
 |---------------|-------------------|----------|
-| Experiment prompt | Task message from PI | Hypothesis, instructions, expected behavior |
-| Capture data | Via capture lookup tools | Network traffic, storage events, DOM snapshots, window properties |
-| Live browser | Via browser tools | Navigate, JS eval, CDP commands, DOM inspection |
-| Exploration summaries | Included in system prompt | Same 4 summaries the PI sees |
+| Experiment prompt | PI's task message (initial autonomous message) | Hypothesis, instructions, expected behavior |
+| Data availability summary | Injected in system prompt | Stats only — e.g. "265 requests, 42 unique URLs, 1050 storage events" — NOT the full exploration summaries |
+| Capture data | Via capture lookup tools (on demand) | Network traffic, storage events, DOM snapshots, window properties |
+| Live browser | Via browser tools (on demand) | Navigate, JS eval, CDP commands, DOM inspection |
 
 **What it does NOT see:**
+- The exploration summaries (network.json, dom.json, etc.) — the PI has these, workers do not
 - The Discovery Ledger (doesn't know about other experiments or the routine plan)
 - Other workers' results (workers are fully independent)
 - The routine being assembled (only tests specific hypotheses)

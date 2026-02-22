@@ -34,3 +34,19 @@
 **Why it matters:** Anti-bot defenses are often the primary reason experiments fail — workers get 403s, CAPTCHA walls, or silent request drops that look like broken endpoints. If the PI doesn't know a site uses PerimeterX, it may waste multiple experiment attempts before realizing the issue is bot detection, not auth. Currently this insight is buried in the `narrative` free-text field at best.
 
 **Proposed fix:** Have the `NetworkSpecialist` produce a dedicated `anti_bot_observations` field in `NetworkExplorationSummary` — a list of observed defenses (name, evidence, likely impact). Inject this prominently into the PI's system prompt so it can warn workers upfront and factor it into experiment strategy (e.g. "this site uses Akamai — navigate first and avoid direct fetch calls").
+
+## 4. Trim Inspector Context to What It Actually Needs
+
+**Gap:** Every `RoutineInspector` call receives ALL exploration summaries — network, DOM, storage, and UI — injected into the task prompt. The stated reason is "cross-reference." In practice, the inspector is judging a routine's correctness and robustness: whether endpoints are real, whether auth is handled, whether the execution result is meaningful. For that, it mainly needs the **network summary** (to verify endpoints and auth patterns). DOM, storage, and UI summaries add significant token cost but are rarely relevant to inspection decisions. The prompt is also hard-capped at 50,000 chars and truncated silently if exceeded — meaning on complex sites the summaries may crowd out the actual routine and execution result.
+
+**Why it matters:** The inspector runs on every `submit_routine` call, potentially many times per pipeline run. Passing 4 full exploration summaries each time is wasteful and may actually hurt quality if truncation cuts off the execution result.
+
+**Proposed fix:** Pass only the network summary to the inspector by default (the most relevant for verifying endpoints and auth). Make DOM/storage/UI summaries opt-in or omit them entirely. Alternatively, pre-summarize exploration context into a compact "site facts" block specifically for inspection use, rather than dumping raw full summaries.
+
+## 5. Give Workers Access to Proven Artifacts
+
+**Gap:** Workers are fully stateless — they receive only a task prompt from the PI and a data availability summary (raw counts). They have no access to exploration summaries, no access to prior experiment results, and no access to the ledger's `ProvenArtifacts`. The PI is expected to copy all relevant proven context (token endpoints, subscription keys, auth headers) into every experiment prompt manually. This is fragile — if the PI's prompt omits a detail, the worker has no way to recover it.
+
+**Why it matters:** The PI writing complete auth instructions into every experiment prompt is verbose, error-prone, and burns PI context. Workers that need to authenticate before testing a data endpoint must rediscover auth from scratch if the PI's prompt is incomplete, even though the ledger already has proven fetches, tokens, and parameters sitting in `ProvenArtifacts`.
+
+**Proposed fix:** Inject the ledger's `ProvenArtifacts` (proven fetches, tokens, navigations, parameters) into the worker's system prompt at dispatch time — not the full ledger, just the proven facts. This gives workers a reliable source of truth for auth and known-good values without requiring the PI to manually copy everything into each prompt. The injection should be compact and structured (not the full ledger summary) so it doesn't bloat worker context.
