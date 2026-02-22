@@ -157,14 +157,14 @@ Iteration 3: LLM call → [finalize_with_output] → loop exits
 
 ## How the PI Uses Exploration Summaries
 
-All four summaries are injected into the PI's **system prompt** as context. The PI never accesses raw captures directly — it reads the summaries to understand:
+All four summaries are injected into the PI's **system prompt** as context. The PI has **no tools to query raw captures** — it reads only the summaries to understand:
 
 1. **What endpoints exist** (network) — which APIs to build routines for
 2. **What auth is needed** (network + storage) — tokens, keys, cookies
 3. **What the pages look like** (DOM) — forms, embedded data, framework
 4. **What the user did** (UI) — intent, parameters, workflow
 
-The PI then plans a catalog of routines and dispatches experiments to workers who have both capture lookup tools AND a live browser.
+The PI does hold references to all 4 data loaders, but only to **pass them through to workers** when dispatching experiments. Workers are the ones with actual capture lookup tools (`capture_search_transactions`, `capture_search_storage`, etc.) that query the raw data. The PI then plans a catalog of routines and dispatches experiments to those workers, who have both capture lookup tools AND a live browser.
 
 ## Skipping Exploration
 

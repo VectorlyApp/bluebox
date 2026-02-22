@@ -134,6 +134,8 @@ The PI reads these to understand:
 - What auth state lives in the browser (storage)
 - What the user actually did and intended (UI)
 
+The PI has no tools to query raw captures directly. It holds references to all 4 data loaders only to pass them through to workers — workers are the ones with capture lookup tools that actually query the raw data.
+
 ## Files
 
 - `bluebox/agents/specialists/abstract_specialist.py`
