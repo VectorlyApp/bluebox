@@ -80,14 +80,14 @@ A `RoutineCatalog` containing:
 
 ### Auth-First Ordering
 
-The PI MUST solve authentication before data endpoints:
+**Prompt-only convention — not enforced in code.** The PI's system prompt instructs it to follow this order:
 
 1. **Phase A** — dispatch experiments for auth/token endpoints only
 2. Prove auth works (get a valid token, find the subscription key)
 3. Record proven auth artifacts
-4. **Phase B** — dispatch data endpoint experiments WITH auth instructions
+4. **Phase B** — dispatch data endpoint experiments WITH auth instructions included in every prompt
 
-Workers don't share state — the PI must include full auth instructions (token URL, headers, key values) in every experiment prompt.
+Workers don't share browser state — the PI must pass full auth instructions (token URL, headers, key values) explicitly in each experiment prompt. Nothing in the code prevents the PI from skipping this order; it relies entirely on the LLM following the system prompt instructions.
 
 ### Duplicate Routine Detection
 
@@ -95,13 +95,16 @@ Before executing and inspecting a routine, `submit_routine` hashes the operation
 
 ### Quality Gates in submit_routine
 
-Before a routine reaches the inspector, `submit_routine` checks:
+Before a routine reaches the inspector, `submit_routine` runs a sequence of **pure Python static checks** (no LLM involved). Each gate returns an error immediately if it fails — the routine never reaches execution or inspection until all pass:
 
-1. **Documentation quality** — name format (snake_case, 3+ segments, includes site), description length (>= 8 words), parameter descriptions (>= 3 words), opaque parameter sourcing
-2. **Credential parameter check** — rejects parameters that look like API keys / subscription keys (these should be hardcoded)
-3. **Attempt limit** — max 5 attempts per routine
-4. **Duplicate detection** — rejects identical operations to previous failed attempts
-5. **Pydantic validation** — routine JSON must match the Routine model schema
+1. **Documentation quality** (`_check_routine_documentation_quality`) — static regex/word-count checks:
+   - Name must be `snake_case`, ≥ 3 underscore-separated segments, no generic-only nouns
+   - Description must be ≥ 8 words and contain a return/fetch keyword
+   - Each parameter description must be ≥ 3 words; opaque params (ending in `_id`, `_slug`, `_code`, etc.) must explain where to get valid values
+2. **Credential parameter check** — rejects parameters whose names match a hardcoded set of site-credential patterns (`api_key`, `subscription_key`, `client_secret`, etc.); these should be hardcoded from captures, not exposed as user parameters
+3. **Attempt limit** — max 5 `submit_routine` calls per routine spec
+4. **Duplicate detection** — hashes the operations list and rejects if identical to any previous failed attempt for the same spec
+5. **Pydantic validation** — routine JSON must parse cleanly against the `Routine` model schema
 
 ### Loop Detection
 

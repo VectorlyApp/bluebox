@@ -16,9 +16,23 @@ ThreadPoolExecutor(max_workers=4)
 Each specialist:
 1. Receives a **DataLoader** (parsed JSONL captures)
 2. Receives an **output schema** (the exploration summary structure)
-3. Runs autonomously for 3-10 LLM iterations
+3. Runs autonomously for 3-10 **iterations** (see below)
 4. Calls `finalize_with_output()` with the structured summary
 5. Result is saved to `exploration/{domain}.json`
+
+### What Is an Iteration?
+
+> **Note:** "Iteration" means different things in different frameworks — some count each individual tool call, others count each LLM round-trip. In this codebase, **one iteration = one LLM API call** (a full round-trip), which may include multiple tool calls in a single response.
+
+Each call may return multiple tool calls in a single response, which are all executed before the next LLM call is made. So the loop looks like:
+
+```
+Iteration 1: LLM call → [search_responses_by_terms, get_entry_detail] → tool results added to context
+Iteration 2: LLM call → [get_entry_detail, get_unique_urls] → tool results added to context
+Iteration 3: LLM call → [finalize_with_output] → loop exits
+```
+
+`finalize_with_output` is only **unlocked after `min_iterations` (3)** — before that the tool doesn't appear in the LLM's tool list at all, forcing it to keep exploring. After `max_iterations` (10), the loop exits regardless and returns `None` if the agent never finalized.
 
 ## Four Domains
 
@@ -67,8 +81,7 @@ Each specialist:
 - Forms with action URLs, methods, and input fields
 - Embedded tokens (meta tags, hidden inputs, CSRF tokens)
 - Data blobs in script tags (`__NEXT_DATA__`, `__NUXT__`, inline JSON, ld+json)
-- Framework inference (Angular, React, Next.js, etc.)
-- Anti-bot/security scripts (PerimeterX, Akamai, Dynatrace)
+- Framework inference (Angular, React, Next.js, etc.) — inferred from DOM signals, reported in `inferred_framework`
 
 **Output: `DOMExplorationSummary`**
 ```json
@@ -83,7 +96,7 @@ Each specialist:
   "data_blobs": ["script#__NEXT_DATA__ — 15kb JSON with station list, feature flags"],
   "tables": [],
   "inferred_framework": "Angular",
-  "narrative": "Anti-bot challenge flow, extensive third-party integrations..."
+  "narrative": "SPA with Angular, booking form submits to /api/search, CSRF token rotates per load..."
 }
 ```
 
@@ -116,7 +129,7 @@ Each specialist:
 ### UI Exploration
 
 **Specialist:** `InteractionSpecialist`
-**Data:** `InteractionsDataLoader` (user clicks, typed inputs, navigation events)
+**Data:** `InteractionsDataLoader` (primary) + `DOMDataLoader` (optional, for structural context — loaded if `dom/events.jsonl` exists alongside interactions)
 
 **What it discovers:**
 - What the user actually did during the recorded session
