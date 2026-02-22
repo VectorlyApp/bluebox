@@ -12,12 +12,12 @@ The worker bridges the gap: it looks up the captured session for context, then t
 | Context | Source | How |
 |---------|--------|-----|
 | Experiment task | PI's experiment prompt | Initial autonomous message |
+| Data availability summary | System prompt | Stats only (counts) — e.g. "265 requests, 42 unique URLs" — NOT the full exploration summaries |
 | Captured network traffic | `capture_search_transactions`, `capture_get_transaction` | On-demand tool calls |
 | Captured storage | `capture_search_storage` | On-demand tool calls |
 | Captured DOM | `capture_get_page_structure`, `capture_get_element` | On-demand tool calls |
 | Cross-source value tracing | `capture_trace_value` | On-demand tool calls |
 | Live browser | `browser_navigate`, `browser_eval_js`, `browser_cdp_command`, `browser_get_dom` | On-demand tool calls |
-| Exploration summaries | System prompt | Once (at start) |
 
 ## What It Returns
 
