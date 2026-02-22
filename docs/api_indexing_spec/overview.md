@@ -18,7 +18,7 @@ Four specialist agents run **in parallel**, each analyzing a different domain of
 | **NetworkSpecialist** | HTTP request/response traffic | API endpoints, auth patterns, request shapes |
 | **DOMSpecialist** | Page DOM snapshots | Forms, embedded tokens, meta tags, framework data blobs |
 | **StorageSpecialist** | Cookies, localStorage, sessionStorage | Auth tokens, session data, cached keys |
-| **InteractionSpecialist** | User clicks, inputs, navigation | User intent, interaction flow, form submissions |
+| **InteractionSpecialist** | User clicks, inputs, navigation (+ DOM snapshots for structural context) | User intent, interaction flow, form submissions |
 
 Each produces a structured **exploration summary** (JSON) saved to `exploration/`. These summaries become the PI's understanding of the site.
 
@@ -48,6 +48,7 @@ CDP Captures (.jsonl files)
     ├─ dom_events.jsonl ───────→ DOMDataLoader ─────→ DOMSpecialist ─────→ dom.json
     ├─ storage_events.jsonl ──→ StorageDataLoader ──→ StorageSpecialist ──→ storage.json
     └─ interactions.jsonl ────→ InteractionsLoader ─→ InteractionSpec. ───→ ui.json
+       dom_events.jsonl ────────────────────────────↗ (optional context)
                                                                              │
                                     ┌────────────────────────────────────────┘
                                     ▼
@@ -59,14 +60,29 @@ CDP Captures (.jsonl files)
         ExperimentWorker ExperimentWorker ExperimentWorker
         (live browser)   (live browser)   (live browser)
               │               │               │
-              └───────┬───────┘               │
-                      ▼                       │
-              RoutineInspector ◄──────────────┘
-              (quality gate)
-                      │
-                      ▼
-              RoutineCatalog
-              (shipped routines)
+              └───────────────┴───────────────┘
+                                    │
+                                    │ results
+                                    ▼
+                        PrincipalInvestigator
+                        (reviews results, assembles routine)
+                                    │
+                                    │ submit_routine
+                                    ▼
+                            Routine Execution
+                            (live browser)
+                                    │
+                                    ▼
+                          RoutineInspector
+                          (quality gate)
+                                    │
+                                    ▼
+                        PrincipalInvestigator
+                        (ship or iterate)
+                                    │
+                                    ▼
+                          RoutineCatalog
+                          (shipped routines)
 ```
 
 ## Output Structure
@@ -105,17 +121,18 @@ python -m bluebox.scripts.run_api_indexing \
 
 Key flags:
 - `--skip-exploration` — reuse existing `exploration/` summaries (skip Phase 1)
-- `--max-pi-iterations N` — cap PI loop iterations (default 200)
+- `--max-pi-iterations N` — cap PI loop iterations per session (default 200)
 - `--num-workers N` — parallel experiment workers (default 3)
 - `--num-inspectors N` — parallel inspectors (default 1)
+- `--max-pi-attempts N` — max PI recovery attempts on context exhaustion or failure (default 3); each attempt spins up a fresh PI with the preserved ledger
 
 ## Key Design Principles
 
 1. **Separation of concerns** — exploration agents analyze captures, PI strategizes, workers execute, inspector judges. No agent does two jobs.
 2. **Parallel by default** — exploration runs 4 specialists in parallel; PI batches experiments to run N workers simultaneously.
 3. **Incremental persistence** — every ledger change, experiment result, and agent thread is written to disk immediately. Pipeline can recover from crashes.
-4. **Quality gates** — routines must pass documentation quality checks (PI-side) AND a 6-dimension inspection (inspector-side) before shipping.
-5. **Auth-first ordering** — PI solves authentication before attempting data endpoints. Workers are stateless — auth instructions are passed in every experiment prompt.
+4. **Quality gates** — before execution, routines pass 5 static Python checks in `submit_routine` (name format, description length, parameter descriptions, credential detection, duplicate detection, Pydantic validation). After execution, a `RoutineInspector` scores on 6 dimensions. Both must pass before shipping.
+5. **Auth-first ordering** — prompt-only convention (not enforced in code). The PI's system prompt instructs it to solve auth before data endpoints and to include full auth instructions in every experiment prompt, since workers are stateless and don't share browser sessions.
 
 ## Related Docs
 

@@ -82,7 +82,7 @@ def _emit_message(msg: EmittedMessage) -> None:
         print(f"[error] {msg.error}", file=sys.stderr)
 
 
-MAX_PI_ATTEMPTS = 3
+DEFAULT_MAX_PI_ATTEMPTS = 3
 
 
 def _load_if_exists(loader_cls: type, jsonl_path: Path) -> Any:
@@ -314,13 +314,14 @@ def run_pi_with_recovery(
     min_experiments_before_fail: int = 10,
     num_workers: int = 3,
     num_inspectors: int = 1,
+    max_pi_attempts: int = DEFAULT_MAX_PI_ATTEMPTS,
 ) -> RoutineCatalog | None:
     """
     Run the PrincipalInvestigator with automatic recovery.
 
     If the PI fails for ANY reason (context exhaustion, API error, etc.),
     it preserves the DiscoveryLedger and spins up a fresh PI to continue.
-    Retries up to MAX_PI_ATTEMPTS total (default 3).
+    Retries up to max_pi_attempts total (default 3).
     """
     # Build data loaders
     network_loader = _load_if_exists(
@@ -360,10 +361,10 @@ def run_pi_with_recovery(
 
     print("\n=== Phase 2: Routine Construction (PI loop) ===\n", file=sys.stderr)
 
-    for attempt in range(MAX_PI_ATTEMPTS):
+    for attempt in range(max_pi_attempts):
         if attempt > 0:
             print(
-                f"\n  [!] PI attempt {attempt + 1}/{MAX_PI_ATTEMPTS} "
+                f"\n  [!] PI attempt {attempt + 1}/{max_pi_attempts} "
                 f"(fresh PI, ledger preserved)\n",
                 file=sys.stderr,
             )
@@ -393,15 +394,15 @@ def run_pi_with_recovery(
             catalog = pi.run()
             break
         except Exception as e:
-            logger.error("PI attempt %d/%d failed: %s", attempt + 1, MAX_PI_ATTEMPTS, e)
+            logger.error("PI attempt %d/%d failed: %s", attempt + 1, max_pi_attempts, e)
             # Preserve ledger for next attempt
             ledger = pi._ledger
             if ledger.experiments:
                 persistence.on_ledger_change(ledger, f"recovery_attempt_{attempt + 1}")
 
-            if attempt + 1 >= MAX_PI_ATTEMPTS:
+            if attempt + 1 >= max_pi_attempts:
                 print(
-                    f"\n  [!] All {MAX_PI_ATTEMPTS} PI attempts exhausted. "
+                    f"\n  [!] All {max_pi_attempts} PI attempts exhausted. "
                     "Returning partial results.\n",
                     file=sys.stderr,
                 )
@@ -429,6 +430,7 @@ def run_api_indexing(
     min_experiments_before_fail: int = 10,
     num_workers: int = 3,
     num_inspectors: int = 1,
+    max_pi_attempts: int = DEFAULT_MAX_PI_ATTEMPTS,
 ) -> RoutineCatalog | None:
     """
     Run the full API indexing pipeline end-to-end.
@@ -447,6 +449,7 @@ def run_api_indexing(
         min_experiments_before_fail: Min experiments before PI can call mark_failed.
         num_workers: Max concurrent ExperimentWorker agents (default 3).
         num_inspectors: Max concurrent RoutineInspector agents (default 1).
+        max_pi_attempts: Max number of PI recovery attempts on failure (default 3).
 
     Returns:
         RoutineCatalog if successful, None if no routines could be built.
@@ -496,6 +499,7 @@ def run_api_indexing(
         min_experiments_before_fail=min_experiments_before_fail,
         num_workers=num_workers,
         num_inspectors=num_inspectors,
+        max_pi_attempts=max_pi_attempts,
     )
 
     elapsed = time.time() - start_time
@@ -588,6 +592,12 @@ def main() -> None:
         help="Max concurrent RoutineInspector agents (default: 1)",
     )
     parser.add_argument(
+        "--max-pi-attempts",
+        type=int,
+        default=DEFAULT_MAX_PI_ATTEMPTS,
+        help="Max PI recovery attempts on context exhaustion or failure (default: 3)",
+    )
+    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Enable verbose logging",
@@ -616,6 +626,7 @@ def main() -> None:
         min_experiments_before_fail=args.min_experiments_before_fail,
         num_workers=args.num_workers,
         num_inspectors=args.num_inspectors,
+        max_pi_attempts=args.max_pi_attempts,
     )
 
     if catalog is None:

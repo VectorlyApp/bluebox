@@ -15,7 +15,7 @@ Every specialist inherits:
 | Feature | Description |
 |---------|-------------|
 | **RunMode** | `CONVERSATIONAL` (interactive) or `AUTONOMOUS` (loop with finalization) |
-| **AutonomousConfig** | `min_iterations` (3) before finalize tools unlock, `max_iterations` (10) before forced stop |
+| **AutonomousConfig** | `min_iterations` (3) before finalize tools unlock, `max_iterations` (10) before forced stop. One iteration = one LLM API call (which may include multiple tool calls). |
 | **Output schema injection** | Schema is injected into `finalize_with_output` tool so the LLM sees exact required fields |
 | **Urgency notices** | As iterations approach max, LLM gets "Only N iterations left" nudges |
 | **Finalize gating** | `finalize_with_output` / `finalize_with_failure` only available after min_iterations |
