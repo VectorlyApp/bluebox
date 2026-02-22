@@ -12,7 +12,7 @@ The orchestrator agent for Phase 2. Reads exploration summaries, plans a routine
 | Discovery Ledger summary | System prompt (re-rendered each iteration) | Every iteration |
 | Worker capabilities list | System prompt | Once (at start) |
 | Routine JSON Schema | System prompt | Once (at start) |
-| Agent documentation | Via `search_docs` / `get_doc_file` tools | On demand |
+| Agent documentation | Via `search_docs` / `get_doc_file` tools (on demand, not pre-loaded) | Markdown files from `bluebox/agent_docs/` — operation types, naming conventions, placeholder syntax, auth strategies, common errors, examples. PI is blocked from dispatching experiments until it reviews these. |
 
 ## What It Returns
 

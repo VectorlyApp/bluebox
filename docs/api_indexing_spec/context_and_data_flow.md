@@ -56,18 +56,23 @@ DataLoaders (parse + index)
 
 ### PrincipalInvestigator
 
+`_get_system_prompt()` is called **every iteration**, so the system prompt is fully rebuilt on each LLM call with fresh ledger state.
+
 | Context Source | How It's Provided | Contents |
 |---------------|-------------------|----------|
-| Exploration summaries | Injected in system prompt | All 4 domain summaries (network, DOM, storage, UI) |
-| Discovery Ledger | Rendered via `to_summary()` each iteration | Routine plan, experiment history, proven artifacts, attempt results |
-| Worker capabilities | Hardcoded in system prompt | List of worker tools (browser + capture) |
-| Routine schema | Auto-generated from Pydantic model | JSON Schema for valid Routine objects |
-| Agent docs | Via `search_docs` / `get_doc_file` tools | Naming conventions, auth strategies, placeholder docs |
+| Exploration summaries | Injected in system prompt every iteration | All 4 domain summaries (network, DOM, storage, UI) |
+| Discovery Ledger | Rendered via `to_summary()` and injected in system prompt every iteration — only included once there is activity | Routine plan, experiment history, proven artifacts, attempt results |
+| Task queue status | Injected in system prompt every iteration — only included when queue is non-empty | Pending/running/done experiment counts |
+| Worker capabilities | Hardcoded string in system prompt | List of worker tools (browser + capture) |
+| Routine schema | Auto-generated via `Routine.model_schema_markdown()` in system prompt | JSON Schema for valid Routine objects |
+| Agent docs | Via `search_docs` / `get_doc_file` tools (on demand, not pre-loaded) | Markdown files from `bluebox/agent_docs/` — operation types, naming conventions, placeholder syntax, auth strategies, common errors, examples |
 
 **What it does NOT see:**
-- Raw CDP captures (no direct access)
+- Raw CDP captures (no direct access — holds data loader references only to pass to workers)
 - Live browser (no browser tools)
 - Individual network requests (must dispatch workers to look these up)
+
+**Enforcement:** The PI is gated from dispatching experiments until it calls a doc review tool first (`_docs_reviewed` flag). `dispatch_experiment` and `dispatch_experiments_batch` both return an error if docs haven't been reviewed.
 
 ### ExperimentWorker
 
@@ -236,19 +241,18 @@ Workers receive context through TWO channels:
 The inspector receives everything in a single task prompt:
 
 ```python
-task_prompt = f"""
-ROUTINE TO INSPECT:
-{routine.model_dump_json(indent=2)}
-
-EXECUTION RESULT:
-{execution_result.model_dump_json(indent=2)}
-
-EXPLORATION CONTEXT:
-Network: {network_summary}
-DOM: {dom_summary}
-Storage: {storage_summary}
-"""
+# All available exploration summaries are appended (network, dom, storage, ui)
+# Prompt is truncated at 50,000 chars if too large
+prompt_parts = [
+    f"## Routine JSON\n{routine_json}\n",
+    f"## Execution Result\n{execution_result_json}\n",
+    f"## Exploration Summaries\n",
+]
+for domain, summary in exploration_summaries.items():
+    prompt_parts.append(f"### {domain}\n{summary}\n")
 ```
+
+> **Note:** All 4 summaries are passed, not just network. See [potential improvements](../api_indexing_spec_v2/potential_improvements.md#4-trim-inspector-context-to-what-it-actually-needs) for why this may be wasteful.
 
 ## Incremental Persistence
 
