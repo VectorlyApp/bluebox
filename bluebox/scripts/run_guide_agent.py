@@ -18,7 +18,7 @@ Usage:
     bluebox-guide \
         --cdp-captures-dir ./cdp_captures \
         --output-dir ./guide_output \
-        --model gpt-5.1 \
+        --model gpt-5.2 \
         --quiet
 
 Commands:

@@ -49,7 +49,7 @@ class Bluebox:
         self,
         openai_api_key: str | None = None,
         remote_debugging_address: str = "http://127.0.0.1:9222",
-        llm_model: str = "gpt-5.1",
+        llm_model: str = "gpt-5.2",
     ):
         """
         Initialize Bluebox client.

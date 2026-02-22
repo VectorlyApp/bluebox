@@ -117,6 +117,103 @@ SENSITIVE_PATH_PREFIXES: tuple[str, ...] = (
     "/boot", "/proc", "/sys", "/dev",
 )
 
+# Workaround hints for blocked modules — returned to the LLM when a block triggers
+BLOCKED_MODULE_WORKAROUNDS: dict[str, str] = {
+    "os": "Use open() for file I/O and Path for paths — both are pre-loaded and scoped to the workspace.",
+    "pathlib": "Path is already pre-loaded in your environment. Use it directly without importing: Path('outputs/file.txt').",
+    "shutil": "Use open() to read source and write to destination for copying files.",
+    "tempfile": "Write temporary files to the outputs/ directory using open().",
+    "glob": "Use Path('.').glob('pattern') or Path('.').rglob('pattern') — Path is pre-loaded.",
+    "fnmatch": "Use Path('.').glob('pattern') — Path is pre-loaded.",
+    "io": "Use open() for file operations and str for string building.",
+    "sys": "stdout is captured automatically. Use print() for output.",
+    "subprocess": "External process execution is not available in the sandbox.",
+    "multiprocessing": "Parallel execution is not available in the sandbox.",
+    "threading": "Thread creation is not available in the sandbox.",
+    "concurrent": "Parallel execution is not available in the sandbox.",
+    "inspect": "Use dict access (obj['key'] or obj.get('key')) instead of inspecting objects.",
+    "pickle": "Use json.dumps()/json.loads() for serialization instead.",
+    "marshal": "Use json.dumps()/json.loads() for serialization instead.",
+    "shelve": "Use json for data persistence. Write to outputs/ with open().",
+    "sqlite3": "Database access is not available. Use JSON/CSV files for data storage.",
+    "socket": "Network access is not available in the sandbox.",
+    "requests": "Network access is not available in the sandbox.",
+    "http": "Network access is not available in the sandbox.",
+}
+
+# Workaround hints for blocked code patterns.
+# These fire in ALL sandbox modes (patterns are checked statically before execution).
+# Note: "open(" is skipped when work_dir is set (allow_file_io=True), so its workaround
+# only fires for callers that don't provide a work_dir.
+BLOCKED_PATTERN_WORKAROUNDS: dict[str, str] = {
+    "open(": "open() IS available when a workspace is configured. Use it directly: open('outputs/file.csv', 'w').",
+    "getattr(": "Use dict-style access instead: obj['key'] or obj.get('key', default).",
+    "setattr(": "Use dict-style assignment instead: obj['key'] = value.",
+    "delattr(": "Use dict-style deletion instead: del obj['key'].",
+    "eval(": "Write the logic directly in Python instead of using eval().",
+    "exec(": "Write the logic directly in Python instead of using exec().",
+    "compile(": "Write the logic directly in Python instead of using compile().",
+    "globals(": "Access your variables directly by name — they are already in scope.",
+    "locals(": "Access your variables directly by name — they are already in scope.",
+    "vars(": "Use dict-style access: obj['key'] or iterate with a for loop.",
+    "__import__": "Import statements are restricted. json, csv, and Path are pre-loaded. Use 'import collections', 'import re', 'import datetime', 'import math' for allowed modules.",
+}
+
+
+def get_workaround_for_error(error_message: str) -> str | None:
+    """
+    Given a sandbox error message, return a helpful workaround hint if available.
+
+    Args:
+        error_message: The error string from sandbox execution.
+
+    Returns:
+        Workaround message string, or None if no specific workaround is known.
+    """
+    # Blocked module: "Import of 'os' is blocked for security reasons"
+    if "is blocked for security reasons" in error_message:
+        for module_name, workaround in BLOCKED_MODULE_WORKAROUNDS.items():
+            if f"'{module_name}'" in error_message:
+                return workaround
+        # Check root module for submodule imports like 'os.path'
+        for module_name, workaround in BLOCKED_MODULE_WORKAROUNDS.items():
+            if f"'{module_name}." in error_message:
+                return workaround
+        return None
+
+    # Blocked pattern: "Blocked: File operations (open) are not allowed"
+    if error_message.startswith("Blocked:"):
+        blocked_msg = error_message[len("Blocked: "):]
+        for pattern, err_msg in BLOCKED_PATTERNS:
+            if blocked_msg == err_msg:
+                return BLOCKED_PATTERN_WORKAROUNDS.get(pattern)
+
+    return None
+
+
+def get_active_sandbox_mode(work_dir_set: bool = False) -> str:
+    """
+    Return the effective sandbox mode that will be used at execution time.
+
+    Args:
+        work_dir_set: Whether a work_dir will be provided (affects Lambda eligibility).
+
+    Returns:
+        One of "lambda", "docker", or "blocklist".
+    """
+    if SANDBOX_MODE == "lambda":
+        return "lambda"
+    if SANDBOX_MODE == "docker":
+        return "docker" if is_docker_available() else "blocklist"
+    if SANDBOX_MODE == "blocklist":
+        return "blocklist"
+    # auto mode: lambda > docker > blocklist
+    if _lambda_executor_fn is not None and not work_dir_set:
+        return "lambda"
+    if is_docker_available():
+        return "docker"
+    return "blocklist"
+
 
 def is_docker_available() -> bool:
     """

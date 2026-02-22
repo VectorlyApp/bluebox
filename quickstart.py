@@ -397,7 +397,7 @@ def main() -> None:
     try:
         client = Bluebox(
             remote_debugging_address=REMOTE_DEBUGGING_ADDRESS,
-            llm_model="gpt-5.1",
+            llm_model="gpt-5.2",
         )
         print_colored("✅ Ready!", GREEN)
     except Exception as e:

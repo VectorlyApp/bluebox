@@ -60,7 +60,7 @@ def get_model_by_value(model_value: str) -> LLMModel | None:
     Get model enum by value string.
 
     Args:
-        model_value: The model value string (e.g., "gpt-5.1", "claude-opus-4-5").
+        model_value: The model value string (e.g., "gpt-5.2", "claude-opus-4-5").
 
     Returns:
         LLMModel if found, None otherwise. Use model.vendor to get the vendor.

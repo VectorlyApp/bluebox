@@ -37,7 +37,13 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.routine.routine import RoutineExecutionRequest, RoutineInfo
-from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
+from bluebox.utils.code_execution_sandbox import (
+    BLOCKED_MODULES,
+    BLOCKED_PATTERNS,
+    execute_python_sandboxed,
+    get_active_sandbox_mode,
+    get_workaround_for_error,
+)
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
@@ -69,18 +75,53 @@ class BlueBoxAgent(AbstractAgent):
         5. **Verify output**: After writing files, use `list_workspace_files` and `read_workspace_file` to verify the output looks correct. If it doesn't, fix the code and rerun.
         6. **Report results**: Summarize what was executed and the output files to the user.
 
+        ## Workspace
+        Your workspace has the following structure:
+        - `raw/` — routine result JSON files, saved automatically when routines execute
+        - `outputs/` — write all your generated output files here (CSV, JSON, JSONL, etc.)
+
+        **Pre-loaded variables in `run_python_code`:**
+        - `routine_results` — list of dicts, one per JSON file in raw/
+        - `json` — for parsing and serialization
+        - `csv` — for CSV reading/writing
+        - `Path` — from pathlib, for path operations (do NOT import pathlib — use `Path` directly)
+        - `open()` — scoped to the workspace directory for safe file I/O
+
+        **Writing output files:**
+        - Write to the outputs/ subdirectory: `with open("outputs/results.csv", "w") as f: ...`
+
+        **Inspecting files:**
+        - Use `list_workspace_files` to see all files in the workspace
+        - Use `read_workspace_file` to read any file by relative path (e.g. "raw/25-01-15-143052-routine_result_1.json" or "outputs/results.csv"). Use optional start_line/end_line for large files.
+
+        ## Routine Result Structure
+        Each entry in `routine_results` is the raw API response JSON saved by `execute_routines_in_parallel`. The structure is:
+
+        ```
+        {
+          "execution_id": "...",
+          "routine_id": "Routine_...",
+          "routine_name": "RoutineName",
+          "status": "completed",       # "completed" or "failed"
+          "parameters": { ... },       # the input parameters used for this execution
+          "result": {                  # execution result
+            "ok": true,
+            "error": null,
+            "data": { ... }            # ← the actual payload lives HERE
+          }
+        }
+        ```
+
+        **Path to the payload:** `rr["result"]["data"]` for each `rr` in `routine_results`.
+        **Input parameters:** `rr["parameters"]` for each `rr` in `routine_results`.
+
+        **Important:** The payload shape varies per routine — different routines return different key names and structures. Always start your post-processing code by printing `rr["routine_name"]` and `rr["result"]["data"].keys()` to understand what each routine returned before trying to extract specific fields.
+
         ## Post-Processing with Python
         - After routines return results, ALWAYS use `run_python_code` to post-process data and generate clean output files.
-        - The variable `routine_results` is pre-loaded: a list of dicts, one per JSON file in the raw/ directory.
-        - You have full read/write file access to the workspace directory. Use open() to read/write files.
-        - `json`, `csv`, and `Path` (from pathlib) are pre-loaded.
-        - Output files are saved in the outputs/ subdirectory. Write there: `with open("outputs/results.csv", "w") as f: ...`
         - **ALWAYS add debug print() statements** in your code so you can see what's happening: print key counts, data shapes, sample values, etc. stdout is captured and returned to you.
+        - **On first pass, always explore the data**: before writing any output file, print the routine names and top-level keys of each result's payload so you understand the shape. Then write extraction code.
         - **Be persistent**: If your code errors or produces unexpected results, read the error/output carefully, use `list_workspace_files` and `read_workspace_file` to inspect the data, fix the code, and try again. Keep iterating until you produce the correct output file. NEVER give up after one failed attempt — debug and retry.
-
-        ## Inspecting the Workspace
-        - Use `list_workspace_files` to see all files in the workspace (raw/, outputs/, etc.).
-        - Use `read_workspace_file` to read any file by relative path (e.g. "raw/25-01-15-143052-routine_result_1.json" or "outputs/results.csv"). Use optional start_line/end_line to read specific line ranges for large files.
 
         ## Important Rules
         - **Always prefer routines over `execute_browser_task`**. Routines are faster, cheaper, and more reliable. Only use the browser agent as a fallback when no suitable routine exists.
@@ -140,10 +181,15 @@ class BlueBoxAgent(AbstractAgent):
             on_llm_response=on_llm_response,
         )
 
+        # Detect sandbox mode once (work_dir is always set for BlueBoxAgent)
+        self._sandbox_mode = get_active_sandbox_mode(work_dir_set=True)
+        self._is_blocklist_mode = self._sandbox_mode == "blocklist"
+
         logger.debug(
-            "BlueBoxAgent initialized with model: %s, chat_thread_id: %s",
+            "BlueBoxAgent initialized with model: %s, chat_thread_id: %s, sandbox_mode: %s",
             llm_model,
             self._thread.id,
+            self._sandbox_mode,
         )
 
     ## Auth
@@ -158,10 +204,42 @@ class BlueBoxAgent(AbstractAgent):
     ## Abstract method implementations
 
     def _get_system_prompt(self) -> str:
-        """Get system prompt with current time."""
+        """Get system prompt with current time and sandbox-specific guidance."""
         now = datetime.now()
         time_info = f"\n\n## Current Time\n{now.strftime('%Y-%m-%d %H:%M:%S %Z').strip()}"
-        return self.SYSTEM_PROMPT + time_info
+        prompt = self.SYSTEM_PROMPT + time_info
+        if self._is_blocklist_mode:
+            prompt += self._get_blocklist_sandbox_prompt_section()
+        return prompt
+
+    def _get_blocklist_sandbox_prompt_section(self) -> str:
+        """Build prompt section explaining blocklist sandbox restrictions."""
+        blocked_modules_str = ", ".join(sorted(BLOCKED_MODULES))
+        # Exclude open( from blocked patterns list since it IS available with workspace
+        blocked_patterns_str = ", ".join(
+            f"`{p}`" for p, _ in BLOCKED_PATTERNS if p != "open("
+        )
+
+        return dedent(f"""
+
+            ## Sandbox Restrictions (IMPORTANT — read before writing any Python code)
+            You are running in restricted sandbox mode. Your `run_python_code` calls have strict restrictions.
+
+            **Blocked imports** — do NOT import any of these modules:
+            {blocked_modules_str}
+
+            **Blocked code patterns** — do NOT use any of these in your code:
+            {blocked_patterns_str}
+
+            **Safe imports you CAN use:**
+            `collections`, `re`, `datetime`, `math`, `itertools`, `functools`, `operator`, `string`, `textwrap`, `decimal`, `fractions`, `statistics`, `urllib.parse`, `hashlib`, `hmac`, `base64`, `copy`, `pprint`, `dataclasses`, `enum`, `typing`
+
+            **Key rules to avoid errors:**
+            - Do NOT `import os`, `import pathlib`, `import sys`, or any blocked module
+            - `Path` is already pre-loaded — use it directly, do NOT `import pathlib`
+            - `open()` is already pre-loaded — use it directly for all file I/O
+            - Do NOT use `getattr()` — use dict access: `obj["key"]` or `obj.get("key")`
+        """).rstrip()
 
     ## Routine cache
 
@@ -272,6 +350,41 @@ class BlueBoxAgent(AbstractAgent):
                 result["output_file_error"] = str(e)
             return result
 
+        def _summarize_result(full_result: dict[str, Any], req: RoutineExecutionRequest) -> dict[str, Any]:
+            """Build a compact summary for the agent with a 4K char preview."""
+            cached = self._routine_cache.get(req.routine_id)
+            is_error = "error" in full_result and "execution_id" not in full_result
+            routine_name = (
+                full_result.get("routine_name")
+                or (cached.name if cached else None)
+                or req.routine_id
+            )
+            summary: dict[str, Any] = {
+                "success": not is_error,
+                "routine_name": routine_name,
+                "routine_id": req.routine_id,
+                "parameters": req.parameters,
+                "output_file": full_result.get("output_file"),
+            }
+            if is_error:
+                summary["error"] = full_result.get("error")
+                return summary
+            raw = json.dumps(full_result, indent=2, default=str)
+            max_preview = 4000
+            if len(raw) > max_preview:
+                summary["response_preview"] = raw[:max_preview]
+                summary["response_truncated"] = True
+                summary["response_total_chars"] = len(raw)
+                summary["_hint"] = (
+                    f"Response truncated ({len(raw)} chars). "
+                    f"Full result saved to {full_result.get('output_file')}. "
+                    "Use read_workspace_file to inspect the full data, or access it "
+                    "via routine_results in run_python_code."
+                )
+            else:
+                summary["response_preview"] = raw
+            return summary
+
         def execute_one(req: RoutineExecutionRequest) -> dict[str, Any]:
             url = f"{Config.VECTORLY_API_BASE}/routines/{req.routine_id}/execute"
             try:
@@ -282,10 +395,12 @@ class BlueBoxAgent(AbstractAgent):
                     timeout=300,
                 )
                 response.raise_for_status()
-                return save_result({"success": True, "routine_id": req.routine_id, "data": response.json()})
+                full_result = save_result(response.json())
+                return _summarize_result(full_result, req)
             except requests.RequestException as e:
                 logger.error("Routine execution failed for %s: %s", req.routine_id, e)
-                return save_result({"success": False, "routine_id": req.routine_id, "error": str(e)})
+                full_result = save_result({"error": str(e), "routine_id": req.routine_id})
+                return _summarize_result(full_result, req)
 
         total = len(routine_executions)
         results: list[dict[str, Any]] = []
@@ -482,11 +597,18 @@ class BlueBoxAgent(AbstractAgent):
 
         if "error" in sandbox_result:
             result["error"] = sandbox_result["error"]
-            result["_hint"] = (
-                "Code failed. Read the error and stdout above carefully. "
-                "Use list_workspace_files and read_workspace_file to inspect the data, "
-                "then fix the code and call run_python_code again."
-            )
+            workaround = get_workaround_for_error(sandbox_result["error"])
+            if workaround:
+                result["_hint"] = (
+                    f"Sandbox restriction: {workaround} "
+                    "Fix the code and call run_python_code again."
+                )
+            else:
+                result["_hint"] = (
+                    "Code failed. Read the error and stdout above carefully. "
+                    "Use list_workspace_files and read_workspace_file to inspect the data, "
+                    "then fix the code and call run_python_code again."
+                )
 
         output = sandbox_result.get("output", "")
         if output and output != "(no output)":

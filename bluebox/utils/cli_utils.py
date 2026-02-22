@@ -26,8 +26,8 @@ def add_model_argument(parser: ArgumentParser) -> None:
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-5.1",
-        help=f"LLM model to use (default: gpt-5.1). Options: {', '.join(get_all_model_values())}",
+        default="gpt-5.2",
+        help=f"LLM model to use (default: gpt-5.2). Options: {', '.join(get_all_model_values())}",
     )
 
 
@@ -36,7 +36,7 @@ def resolve_model(model_str: str, console: Console) -> LLMModel:
     Resolve a model string to an LLMModel enum value.
 
     Args:
-        model_str: The model string to resolve (e.g., "gpt-5.1")
+        model_str: The model string to resolve (e.g., "gpt-5.2")
         console: Rich Console instance for error output
 
     Returns:
