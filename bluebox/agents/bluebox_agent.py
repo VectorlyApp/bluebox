@@ -180,7 +180,7 @@ class BlueBoxAgent(AbstractAgent):
 
         self._workspace = workspace or LocalWorkspace()
         self._routine_cache: dict[str, RoutineInfo] = {}
-        self._execution_counter = itertools.count(1)
+        self._routine_execution_counter = itertools.count(1)
 
         # Load context from explicit path or auto-discover from workspace
         self._agent_context: BlueBoxAgentContext | None = self._load_context(context_file)
@@ -466,7 +466,7 @@ class BlueBoxAgent(AbstractAgent):
         def save_result(result: dict[str, Any]) -> dict[str, Any]:
             """Save a single routine result to a JSON file in raw/."""
             try:
-                idx = next(self._execution_counter)
+                idx = next(self._routine_execution_counter)
                 ts = datetime.now().strftime("%y-%m-%d-%H%M%S")
                 save_info = self._workspace.save_file(
                     "raw", f"{ts}-routine_result_{idx}.json",
