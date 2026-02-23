@@ -49,7 +49,7 @@ class AgentWorkspace(ABC):
         """Save content with a unique timestamped filename.
 
         Args:
-            subdirectory: Logical subdirectory ("raw" or "outputs").
+            subdirectory: Logical subdirectory ("raw", "outputs", or "context").
             filename_prefix: Prefix for the generated filename.
             content: File content to write.
             extension: File extension including the dot.

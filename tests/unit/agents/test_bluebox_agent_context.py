@@ -10,11 +10,12 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
+from bluebox.agents.bluebox_agent import BlueBoxAgent
+from bluebox.agents.workspace import LocalWorkspace
 from bluebox.data_models.agents.context import BlueBoxAgentContext, UsedRoutine, UsedRoutineParameter
 
 
@@ -152,6 +153,7 @@ class TestMarkdownRoundTrip:
             assert rest.routine_id == orig.routine_id
             assert rest.routine_name == orig.routine_name
             assert rest.parameters_as_dict() == orig.parameters_as_dict()
+        assert restored.generated_at == sample_context.generated_at
 
     def test_from_markdown_no_python_code(self, minimal_context: BlueBoxAgentContext) -> None:
         """Markdown with no Python Code section should parse python_code as None."""
@@ -184,11 +186,8 @@ class TestContextLoading:
         self,
         workspace_dir: Path,
         context_file: str | None = None,
-    ) -> Any:
+    ) -> BlueBoxAgent:
         """Create a BlueBoxAgent with mocked dependencies."""
-        from bluebox.agents.bluebox_agent import BlueBoxAgent
-        from bluebox.agents.workspace import LocalWorkspace
-
         return BlueBoxAgent(
             emit_message_callable=MagicMock(),
             workspace=LocalWorkspace(str(workspace_dir)),
@@ -290,10 +289,7 @@ class TestContextLoading:
 class TestContextPromptInjection:
     """Tests for _get_context_prompt_section and system prompt integration."""
 
-    def _make_agent(self, tmp_path: Path, context: BlueBoxAgentContext) -> Any:
-        from bluebox.agents.bluebox_agent import BlueBoxAgent
-        from bluebox.agents.workspace import LocalWorkspace
-
+    def _make_agent(self, tmp_path: Path, context: BlueBoxAgentContext) -> BlueBoxAgent:
         ctx_file = tmp_path / "context.json"
         ctx_file.write_text(context.model_dump_json(indent=2))
 
@@ -333,9 +329,6 @@ class TestContextPromptInjection:
         assert "read_workspace_file" in section
 
     def test_no_context_no_section(self, tmp_path: Path) -> None:
-        from bluebox.agents.bluebox_agent import BlueBoxAgent
-        from bluebox.agents.workspace import LocalWorkspace
-
         agent = BlueBoxAgent(
             emit_message_callable=MagicMock(),
             workspace=LocalWorkspace(str(tmp_path)),
@@ -353,10 +346,7 @@ class TestContextPromptInjection:
 class TestGenerateContext:
     """Tests for the generate_context public method (structured output)."""
 
-    def _make_agent(self, tmp_path: Path) -> Any:
-        from bluebox.agents.bluebox_agent import BlueBoxAgent
-        from bluebox.agents.workspace import LocalWorkspace
-
+    def _make_agent(self, tmp_path: Path) -> BlueBoxAgent:
         return BlueBoxAgent(
             emit_message_callable=MagicMock(),
             workspace=LocalWorkspace(str(tmp_path)),
@@ -371,7 +361,6 @@ class TestGenerateContext:
 
     def test_tool_is_not_registered(self) -> None:
         """generate_context should NOT be an agent tool anymore."""
-        from bluebox.agents.bluebox_agent import BlueBoxAgent
         tools = BlueBoxAgent._collect_tools()
         tool_names = [meta.name for meta, _ in tools]
         assert "generate_context" not in tool_names
