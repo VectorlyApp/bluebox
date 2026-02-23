@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from bluebox.data_models.agents.context import BlueBoxAgentContext, RoutineUsed
+from bluebox.data_models.agents.context import BlueBoxAgentContext, UsedRoutine, UsedRoutineParameter
 
 
 # =============================================================================
@@ -28,12 +28,12 @@ def sample_context() -> BlueBoxAgentContext:
         version=1,
         goal="Find one-way train tickets from NYC to Boston on March 15, 2026",
         routines_used=[
-            RoutineUsed(
+            UsedRoutine.from_dict_params(
                 routine_id="Routine_abc123",
                 routine_name="AmtrakOneWaySearch",
                 parameters={"origin": "New York", "destination": "Boston", "date": "2026-03-15"},
             ),
-            RoutineUsed(
+            UsedRoutine.from_dict_params(
                 routine_id="Routine_def456",
                 routine_name="AmtrakPriceFilter",
                 parameters={"max_price": 100},
@@ -86,7 +86,7 @@ class TestBlueBoxAgentContextModel:
         assert restored.output_files == sample_context.output_files
         assert len(restored.routines_used) == 2
         assert restored.routines_used[0].routine_id == "Routine_abc123"
-        assert restored.routines_used[1].parameters == {"max_price": 100}
+        assert restored.routines_used[1].parameters_as_dict() == {"max_price": 100}
         assert isinstance(restored.generated_at, datetime)
 
     def test_version_defaults_to_1(self, minimal_context: BlueBoxAgentContext) -> None:
@@ -149,7 +149,7 @@ class TestMarkdownRoundTrip:
         for orig, rest in zip(sample_context.routines_used, restored.routines_used):
             assert rest.routine_id == orig.routine_id
             assert rest.routine_name == orig.routine_name
-            assert rest.parameters == orig.parameters
+            assert rest.parameters_as_dict() == orig.parameters_as_dict()
 
     def test_from_markdown_no_python_code(self, minimal_context: BlueBoxAgentContext) -> None:
         """Markdown with no Python Code section should parse python_code as None."""
@@ -344,12 +344,12 @@ class TestContextPromptInjection:
 
 
 # =============================================================================
-# generate_context tool tests
+# generate_context (structured output) tests
 # =============================================================================
 
 
-class TestGenerateContextTool:
-    """Tests for the _generate_context agent tool."""
+class TestGenerateContext:
+    """Tests for the generate_context public method (structured output)."""
 
     def _make_agent(self, tmp_path: Path) -> Any:
         from bluebox.agents.bluebox_agent import BlueBoxAgent
@@ -361,65 +361,70 @@ class TestGenerateContextTool:
             auth_headers_provider=lambda: {"X-Service-Token": "test"},
         )
 
-    def test_tool_is_registered(self) -> None:
+    def _mock_llm_response(self, context: BlueBoxAgentContext) -> MagicMock:
+        """Create a mock LLMChatResponse with parsed context."""
+        response = MagicMock()
+        response.parsed = context
+        return response
+
+    def test_tool_is_not_registered(self) -> None:
+        """generate_context should NOT be an agent tool anymore."""
         from bluebox.agents.bluebox_agent import BlueBoxAgent
         tools = BlueBoxAgent._collect_tools()
         tool_names = [meta.name for meta, _ in tools]
-        assert "generate_context" in tool_names
+        assert "generate_context" not in tool_names
 
     def test_saves_both_files(self, tmp_path: Path, sample_context: BlueBoxAgentContext) -> None:
         agent = self._make_agent(tmp_path)
-        result = agent._generate_context(
-            goal=sample_context.goal,
-            summary=sample_context.summary,
-            output_description=sample_context.output_description,
-            routines_used=[r.model_dump() for r in sample_context.routines_used],
-            python_code=sample_context.python_code,
-            output_files=sample_context.output_files,
-        )
+        agent.llm_client.call_sync = MagicMock(return_value=self._mock_llm_response(sample_context))
 
-        assert result["success"] is True
-        assert result["context_json"] is not None
-        assert result["context_md"] is not None
+        result = agent.generate_context()
 
-        # Verify JSON file exists and is valid
-        json_path = tmp_path / result["context_json"]
-        assert json_path.is_file()
-        loaded = BlueBoxAgentContext.model_validate_json(json_path.read_text())
+        assert result.goal == sample_context.goal
+        assert result.summary == sample_context.summary
+
+        # Verify both JSON and MD files were saved
+        context_dir = tmp_path / "context"
+        json_files = list(context_dir.glob("*.json"))
+        md_files = list(context_dir.glob("*.md"))
+        assert len(json_files) == 1
+        assert len(md_files) == 1
+
+        # Verify JSON is valid
+        loaded = BlueBoxAgentContext.model_validate_json(json_files[0].read_text())
         assert loaded.goal == sample_context.goal
 
-        # Verify MD file exists
-        md_path = tmp_path / result["context_md"]
-        assert md_path.is_file()
-        assert "## Goal" in md_path.read_text()
+        # Verify MD has expected sections
+        assert "## Goal" in md_files[0].read_text()
 
     def test_saves_to_context_subdirectory(self, tmp_path: Path, minimal_context: BlueBoxAgentContext) -> None:
         agent = self._make_agent(tmp_path)
-        result = agent._generate_context(
-            goal=minimal_context.goal,
-            summary=minimal_context.summary,
-            output_description=minimal_context.output_description,
-        )
-        assert "context/" in result["context_json"]
-        assert "context/" in result["context_md"]
+        agent.llm_client.call_sync = MagicMock(return_value=self._mock_llm_response(minimal_context))
 
-    def test_validates_bad_routines_used(self, tmp_path: Path) -> None:
+        agent.generate_context()
+
+        context_dir = tmp_path / "context"
+        assert context_dir.is_dir()
+        assert len(list(context_dir.glob("*.json"))) == 1
+        assert len(list(context_dir.glob("*.md"))) == 1
+
+    def test_raises_on_none_parsed(self, tmp_path: Path) -> None:
+        """Should raise ValueError when LLM returns None parsed result."""
         agent = self._make_agent(tmp_path)
-        result = agent._generate_context(
-            goal="test",
-            summary="test",
-            output_description="test",
-            routines_used=[{"bad_key": "missing routine_id"}],
-        )
-        assert "error" in result
+        response = MagicMock()
+        response.parsed = None
+        agent.llm_client.call_sync = MagicMock(return_value=response)
+
+        with pytest.raises(ValueError, match="failed to produce"):
+            agent.generate_context()
 
     def test_auto_populates_routines_from_raw(self, tmp_path: Path) -> None:
-        """When routines_used is empty, auto-populate from raw/ execution results."""
+        """When LLM returns empty routines_used, auto-populate from raw/."""
         agent = self._make_agent(tmp_path)
 
         # Write a fake routine result to raw/
         raw_dir = tmp_path / "raw"
-        raw_dir.mkdir()
+        raw_dir.mkdir(exist_ok=True)
         (raw_dir / "result_1.json").write_text(json.dumps({
             "routine_id": "Routine_abc",
             "routine_name": "TestRoutine",
@@ -428,28 +433,28 @@ class TestGenerateContextTool:
             "result": {"ok": True, "data": {}},
         }))
 
-        result = agent._generate_context(
+        # LLM returns context with empty routines_used
+        context_from_llm = BlueBoxAgentContext(
             goal="test goal",
             summary="test summary",
             output_description="test output",
-            # routines_used intentionally omitted
+            routines_used=[],
         )
+        agent.llm_client.call_sync = MagicMock(return_value=self._mock_llm_response(context_from_llm))
 
-        assert result["success"] is True
-        # Verify the saved context has the routine from raw/
-        json_path = tmp_path / result["context_json"]
-        loaded = BlueBoxAgentContext.model_validate_json(json_path.read_text())
-        assert len(loaded.routines_used) == 1
-        assert loaded.routines_used[0].routine_id == "Routine_abc"
-        assert loaded.routines_used[0].routine_name == "TestRoutine"
-        assert loaded.routines_used[0].parameters == {"city": "NYC"}
+        result = agent.generate_context()
+
+        assert len(result.routines_used) == 1
+        assert result.routines_used[0].routine_id == "Routine_abc"
+        assert result.routines_used[0].routine_name == "TestRoutine"
+        assert result.routines_used[0].parameters_as_dict() == {"city": "NYC"}
 
     def test_auto_populate_deduplicates_routines(self, tmp_path: Path) -> None:
         """Same routine_id executed multiple times should appear once."""
         agent = self._make_agent(tmp_path)
 
         raw_dir = tmp_path / "raw"
-        raw_dir.mkdir()
+        raw_dir.mkdir(exist_ok=True)
         for i in range(3):
             (raw_dir / f"result_{i}.json").write_text(json.dumps({
                 "routine_id": "Routine_same",
@@ -459,19 +464,21 @@ class TestGenerateContextTool:
                 "result": {"ok": True, "data": {}},
             }))
 
-        result = agent._generate_context(
+        context_from_llm = BlueBoxAgentContext(
             goal="test", summary="test", output_description="test",
+            routines_used=[],
         )
-        json_path = tmp_path / result["context_json"]
-        loaded = BlueBoxAgentContext.model_validate_json(json_path.read_text())
-        assert len(loaded.routines_used) == 1
+        agent.llm_client.call_sync = MagicMock(return_value=self._mock_llm_response(context_from_llm))
 
-    def test_agent_provided_routines_not_overridden(self, tmp_path: Path) -> None:
-        """When agent provides routines_used, don't auto-populate."""
+        result = agent.generate_context()
+        assert len(result.routines_used) == 1
+
+    def test_llm_provided_routines_not_overridden(self, tmp_path: Path) -> None:
+        """When LLM provides routines_used, don't auto-populate from raw/."""
         agent = self._make_agent(tmp_path)
 
         raw_dir = tmp_path / "raw"
-        raw_dir.mkdir()
+        raw_dir.mkdir(exist_ok=True)
         (raw_dir / "result_1.json").write_text(json.dumps({
             "routine_id": "Routine_from_raw",
             "routine_name": "RawRoutine",
@@ -480,15 +487,37 @@ class TestGenerateContextTool:
             "result": {"ok": True, "data": {}},
         }))
 
-        result = agent._generate_context(
+        context_from_llm = BlueBoxAgentContext(
             goal="test", summary="test", output_description="test",
-            routines_used=[{
-                "routine_id": "Routine_agent_provided",
-                "routine_name": "AgentRoutine",
-                "parameters": {"x": 1},
-            }],
+            routines_used=[UsedRoutine.from_dict_params(
+                routine_id="Routine_llm_provided",
+                routine_name="LLMRoutine",
+                parameters={"x": 1},
+            )],
         )
-        json_path = tmp_path / result["context_json"]
-        loaded = BlueBoxAgentContext.model_validate_json(json_path.read_text())
-        assert len(loaded.routines_used) == 1
-        assert loaded.routines_used[0].routine_id == "Routine_agent_provided"
+        agent.llm_client.call_sync = MagicMock(return_value=self._mock_llm_response(context_from_llm))
+
+        result = agent.generate_context()
+        assert len(result.routines_used) == 1
+        assert result.routines_used[0].routine_id == "Routine_llm_provided"
+
+    def test_passes_focus_to_system_prompt(self, tmp_path: Path, minimal_context: BlueBoxAgentContext) -> None:
+        """Focus text should be included in the system prompt sent to LLM."""
+        agent = self._make_agent(tmp_path)
+        agent.llm_client.call_sync = MagicMock(return_value=self._mock_llm_response(minimal_context))
+
+        agent.generate_context(focus="focus on the flight search part")
+
+        call_kwargs = agent.llm_client.call_sync.call_args
+        system_prompt = call_kwargs.kwargs.get("system_prompt") or call_kwargs[1].get("system_prompt", "")
+        assert "focus on the flight search part" in system_prompt
+
+    def test_passes_response_model(self, tmp_path: Path, minimal_context: BlueBoxAgentContext) -> None:
+        """Should call llm_client.call_sync with response_model=BlueBoxAgentContext."""
+        agent = self._make_agent(tmp_path)
+        agent.llm_client.call_sync = MagicMock(return_value=self._mock_llm_response(minimal_context))
+
+        agent.generate_context()
+
+        call_kwargs = agent.llm_client.call_sync.call_args
+        assert call_kwargs.kwargs.get("response_model") is BlueBoxAgentContext

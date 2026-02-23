@@ -28,7 +28,6 @@ class TestPathTraversalPrevention:
     def test_parent_traversal_blocked(self, tmp_path: Path) -> None:
         """../  should be denied."""
         ws = _make_workspace(tmp_path / "workspace")
-        ws.root_path.mkdir()
         result = _call(ws, "../../../etc/passwd")
         assert "error" in result
         assert "Access denied" in result["error"]
@@ -36,7 +35,6 @@ class TestPathTraversalPrevention:
     def test_absolute_path_outside_blocked(self, tmp_path: Path) -> None:
         """/etc/passwd should be denied."""
         ws = _make_workspace(tmp_path / "workspace")
-        ws.root_path.mkdir()
         result = _call(ws, "/etc/passwd")
         assert "error" in result
         assert "Access denied" in result["error"]

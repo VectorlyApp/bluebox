@@ -22,7 +22,7 @@ import requests
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
 from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
 from bluebox.config import Config
-from bluebox.data_models.agents.context import BlueBoxAgentContext, RoutineUsed
+from bluebox.data_models.agents.context import BlueBoxAgentContext, UsedRoutine
 from bluebox.data_models.browser_agent import (
     BrowserAgentDoneEvent,
     BrowserAgentErrorEvent,
@@ -131,7 +131,7 @@ class BlueBoxAgent(AbstractAgent):
         - When using `execute_browser_task`, write a specific, step-by-step task description so the browser agent knows exactly what to do.
         - If your first search returns no results, try rephrasing the task description before giving up.
         - Be concise in responses.
-        - After successfully completing a task (output verified and correct), call `generate_context` to save a reusable recipe. **NEVER leave `routines_used` empty** — include every routine that was executed, with exact routine_id, routine_name, and parameter values. Also include `python_code` with the final working snippet.
+        - Be thorough and persistent — keep iterating until the output is correct.
     """).strip()
 
     ## Magic methods
@@ -364,7 +364,7 @@ class BlueBoxAgent(AbstractAgent):
 
         return section
 
-    def _extract_routines_from_raw(self) -> list[RoutineUsed]:
+    def _extract_routines_from_raw(self) -> list[UsedRoutine]:
         """Extract routine info from raw/ execution result files.
 
         Each raw JSON file contains routine_id, routine_name, parameters,
@@ -373,7 +373,7 @@ class BlueBoxAgent(AbstractAgent):
         """
         raw_results = self._workspace.load_raw_json()
         seen: set[str] = set()
-        routines: list[RoutineUsed] = []
+        routines: list[UsedRoutine] = []
         for rr in raw_results:
             rid = rr.get("routine_id")
             if not rid or rid in seen:
@@ -382,7 +382,7 @@ class BlueBoxAgent(AbstractAgent):
             if rr.get("status") not in ("completed", None):
                 continue
             seen.add(rid)
-            routines.append(RoutineUsed(
+            routines.append(UsedRoutine.from_dict_params(
                 routine_id=rid,
                 routine_name=rr.get("routine_name", rid),
                 parameters=rr.get("parameters", {}),
@@ -770,88 +770,72 @@ class BlueBoxAgent(AbstractAgent):
         """
         return self._workspace.read_file(path, start_line=start_line, end_line=end_line)
 
-    @agent_tool()
-    def _generate_context(
-        self,
-        goal: str,
-        summary: str,
-        output_description: str,
-        routines_used: list[dict[str, Any]] | None = None,
-        python_code: str | None = None,
-        output_files: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """
-        Save a context file capturing what worked in this session.
+    ## Context generation (structured output, called by TUI slash command)
 
-        Call this after successfully completing the user's task. The context
-        file lets another BlueBoxAgent instance replicate the successful path
-        without trial and error. Both a JSON file (canonical) and a Markdown
-        file (human-readable) are saved to the context/ directory.
+    def generate_context(self, focus: str | None = None) -> BlueBoxAgentContext:
+        """Generate a context file from the current session using structured output.
+
+        Makes a direct LLM call with response_model=BlueBoxAgentContext to get
+        a validated Pydantic model back. Saves both JSON and Markdown files to
+        the workspace context/ directory.
 
         Args:
-            goal: The user's original request, in their own words.
-            summary: 1-2 sentence summary of what was accomplished.
-            output_description: Description of the output: format, key fields,
-                row count if known (e.g. "CSV with 47 rows, columns: name, price, url").
-            routines_used: List of routines that worked. Each dict must have keys:
-                routine_id (str), routine_name (str), and parameters (dict with
-                the parameter values that produced correct results).
-            python_code: The final working Python snippet passed to run_python_code.
-                Omit if no post-processing was needed.
-            output_files: Relative paths of files written to outputs/
-                (e.g. ["outputs/results.csv"]).
+            focus: Optional user-provided focus prompt to guide context generation.
+
+        Returns:
+            The generated BlueBoxAgentContext.
+
+        Raises:
+            ValueError: If the LLM fails to produce a valid context.
         """
-        try:
-            validated_routines = [
-                RoutineUsed.model_validate(r) for r in (routines_used or [])
-            ]
+        raw_routines = self._extract_routines_from_raw()
 
-            # Auto-populate from raw/ execution results if agent didn't provide routines
-            if not validated_routines:
-                validated_routines = self._extract_routines_from_raw()
-                if validated_routines:
-                    logger.info(
-                        "Auto-populated %d routine(s) from raw/ execution results",
-                        len(validated_routines),
-                    )
+        system_prompt = (
+            "You are analyzing a BlueBox Agent conversation to extract a reusable context file. "
+            "Fill in every field of the BlueBoxAgentContext schema based on the conversation.\n\n"
+            "CRITICAL: routines_used must include every routine that was executed with exact "
+            "routine_id, routine_name, and parameter values.\n"
+            "Include the final working python_code snippet if post-processing was done.\n"
+            "Include output_files with relative paths of files written to outputs/.\n"
+        )
+        if raw_routines:
+            system_prompt += "\nRoutines found in execution results:\n"
+            for r in raw_routines:
+                system_prompt += f"- {r.routine_name} ({r.routine_id}): {json.dumps(r.parameters_as_dict(), default=str)}\n"
+        if focus:
+            system_prompt += f"\nUser focus: {focus}\n"
 
-            context = BlueBoxAgentContext(
-                goal=goal,
-                summary=summary,
-                output_description=output_description,
-                routines_used=validated_routines,
-                python_code=python_code,
-                output_files=output_files or [],
+        # One-off structured output call that sees the full conversation via
+        # OpenAI's response chaining (previous_response_id reconstructs the
+        # thread server-side). We don't update self._previous_response_id
+        # afterward so this call doesn't affect the agent loop.
+        response = self.llm_client.call_sync(
+            input="Generate a reusable context file from this conversation.",
+            system_prompt=system_prompt,
+            response_model=BlueBoxAgentContext,
+            previous_response_id=self._previous_response_id,
+        )
+        context = response.parsed
+        if context is None:
+            raise ValueError("LLM failed to produce a valid BlueBoxAgentContext")
+
+        # Safety net: merge raw routines if LLM left routines_used empty
+        if not context.routines_used and raw_routines:
+            context.routines_used = raw_routines
+            logger.info(
+                "Auto-populated %d routine(s) from raw/ execution results",
+                len(raw_routines),
             )
-        except Exception as e:
-            return {"error": f"Failed to build context: {e}"}
 
         # Save canonical JSON
-        json_content = context.model_dump_json(indent=2)
-        try:
-            json_save = self._workspace.save_file("context", "agent_context", json_content)
-        except Exception as e:
-            logger.exception("Failed to save context JSON: %s", e)
-            return {"error": f"Failed to save context file: {e}"}
+        json_save = self._workspace.save_file(
+            "context", "agent_context", context.model_dump_json(indent=2),
+        )
 
         # Save companion Markdown
-        md_content = context.to_markdown()
-        try:
-            md_save = self._workspace.save_file(
-                "context", "agent_context", md_content, extension=".md",
-            )
-        except Exception as e:
-            logger.warning("Failed to save context Markdown: %s", e)
-            md_save = {"output_file": None}
+        md_save = self._workspace.save_file(
+            "context", "agent_context", context.to_markdown(), extension=".md",
+        )
 
         logger.info("Context files saved: %s, %s", json_save["output_file"], md_save["output_file"])
-        return {
-            "success": True,
-            "context_json": json_save["output_file"],
-            "context_md": md_save["output_file"],
-            "message": (
-                f"Context saved to {json_save['output_file']}. "
-                "A new BlueBoxAgent using this workspace will automatically "
-                "load this context and replicate the successful path."
-            ),
-        }
+        return context

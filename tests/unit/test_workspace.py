@@ -90,9 +90,7 @@ class TestListFiles:
 
     def test_lists_files_in_subdirs(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path))
-        (tmp_path / "raw").mkdir()
         (tmp_path / "raw" / "result.json").write_text("{}")
-        (tmp_path / "outputs").mkdir()
         (tmp_path / "outputs" / "out.csv").write_text("a,b")
         result = ws.list_files()
         assert result["total_files"] == 2
@@ -106,7 +104,6 @@ class TestLoadRawJson:
     def test_loads_json_files(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path))
         raw = tmp_path / "raw"
-        raw.mkdir()
         (raw / "a.json").write_text('{"key": "a"}')
         (raw / "b.json").write_text('{"key": "b"}')
         results = ws.load_raw_json()
@@ -117,7 +114,6 @@ class TestLoadRawJson:
     def test_skips_invalid_json(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path))
         raw = tmp_path / "raw"
-        raw.mkdir()
         (raw / "good.json").write_text('{"ok": true}')
         (raw / "bad.json").write_text("not json")
         results = ws.load_raw_json()
@@ -134,7 +130,6 @@ class TestSnapshotAndDiffOutputs:
 
     def test_detects_new_file(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path))
-        (tmp_path / "outputs").mkdir()
         before = ws.snapshot_outputs()
         (tmp_path / "outputs" / "new.csv").write_text("data")
         changed = ws.diff_outputs(before)
@@ -144,7 +139,6 @@ class TestSnapshotAndDiffOutputs:
     def test_detects_modified_file(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path))
         outputs = tmp_path / "outputs"
-        outputs.mkdir()
         f = outputs / "existing.csv"
         f.write_text("old")
         before = ws.snapshot_outputs()
@@ -156,7 +150,6 @@ class TestSnapshotAndDiffOutputs:
     def test_no_changes(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path))
         outputs = tmp_path / "outputs"
-        outputs.mkdir()
         (outputs / "stable.csv").write_text("data")
         before = ws.snapshot_outputs()
         changed = ws.diff_outputs(before)
@@ -166,11 +159,11 @@ class TestSnapshotAndDiffOutputs:
 class TestEnsureDirs:
     """Tests for LocalWorkspace.ensure_dirs."""
 
-    def test_creates_raw_and_outputs(self, tmp_path: Path) -> None:
+    def test_creates_raw_outputs_and_context(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path / "new_workspace"))
-        ws.ensure_dirs()
         assert (tmp_path / "new_workspace" / "raw").is_dir()
         assert (tmp_path / "new_workspace" / "outputs").is_dir()
+        assert (tmp_path / "new_workspace" / "context").is_dir()
 
     def test_idempotent(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path))

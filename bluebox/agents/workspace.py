@@ -27,9 +27,10 @@ class AgentWorkspace(ABC):
     """
     Abstract workspace that agents use for file I/O.
 
-    A workspace has two logical subdirectories:
+    A workspace has three logical subdirectories:
     - raw/    : input data (e.g., routine results saved automatically)
     - outputs/: agent-generated output files (e.g., CSVs, processed JSON)
+    - context/: reusable context files from successful sessions
     """
 
     @property
@@ -113,7 +114,7 @@ class AgentWorkspace(ABC):
 
     @abstractmethod
     def ensure_dirs(self) -> None:
-        """Ensure the workspace directory structure exists (raw/, outputs/)."""
+        """Ensure the workspace directory structure exists (raw/, outputs/, context/)."""
 
 
 class LocalWorkspace(AgentWorkspace):
@@ -123,8 +124,10 @@ class LocalWorkspace(AgentWorkspace):
         self._workspace_dir = Path(workspace_dir)
         self._raw_dir = self._workspace_dir / "raw"
         self._outputs_dir = self._workspace_dir / "outputs"
+        self._context_dir = self._workspace_dir / "context"
         self._execution_counter: int = 0
         self._counter_lock = threading.Lock()
+        self.ensure_dirs()
 
     @property
     def root_path(self) -> Path:
@@ -230,3 +233,4 @@ class LocalWorkspace(AgentWorkspace):
     def ensure_dirs(self) -> None:
         self._raw_dir.mkdir(parents=True, exist_ok=True)
         self._outputs_dir.mkdir(parents=True, exist_ok=True)
+        self._context_dir.mkdir(parents=True, exist_ok=True)

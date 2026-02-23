@@ -32,6 +32,7 @@ from bluebox.utils.terminal_utils import ask_yes_no, print_colored, YELLOW
 
 from rich.console import Console
 from rich.text import Text
+from textual import work
 from textual.widgets import RichLog
 
 from bluebox.agents.bluebox_agent import BlueBoxAgent
@@ -140,22 +141,6 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
 
     # ── Custom slash commands ─────────────────────────────────────────
 
-    _GENERATE_CONTEXT_PROMPT: str = (
-        "Review everything we accomplished in this session and call the `generate_context` tool "
-        "to save a reusable context file.\n\n"
-        "**CRITICAL — you MUST include `routines_used`**. For every routine that was executed, "
-        "provide the exact routine_id, routine_name, and the parameter values that were used. "
-        "Look at the execute_routines_in_parallel calls you made earlier in this conversation. "
-        "Do NOT leave routines_used empty — this is the most important field for replay.\n\n"
-        "Also include:\n"
-        "- The original goal (what I asked for)\n"
-        "- The final working Python post-processing code (the last successful run_python_code call)\n"
-        "- The output files that were created\n"
-        "- A clear description of what the output looks like\n"
-        "- A concise summary of what was accomplished\n\n"
-        "Be thorough and accurate — another agent will use this context to replicate our work."
-    )
-
     def _handle_custom_command(self, cmd: str, raw_input: str) -> bool:
         if raw_input.lower().startswith("/generate_context"):
             chat = self.query_one("#chat-log", RichLog)
@@ -163,20 +148,43 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
                 chat.write(Text.from_markup("[red]Agent not initialized.[/red]"))
                 return True
 
-            user_focus = raw_input[len("/generate_context"):].strip()
-            prompt = self._GENERATE_CONTEXT_PROMPT
-            if user_focus:
-                prompt += f"\n\n**User focus:** {user_focus}"
-
+            user_focus = raw_input[len("/generate_context"):].strip() or None
             chat.write(Text.from_markup(
                 "[yellow]Generating context from this session...[/yellow]"
             ))
             self._processing = True
-            self._assistant_header_printed = False
-            self._status_update_printed = False
-            self._send_to_agent(prompt)
+            self._generate_context_async(user_focus)
             return True
         return False
+
+    @work(thread=True)
+    def _generate_context_async(self, focus: str | None) -> None:
+        """Run generate_context in a background thread via structured output."""
+        try:
+            assert isinstance(self._agent, BlueBoxAgent)
+            context = self._agent.generate_context(focus=focus)
+            self.call_from_thread(self._show_context_success, context)
+        except Exception as e:
+            self.call_from_thread(self._show_context_error, str(e))
+
+    def _show_context_success(self, context: Any) -> None:
+        """Display context generation success in the chat pane."""
+        chat = self.query_one("#chat-log", RichLog)
+        chat.write(Text.from_markup(
+            f"[bold green]Context saved![/bold green]\n"
+            f"[dim]Goal:[/dim] {context.goal}\n"
+            f"[dim]Summary:[/dim] {context.summary}\n"
+            f"[dim]Routines:[/dim] {len(context.routines_used)}"
+        ))
+        self._processing = False
+        self._update_status()
+
+    def _show_context_error(self, error: str) -> None:
+        """Display context generation error in the chat pane."""
+        chat = self.query_one("#chat-log", RichLog)
+        chat.write(Text.from_markup(f"[bold red]Context generation failed:[/bold red] {error}"))
+        self._processing = False
+        self._update_status()
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────

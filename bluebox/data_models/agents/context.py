@@ -20,15 +20,37 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
-class RoutineUsed(BaseModel):
+class UsedRoutineParameter(BaseModel):
+    """A single parameter key-value pair used in a routine execution."""
+
+    key: str = Field(..., description="Parameter name")
+    value: str | bool | int | float = Field(..., description="Parameter value")
+
+
+class UsedRoutine(BaseModel):
     """One routine that was successfully executed during the session."""
 
     routine_id: str = Field(..., description="Routine ID from search_routines results")
     routine_name: str = Field(..., description="Human-readable routine name")
-    parameters: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Parameter name-to-value mapping that produced correct results",
+    parameters: list[UsedRoutineParameter] = Field(
+        default_factory=list,
+        description="Parameter key-value pairs that produced correct results",
     )
+
+    def parameters_as_dict(self) -> dict[str, str | bool | int | float]:
+        """Convert parameters list to a dict for convenience."""
+        return {p.key: p.value for p in self.parameters}
+
+    @classmethod
+    def from_dict_params(
+        cls, routine_id: str, routine_name: str, parameters: dict[str, Any],
+    ) -> UsedRoutine:
+        """Convenience constructor that accepts a dict of parameters."""
+        return cls(
+            routine_id=routine_id,
+            routine_name=routine_name,
+            parameters=[UsedRoutineParameter(key=k, value=v) for k, v in parameters.items()],
+        )
 
 
 class BlueBoxAgentContext(BaseModel):
@@ -41,7 +63,7 @@ class BlueBoxAgentContext(BaseModel):
 
     version: int = Field(default=1, description="Schema version for forward compatibility")
     goal: str = Field(..., description="The user's original request, in their own words")
-    routines_used: list[RoutineUsed] = Field(
+    routines_used: list[UsedRoutine] = Field(
         default_factory=list,
         description="Routines that produced useful results, in execution order",
     )
@@ -96,7 +118,7 @@ class BlueBoxAgentContext(BaseModel):
                 if r.parameters:
                     lines.append("**Parameters:**")
                     lines.append("```json")
-                    lines.append(json.dumps(r.parameters, indent=2, default=str))
+                    lines.append(json.dumps(r.parameters_as_dict(), indent=2, default=str))
                     lines.append("```")
                 else:
                     lines.append("No parameters.")
@@ -209,9 +231,9 @@ def _extract_fenced_block(text: str, language: str | None = None) -> str | None:
     return None
 
 
-def _parse_routines_section(text: str) -> list[RoutineUsed]:
-    """Parse the Routines Used section into RoutineUsed objects."""
-    routines: list[RoutineUsed] = []
+def _parse_routines_section(text: str) -> list[UsedRoutine]:
+    """Parse the Routines Used section into UsedRoutine objects."""
+    routines: list[UsedRoutine] = []
     if not text.strip():
         return routines
 
@@ -228,18 +250,19 @@ def _parse_routines_section(text: str) -> list[RoutineUsed]:
         routine_id = header_match.group(2).strip()
 
         # Parse parameters from JSON code block
-        parameters: dict[str, Any] = {}
+        param_list: list[UsedRoutineParameter] = []
         params_json = _extract_fenced_block(part, "json")
         if params_json:
             try:
-                parameters = json.loads(params_json)
-            except json.JSONDecodeError:
+                params_dict = json.loads(params_json)
+                param_list = [UsedRoutineParameter(key=k, value=v) for k, v in params_dict.items()]
+            except (json.JSONDecodeError, TypeError):
                 pass
 
-        routines.append(RoutineUsed(
+        routines.append(UsedRoutine(
             routine_id=routine_id,
             routine_name=routine_name,
-            parameters=parameters,
+            parameters=param_list,
         ))
 
     return routines
