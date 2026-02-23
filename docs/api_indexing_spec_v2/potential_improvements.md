@@ -56,3 +56,32 @@
 - **Exploratory pre-phase:** Before `plan_routines`, allow the PI to dispatch a small number of "scouting" experiments — lightweight workers that navigate the site, poke at key pages, and report back what's actually available (not just what was captured). These scouts would focus on questions like: "What data is on this page?", "Does this endpoint require a session cookie from a prior navigation?", "Is there a table here we could scrape?"
 - **Progressive planning:** Instead of one upfront `plan_routines` call, support incremental planning. The PI declares an initial set of high-confidence routines, then adds or revises specs as experiments reveal new capabilities or invalidate assumptions. The ledger already supports calling `plan_routines` multiple times — the improvement is in the prompt strategy and workflow guidance, not the tooling.
 - **Broaden routine archetypes:** Update the PI's system prompt and documentation examples to explicitly highlight non-API routine patterns: DOM table extraction, multi-page navigation flows, JS evaluation for client-rendered data, hybrid fetch+DOM routines. The current examples and schema docs are heavily fetch-oriented, which anchors the PI's planning toward API-only routines.
+
+## 6. Visual Page Understanding via Screenshots
+
+**Gap:** Experiment workers interact with live browser tabs but are completely blind — they never see what the page actually looks like. Workers rely entirely on `browser_get_dom` (raw DOM tree) and `browser_eval_js` (programmatic queries) to understand page state. There is no use of `Page.captureScreenshot` anywhere in the pipeline. This means workers can't visually confirm what happened after a navigation, can't read rendered text that lives in complex CSS/SVG/canvas layouts, can't assess scroll position, and can't spot visual cues (modals, error banners, loading spinners, CAPTCHA challenges) that are obvious in a screenshot but invisible in the DOM tree.
+
+**Why it matters:**
+- Workers frequently misjudge page state — a "successful navigation" might actually show an error modal, a cookie consent overlay, or a bot challenge page that the DOM alone doesn't make obvious
+- Client-rendered content (React/Vue SPAs, canvas-based charts, dynamically injected text) may not appear in a DOM snapshot but is clearly visible in a screenshot
+- Scroll position matters — workers don't know if the data they need is above or below the fold, leading to unnecessary or missed scroll interactions
+- Debugging failed experiments is harder without visual evidence of what the worker was actually looking at
+
+**Proposed fix:**
+- **`browser_screenshot` tool:** Add a new worker tool that calls CDP `Page.captureScreenshot`, returns the image to the LLM as a vision input. Workers can call it on demand to visually inspect the current page state — confirming navigations succeeded, reading rendered text, identifying UI elements, spotting error states.
+- **Auto-screenshot in the loop:** Optionally capture a screenshot automatically after key actions (navigation, click, form submission) and inject it into the worker's context as a vision message. This gives workers continuous visual feedback without requiring them to explicitly request it. Could be configurable (e.g. `screenshot_mode: "manual" | "after_navigation" | "every_action"`).
+- **Screenshot-derived context:** Beyond raw vision, screenshots can be processed to extract useful structured context — OCR for visible text, scroll position estimation, viewport dimensions, detection of overlay/modal states. This could be a lightweight post-processing step that annotates the screenshot with metadata before passing it to the worker.
+- **Local OCR via EasyOCR:** For extracting visible text without burning vision tokens, run EasyOCR locally on captured screenshots. EasyOCR outperforms Tesseract on modern UI text (odd fonts, non-white backgrounds, overlays). The extracted text can be injected as a structured string alongside or instead of the raw image, keeping token cost low while giving workers full visibility into rendered page content. Example:
+  ```python
+  import easyocr
+  import cv2
+
+  def ocr_easyocr(image_path: str) -> str:
+      reader = easyocr.Reader(["en"], gpu=False)  # gpu=True if CUDA available
+      img = cv2.imread(image_path)
+      if img is None:
+          raise FileNotFoundError(image_path)
+      lines = reader.readtext(img, detail=0, paragraph=True)
+      return "\n".join(line.strip() for line in lines if line.strip())
+  ```
+  This could be used as a fallback when vision models aren't available, or as a complement — send both the OCR text (cheap, searchable) and the screenshot (rich, visual) to the worker.
