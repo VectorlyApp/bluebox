@@ -22,20 +22,22 @@ from __future__ import annotations
 
 import argparse
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-import sys
 
 from bluebox.utils.code_execution_sandbox import is_docker_available
 from bluebox.utils.terminal_utils import ask_yes_no, print_colored, YELLOW
 
 from rich.console import Console
 from rich.text import Text
+from textual import work
 from textual.widgets import RichLog
 
 from bluebox.agents.bluebox_agent import BlueBoxAgent
 from bluebox.agents.workspace import LocalWorkspace
+from bluebox.data_models.agents.context import BlueBoxAgentContext
 from bluebox.config import Config
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
@@ -50,17 +52,25 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
     """Multi-pane TUI for the BlueBox Agent."""
 
     TITLE = "BlueBox Agent"
-    SLASH_COMMANDS = BASE_SLASH_COMMANDS
-    HELP_TEXT = BASE_HELP_TEXT
+    SLASH_COMMANDS = {
+        **BASE_SLASH_COMMANDS,
+        "/generate_context": "Save a reusable context file (optionally with a focus prompt)",
+    }
+    HELP_TEXT = BASE_HELP_TEXT + (
+        "\n    [cyan]/generate_context[/cyan]  Save a reusable context file from this session"
+        "\n                       Optionally add a focus: [cyan]/generate_context focus on the flight search part[/cyan]\n"
+    )
     SHOW_SAVED_FILES_PANE = True
 
     def __init__(
         self,
         llm_model: LLMModel,
         workspace_dir: str = "./bluebox_workspace",
+        context_file: str | None = None,
     ) -> None:
         super().__init__(llm_model, working_dir=workspace_dir)
         self._workspace_dir = workspace_dir
+        self._context_file = context_file
 
     # ── Abstract implementations ─────────────────────────────────────────
 
@@ -70,6 +80,7 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
             workspace=LocalWorkspace(self._workspace_dir),
+            context_file=self._context_file,
         )
 
     def _print_welcome(self) -> None:
@@ -83,6 +94,10 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
         lines = [
             f"[dim]Model:[/dim]       {self._llm_model.value}",
         ]
+        if isinstance(self._agent, BlueBoxAgent) and self._agent.loaded_context:
+            ctx = self._agent.loaded_context
+            lines.append(f"[dim]Context:[/dim]     [green]loaded[/green] — {ctx.goal[:60]}")
+            lines.append(f"[dim]             {len(ctx.routines_used)} routine(s), {len(ctx.output_files)} output file(s)[/dim]")
         chat.write(Text.from_markup("\n".join(lines)))
         chat.write("")
 
@@ -129,6 +144,61 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
                 _add(r.get("output_file", ""))
         return paths
 
+    # ── Custom slash commands ─────────────────────────────────────────
+
+    def _handle_custom_command(self, cmd: str, raw_input: str) -> bool:
+        if raw_input.lower().startswith("/generate_context"):
+            chat = self.query_one("#chat-log", RichLog)
+            if not self._agent:
+                chat.write(Text.from_markup("[red]Agent not initialized.[/red]"))
+                return True
+
+            user_focus = raw_input[len("/generate_context"):].strip() or None
+            chat.write(Text.from_markup(
+                "[yellow]Generating context from this session...[/yellow]"
+            ))
+            self._processing = True
+            self._generate_context_async(user_focus)
+            return True
+        return False
+
+    @work(thread=True)
+    def _generate_context_async(self, focus: str | None) -> None:
+        """Run generate_context in a background thread via structured output."""
+        try:
+            if not isinstance(self._agent, BlueBoxAgent):
+                raise TypeError(f"Expected BlueBoxAgent, got {type(self._agent).__name__}")
+            result = self._agent.generate_context(focus=focus)
+            self.call_from_thread(self._show_context_success, result)
+        except Exception as e:
+            self.call_from_thread(self._show_context_error, str(e))
+
+    def _show_context_success(self, context: BlueBoxAgentContext) -> None:
+        """Display context generation success in the chat pane."""
+        context_dir = Path(self._workspace_dir) / "context"
+        json_path = str(context_dir / "agent_context.json")
+        md_path = str(context_dir / "agent_context.md")
+        chat = self.query_one("#chat-log", RichLog)
+        chat.write(Text.from_markup(
+            f"[bold green]Context saved![/bold green]\n"
+            f"[dim]Goal:[/dim]      {context.goal}\n"
+            f"[dim]Summary:[/dim]   {context.summary}\n"
+            f"[dim]Routines:[/dim]  {len(context.routines_used)}\n"
+            f"[dim]JSON:[/dim]      {json_path}\n"
+            f"[dim]Markdown:[/dim]  {md_path}"
+        ))
+        self._add_saved_file(json_path)
+        self._add_saved_file(md_path)
+        self._processing = False
+        self._update_status()
+
+    def _show_context_error(self, error: str) -> None:
+        """Display context generation error in the chat pane."""
+        chat = self.query_one("#chat-log", RichLog)
+        chat.write(Text.from_markup(f"[bold red]Context generation failed:[/bold red] {error}"))
+        self._processing = False
+        self._update_status()
+
 
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
@@ -141,6 +211,12 @@ def main() -> None:
         type=str,
         default="./bluebox_workspace",
         help="Workspace directory. Raw results in raw/, output files in outputs/ (default: ./bluebox_workspace)",
+    )
+    parser.add_argument(
+        "--context-file",
+        type=str,
+        default=None,
+        help="Path to a context file (.json or .md) from a previous session to guide the agent",
     )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")
@@ -186,6 +262,7 @@ def main() -> None:
     app = BlueBoxAgentTUI(
         llm_model=llm_model,
         workspace_dir=args.workspace_dir,
+        context_file=args.context_file,
     )
     app.run()
 
