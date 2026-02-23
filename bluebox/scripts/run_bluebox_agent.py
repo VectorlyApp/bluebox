@@ -22,10 +22,10 @@ from __future__ import annotations
 
 import argparse
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-import sys
 
 from bluebox.utils.code_execution_sandbox import is_docker_available
 from bluebox.utils.terminal_utils import ask_yes_no, print_colored, YELLOW
@@ -38,6 +38,7 @@ from textual.widgets import RichLog
 from bluebox.agents.bluebox_agent import BlueBoxAgent
 from bluebox.agents.workspace import LocalWorkspace
 from bluebox.config import Config
+from bluebox.data_models.agents.context import BlueBoxAgentContext
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
 from bluebox.utils.logger import enable_tui_logging
@@ -161,13 +162,14 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
     def _generate_context_async(self, focus: str | None) -> None:
         """Run generate_context in a background thread via structured output."""
         try:
-            assert isinstance(self._agent, BlueBoxAgent)
+            if not isinstance(self._agent, BlueBoxAgent):
+                raise TypeError(f"Expected BlueBoxAgent, got {type(self._agent).__name__}")
             context = self._agent.generate_context(focus=focus)
             self.call_from_thread(self._show_context_success, context)
         except Exception as e:
             self.call_from_thread(self._show_context_error, str(e))
 
-    def _show_context_success(self, context: Any) -> None:
+    def _show_context_success(self, context: BlueBoxAgentContext) -> None:
         """Display context generation success in the chat pane."""
         chat = self.query_one("#chat-log", RichLog)
         chat.write(Text.from_markup(

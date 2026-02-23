@@ -6,6 +6,8 @@ in BlueBoxAgent.
 """
 
 import json
+import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -232,14 +234,14 @@ class TestContextLoading:
 
     def test_auto_discovers_most_recent(self, tmp_path: Path) -> None:
         """When multiple context files exist, loads the most recently modified."""
-        import time
-
         context_dir = tmp_path / "context"
         context_dir.mkdir()
 
         old = BlueBoxAgentContext(goal="old goal", output_description="old", summary="old")
-        (context_dir / "old.json").write_text(old.model_dump_json())
-        time.sleep(0.05)  # ensure mtime differs
+        old_file = context_dir / "old.json"
+        old_file.write_text(old.model_dump_json())
+        past = time.time() - 10
+        os.utime(old_file, (past, past))  # force mtime 10s in the past
 
         new = BlueBoxAgentContext(goal="new goal", output_description="new", summary="new")
         (context_dir / "new.json").write_text(new.model_dump_json())

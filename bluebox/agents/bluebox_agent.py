@@ -333,14 +333,20 @@ class BlueBoxAgent(AbstractAgent):
             return None
 
     def _auto_discover_context(self) -> BlueBoxAgentContext | None:
-        """Find and load the most recent .json context file from workspace context/ dir."""
+        """Find and load the most recent context file from workspace context/ dir.
+
+        Prefers .json files over .md when both exist. Falls back to .md if no
+        JSON context files are present.
+        """
         context_dir = self._workspace.root_path / "context"
         if not context_dir.is_dir():
             return None
-        json_files = sorted(context_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if not json_files:
-            return None
-        return self._load_context_from_path(str(json_files[0]))
+        # Prefer JSON, fall back to Markdown
+        for ext in ("*.json", "*.md"):
+            files = sorted(context_dir.glob(ext), key=lambda p: p.stat().st_mtime, reverse=True)
+            if files:
+                return self._load_context_from_path(str(files[0]))
+        return None
 
     def _get_context_prompt_section(self) -> str:
         """Build a system prompt section from a loaded BlueBoxAgentContext."""
@@ -379,7 +385,7 @@ class BlueBoxAgent(AbstractAgent):
             if not rid or rid in seen:
                 continue
             # Only include completed executions
-            if rr.get("status") not in ("completed", None):
+            if rr.get("status") != "completed":
                 continue
             seen.add(rid)
             routines.append(UsedRoutine.from_dict_params(
