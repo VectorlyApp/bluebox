@@ -371,19 +371,17 @@ class TestGenerateContext:
 
         result = agent.generate_context()
 
-        assert result.context.goal == sample_context.goal
-        assert result.context.summary == sample_context.summary
-        assert "context/" in result.json_path
-        assert "context/" in result.md_path
+        assert result.goal == sample_context.goal
+        assert result.summary == sample_context.summary
 
         # Verify JSON file exists and is valid
-        json_path = Path(result.json_path)
+        json_path = tmp_path / "context" / "agent_context.json"
         assert json_path.is_file()
         loaded = BlueBoxAgentContext.model_validate_json(json_path.read_text())
         assert loaded.goal == sample_context.goal
 
         # Verify MD file exists with expected sections
-        md_path = Path(result.md_path)
+        md_path = tmp_path / "context" / "agent_context.md"
         assert md_path.is_file()
         assert "## Goal" in md_path.read_text()
 
@@ -434,10 +432,10 @@ class TestGenerateContext:
 
         result = agent.generate_context()
 
-        assert len(result.context.routines_used) == 1
-        assert result.context.routines_used[0].routine_id == "Routine_abc"
-        assert result.context.routines_used[0].routine_name == "TestRoutine"
-        assert result.context.routines_used[0].parameters_as_dict() == {"city": "NYC"}
+        assert len(result.routines_used) == 1
+        assert result.routines_used[0].routine_id == "Routine_abc"
+        assert result.routines_used[0].routine_name == "TestRoutine"
+        assert result.routines_used[0].parameters_as_dict() == {"city": "NYC"}
 
     def test_auto_populate_deduplicates_routines(self, tmp_path: Path) -> None:
         """Same routine_id executed multiple times should appear once."""
@@ -461,7 +459,7 @@ class TestGenerateContext:
         agent.llm_client.call_sync = MagicMock(return_value=self._mock_llm_response(context_from_llm))
 
         result = agent.generate_context()
-        assert len(result.context.routines_used) == 1
+        assert len(result.routines_used) == 1
 
     def test_llm_provided_routines_not_overridden(self, tmp_path: Path) -> None:
         """When LLM provides routines_used, don't auto-populate from raw/."""
@@ -488,8 +486,8 @@ class TestGenerateContext:
         agent.llm_client.call_sync = MagicMock(return_value=self._mock_llm_response(context_from_llm))
 
         result = agent.generate_context()
-        assert len(result.context.routines_used) == 1
-        assert result.context.routines_used[0].routine_id == "Routine_llm_provided"
+        assert len(result.routines_used) == 1
+        assert result.routines_used[0].routine_id == "Routine_llm_provided"
 
     def test_passes_focus_to_system_prompt(self, tmp_path: Path, minimal_context: BlueBoxAgentContext) -> None:
         """Focus text should be included in the system prompt sent to LLM."""

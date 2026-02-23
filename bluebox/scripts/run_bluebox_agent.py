@@ -35,8 +35,9 @@ from rich.text import Text
 from textual import work
 from textual.widgets import RichLog
 
-from bluebox.agents.bluebox_agent import BlueBoxAgent, GenerateContextResult
+from bluebox.agents.bluebox_agent import BlueBoxAgent
 from bluebox.agents.workspace import LocalWorkspace
+from bluebox.data_models.agents.context import BlueBoxAgentContext
 from bluebox.config import Config
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.utils.cli_utils import add_model_argument, resolve_model
@@ -172,19 +173,22 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
         except Exception as e:
             self.call_from_thread(self._show_context_error, str(e))
 
-    def _show_context_success(self, result: GenerateContextResult) -> None:
+    def _show_context_success(self, context: BlueBoxAgentContext) -> None:
         """Display context generation success in the chat pane."""
+        context_dir = Path(self._workspace_dir) / "context"
+        json_path = str(context_dir / "agent_context.json")
+        md_path = str(context_dir / "agent_context.md")
         chat = self.query_one("#chat-log", RichLog)
         chat.write(Text.from_markup(
             f"[bold green]Context saved![/bold green]\n"
-            f"[dim]Goal:[/dim]      {result.context.goal}\n"
-            f"[dim]Summary:[/dim]   {result.context.summary}\n"
-            f"[dim]Routines:[/dim]  {len(result.context.routines_used)}\n"
-            f"[dim]JSON:[/dim]      {result.json_path}\n"
-            f"[dim]Markdown:[/dim]  {result.md_path}"
+            f"[dim]Goal:[/dim]      {context.goal}\n"
+            f"[dim]Summary:[/dim]   {context.summary}\n"
+            f"[dim]Routines:[/dim]  {len(context.routines_used)}\n"
+            f"[dim]JSON:[/dim]      {json_path}\n"
+            f"[dim]Markdown:[/dim]  {md_path}"
         ))
-        self._add_saved_file(result.json_path)
-        self._add_saved_file(result.md_path)
+        self._add_saved_file(json_path)
+        self._add_saved_file(md_path)
         self._processing = False
         self._update_status()
 
