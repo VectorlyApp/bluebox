@@ -116,7 +116,7 @@ Additional guidelines:
 ## 3. RoutineInspector
 
 **File:** `bluebox/agents/routine_inspector.py`
-**Role:** Independent quality gate — zero domain tools, pure judgment.
+**Role:** Independent quality gate — no browser or capture tools. Returns structured output via `finalize_with_output` (schema-validated against `INSPECTION_OUTPUT_SCHEMA` using `jsonschema.validate()`). Optionally has documentation search tools (`search_docs`, `get_doc_file`) for actionable remediation advice.
 
 ### Chat System Prompt
 
@@ -174,4 +174,4 @@ Additional guidelines:
 |---|---|---|---|
 | **PrincipalInvestigator** | Strategist / orchestrator | Ledger management, experiment dispatch, routine submission | No browser, no domain tools; must review docs first |
 | **ExperimentWorker** | Hands-on experimenter | Browser (navigate, JS eval, CDP, DOM) + Capture lookup + Python sandbox | Does not decide strategy; reports findings only |
-| **RoutineInspector** | Peer reviewer / quality gate | Zero domain tools — `finalize_with_output` only | Judges actual results, not hypotheticals; strict scoring rubric |
+| **RoutineInspector** | Peer reviewer / quality gate | `finalize_with_output` (schema-validated) + optional doc search tools. No browser, no capture tools. | Judges actual results, not hypotheticals; strict scoring rubric |

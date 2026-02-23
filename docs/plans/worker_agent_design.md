@@ -557,9 +557,9 @@ The PI is the researcher who ran the experiments and wrote the paper. The
 RoutineInspector is the **peer reviewer** — reads the paper cold, checks if
 the claims hold up, and decides: publish, revise, or reject.
 
-### What It Receives (all as context, no tools needed)
+### What It Receives (all as context — no browser or capture tools)
 
-The inspector is a **zero-tool agent**. Everything it needs comes in the prompt:
+The inspector has **no browser tools and no capture lookup tools**. All factual context comes in the task prompt. Its only tools are `finalize_with_output` (schema-validated against `INSPECTION_OUTPUT_SCHEMA` via `jsonschema.validate()`), `finalize_with_failure`, `add_note`, and optionally documentation search tools (`search_docs`, `get_doc_file`) for actionable remediation advice. Context in the prompt:
 
 1. **User task** — what was the user trying to accomplish?
 2. **Routine JSON** — the full routine the PI constructed
@@ -634,13 +634,11 @@ overall_score >= 60.
 ### Implementation
 
 New file: `bluebox/agents/routine_inspector.py`
-- Extends `AbstractSpecialist` (uses autonomous mode with output_schema)
-- **Zero domain tools** — pure judgment, no data access
-- Constructor takes: nothing special (just LLM model)
+- Extends `AbstractSpecialist` (uses autonomous mode with `output_schema=INSPECTION_OUTPUT_SCHEMA`)
+- **No browser tools, no capture tools** — judgment only. Has `finalize_with_output` (schema-validated via `jsonschema.validate()`), `add_note`, and optional documentation search tools (`search_docs`, `get_doc_file`) for specific remediation advice.
+- Constructor takes: LLM model + optional `documentation_data_loader`
 - Single `run_autonomous()` call with the full context as the task prompt
-- Returns `RoutineInspectionResult` via `finalize_with_output`
-
-This is the simplest agent in the system. ~50 lines of actual code.
+- Returns `RoutineInspectionResult` via `finalize_with_output` — output is validated against the schema at call time; validation failures force the LLM to retry rather than giving up
 
 ---
 
@@ -678,9 +676,9 @@ New file: `bluebox/agents/principal_investigator.py`
 ### Step 3: RoutineInspector Agent
 New file: `bluebox/agents/routine_inspector.py`
 - Extends `AbstractSpecialist`
-- Zero tools — pure judgment
+- No browser or capture tools — `finalize_with_output` (schema-validated) + optional doc search tools
 - Receives routine + execution result + exploration context as task prompt
-- Returns RoutineInspectionResult via finalize_with_output
+- Returns `RoutineInspectionResult` via `finalize_with_output` (validated against `INSPECTION_OUTPUT_SCHEMA`)
 - Simplest agent in the system
 
 ### Step 4: Runner Script
