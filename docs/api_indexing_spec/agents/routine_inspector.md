@@ -1,12 +1,26 @@
 # RoutineInspector
 
-Independent quality gate that judges constructed routines. **Zero tools — pure judgment.** It receives the routine, execution result, and exploration context in a single prompt, scores on 6 dimensions, and returns a pass/fail verdict.
+Independent quality gate that judges constructed routines. It has **no browser tools and no capture lookup tools** — it cannot interact with the live site or query raw CDP data. All factual context arrives in a single task prompt. It scores on 6 dimensions and returns a structured `RoutineInspectionResult`.
 
 Think of it as a peer reviewer: reads the routine cold, checks if the claims hold up, and decides — ship, revise, or reject.
 
+## Tools
+
+The inspector has no domain-specific tools (no browser, no capture lookup). Its only tools come from `AbstractSpecialist`:
+
+| Tool | Purpose |
+|------|---------|
+| `finalize_with_output(output)` | Submit the structured `RoutineInspectionResult`. The output is **validated at runtime against `INSPECTION_OUTPUT_SCHEMA`** using `jsonschema.validate()` — if the output doesn't match the schema, the tool returns a validation error and forces the LLM to retry. This is how structured output is enforced without using vendor-level structured output mode. Available after `min_iterations` (3). |
+| `finalize_with_failure(reason)` | Mark inspection as failed. **Blocked** if a previous `finalize_with_output` call failed validation — the LLM must fix and retry instead of giving up. |
+| `add_note(note)` | Attach warnings or observations to the result. |
+| `search_docs(query)` | *(Optional — only available if `documentation_data_loader` is provided.)* Search agent documentation for remediation patterns (e.g. CORS fixes, auth patterns). Used to provide specific fix recommendations for blocking issues. |
+| `get_doc_file(path)` | *(Optional.)* Read a specific documentation file. |
+
+**How structured output works:** The PI dispatches the inspector with `output_schema=INSPECTION_OUTPUT_SCHEMA`. `AbstractSpecialist.run_autonomous()` stores this schema, injects it into the inspector's system prompt (so the LLM sees the exact JSON Schema it must produce), and wires it into the `finalize_with_output` tool's parameter definition (so the LLM sees the required fields in the tool signature). When the inspector calls the tool, `jsonschema.validate()` enforces the schema. This is the same mechanism available to experiment workers via `output_schema` — but the inspector is the only agent that actually receives one (see [potential improvement #12](../api_indexing_spec_v2/potential_improvements.md#12-experiment-workers-return-freeform-output--pi-never-specifies-output-schemas)).
+
 ## What It Sees
 
-Everything arrives in a single task prompt:
+All factual context arrives in the task prompt — the inspector has no tools to fetch additional data:
 
 | Context | Contents |
 |---------|----------|
@@ -14,10 +28,11 @@ Everything arrives in a single task prompt:
 | Execution result | HTTP status codes per operation, response data, unresolved placeholders, warnings |
 | Test parameters | Values used for the test execution |
 | Exploration summaries | Network, DOM, storage summaries for cross-reference |
+| Agent docs | *(Optional, via tools)* Markdown docs on operation types, common errors, placeholder syntax — used for actionable remediation advice |
 
 ## What It Returns
 
-`RoutineInspectionResult`:
+`RoutineInspectionResult` (schema-validated via `finalize_with_output`):
 
 ```json
 {
