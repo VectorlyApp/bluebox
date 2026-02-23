@@ -315,7 +315,7 @@ class BlueBoxAgent(AbstractAgent):
     def _load_context_from_path(self, context_file: str) -> BlueBoxAgentContext | None:
         """Load a context file from an explicit path (absolute or workspace-relative)."""
         path = Path(context_file)
-        if not path.is_absolute():
+        if not path.is_file() and not path.is_absolute():
             path = self._workspace.root_path / context_file
         if not path.is_file():
             logger.warning("Context file not found: %s", path)
