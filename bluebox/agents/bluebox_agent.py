@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 import requests
 
@@ -50,6 +50,14 @@ from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
+
+
+class GenerateContextResult(NamedTuple):
+    """Return value from BlueBoxAgent.generate_context."""
+
+    context: BlueBoxAgentContext
+    json_path: str
+    md_path: str
 
 
 class BlueBoxAgent(AbstractAgent):
@@ -203,6 +211,13 @@ class BlueBoxAgent(AbstractAgent):
             self._sandbox_mode,
             self._agent_context is not None,
         )
+
+    ## Properties
+
+    @property
+    def loaded_context(self) -> BlueBoxAgentContext | None:
+        """The context loaded on init, if any."""
+        return self._agent_context
 
     ## Auth
 
@@ -778,7 +793,7 @@ class BlueBoxAgent(AbstractAgent):
 
     ## Context generation (structured output, called by TUI slash command)
 
-    def generate_context(self, focus: str | None = None) -> BlueBoxAgentContext:
+    def generate_context(self, focus: str | None = None) -> GenerateContextResult:
         """Generate a context file from the current session using structured output.
 
         Makes a direct LLM call with response_model=BlueBoxAgentContext to get
@@ -789,7 +804,7 @@ class BlueBoxAgent(AbstractAgent):
             focus: Optional user-provided focus prompt to guide context generation.
 
         Returns:
-            The generated BlueBoxAgentContext.
+            GenerateContextResult with the context and saved file paths.
 
         Raises:
             ValueError: If the LLM fails to produce a valid context.
@@ -844,4 +859,8 @@ class BlueBoxAgent(AbstractAgent):
         )
 
         logger.info("Context files saved: %s, %s", json_save["output_file"], md_save["output_file"])
-        return context
+        return GenerateContextResult(
+            context=context,
+            json_path=json_save["output_file"],
+            md_path=md_save["output_file"],
+        )
