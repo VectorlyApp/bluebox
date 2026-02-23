@@ -85,7 +85,7 @@ bluebox-agent --model claude-opus-4-5
 - Falls back to an AI browser agent for tasks without predefined routines
 - Post-processes outputs using Python (CSV, JSON, etc.)
 - Saves generated files to a local workspace
-- Generates reusable **context files** to replay successful sessions instantly
+- Generates reusable context files to replay successful sessions instantly
 
 Ask it anything: *"Run a price analysis on Rolex Sea Dweller 16600"* — the agent automatically selects the right routine, runs it, and delivers structured results.
 
@@ -93,7 +93,7 @@ Ask it anything: *"Run a price analysis on Rolex Sea Dweller 16600"* — the age
 
 After a successful session, run `/generate_context` to save a snapshot of what worked — the goal, routines called (with exact parameters), any Python post-processing code, and output descriptions. Context files are saved to the workspace `context/` directory in both JSON and Markdown formats.
 
-When the agent starts a new session, it automatically loads the most recent context file and injects it into the system prompt. This lets the agent **skip trial and error** and directly replay the known-good path, adjusting parameters as needed for the new request.
+When the agent starts a new session, it automatically loads the most recent context file and injects it into the system prompt. This lets the agent skip trial and error and directly replay the known-good path, adjusting parameters as needed for the new request.
 
 You can also load a specific context file explicitly:
 
