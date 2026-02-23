@@ -50,17 +50,24 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
     """Multi-pane TUI for the BlueBox Agent."""
 
     TITLE = "BlueBox Agent"
-    SLASH_COMMANDS = BASE_SLASH_COMMANDS
-    HELP_TEXT = BASE_HELP_TEXT
+    SLASH_COMMANDS = {
+        **BASE_SLASH_COMMANDS,
+        "/generate_context": "Save a reusable context file from this session",
+    }
+    HELP_TEXT = BASE_HELP_TEXT + (
+        "\n    [cyan]/generate_context[/cyan]  Save a reusable context file from this session\n"
+    )
     SHOW_SAVED_FILES_PANE = True
 
     def __init__(
         self,
         llm_model: LLMModel,
         workspace_dir: str = "./bluebox_workspace",
+        context_file: str | None = None,
     ) -> None:
         super().__init__(llm_model, working_dir=workspace_dir)
         self._workspace_dir = workspace_dir
+        self._context_file = context_file
 
     # ── Abstract implementations ─────────────────────────────────────────
 
@@ -70,6 +77,7 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
             workspace=LocalWorkspace(self._workspace_dir),
+            context_file=self._context_file,
         )
 
     def _print_welcome(self) -> None:
@@ -129,6 +137,36 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
                 _add(r.get("output_file", ""))
         return paths
 
+    # ── Custom slash commands ─────────────────────────────────────────
+
+    _GENERATE_CONTEXT_PROMPT: str = (
+        "Review everything we accomplished in this session and call the `generate_context` tool "
+        "to save a reusable context file. Include:\n"
+        "- The original goal (what I asked for)\n"
+        "- All routines that produced useful results (with exact routine_ids and parameter values)\n"
+        "- The final working Python post-processing code (if any)\n"
+        "- The output files that were created\n"
+        "- A clear description of what the output looks like\n"
+        "- A concise summary of what was accomplished\n\n"
+        "Be thorough and accurate — another agent will use this context to replicate our work."
+    )
+
+    def _handle_custom_command(self, cmd: str, raw_input: str) -> bool:
+        if cmd == "/generate_context":
+            chat = self.query_one("#chat-log", RichLog)
+            if not self._agent:
+                chat.write(Text.from_markup("[red]Agent not initialized.[/red]"))
+                return True
+            chat.write(Text.from_markup(
+                "[yellow]Generating context from this session...[/yellow]"
+            ))
+            self._processing = True
+            self._assistant_header_printed = False
+            self._status_update_printed = False
+            self._send_to_agent(self._GENERATE_CONTEXT_PROMPT)
+            return True
+        return False
+
 
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
@@ -141,6 +179,12 @@ def main() -> None:
         type=str,
         default="./bluebox_workspace",
         help="Workspace directory. Raw results in raw/, output files in outputs/ (default: ./bluebox_workspace)",
+    )
+    parser.add_argument(
+        "--context-file",
+        type=str,
+        default=None,
+        help="Path to a context file (.json or .md) from a previous session to guide the agent",
     )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")
@@ -186,6 +230,7 @@ def main() -> None:
     app = BlueBoxAgentTUI(
         llm_model=llm_model,
         workspace_dir=args.workspace_dir,
+        context_file=args.context_file,
     )
     app.run()
 

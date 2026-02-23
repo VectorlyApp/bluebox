@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from pathlib import Path
 from textwrap import dedent
 from typing import Any, Callable
 
@@ -21,6 +22,7 @@ import requests
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
 from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
 from bluebox.config import Config
+from bluebox.data_models.agents.context import BlueBoxAgentContext, RoutineUsed
 from bluebox.data_models.browser_agent import (
     BrowserAgentDoneEvent,
     BrowserAgentErrorEvent,
@@ -79,6 +81,7 @@ class BlueBoxAgent(AbstractAgent):
         Your workspace has the following structure:
         - `raw/` — routine result JSON files, saved automatically when routines execute
         - `outputs/` — write all your generated output files here (CSV, JSON, JSONL, etc.)
+        - `context/` — context files (JSON + Markdown) saved by `generate_context`, used for session replay
 
         **Pre-loaded variables in `run_python_code`:**
         - `routine_results` — list of dicts, one per JSON file in raw/
@@ -128,6 +131,7 @@ class BlueBoxAgent(AbstractAgent):
         - When using `execute_browser_task`, write a specific, step-by-step task description so the browser agent knows exactly what to do.
         - If your first search returns no results, try rephrasing the task description before giving up.
         - Be concise in responses.
+        - After successfully completing a task (output verified and correct), call `generate_context` to save a reusable recipe. Fill in all fields accurately — especially `routines_used` with the exact routine_ids and parameters that worked, and `python_code` with the final working snippet.
     """).strip()
 
     ## Magic methods
@@ -144,6 +148,7 @@ class BlueBoxAgent(AbstractAgent):
         workspace: AgentWorkspace | None = None,
         auth_headers_provider: Callable[[], dict[str, str]] | None = None,
         on_llm_response: Callable[[LLMChatResponse], None] | None = None,
+        context_file: str | None = None,
     ) -> None:
         """
         Initialize the BlueBox Agent.
@@ -160,6 +165,9 @@ class BlueBoxAgent(AbstractAgent):
             auth_headers_provider: Optional callback that returns auth headers for
                 downstream API calls. If not provided, falls back to Config.VECTORLY_SERVICE_TOKEN.
             on_llm_response: Optional callback invoked after each LLM call with the response (for token tracking).
+            context_file: Optional path to a context file (.json or .md) from a previous
+                session. If not provided, auto-discovers the most recent context file from
+                the workspace's context/ directory.
         """
         # Validate required config
         self._auth_headers_provider = auth_headers_provider
@@ -168,6 +176,9 @@ class BlueBoxAgent(AbstractAgent):
 
         self._workspace = workspace or LocalWorkspace()
         self._routine_cache: dict[str, RoutineInfo] = {}
+
+        # Load context from explicit path or auto-discover from workspace
+        self._agent_context: BlueBoxAgentContext | None = self._load_context(context_file)
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -186,10 +197,11 @@ class BlueBoxAgent(AbstractAgent):
         self._is_blocklist_mode = self._sandbox_mode == "blocklist"
 
         logger.debug(
-            "BlueBoxAgent initialized with model: %s, chat_thread_id: %s, sandbox_mode: %s",
+            "BlueBoxAgent initialized with model: %s, chat_thread_id: %s, sandbox_mode: %s, has_context: %s",
             llm_model,
             self._thread.id,
             self._sandbox_mode,
+            self._agent_context is not None,
         )
 
     ## Auth
@@ -210,6 +222,8 @@ class BlueBoxAgent(AbstractAgent):
         prompt = self.SYSTEM_PROMPT + time_info
         if self._is_blocklist_mode:
             prompt += self._get_blocklist_sandbox_prompt_section()
+        if self._agent_context:
+            prompt += self._get_context_prompt_section()
         return prompt
 
     def _get_blocklist_sandbox_prompt_section(self) -> str:
@@ -280,6 +294,96 @@ class BlueBoxAgent(AbstractAgent):
                 f"Expected parameters: {param_summary}"
             )
         return None
+
+    ## Context loading
+
+    _CONTEXT_PROMPT_MAX_CHARS: int = 20_000
+
+    def _load_context(self, context_file: str | None) -> BlueBoxAgentContext | None:
+        """Load context from an explicit path or auto-discover from workspace context/ dir.
+
+        Resolution order for context_file:
+        1. Absolute path
+        2. Relative to workspace root
+
+        If context_file is None, auto-discovers the most recent .json file in context/.
+        """
+        if context_file:
+            return self._load_context_from_path(context_file)
+        return self._auto_discover_context()
+
+    def _load_context_from_path(self, context_file: str) -> BlueBoxAgentContext | None:
+        """Load a context file from an explicit path (absolute or workspace-relative)."""
+        path = Path(context_file)
+        if not path.is_absolute():
+            path = self._workspace.root_path / context_file
+        if not path.is_file():
+            logger.warning("Context file not found: %s", path)
+            return None
+        try:
+            raw = path.read_text(encoding="utf-8")
+            if path.suffix == ".md":
+                ctx = BlueBoxAgentContext.from_markdown(raw)
+            else:
+                ctx = BlueBoxAgentContext.model_validate_json(raw)
+            logger.info("Loaded agent context from %s", path)
+            return ctx
+        except Exception as e:
+            logger.warning("Failed to load context file %s: %s", path, e)
+            return None
+
+    def _auto_discover_context(self) -> BlueBoxAgentContext | None:
+        """Find and load the most recent .json context file from workspace context/ dir."""
+        context_dir = self._workspace.root_path / "context"
+        if not context_dir.is_dir():
+            return None
+        json_files = sorted(context_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not json_files:
+            return None
+        return self._load_context_from_path(str(json_files[0]))
+
+    def _get_context_prompt_section(self) -> str:
+        """Build a system prompt section from a loaded BlueBoxAgentContext."""
+        ctx = self._agent_context
+        if not ctx:
+            return ""
+
+        lines: list[str] = [
+            "\n\n## Prior Context",
+            "A previous session already solved a similar task. Use this as a starting point.",
+            f"\n**Goal:** {ctx.goal}",
+            f"\n**Summary:** {ctx.summary}",
+        ]
+
+        if ctx.routines_used:
+            lines.append("\n**Routines that worked:**")
+            for r in ctx.routines_used:
+                param_str = json.dumps(r.parameters, default=str) if r.parameters else "{}"
+                lines.append(f"- `{r.routine_id}` ({r.routine_name}): {param_str}")
+
+        if ctx.python_code:
+            lines.append(f"\n**Post-processing code that worked:**\n```python\n{ctx.python_code}\n```")
+
+        if ctx.output_files:
+            lines.append(f"\n**Output files produced:** {', '.join(ctx.output_files)}")
+
+        lines.append(f"\n**Output description:** {ctx.output_description}")
+        lines.append(
+            "\n> Replicate this path if the user's goal matches. "
+            "Adjust parameters for the new request. Skip trial and error."
+        )
+
+        section = "\n".join(lines)
+
+        if len(section) > self._CONTEXT_PROMPT_MAX_CHARS:
+            truncated = section[:self._CONTEXT_PROMPT_MAX_CHARS]
+            truncated += (
+                "\n\n... (context truncated — use `read_workspace_file` to read "
+                "the full context files in `context/` for more detail)"
+            )
+            return truncated
+
+        return section
 
     ## Tool handlers
 
@@ -661,3 +765,49 @@ class BlueBoxAgent(AbstractAgent):
             end_line: Optional 1-based end line number (inclusive). Omit to read to the end.
         """
         return self._workspace.read_file(path, start_line=start_line, end_line=end_line)
+
+    @agent_tool()
+    def _generate_context(self, context: BlueBoxAgentContext) -> dict[str, Any]:
+        """
+        Save a context file capturing what worked in this session.
+
+        Call this after successfully completing the user's task. The context
+        file lets another BlueBoxAgent instance replicate the successful path
+        without trial and error. Both a JSON file (canonical) and a Markdown
+        file (human-readable) are saved to the context/ directory.
+
+        Args:
+            context: The full context object describing what was accomplished.
+                Must include goal, summary, output_description, and routines_used
+                with exact routine_ids and parameters that worked. Include python_code
+                if post-processing was used, and output_files listing what was produced.
+        """
+        # Save canonical JSON
+        json_content = context.model_dump_json(indent=2)
+        try:
+            json_save = self._workspace.save_file("context", "agent_context", json_content)
+        except Exception as e:
+            logger.exception("Failed to save context JSON: %s", e)
+            return {"error": f"Failed to save context file: {e}"}
+
+        # Save companion Markdown
+        md_content = context.to_markdown()
+        try:
+            md_save = self._workspace.save_file(
+                "context", "agent_context", md_content, extension=".md",
+            )
+        except Exception as e:
+            logger.warning("Failed to save context Markdown: %s", e)
+            md_save = {"output_file": None}
+
+        logger.info("Context files saved: %s, %s", json_save["output_file"], md_save["output_file"])
+        return {
+            "success": True,
+            "context_json": json_save["output_file"],
+            "context_md": md_save["output_file"],
+            "message": (
+                f"Context saved to {json_save['output_file']}. "
+                "A new BlueBoxAgent using this workspace will automatically "
+                "load this context and replicate the successful path."
+            ),
+        }
