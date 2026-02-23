@@ -131,7 +131,7 @@ class BlueBoxAgent(AbstractAgent):
         - When using `execute_browser_task`, write a specific, step-by-step task description so the browser agent knows exactly what to do.
         - If your first search returns no results, try rephrasing the task description before giving up.
         - Be concise in responses.
-        - After successfully completing a task (output verified and correct), call `generate_context` to save a reusable recipe. Fill in all fields accurately — especially `routines_used` with the exact routine_ids and parameters that worked, and `python_code` with the final working snippet.
+        - After successfully completing a task (output verified and correct), call `generate_context` to save a reusable recipe. **NEVER leave `routines_used` empty** — include every routine that was executed, with exact routine_id, routine_name, and parameter values. Also include `python_code` with the final working snippet.
     """).strip()
 
     ## Magic methods
@@ -363,6 +363,31 @@ class BlueBoxAgent(AbstractAgent):
             )
 
         return section
+
+    def _extract_routines_from_raw(self) -> list[RoutineUsed]:
+        """Extract routine info from raw/ execution result files.
+
+        Each raw JSON file contains routine_id, routine_name, parameters,
+        and status from a previous execution. Returns deduplicated list
+        of successfully executed routines.
+        """
+        raw_results = self._workspace.load_raw_json()
+        seen: set[str] = set()
+        routines: list[RoutineUsed] = []
+        for rr in raw_results:
+            rid = rr.get("routine_id")
+            if not rid or rid in seen:
+                continue
+            # Only include completed executions
+            if rr.get("status") not in ("completed", None):
+                continue
+            seen.add(rid)
+            routines.append(RoutineUsed(
+                routine_id=rid,
+                routine_name=rr.get("routine_name", rid),
+                parameters=rr.get("parameters", {}),
+            ))
+        return routines
 
     ## Tool handlers
 
@@ -780,6 +805,16 @@ class BlueBoxAgent(AbstractAgent):
             validated_routines = [
                 RoutineUsed.model_validate(r) for r in (routines_used or [])
             ]
+
+            # Auto-populate from raw/ execution results if agent didn't provide routines
+            if not validated_routines:
+                validated_routines = self._extract_routines_from_raw()
+                if validated_routines:
+                    logger.info(
+                        "Auto-populated %d routine(s) from raw/ execution results",
+                        len(validated_routines),
+                    )
+
             context = BlueBoxAgentContext(
                 goal=goal,
                 summary=summary,

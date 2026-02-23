@@ -412,3 +412,83 @@ class TestGenerateContextTool:
             routines_used=[{"bad_key": "missing routine_id"}],
         )
         assert "error" in result
+
+    def test_auto_populates_routines_from_raw(self, tmp_path: Path) -> None:
+        """When routines_used is empty, auto-populate from raw/ execution results."""
+        agent = self._make_agent(tmp_path)
+
+        # Write a fake routine result to raw/
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir()
+        (raw_dir / "result_1.json").write_text(json.dumps({
+            "routine_id": "Routine_abc",
+            "routine_name": "TestRoutine",
+            "status": "completed",
+            "parameters": {"city": "NYC"},
+            "result": {"ok": True, "data": {}},
+        }))
+
+        result = agent._generate_context(
+            goal="test goal",
+            summary="test summary",
+            output_description="test output",
+            # routines_used intentionally omitted
+        )
+
+        assert result["success"] is True
+        # Verify the saved context has the routine from raw/
+        json_path = tmp_path / result["context_json"]
+        loaded = BlueBoxAgentContext.model_validate_json(json_path.read_text())
+        assert len(loaded.routines_used) == 1
+        assert loaded.routines_used[0].routine_id == "Routine_abc"
+        assert loaded.routines_used[0].routine_name == "TestRoutine"
+        assert loaded.routines_used[0].parameters == {"city": "NYC"}
+
+    def test_auto_populate_deduplicates_routines(self, tmp_path: Path) -> None:
+        """Same routine_id executed multiple times should appear once."""
+        agent = self._make_agent(tmp_path)
+
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir()
+        for i in range(3):
+            (raw_dir / f"result_{i}.json").write_text(json.dumps({
+                "routine_id": "Routine_same",
+                "routine_name": "SameRoutine",
+                "status": "completed",
+                "parameters": {"q": f"query_{i}"},
+                "result": {"ok": True, "data": {}},
+            }))
+
+        result = agent._generate_context(
+            goal="test", summary="test", output_description="test",
+        )
+        json_path = tmp_path / result["context_json"]
+        loaded = BlueBoxAgentContext.model_validate_json(json_path.read_text())
+        assert len(loaded.routines_used) == 1
+
+    def test_agent_provided_routines_not_overridden(self, tmp_path: Path) -> None:
+        """When agent provides routines_used, don't auto-populate."""
+        agent = self._make_agent(tmp_path)
+
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir()
+        (raw_dir / "result_1.json").write_text(json.dumps({
+            "routine_id": "Routine_from_raw",
+            "routine_name": "RawRoutine",
+            "status": "completed",
+            "parameters": {},
+            "result": {"ok": True, "data": {}},
+        }))
+
+        result = agent._generate_context(
+            goal="test", summary="test", output_description="test",
+            routines_used=[{
+                "routine_id": "Routine_agent_provided",
+                "routine_name": "AgentRoutine",
+                "parameters": {"x": 1},
+            }],
+        )
+        json_path = tmp_path / result["context_json"]
+        loaded = BlueBoxAgentContext.model_validate_json(json_path.read_text())
+        assert len(loaded.routines_used) == 1
+        assert loaded.routines_used[0].routine_id == "Routine_agent_provided"

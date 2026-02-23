@@ -142,10 +142,14 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
 
     _GENERATE_CONTEXT_PROMPT: str = (
         "Review everything we accomplished in this session and call the `generate_context` tool "
-        "to save a reusable context file. Include:\n"
+        "to save a reusable context file.\n\n"
+        "**CRITICAL — you MUST include `routines_used`**. For every routine that was executed, "
+        "provide the exact routine_id, routine_name, and the parameter values that were used. "
+        "Look at the execute_routines_in_parallel calls you made earlier in this conversation. "
+        "Do NOT leave routines_used empty — this is the most important field for replay.\n\n"
+        "Also include:\n"
         "- The original goal (what I asked for)\n"
-        "- All routines that produced useful results (with exact routine_ids and parameter values)\n"
-        "- The final working Python post-processing code (if any)\n"
+        "- The final working Python post-processing code (the last successful run_python_code call)\n"
         "- The output files that were created\n"
         "- A clear description of what the output looks like\n"
         "- A concise summary of what was accomplished\n\n"
