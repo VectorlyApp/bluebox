@@ -469,8 +469,9 @@ class BlueBoxAgent(AbstractAgent):
         def save_result(result: dict[str, Any]) -> dict[str, Any]:
             """Save a single routine result to a JSON file in raw/."""
             try:
+                ts = datetime.now().strftime("%y-%m-%d-%H%M%S")
                 save_info = self._workspace.save_file(
-                    "raw", "routine_result",
+                    "raw", f"{ts}-routine_result.json",
                     json.dumps(result, indent=2, default=str),
                 )
                 result.update(save_info)
@@ -610,8 +611,9 @@ class BlueBoxAgent(AbstractAgent):
         final_result = result.get("final_result")
         if final_result:
             try:
+                ts = datetime.now().strftime("%y-%m-%d-%H%M%S")
                 save_info = self._workspace.save_file(
-                    "outputs", "browser_agent", final_result, extension=".md",
+                    "outputs", f"{ts}-browser_agent.md", final_result,
                 )
                 result.update(save_info)
             except Exception as e:
@@ -850,12 +852,12 @@ class BlueBoxAgent(AbstractAgent):
 
         # Save canonical JSON
         json_save = self._workspace.save_file(
-            "context", "agent_context", context.model_dump_json(indent=2),
+            "context", "agent_context.json", context.model_dump_json(indent=2),
         )
 
         # Save companion Markdown
         md_save = self._workspace.save_file(
-            "context", "agent_context", context.to_markdown(), extension=".md",
+            "context", "agent_context.md", context.to_markdown(),
         )
 
         logger.info("Context files saved: %s, %s", json_save["output_file"], md_save["output_file"])

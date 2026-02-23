@@ -20,31 +20,32 @@ class TestSaveFile:
 
     def test_saves_file_with_content(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path))
-        result = ws.save_file("raw", "routine_result", '{"data": 1}')
+        result = ws.save_file("raw", "routine_result.json", '{"data": 1}')
         assert "output_file" in result
         saved = Path(result["output_file"])
         assert saved.exists()
         assert saved.read_text() == '{"data": 1}'
+        assert saved.name == "routine_result.json"
 
     def test_creates_subdirectory(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path))
-        result = ws.save_file("raw", "test", "content")
-        assert (tmp_path / "raw").is_dir()
+        ws.save_file("custom_subdir", "test.json", "content")
+        assert (tmp_path / "custom_subdir").is_dir()
 
-    def test_unique_filenames(self, tmp_path: Path) -> None:
+    def test_overwrites_existing_file(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path))
-        r1 = ws.save_file("raw", "test", "a")
-        r2 = ws.save_file("raw", "test", "b")
-        assert r1["output_file"] != r2["output_file"]
+        ws.save_file("raw", "test.json", "old")
+        ws.save_file("raw", "test.json", "new")
+        assert (tmp_path / "raw" / "test.json").read_text() == "new"
 
-    def test_custom_extension(self, tmp_path: Path) -> None:
+    def test_different_extensions(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path))
-        result = ws.save_file("outputs", "browser_agent", "# Result", extension=".md")
+        result = ws.save_file("outputs", "result.md", "# Result")
         assert result["output_file"].endswith(".md")
 
     def test_no_s3_key_in_result(self, tmp_path: Path) -> None:
         ws = LocalWorkspace(str(tmp_path))
-        result = ws.save_file("raw", "test", "data")
+        result = ws.save_file("raw", "test.json", "data")
         assert "output_file_s3_key" not in result
 
 

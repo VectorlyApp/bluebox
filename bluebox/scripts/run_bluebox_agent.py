@@ -183,6 +183,8 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
             f"[dim]JSON:[/dim]      {result.json_path}\n"
             f"[dim]Markdown:[/dim]  {result.md_path}"
         ))
+        self._add_saved_file(result.json_path)
+        self._add_saved_file(result.md_path)
         self._processing = False
         self._update_status()
 

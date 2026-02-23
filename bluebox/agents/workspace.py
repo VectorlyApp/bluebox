@@ -11,9 +11,7 @@ Contains:
 from __future__ import annotations
 
 import json
-import threading
 from abc import ABC, abstractmethod
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -42,17 +40,15 @@ class AgentWorkspace(ABC):
     def save_file(
         self,
         subdirectory: str,
-        filename_prefix: str,
+        filename: str,
         content: str,
-        extension: str = ".json",
     ) -> dict[str, str]:
-        """Save content with a unique timestamped filename.
+        """Save content to a file in the workspace.
 
         Args:
             subdirectory: Logical subdirectory ("raw", "outputs", or "context").
-            filename_prefix: Prefix for the generated filename.
+            filename: The filename to use (e.g. "routine_result_1.json").
             content: File content to write.
-            extension: File extension including the dot.
 
         Returns:
             Dict with at least "output_file" key (the saved path).
@@ -125,8 +121,6 @@ class LocalWorkspace(AgentWorkspace):
         self._raw_dir = self._workspace_dir / "raw"
         self._outputs_dir = self._workspace_dir / "outputs"
         self._context_dir = self._workspace_dir / "context"
-        self._execution_counter: int = 0
-        self._counter_lock = threading.Lock()
         self.ensure_dirs()
 
     @property
@@ -136,17 +130,11 @@ class LocalWorkspace(AgentWorkspace):
     def save_file(
         self,
         subdirectory: str,
-        filename_prefix: str,
+        filename: str,
         content: str,
-        extension: str = ".json",
     ) -> dict[str, str]:
         directory = self._workspace_dir / subdirectory
         directory.mkdir(parents=True, exist_ok=True)
-        with self._counter_lock:
-            self._execution_counter += 1
-            idx = self._execution_counter
-        timestamp = datetime.now().strftime("%y-%m-%d-%H%M%S")
-        filename = f"{timestamp}-{filename_prefix}_{idx}{extension}"
         output_path = directory / filename
         output_path.write_text(content)
         logger.info("Result saved to %s", output_path)
