@@ -746,7 +746,15 @@ class BlueBoxAgent(AbstractAgent):
         return self._workspace.read_file(path, start_line=start_line, end_line=end_line)
 
     @agent_tool()
-    def _generate_context(self, context: BlueBoxAgentContext) -> dict[str, Any]:
+    def _generate_context(
+        self,
+        goal: str,
+        summary: str,
+        output_description: str,
+        routines_used: list[dict[str, Any]] | None = None,
+        python_code: str | None = None,
+        output_files: list[str] | None = None,
+    ) -> dict[str, Any]:
         """
         Save a context file capturing what worked in this session.
 
@@ -756,11 +764,33 @@ class BlueBoxAgent(AbstractAgent):
         file (human-readable) are saved to the context/ directory.
 
         Args:
-            context: The full context object describing what was accomplished.
-                Must include goal, summary, output_description, and routines_used
-                with exact routine_ids and parameters that worked. Include python_code
-                if post-processing was used, and output_files listing what was produced.
+            goal: The user's original request, in their own words.
+            summary: 1-2 sentence summary of what was accomplished.
+            output_description: Description of the output: format, key fields,
+                row count if known (e.g. "CSV with 47 rows, columns: name, price, url").
+            routines_used: List of routines that worked. Each dict must have keys:
+                routine_id (str), routine_name (str), and parameters (dict with
+                the parameter values that produced correct results).
+            python_code: The final working Python snippet passed to run_python_code.
+                Omit if no post-processing was needed.
+            output_files: Relative paths of files written to outputs/
+                (e.g. ["outputs/results.csv"]).
         """
+        try:
+            validated_routines = [
+                RoutineUsed.model_validate(r) for r in (routines_used or [])
+            ]
+            context = BlueBoxAgentContext(
+                goal=goal,
+                summary=summary,
+                output_description=output_description,
+                routines_used=validated_routines,
+                python_code=python_code,
+                output_files=output_files or [],
+            )
+        except Exception as e:
+            return {"error": f"Failed to build context: {e}"}
+
         # Save canonical JSON
         json_content = context.model_dump_json(indent=2)
         try:

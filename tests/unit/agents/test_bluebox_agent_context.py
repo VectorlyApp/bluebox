@@ -369,7 +369,14 @@ class TestGenerateContextTool:
 
     def test_saves_both_files(self, tmp_path: Path, sample_context: BlueBoxAgentContext) -> None:
         agent = self._make_agent(tmp_path)
-        result = agent._generate_context(context=sample_context)
+        result = agent._generate_context(
+            goal=sample_context.goal,
+            summary=sample_context.summary,
+            output_description=sample_context.output_description,
+            routines_used=[r.model_dump() for r in sample_context.routines_used],
+            python_code=sample_context.python_code,
+            output_files=sample_context.output_files,
+        )
 
         assert result["success"] is True
         assert result["context_json"] is not None
@@ -388,6 +395,20 @@ class TestGenerateContextTool:
 
     def test_saves_to_context_subdirectory(self, tmp_path: Path, minimal_context: BlueBoxAgentContext) -> None:
         agent = self._make_agent(tmp_path)
-        result = agent._generate_context(context=minimal_context)
+        result = agent._generate_context(
+            goal=minimal_context.goal,
+            summary=minimal_context.summary,
+            output_description=minimal_context.output_description,
+        )
         assert "context/" in result["context_json"]
         assert "context/" in result["context_md"]
+
+    def test_validates_bad_routines_used(self, tmp_path: Path) -> None:
+        agent = self._make_agent(tmp_path)
+        result = agent._generate_context(
+            goal="test",
+            summary="test",
+            output_description="test",
+            routines_used=[{"bad_key": "missing routine_id"}],
+        )
+        assert "error" in result
