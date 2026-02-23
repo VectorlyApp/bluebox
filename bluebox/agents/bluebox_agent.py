@@ -348,40 +348,19 @@ class BlueBoxAgent(AbstractAgent):
         if not ctx:
             return ""
 
-        lines: list[str] = [
-            "\n\n## Prior Context",
-            "A previous session already solved a similar task. Use this as a starting point.",
-            f"\n**Goal:** {ctx.goal}",
-            f"\n**Summary:** {ctx.summary}",
-        ]
-
-        if ctx.routines_used:
-            lines.append("\n**Routines that worked:**")
-            for r in ctx.routines_used:
-                param_str = json.dumps(r.parameters, default=str) if r.parameters else "{}"
-                lines.append(f"- `{r.routine_id}` ({r.routine_name}): {param_str}")
-
-        if ctx.python_code:
-            lines.append(f"\n**Post-processing code that worked:**\n```python\n{ctx.python_code}\n```")
-
-        if ctx.output_files:
-            lines.append(f"\n**Output files produced:** {', '.join(ctx.output_files)}")
-
-        lines.append(f"\n**Output description:** {ctx.output_description}")
-        lines.append(
-            "\n> Replicate this path if the user's goal matches. "
-            "Adjust parameters for the new request. Skip trial and error."
+        section = (
+            "\n\n## Prior Context\n"
+            "A previous session already solved a similar task. Use this as a starting point.\n"
+            "Replicate this path if the user's goal matches. "
+            "Adjust parameters for the new request. Skip trial and error.\n\n"
+            + ctx.to_markdown()
         )
 
-        section = "\n".join(lines)
-
         if len(section) > self._CONTEXT_PROMPT_MAX_CHARS:
-            truncated = section[:self._CONTEXT_PROMPT_MAX_CHARS]
-            truncated += (
+            section = section[:self._CONTEXT_PROMPT_MAX_CHARS] + (
                 "\n\n... (context truncated — use `read_workspace_file` to read "
                 "the full context files in `context/` for more detail)"
             )
-            return truncated
 
         return section
 
