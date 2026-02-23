@@ -93,15 +93,18 @@ DataLoaders (parse + index)
 
 | Context Source | How It's Provided | Contents |
 |---------------|-------------------|----------|
-| Routine JSON | In task prompt | The complete routine being inspected |
-| Execution result | In task prompt | HTTP status codes, response data, unresolved placeholders, operation metadata |
-| Exploration summaries | In task prompt | Cross-reference what the site actually has |
-| Test parameters | In task prompt | What values were used for testing |
+| Spec name + description | In task prompt (separate from routine JSON) | The originally planned routine name and description from the `RoutineSpec` — used as the ground truth for what the routine should deliver |
+| Spec vs routine description comparison | In task prompt (only when descriptions differ) | Side-by-side comparison flagging description downgrades — if the routine waters down the spec's promise, this is a blocking issue |
+| Routine JSON | In task prompt | The complete routine being inspected (full `model_dump()`) |
+| Execution result | In task prompt | Full `RoutineExecutionResultWithMetadata` JSON — includes HTTP status codes, response data, unresolved placeholders, operation metadata, **and the test parameters that were used** |
+| Exploration summaries | In task prompt | All 4 domain summaries (network, DOM, storage, UI) for cross-reference |
+| Agent docs | Via `search_docs` / `get_doc_file` tools (on demand, if `documentation_data_loader` is provided) | Used to provide specific remediation advice for blocking issues (e.g. CORS fixes, auth patterns, placeholder syntax) |
 
 **What it does NOT see:**
 - Raw captures (no data loader tools)
-- Live browser (zero tools — pure judgment)
+- Live browser (no browser tools)
 - Experiment history (judges the OUTPUT, not the PROCESS)
+- The user's original task (intentionally excluded — judges the routine on its own merits, not the high-level goal)
 
 ## The Discovery Ledger
 
