@@ -52,10 +52,11 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
     TITLE = "BlueBox Agent"
     SLASH_COMMANDS = {
         **BASE_SLASH_COMMANDS,
-        "/generate_context": "Save a reusable context file from this session",
+        "/generate_context": "Save a reusable context file (optionally with a focus prompt)",
     }
     HELP_TEXT = BASE_HELP_TEXT + (
-        "\n    [cyan]/generate_context[/cyan]  Save a reusable context file from this session\n"
+        "\n    [cyan]/generate_context[/cyan]  Save a reusable context file from this session"
+        "\n                       Optionally add a focus: [cyan]/generate_context focus on the flight search part[/cyan]\n"
     )
     SHOW_SAVED_FILES_PANE = True
 
@@ -152,18 +153,24 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
     )
 
     def _handle_custom_command(self, cmd: str, raw_input: str) -> bool:
-        if cmd == "/generate_context":
+        if raw_input.lower().startswith("/generate_context"):
             chat = self.query_one("#chat-log", RichLog)
             if not self._agent:
                 chat.write(Text.from_markup("[red]Agent not initialized.[/red]"))
                 return True
+
+            user_focus = raw_input[len("/generate_context"):].strip()
+            prompt = self._GENERATE_CONTEXT_PROMPT
+            if user_focus:
+                prompt += f"\n\n**User focus:** {user_focus}"
+
             chat.write(Text.from_markup(
                 "[yellow]Generating context from this session...[/yellow]"
             ))
             self._processing = True
             self._assistant_header_printed = False
             self._status_update_printed = False
-            self._send_to_agent(self._GENERATE_CONTEXT_PROMPT)
+            self._send_to_agent(prompt)
             return True
         return False
 
