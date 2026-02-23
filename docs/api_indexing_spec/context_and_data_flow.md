@@ -58,14 +58,14 @@ DataLoaders (parse + index)
 
 `_get_system_prompt()` is called **every iteration**, so the system prompt is fully rebuilt on each LLM call with fresh ledger state.
 
-| Context Source | How It's Provided | Contents |
-|---------------|-------------------|----------|
-| Exploration summaries | Injected in system prompt every iteration | All 4 domain summaries (network, DOM, storage, UI) |
-| Discovery Ledger | Rendered via `to_summary()` and injected in system prompt every iteration — only included once there is activity | Routine plan, experiment history, proven artifacts, attempt results |
-| Task queue status | Injected in system prompt every iteration — only included when queue is non-empty | Pending/running/done experiment counts |
-| Worker capabilities | Hardcoded string in system prompt | List of worker tools (browser + capture) |
-| Routine schema | Auto-generated via `Routine.model_schema_markdown()` in system prompt | JSON Schema for valid Routine objects |
-| Agent docs | Via `search_docs` / `get_doc_file` tools (on demand, not pre-loaded) | Markdown files from `bluebox/agent_docs/` — operation types, naming conventions, placeholder syntax, auth strategies, common errors, examples |
+| Context Source | How It's Provided | When | Contents |
+|---------------|-------------------|------|----------|
+| Exploration summaries | Injected in system prompt | Every iteration (if summaries exist — always true in practice) | All 4 domain summaries (network, DOM, storage, UI) |
+| Discovery Ledger | Rendered via `to_summary()` in system prompt | Every iteration, but only after first activity (guarded by `!= "(no activity yet)"`) | Routine plan, experiment history, proven artifacts, attempt results |
+| Task queue status | Injected in system prompt | Every iteration, but only when queue is non-empty (guarded by `any(v > 0)`) | Pending/running/done experiment counts |
+| Worker capabilities | Hardcoded string in system prompt | Every iteration, unconditionally | List of worker tools (browser + capture) |
+| Routine schema | Auto-generated via `Routine.model_schema_markdown()` in system prompt | Every iteration, unconditionally (no guard — included even before any routine is planned) | JSON Schema for valid Routine objects + example |
+| Agent docs | Via `search_docs` / `get_doc_file` tools (on demand, not pre-loaded) | Any time — available whenever `documentation_data_loader` is set. PI is forced to call before dispatching experiments (`_docs_reviewed` gate) | Markdown files from `bluebox/agent_docs/` — operation types, naming conventions, placeholder syntax, auth strategies, common errors, examples |
 
 **What it does NOT see:**
 - Raw CDP captures (no direct access — holds data loader references only to pass to workers)

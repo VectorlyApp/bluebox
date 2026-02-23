@@ -38,3 +38,21 @@
 **Why it matters:** The PI writing complete auth instructions into every experiment prompt is verbose, error-prone, and burns PI context. Workers that need to authenticate before testing a data endpoint must rediscover auth from scratch if the PI's prompt is incomplete, even though the ledger already has proven fetches, tokens, and parameters sitting in `ProvenArtifacts`.
 
 **Proposed fix:** Inject the ledger's `ProvenArtifacts` (proven fetches, tokens, navigations, parameters) into the worker's system prompt at dispatch time — not the full ledger, just the proven facts. This gives workers a reliable source of truth for auth and known-good values without requiring the PI to manually copy everything into each prompt. The injection should be compact and structured (not the full ledger summary) so it doesn't bloat worker context.
+
+## 5. Deferred Routine Planning with Exploratory Pre-Phase
+
+**Gap:** The PI currently commits to a full routine catalog (`plan_routines`) before dispatching any experiments. This plan is based solely on the exploration summaries — static analysis of captured network traffic, DOM snapshots, and storage events. The PI has never interacted with the live site at this point. Two problems follow:
+
+1. **Premature commitment:** The exploration summaries are biased toward what was captured during the manual recording session. Endpoints that weren't exercised, pages that weren't visited, or capabilities that require multi-step interaction to discover are invisible. The PI locks in a routine list based on incomplete information and then spends the rest of the pipeline trying to make that list work.
+
+2. **API-endpoint tunnel vision:** Because the network exploration summary is the richest input, the PI overwhelmingly plans routines that map 1:1 to API endpoints (e.g. "get_stations", "search_flights"). But routines can do much more — scrape and structure DOM tables, extract formatted data from rendered pages, chain navigations with JS evaluation, combine multiple fetches into a single higher-level capability. These composite routines are rarely planned because they aren't obvious from a list of HTTP transactions.
+
+**Why it matters:**
+- The PI wastes experiments validating a routine plan that may be wrong — discovering mid-pipeline that an endpoint requires an undocumented prerequisite or that a better approach exists via DOM scraping
+- Valuable site capabilities that don't surface as clean REST endpoints are systematically missed
+- The rigid plan-then-execute structure means the PI can't pivot based on what workers actually find in the live environment
+
+**Proposed fix:**
+- **Exploratory pre-phase:** Before `plan_routines`, allow the PI to dispatch a small number of "scouting" experiments — lightweight workers that navigate the site, poke at key pages, and report back what's actually available (not just what was captured). These scouts would focus on questions like: "What data is on this page?", "Does this endpoint require a session cookie from a prior navigation?", "Is there a table here we could scrape?"
+- **Progressive planning:** Instead of one upfront `plan_routines` call, support incremental planning. The PI declares an initial set of high-confidence routines, then adds or revises specs as experiments reveal new capabilities or invalidate assumptions. The ledger already supports calling `plan_routines` multiple times — the improvement is in the prompt strategy and workflow guidance, not the tooling.
+- **Broaden routine archetypes:** Update the PI's system prompt and documentation examples to explicitly highlight non-API routine patterns: DOM table extraction, multi-page navigation flows, JS evaluation for client-rendered data, hybrid fetch+DOM routines. The current examples and schema docs are heavily fetch-oriented, which anchors the PI's planning toward API-only routines.
