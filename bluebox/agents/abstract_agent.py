@@ -24,6 +24,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from textwrap import dedent
 from typing import Any, Callable, ClassVar, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
@@ -200,6 +201,13 @@ class AbstractAgent(ABC):
     # Class-level configuration (can be overridden by subclasses)
     AGENT_LOOP_MAX_ITERATIONS: int = 10
     AGENT_CARD: ClassVar[AgentCard]  # must be defined by every concrete subclass
+    WORKSPACE_USAGE_SECTION: ClassVar[str] = dedent("""\
+        ## Workspace
+        - Use `raw/` (read-only) for tool-call artifacts (inputs/results), not deliverables.
+        - Write generated deliverables to `output/`.
+        - Store reusable notes/context in `context/`.
+        - `meta/` (read-only) is system-managed and not editable.
+    """)
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Validate that concrete subclasses define AGENT_CARD."""
@@ -894,6 +902,19 @@ class AbstractAgent(ABC):
 
         return "\n".join(lines)
 
+    def _get_workspace_usage_prompt_section(self) -> str:
+        """
+        Build a concise workspace usage guide for the system prompt.
+
+        Uses class-level WORKSPACE_USAGE_SECTION so specialized agents can
+        override the full section text.
+        """
+        section = self.WORKSPACE_USAGE_SECTION.strip()
+        if not section:
+            return ""
+
+        return f"\n\n{section}"
+
     ## LLMs and streaming
 
     def _call_llm(
@@ -918,6 +939,11 @@ class AbstractAgent(ABC):
     
         # append tool availability (injected here so subclasses can't accidentally omit it)
         system_prompt = system_prompt + self._get_tool_availability_prompt_section()
+
+        # append workspace usage guide (injected centrally for all agents)
+        workspace_section = self._get_workspace_usage_prompt_section()
+        if workspace_section:
+            system_prompt = system_prompt + workspace_section
 
         # append documentation context (injected here so subclasses can't accidentally omit it)
         docs_section = self._get_documentation_prompt_section()

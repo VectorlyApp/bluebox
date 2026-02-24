@@ -49,7 +49,7 @@ class NetworkSpecialist(AbstractSpecialist):
         ),
     )
 
-    SYSTEM_PROMPT: str = dedent("""
+    SYSTEM_PROMPT: str = dedent(f"""
         You are a network traffic analyst specializing in captured browser network data.
 
         ## Your Role
@@ -69,9 +69,11 @@ class NetworkSpecialist(AbstractSpecialist):
         - Be concise and direct
         - When you find a relevant entry, report its ID and URL
         - Always use search_responses_by_terms first when looking for specific data
+
+        {AbstractSpecialist.WORKSPACE_USAGE_SECTION}
     """).strip()
 
-    AUTONOMOUS_SYSTEM_PROMPT: str = dedent("""
+    AUTONOMOUS_SYSTEM_PROMPT: str = dedent(f"""
         You are a network traffic analyst that autonomously identifies API endpoints.
 
         ## Your Mission
@@ -90,6 +92,8 @@ class NetworkSpecialist(AbstractSpecialist):
         - Look for API/XHR calls (not HTML pages, JS files, or images)
         - Prefer endpoints with structured JSON responses
         - Consider multi-step flows: authentication, search, pagination
+
+        {AbstractSpecialist.WORKSPACE_USAGE_SECTION}
     """).strip()
 
     ## Magic methods
@@ -236,6 +240,10 @@ class NetworkSpecialist(AbstractSpecialist):
             f"If after thorough search you determine the endpoint does not exist in the traffic, "
             f"use {finalize_fail} to report why."
         )
+
+    def _get_workspace_usage_prompt_section(self) -> str:
+        """Workspace guidance is embedded directly in specialist system prompts."""
+        return ""
 
     ## Tool handlers
 

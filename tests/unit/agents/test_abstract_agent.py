@@ -1105,7 +1105,7 @@ class TestCallLLM:
     """Tests for _call_llm system prompt injection."""
 
     def test_no_docs_section_without_loader(self, agent: ConcreteAgent) -> None:
-        """System prompt has tool section but no docs section when no documentation loader is present."""
+        """System prompt has tools + workspace sections, but no docs section without loader."""
         mock_response = LLMChatResponse(content="hello", response_id="r1")
         agent.llm_client.call_sync = MagicMock(return_value=mock_response)
 
@@ -1115,10 +1115,13 @@ class TestCallLLM:
         system_prompt = call_args.kwargs["system_prompt"]
         assert system_prompt.startswith("base prompt")
         assert "## Tools" in system_prompt  # tool availability section always injected
+        assert "## Workspace" in system_prompt
+        assert "raw/" in system_prompt
+        assert "output/" in system_prompt
         assert "## Documentation" not in system_prompt  # no docs without loader
 
     def test_docs_section_appended_with_loader(self, agent_with_docs: ConcreteAgent) -> None:
-        """System prompt has documentation section appended when loader is present."""
+        """System prompt has workspace and documentation sections when loader is present."""
         mock_response = LLMChatResponse(content="hello", response_id="r1")
         agent_with_docs.llm_client.call_sync = MagicMock(return_value=mock_response)
 
@@ -1127,11 +1130,12 @@ class TestCallLLM:
         call_args = agent_with_docs.llm_client.call_sync.call_args
         system_prompt = call_args.kwargs["system_prompt"]
         assert system_prompt.startswith("base prompt")
+        assert "## Workspace" in system_prompt
         assert "## Documentation" in system_prompt
         assert "guide.md" in system_prompt
 
     def test_streaming_also_gets_docs_section(self, agent_with_docs: ConcreteAgent) -> None:
-        """Streaming path also appends documentation section."""
+        """Streaming path also appends workspace and documentation sections."""
         agent_with_docs._stream_chunk_callable = MagicMock()
         mock_response = LLMChatResponse(content="hello", response_id="r1")
 
@@ -1145,6 +1149,7 @@ class TestCallLLM:
 
         call_args = agent_with_docs.llm_client.call_stream_sync.call_args
         system_prompt = call_args.kwargs["system_prompt"]
+        assert "## Workspace" in system_prompt
         assert "## Documentation" in system_prompt
 
 
