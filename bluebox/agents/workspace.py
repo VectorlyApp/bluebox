@@ -4,17 +4,30 @@ bluebox/agents/workspace.py
 Abstract workspace interface and local filesystem implementation.
 
 Contains:
-- AgentWorkspace: ABC defining how agents interact with file storage
-- LocalWorkspace: Local filesystem implementation
+- AgentWorkspace: ABC defining the v2 artifact-oriented workspace contract
+- LocalAgentWorkspace: Local filesystem implementation
+- LocalWorkspace: backward-compatible alias for LocalAgentWorkspace
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
+from bluebox.data_models.agents.workspace import (
+    ArtifactManifestEntry,
+    ArtifactRef,
+    ArtifactSource,
+    WorkspaceDelta,
+    WorkspaceFileState,
+    WorkspaceRunMetadata,
+    WorkspaceSnapshot,
+)
 from bluebox.utils.infra_utils import read_file_lines
 from bluebox.utils.logger import get_logger
 
@@ -22,37 +35,49 @@ logger = get_logger(name=__name__)
 
 
 class AgentWorkspace(ABC):
-    """
-    Abstract workspace that agents use for file I/O.
-
-    A workspace has three logical subdirectories:
-    - raw/    : input data (e.g., routine results saved automatically)
-    - outputs/: agent-generated output files (e.g., CSVs, processed JSON)
-    - context/: reusable context files from successful sessions
-    """
-
     @property
     @abstractmethod
     def root_path(self) -> Path:
-        """Workspace root directory."""
+        pass
 
     @abstractmethod
-    def save_file(
+    def save_artifact(
         self,
-        subdirectory: str,
+        source: ArtifactSource,
         filename: str,
-        content: str,
-    ) -> dict[str, str]:
-        """Save content to a file in the workspace.
+        content: str | bytes,
+        *,
+        tool_name: str | None = None,
+        code_run_id: str | None = None,
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ArtifactRef:
+        pass
 
-        Args:
-            subdirectory: Logical subdirectory ("raw", "outputs", or "context").
-            filename: The filename to use (e.g. "routine_result_1.json").
-            content: File content to write.
+    @abstractmethod
+    def list_artifacts(self, source: ArtifactSource | None = None) -> list[ArtifactRef]:
+        pass
 
-        Returns:
-            Dict with at least "output_file" key (the saved path).
-        """
+    @abstractmethod
+    def read_artifact(
+        self,
+        artifact_id: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+    ) -> dict[str, Any]:
+        pass
+
+    @abstractmethod
+    def snapshot_paths(self, roots: list[str]) -> WorkspaceSnapshot:
+        pass
+
+    @abstractmethod
+    def diff_snapshot(
+        self,
+        before: WorkspaceSnapshot,
+        after: WorkspaceSnapshot,
+    ) -> WorkspaceDelta:
+        pass
 
     @abstractmethod
     def read_file(
@@ -61,84 +86,297 @@ class AgentWorkspace(ABC):
         start_line: int | None = None,
         end_line: int | None = None,
     ) -> dict[str, Any]:
-        """Read a file by relative path with optional line range.
-
-        Must enforce path traversal protection.
-
-        Args:
-            path: Relative path within the workspace.
-            start_line: Optional 1-based start line.
-            end_line: Optional 1-based end line (inclusive).
-
-        Returns:
-            Dict with "content" and "line_range", or "error".
-        """
+        pass
 
     @abstractmethod
     def list_files(self) -> dict[str, Any]:
-        """List all files in the workspace as a directory tree.
-
-        Returns:
-            Dict with "tree" (str) and "total_files" (int).
-        """
+        pass
 
     @abstractmethod
-    def load_raw_json(self) -> list[dict[str, Any]]:
-        """Load all JSON files from the raw/ subdirectory.
-
-        Returns:
-            List of parsed dicts, one per JSON file (sorted by name).
+    def generate_summary(
+        self,
+        max_artifacts: int = 10,
+        max_summary_chars: int = 160,
+    ) -> str:
         """
+        Return a compact, prompt-ready summary of workspace state.
 
-    @abstractmethod
-    def snapshot_outputs(self) -> dict[str, float]:
-        """Take a snapshot of files in outputs/ (path -> mtime).
-
-        Used before code execution to detect new/modified files afterward.
+        This is intended for system prompt injection, so it should stay concise
+        and focus on artifact inventory and recent outputs/context.
         """
-
-    @abstractmethod
-    def diff_outputs(self, before: dict[str, float]) -> list[str]:
-        """Compare current outputs/ against a prior snapshot.
-
-        Args:
-            before: Snapshot from a previous snapshot_outputs() call.
-
-        Returns:
-            List of file paths that are new or modified since the snapshot.
-        """
+        pass
 
     @abstractmethod
     def ensure_dirs(self) -> None:
-        """Ensure the workspace directory structure exists (raw/, outputs/, context/)."""
+        pass
+
+    @abstractmethod
+    def cleanup(self, remove_root: bool = False) -> None:
+        pass
+
+    # Backward-compatible API
+    def save_file(self, subdirectory: str, filename: str, content: str) -> dict[str, str]:
+        source_map: dict[str, ArtifactSource] = {
+            "raw": "raw",
+            "outputs": "output",
+            "context": "context",
+        }
+        if subdirectory in source_map:
+            ref = self.save_artifact(source_map[subdirectory], filename, content)
+            return {
+                "output_file": str(self.root_path / ref.relative_path),
+                "artifact_id": ref.artifact_id,
+            }
+
+        out_dir = self.root_path / subdirectory
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / filename
+        out_path.write_text(content)
+        return {"output_file": str(out_path)}
+
+    def load_raw_json(self) -> list[dict[str, Any]]:
+        raw_dir = self.root_path / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        out: list[dict[str, Any]] = []
+        for p in sorted(raw_dir.glob("*.json")):
+            try:
+                out.append(json.loads(p.read_text()))
+            except Exception as e:
+                logger.warning("Failed to load raw json %s: %s", p, e)
+        return out
+
+    def snapshot_outputs(self) -> dict[str, float]:
+        snap = self.snapshot_paths(["outputs"])
+        return {str(self.root_path / k): float(v.mtime_ns) for k, v in snap.files.items()}
+
+    def diff_outputs(self, before: dict[str, float]) -> list[str]:
+        now = self.snapshot_outputs()
+        changed: list[str] = []
+        for path_str, mtime in now.items():
+            prev = before.get(path_str)
+            if prev is None or prev < mtime:
+                changed.append(path_str)
+        return changed
 
 
-class LocalWorkspace(AgentWorkspace):
-    """Workspace backed by the local filesystem."""
-
-    def __init__(self, workspace_dir: str = "./bluebox_workspace") -> None:
+class LocalAgentWorkspace(AgentWorkspace):
+    def __init__(
+        self,
+        workspace_dir: str = "./bluebox_workspace",
+        *,
+        agent_id: str | None = None,
+        thread_id: str | None = None,
+    ) -> None:
         self._workspace_dir = Path(workspace_dir)
+        self._scratch_dir = self._workspace_dir / "scratch"
         self._raw_dir = self._workspace_dir / "raw"
         self._outputs_dir = self._workspace_dir / "outputs"
         self._context_dir = self._workspace_dir / "context"
+        self._meta_dir = self._workspace_dir / "meta"
+
+        self._manifest_path = self._meta_dir / "manifest.jsonl"
+        self._run_path = self._meta_dir / "run.json"
+        self._counter_path = self._meta_dir / "counters.json"
+
         self.ensure_dirs()
+        self._init_run_metadata(agent_id=agent_id, thread_id=thread_id)
+        self._artifact_index = self._load_counter()
+
+    @classmethod
+    def from_directory_path(
+        cls,
+        directory_path: str | Path,
+        *,
+        agent_id: str | None = None,
+        thread_id: str | None = None,
+    ) -> LocalAgentWorkspace:
+        """
+        Construct a workspace from an existing directory path.
+
+        Useful for resume flows where the caller already has a concrete workspace
+        directory (e.g., persisted from a previous agent run).
+        """
+        return cls(
+            workspace_dir=str(directory_path),
+            agent_id=agent_id,
+            thread_id=thread_id,
+        )
 
     @property
     def root_path(self) -> Path:
         return self._workspace_dir
 
-    def save_file(
+    def ensure_dirs(self) -> None:
+        self._scratch_dir.mkdir(parents=True, exist_ok=True)
+        self._raw_dir.mkdir(parents=True, exist_ok=True)
+        self._outputs_dir.mkdir(parents=True, exist_ok=True)
+        self._context_dir.mkdir(parents=True, exist_ok=True)
+        self._meta_dir.mkdir(parents=True, exist_ok=True)
+
+    def cleanup(self, remove_root: bool = False) -> None:
+        if remove_root and self._workspace_dir.exists():
+            for p in sorted(self._workspace_dir.rglob("*"), reverse=True):
+                if p.is_file():
+                    p.unlink(missing_ok=True)
+                elif p.is_dir():
+                    try:
+                        p.rmdir()
+                    except OSError:
+                        pass
+            try:
+                self._workspace_dir.rmdir()
+            except OSError:
+                pass
+
+    def _init_run_metadata(self, agent_id: str | None, thread_id: str | None) -> None:
+        if self._run_path.exists():
+            return
+        run = WorkspaceRunMetadata(
+            run_id=f"run_{uuid4().hex[:12]}",
+            started_at=datetime.now(timezone.utc).isoformat(),
+            agent_id=agent_id,
+            thread_id=thread_id,
+        )
+        self._run_path.write_text(run.model_dump_json(indent=2))
+
+    def _load_counter(self) -> int:
+        if not self._counter_path.exists():
+            self._counter_path.write_text(json.dumps({"artifact_index": 0}, indent=2))
+            return 0
+        try:
+            data = json.loads(self._counter_path.read_text())
+            return int(data.get("artifact_index", 0))
+        except Exception:
+            return 0
+
+    def _save_counter(self, value: int) -> None:
+        self._counter_path.write_text(json.dumps({"artifact_index": value}, indent=2))
+
+    def _next_index(self) -> int:
+        self._artifact_index += 1
+        self._save_counter(self._artifact_index)
+        return self._artifact_index
+
+    def _dir_for_source(self, source: ArtifactSource) -> Path:
+        if source == "raw":
+            return self._raw_dir
+        if source == "output":
+            return self._outputs_dir
+        return self._context_dir
+
+    def _coerce_bytes(self, content: str | bytes) -> tuple[bytes, str]:
+        if isinstance(content, bytes):
+            return content, "binary"
+        return content.encode("utf-8"), "text"
+
+    def _infer_content_type(self, filename: str, fallback: str) -> str:
+        ext = Path(filename).suffix.lower()
+        mapping = {
+            ".json": "json",
+            ".txt": "text",
+            ".md": "markdown",
+            ".csv": "csv",
+            ".html": "html",
+            ".htm": "html",
+        }
+        return mapping.get(ext, fallback)
+
+    def _make_summary(self, content: str | bytes, max_chars: int = 300) -> str:
+        if isinstance(content, bytes):
+            return f"<binary {len(content)} bytes>"
+        c = content.strip()
+        return c[:max_chars] + ("..." if len(c) > max_chars else "")
+
+    def _sha256(self, data: bytes) -> str:
+        return hashlib.sha256(data).hexdigest()
+
+    def _dedupe_filename(self, directory: Path, filename: str, index: int) -> str:
+        candidate = directory / filename
+        if not candidate.exists():
+            return filename
+        stem = candidate.stem
+        suffix = candidate.suffix
+        return f"{stem}-{index}{suffix}"
+
+    def save_artifact(
         self,
-        subdirectory: str,
+        source: ArtifactSource,
         filename: str,
-        content: str,
-    ) -> dict[str, str]:
-        directory = self._workspace_dir / subdirectory
-        directory.mkdir(parents=True, exist_ok=True)
-        output_path = directory / filename
-        output_path.write_text(content)
-        logger.info("Result saved to %s", output_path)
-        return {"output_file": str(output_path)}
+        content: str | bytes,
+        *,
+        tool_name: str | None = None,
+        code_run_id: str | None = None,
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ArtifactRef:
+        directory = self._dir_for_source(source)
+        index = self._next_index()
+        artifact_id = f"a_{index:06d}"
+
+        safe_filename = self._dedupe_filename(directory, filename, index)
+        path = directory / safe_filename
+
+        raw_bytes, fallback_ct = self._coerce_bytes(content)
+        path.write_bytes(raw_bytes)
+
+        rel = str(path.relative_to(self._workspace_dir))
+        ct = content_type or self._infer_content_type(safe_filename, fallback_ct)
+        created_at = datetime.now(timezone.utc).isoformat()
+
+        ref = ArtifactRef(
+            artifact_id=artifact_id,
+            index=index,
+            source=source,
+            relative_path=rel,
+            size_bytes=len(raw_bytes),
+            content_type=ct,
+            summary=self._make_summary(content),
+            created_at=created_at,
+            sha256=self._sha256(raw_bytes),
+            metadata=metadata or {},
+        )
+        entry = ArtifactManifestEntry(
+            index=index,
+            artifact=ref,
+            tool_name=tool_name,
+            code_run_id=code_run_id,
+        )
+        with self._manifest_path.open("a", encoding="utf-8") as f:
+            f.write(entry.model_dump_json())
+            f.write("\n")
+
+        logger.info("Saved artifact %s -> %s", artifact_id, path)
+        return ref
+
+    def _iter_manifest(self) -> list[ArtifactManifestEntry]:
+        if not self._manifest_path.exists():
+            return []
+        entries: list[ArtifactManifestEntry] = []
+        for line in self._manifest_path.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                entries.append(ArtifactManifestEntry.model_validate_json(line))
+            except Exception as e:
+                logger.warning("Bad manifest entry skipped: %s", e)
+        return entries
+
+    def list_artifacts(self, source: ArtifactSource | None = None) -> list[ArtifactRef]:
+        refs = [e.artifact for e in self._iter_manifest()]
+        if source is None:
+            return refs
+        return [r for r in refs if r.source == source]
+
+    def read_artifact(
+        self,
+        artifact_id: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+    ) -> dict[str, Any]:
+        for ref in self.list_artifacts():
+            if ref.artifact_id == artifact_id:
+                return self.read_file(ref.relative_path, start_line=start_line, end_line=end_line)
+        return {"error": f"Artifact not found: {artifact_id}"}
 
     def read_file(
         self,
@@ -159,7 +397,6 @@ class LocalWorkspace(AgentWorkspace):
 
     def list_files(self) -> dict[str, Any]:
         self._workspace_dir.mkdir(parents=True, exist_ok=True)
-
         tree_lines: list[str] = []
         total_files = 0
 
@@ -183,42 +420,96 @@ class LocalWorkspace(AgentWorkspace):
                 tree_lines.append(f"{indent}  {filename}  ({size_str})")
                 total_files += 1
 
-        return {
-            "tree": "\n".join(tree_lines),
-            "total_files": total_files,
-        }
+        return {"tree": "\n".join(tree_lines), "total_files": total_files}
 
-    def load_raw_json(self) -> list[dict[str, Any]]:
-        self._raw_dir.mkdir(parents=True, exist_ok=True)
-        results: list[dict[str, Any]] = []
-        for json_file in sorted(self._raw_dir.glob("*.json")):
-            try:
-                data = json.loads(json_file.read_text())
-                results.append(data)
-            except (json.JSONDecodeError, OSError) as e:
-                logger.warning("Failed to load %s: %s", json_file, e)
-        return results
+    def generate_summary(
+        self,
+        max_artifacts: int = 10,
+        max_summary_chars: int = 160,
+    ) -> str:
+        refs = self.list_artifacts()
 
-    def snapshot_outputs(self) -> dict[str, float]:
-        self._outputs_dir.mkdir(parents=True, exist_ok=True)
-        snapshot: dict[str, float] = {}
-        for p in self._outputs_dir.iterdir():
-            if p.is_file():
-                snapshot[str(p)] = p.stat().st_mtime
-        return snapshot
+        raw_count = sum(1 for r in refs if r.source == "raw")
+        output_count = sum(1 for r in refs if r.source == "output")
+        context_count = sum(1 for r in refs if r.source == "context")
 
-    def diff_outputs(self, before: dict[str, float]) -> list[str]:
-        changed: list[str] = []
-        for p in self._outputs_dir.iterdir():
-            if not p.is_file():
+        max_artifacts = max(0, int(max_artifacts))
+        max_summary_chars = max(20, int(max_summary_chars))
+
+        lines: list[str] = [
+            "## Workspace State",
+            f"- Root: {self._workspace_dir}",
+            (
+                f"- Artifacts: {len(refs)} total "
+                f"(raw: {raw_count}, output: {output_count}, context: {context_count})"
+            ),
+        ]
+
+        if not refs:
+            lines.append("- Recent artifacts: none")
+            return "\n".join(lines)
+
+        refs_sorted = sorted(refs, key=lambda r: r.index, reverse=True)
+        recent = refs_sorted[:max_artifacts]
+
+        lines.append("- Recent artifacts (newest first):")
+        for r in recent:
+            summary = (r.summary or "").replace("\n", " ").strip()
+            if len(summary) > max_summary_chars:
+                summary = summary[:max_summary_chars] + "..."
+            if not summary:
+                summary = "(no summary)"
+
+            lines.append(
+                f"  - {r.artifact_id} [{r.source}] {r.relative_path} "
+                f"({r.size_bytes} bytes) :: {summary}"
+            )
+
+        if len(refs_sorted) > len(recent):
+            lines.append(f"- ... and {len(refs_sorted) - len(recent)} more artifact(s)")
+
+        return "\n".join(lines)
+
+    def snapshot_paths(self, roots: list[str]) -> WorkspaceSnapshot:
+        out: dict[str, WorkspaceFileState] = {}
+        for root in roots:
+            base = self._workspace_dir / root
+            if not base.exists():
                 continue
-            path_str = str(p)
-            mtime = p.stat().st_mtime
-            if path_str not in before or before[path_str] < mtime:
-                changed.append(path_str)
-        return changed
+            for p in base.rglob("*"):
+                if not p.is_file():
+                    continue
+                rel = str(p.relative_to(self._workspace_dir))
+                st = p.stat()
+                out[rel] = WorkspaceFileState(
+                    relative_path=rel,
+                    size_bytes=st.st_size,
+                    mtime_ns=st.st_mtime_ns,
+                )
+        return WorkspaceSnapshot(roots=roots, files=out)
 
-    def ensure_dirs(self) -> None:
-        self._raw_dir.mkdir(parents=True, exist_ok=True)
-        self._outputs_dir.mkdir(parents=True, exist_ok=True)
-        self._context_dir.mkdir(parents=True, exist_ok=True)
+    def diff_snapshot(
+        self,
+        before: WorkspaceSnapshot,
+        after: WorkspaceSnapshot,
+    ) -> WorkspaceDelta:
+        created: list[WorkspaceFileState] = []
+        modified: list[WorkspaceFileState] = []
+        deleted: list[str] = []
+
+        for rel, state in after.files.items():
+            prev = before.files.get(rel)
+            if prev is None:
+                created.append(state)
+            elif prev.size_bytes != state.size_bytes or prev.mtime_ns != state.mtime_ns:
+                modified.append(state)
+
+        for rel in before.files:
+            if rel not in after.files:
+                deleted.append(rel)
+
+        return WorkspaceDelta(created=created, modified=modified, deleted=deleted)
+
+
+# Backward-compatible alias
+LocalWorkspace = LocalAgentWorkspace

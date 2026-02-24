@@ -27,6 +27,7 @@ import jsonschema
 from pydantic import BaseModel
 
 from bluebox.agents.abstract_agent import AbstractAgent, agent_tool
+from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.data_models.llms.interaction import (
@@ -89,6 +90,7 @@ class AbstractSpecialist(AbstractAgent):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
+        workspace: AgentWorkspace | None = None,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -103,6 +105,7 @@ class AbstractSpecialist(AbstractAgent):
 
         Args:
             emit_message_callable: Callback to emit messages to the host.
+            workspace: Optional workspace for file I/O. Defaults to LocalWorkspace.
             persist_chat_callable: Optional callback to persist Chat objects.
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
@@ -129,6 +132,7 @@ class AbstractSpecialist(AbstractAgent):
         # call parent init
         super().__init__(
             emit_message_callable=emit_message_callable,
+            workspace=workspace or LocalWorkspace(),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,

@@ -18,7 +18,7 @@ Endpoints (all agents):
     GET  /status
     POST /chat          {"message": "..."}
 
-Agents with discovery support (specialists + RoutineDiscoveryAgentBeta):
+Agents with discovery support (specialists):
     POST /discover      {"task": "..."}
     GET  /routine
 """
@@ -80,7 +80,6 @@ _DATA_PARAM_TO_KEY: dict[str, str] = {
 
 def discover_agent_classes() -> dict[str, type]:
     """Build registry of all available AbstractAgent subclasses by class name."""
-    from bluebox.agents.routine_discovery_agent_beta import RoutineDiscoveryAgentBeta
     from bluebox.agents.bluebox_agent import BlueBoxAgent
 
     # Import all specialist modules to trigger __init_subclass__ registration
@@ -89,7 +88,6 @@ def discover_agent_classes() -> dict[str, type]:
         importlib.import_module(f"bluebox.agents.specialists.{module_name}")
 
     registry: dict[str, type] = {
-        "RoutineDiscoveryAgentBeta": RoutineDiscoveryAgentBeta,
         "BlueBoxAgent": BlueBoxAgent,
     }
     for name in AbstractSpecialist.get_all_agent_types():
@@ -250,10 +248,7 @@ class AgentState:
         with self._lock:
             if not self._chat_agent:
                 extra: dict[str, Any] = {}
-                # RoutineDiscoveryAgentBeta requires a task constructor param
-                if _accepts_param(self._agent_class, "task"):
-                    extra["task"] = "Help the user understand their data and answer questions."
-                self._chat_agent = self._make_agent(**extra)
+                self._chat_agent = self._make_agent()
             self._flush()
             self._chat_agent.process_new_message(message, ChatRole.USER)
             return {"ok": True, "messages": self._flush()}
@@ -274,7 +269,7 @@ class AgentState:
                     return {"ok": True, "result": result_data, "messages": messages}
                 return {"ok": False, "error": "Autonomous run finished without result", "messages": messages}
 
-            # Non-specialist agents with their own run() (e.g. RoutineDiscoveryAgentBeta)
+            # Non-specialist agents with their own run()
             if _has_own_method(self._agent_class, "run"):
                 extra: dict[str, Any] = {}
                 if _accepts_param(self._agent_class, "task"):
@@ -475,8 +470,8 @@ def main() -> None:
     registry = discover_agent_classes()
 
     parser = argparse.ArgumentParser(description="HTTP adapter for Bluebox agents")
-    parser.add_argument("--agent", default="RoutineDiscoveryAgentBeta",
-                        help="Agent class name (default: RoutineDiscoveryAgentBeta)")
+    parser.add_argument("--agent", default="BlueBoxAgent",
+                        help="Agent class name (default: BlueBoxAgent)")
     parser.add_argument("--list-agents", action="store_true",
                         help="List available agents and exit")
     parser.add_argument("--cdp-captures-dir", type=str, default=None)

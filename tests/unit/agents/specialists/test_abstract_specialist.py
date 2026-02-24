@@ -327,6 +327,8 @@ class TestCollectTools:
             "finalize_with_failure",
             "finalize_result",
             "finalize_failure",
+            # Generic code execution tool from AbstractAgent (availability-gated)
+            "execute_python",
             # Documentation tools from AbstractAgent
             "search_docs",
             "get_doc_file",

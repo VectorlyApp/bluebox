@@ -23,10 +23,12 @@ from abc import ABC, abstractmethod
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Callable, ClassVar, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
 
+from bluebox.agents.workspace import AgentWorkspace
 from bluebox.data_models.llms.interaction import (
     BrowserAgentStepEmittedMessage,
     Chat,
@@ -46,11 +48,18 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader, FileType
 from bluebox.llms.llm_client import LLMClient
 from bluebox.llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
+from bluebox.utils.code_execution_sandbox import execute_python_sandboxed, get_workaround_for_error
 from bluebox.utils.data_utils import format_bytes
-from bluebox.utils.llm_utils import token_optimized
+from bluebox.utils.llm_utils import token_optimized as token_optimized_decorator
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
+
+
+class ToolResultPersistMode(StrEnum):
+    NEVER = "never"
+    ALWAYS = "always"
+    OVERFLOW = "overflow"
 
 
 @dataclass(frozen=True)
@@ -72,6 +81,9 @@ class _ToolMeta:
     description: str                                    # tool description shown to the LLM
     parameters: dict[str, Any]                          # JSON Schema for tool parameters
     availability: bool | Callable[..., bool]            # whether the tool should be registered right now
+    persist: ToolResultPersistMode = ToolResultPersistMode.NEVER
+    max_characters: int = 10_000
+    token_optimized: bool = False
 
 
 def agent_tool(
@@ -79,6 +91,9 @@ def agent_tool(
     parameters: dict[str, Any] | None = None,
     *,
     availability: bool | Callable[..., bool] = True,
+    persist: ToolResultPersistMode = ToolResultPersistMode.NEVER,
+    max_characters: int = 10_000,
+    token_optimized: bool = False,
 ) -> Callable:
     """
     Decorator that marks a method as an agent tool handler.
@@ -107,6 +122,12 @@ def agent_tool(
               tool is available only when it returns True. Use this for tools
               gated behind lifecycle state or dynamic conditions (e.g.
               ``availability=lambda self: self.can_finalize``).
+        persist: Tool-result persistence policy.
+            - ToolResultPersistMode.NEVER (default): never persist.
+            - ToolResultPersistMode.ALWAYS: always persist.
+            - ToolResultPersistMode.OVERFLOW: persist only if result exceeds max_characters.
+        max_characters: Character threshold for OVERFLOW mode.
+        token_optimized: If True, encode tool output with toon for token efficiency.
     """
     def decorator(method: Callable, desc: str | None = None) -> Callable:
         tool_name = method.__name__.lstrip("_")
@@ -125,11 +146,22 @@ def agent_tool(
         else:
             final_parameters = parameters
 
+        if not isinstance(persist, ToolResultPersistMode):
+            raise ValueError(
+                f"Tool {tool_name} has invalid persist value: {persist!r}. "
+                "Use ToolResultPersistMode values.",
+            )
+        if max_characters <= 0:
+            raise ValueError(f"Tool {tool_name} must have max_characters > 0")
+
         method._tool_meta = _ToolMeta(
             name=tool_name,
             description=final_description,
             parameters=final_parameters,
             availability=availability,
+            persist=persist,
+            max_characters=max_characters,
+            token_optimized=token_optimized,
         )
         return method
 
@@ -186,6 +218,7 @@ class AbstractAgent(ABC):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
+        workspace: AgentWorkspace,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -194,12 +227,15 @@ class AbstractAgent(ABC):
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
         on_llm_response: Callable[[LLMChatResponse], None] | None = None,
+        include_code_execution: bool = False,
+        code_execution_globals: dict[str, Any] | None = None,
     ) -> None:
         """
         Initialize the agent.
 
         Args:
             emit_message_callable: Callback to emit messages to the host.
+            workspace: Workspace instance used for agent file operations.
             persist_chat_callable: Optional callback to persist Chat objects.
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
@@ -208,15 +244,30 @@ class AbstractAgent(ABC):
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
             on_llm_response: Optional callback invoked after each LLM call with the response (for token tracking).
+            include_code_execution: Whether to expose the generic execute_python tool.
+            code_execution_globals: Globals injected into execute_python sandbox runs.
+                Must be empty when include_code_execution is False.
         """
+        normalized_globals = dict(code_execution_globals or {})
+        if not include_code_execution and normalized_globals:
+            raise ValueError(
+                "code_execution_globals must be empty when include_code_execution is False",
+            )
+
         self._emit_message_callable = emit_message_callable
         self._persist_chat_callable = persist_chat_callable
         self._persist_chat_thread_callable = persist_chat_thread_callable
         self._stream_chunk_callable = stream_chunk_callable
         self._documentation_data_loader = documentation_data_loader
         self._on_llm_response = on_llm_response
+        self._include_code_execution = include_code_execution
+        self._code_execution_globals = normalized_globals if include_code_execution else {}
         self._previous_response_id: str | None = None
         self._response_id_to_chat_index: dict[str, int] = {}
+
+        if not isinstance(workspace, AgentWorkspace):
+            raise TypeError("workspace must implement AgentWorkspace")
+        self._workspace = workspace
 
         self.llm_model = llm_model
         self.llm_client = LLMClient(llm_model)
@@ -235,6 +286,102 @@ class AbstractAgent(ABC):
         if existing_chats:
             for chat in existing_chats:
                 self._chats[chat.id] = chat
+
+    @agent_tool(
+        availability=lambda self: self._include_code_execution,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
+    def _execute_python(self, code: str) -> dict[str, Any]:
+        """
+        Execute Python code in a sandbox with workspace-scoped file access.
+
+        The code runs with `work_dir` set to this agent's workspace root so file
+        I/O is scoped to that directory. Globals passed via `code_execution_globals`
+        are available inside the code.
+
+        Args:
+            code: Python code to execute.
+        """
+        self._workspace.ensure_dirs()
+        sandbox_result = execute_python_sandboxed(
+            code=code,
+            extra_globals=self._code_execution_globals,
+            work_dir=str(self._workspace.root_path.resolve()),
+        )
+        if "error" in sandbox_result:
+            workaround = get_workaround_for_error(sandbox_result["error"])
+            if workaround:
+                sandbox_result["_hint"] = (
+                    f"Sandbox restriction: {workaround} "
+                    "Fix the code and call execute_python again."
+                )
+        return sandbox_result
+
+    def _serialize_tool_result(self, tool_result: Any) -> tuple[str, str]:
+        try:
+            return json.dumps(tool_result, ensure_ascii=False, default=str, indent=2), "json"
+        except (TypeError, ValueError):
+            return str(tool_result), "text"
+
+    def _maybe_persist_tool_result(
+        self,
+        tool_name: str,
+        tool_meta: _ToolMeta,
+        tool_result: Any,
+    ) -> Any:
+        persist_mode = tool_meta.persist
+        if persist_mode == ToolResultPersistMode.NEVER:
+            return tool_result
+
+        serialized, content_type = self._serialize_tool_result(tool_result)
+        char_count = len(serialized)
+
+        if persist_mode == ToolResultPersistMode.OVERFLOW and char_count <= tool_meta.max_characters:
+            return tool_result
+
+        safe_tool_name = "".join(c if c.isalnum() or c in ("_", "-") else "_" for c in tool_name)
+        extension = ".json" if content_type == "json" else ".txt"
+        filename = f"{datetime.now().strftime('%Y-%m-%d-%H%M%S-%f')}-{safe_tool_name}_result{extension}"
+        is_truncated = char_count > tool_meta.max_characters
+        preview = serialized[:tool_meta.max_characters]
+        if is_truncated:
+            preview += f"\n... (truncated, {char_count} total chars)"
+
+        try:
+            self._workspace.ensure_dirs()
+            ref = self._workspace.save_artifact(
+                source="raw",
+                filename=filename,
+                content=serialized,
+                tool_name=tool_name,
+                content_type=content_type,
+                metadata={
+                    "persist_mode": persist_mode.value,
+                    "char_count": char_count,
+                    "max_characters": tool_meta.max_characters,
+                },
+            )
+            logger.debug(
+                "Persisted tool result for '%s' as artifact %s (%s chars)",
+                tool_name,
+                ref.artifact_id,
+                char_count,
+            )
+            return {
+                "tool_name": tool_name,
+                "persist_mode": persist_mode.value,
+                "artifact_id": ref.artifact_id,
+                "artifact_path": ref.relative_path,
+                "truncated": is_truncated,
+                "preview": preview,
+                "_hint": (
+                    "Full tool result saved to workspace raw artifacts. "
+                    f"Read artifact_id={ref.artifact_id} (path: {ref.relative_path}) to inspect complete output."
+                ),
+            }
+        except Exception as e:
+            logger.warning("Failed to persist tool result for '%s': %s", tool_name, e)
+            return tool_result
 
     ## Properties
 
@@ -381,7 +528,22 @@ class AbstractAgent(ABC):
 
         logger.debug("Executing tool %s with arguments: %s", tool_name, tool_arguments)
         # handler is unbound (from cls, not self) so pass self explicitly
-        return handler(self, **validated_arguments)
+        raw_result = handler(self, **validated_arguments)
+        result_for_llm = self._maybe_persist_tool_result(
+            tool_name=tool_name,
+            tool_meta=tool_meta,
+            tool_result=raw_result,
+        )
+        if tool_meta.token_optimized:
+            if isinstance(result_for_llm, dict) and "artifact_id" in result_for_llm:
+                result_for_llm = {
+                    **result_for_llm,
+                    "_token_optimized_note": (
+                        "This chat output is token-optimized; the saved artifact contains raw output."
+                    ),
+                }
+            return token_optimized_decorator(lambda: result_for_llm)()
+        return result_for_llm
 
     @classmethod
     @functools.lru_cache
@@ -447,6 +609,8 @@ class AbstractAgent(ABC):
 
     @agent_tool(
         availability=lambda self: self._documentation_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
         parameters={
             "type": "object",
             "properties": {
@@ -467,7 +631,6 @@ class AbstractAgent(ABC):
             "required": ["query"],
         },
     )
-    @token_optimized
     def _search_docs(
         self,
         query: str,
@@ -506,8 +669,11 @@ class AbstractAgent(ABC):
             "results": results[:20],
         }
 
-    @agent_tool(availability=lambda self: self._documentation_data_loader is not None)
-    @token_optimized
+    @agent_tool(
+        availability=lambda self: self._documentation_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
+    )
     def _get_doc_file(
         self,
         path: str,
@@ -563,6 +729,8 @@ class AbstractAgent(ABC):
 
     @agent_tool(
         availability=lambda self: self._documentation_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
         parameters={
             "type": "object",
             "properties": {
@@ -579,7 +747,6 @@ class AbstractAgent(ABC):
             "required": ["terms"],
         },
     )
-    @token_optimized
     def _search_docs_by_terms(self, terms: list[str], top_n: int = 20) -> dict[str, Any]:
         """
         Search documentation files by multiple terms with relevance scoring.
@@ -598,6 +765,8 @@ class AbstractAgent(ABC):
 
     @agent_tool(
         availability=lambda self: self._documentation_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
         parameters={
             "type": "object",
             "properties": {
@@ -613,7 +782,6 @@ class AbstractAgent(ABC):
             "required": ["pattern"],
         },
     )
-    @token_optimized
     def _search_docs_by_regex(self, pattern: str, top_n: int = 20) -> dict[str, Any]:
         """
         Search documentation files by regex pattern with timeout protection.

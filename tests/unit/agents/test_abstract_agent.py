@@ -16,6 +16,7 @@ Covers:
 """
 
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -23,7 +24,14 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel, Field
 
-from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool, _ToolMeta
+from bluebox.agents.abstract_agent import (
+    AbstractAgent,
+    AgentCard,
+    ToolResultPersistMode,
+    agent_tool,
+    _ToolMeta,
+)
+from bluebox.agents.workspace import LocalWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatRole,
@@ -54,6 +62,12 @@ class ConcreteAgent(AbstractAgent):
     """Minimal concrete AbstractAgent for testing."""
 
     AGENT_CARD = AgentCard(description="Test agent for unit tests.")
+
+    def __init__(self, **kwargs: Any) -> None:
+        if "workspace" not in kwargs:
+            workspace_dir = Path(tempfile.mkdtemp(prefix="bluebox-abstract-agent-test-"))
+            kwargs["workspace"] = LocalWorkspace.from_directory_path(workspace_dir)
+        super().__init__(**kwargs)
 
     def _get_system_prompt(self) -> str:
         return "You are a test agent."
@@ -125,6 +139,52 @@ class ConcreteAgent(AbstractAgent):
             "max_results": params.max_results,
             "tags": params.tags,
         }
+
+    @agent_tool(persist=ToolResultPersistMode.ALWAYS)
+    def _persist_always(self, text: str = "ok") -> dict[str, Any]:
+        """
+        Tool that always persists results.
+
+        Args:
+            text: Value to return in the payload.
+        """
+        return {"text": text}
+
+    @agent_tool(
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=50,
+    )
+    def _persist_overflow(self, text: str) -> dict[str, Any]:
+        """
+        Tool that persists only when output exceeds max_characters.
+
+        Args:
+            text: Payload content.
+        """
+        return {"text": text}
+
+    @agent_tool(persist=ToolResultPersistMode.NEVER)
+    def _persist_never(self, text: str = "ok") -> dict[str, Any]:
+        """
+        Tool that never persists results.
+
+        Args:
+            text: Value to return in the payload.
+        """
+        return {"text": text}
+
+    @agent_tool(
+        persist=ToolResultPersistMode.ALWAYS,
+        token_optimized=True,
+    )
+    def _persist_always_token_optimized(self) -> dict[str, Any]:
+        """Always persists raw result, returns token-optimized payload."""
+        return {"status": "ok", "items": [1, 2, 3]}
+
+    @agent_tool(token_optimized=True)
+    def _token_optimized_no_persist(self) -> dict[str, Any]:
+        """Token-optimized tool with no persistence."""
+        return {"status": "ok"}
 
 
 @pytest.fixture
@@ -248,6 +308,31 @@ class TestInitialization:
 
     def test_documentation_data_loader_stored(self, agent_with_docs: ConcreteAgent) -> None:
         assert agent_with_docs._documentation_data_loader is not None
+
+    def test_workspace_attached_on_init(self, agent: ConcreteAgent) -> None:
+        assert isinstance(agent._workspace, LocalWorkspace)
+
+    def test_code_execution_disabled_by_default(self, agent: ConcreteAgent) -> None:
+        assert agent._include_code_execution is False
+        assert agent._code_execution_globals == {}
+
+    def test_code_execution_globals_require_enabled(self, mock_emit: MagicMock) -> None:
+        with pytest.raises(ValueError, match="code_execution_globals must be empty"):
+            ConcreteAgent(
+                emit_message_callable=mock_emit,
+                include_code_execution=False,
+                code_execution_globals={"x": 1},
+            )
+
+    def test_code_execution_globals_stored_when_enabled(self, mock_emit: MagicMock) -> None:
+        configured = {"items": [1, 2, 3], "name": "demo"}
+        agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            include_code_execution=True,
+            code_execution_globals=configured,
+        )
+        assert agent._include_code_execution is True
+        assert agent._code_execution_globals == configured
 
 
 # =============================================================================
@@ -395,6 +480,9 @@ class TestCollectTools:
         expected = {
             "echo", "add_numbers", "disabled_tool", "gated_tool",
             "no_params", "optional_params", "raises_error", "search",
+            "persist_always", "persist_overflow", "persist_never", "persist_always_token_optimized",
+            "token_optimized_no_persist",
+            "execute_python",
             # Documentation tools from AbstractAgent
             "search_docs", "get_doc_file", "search_docs_by_terms", "search_docs_by_regex",
         }
@@ -468,6 +556,19 @@ class TestSyncTools:
         assert "search_docs_by_terms" in agent_with_docs._registered_tool_names
         assert "search_docs_by_regex" in agent_with_docs._registered_tool_names
 
+    def test_execute_python_not_registered_when_disabled(self, agent: ConcreteAgent) -> None:
+        agent._sync_tools()
+        assert "execute_python" not in agent._registered_tool_names
+
+    def test_execute_python_registered_when_enabled(self, mock_emit: MagicMock) -> None:
+        code_agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            include_code_execution=True,
+            code_execution_globals={},
+        )
+        code_agent._sync_tools()
+        assert "execute_python" in code_agent._registered_tool_names
+
     def test_sync_clears_and_re_registers(self, agent: ConcreteAgent) -> None:
         """Calling _sync_tools multiple times doesn't duplicate registrations."""
         agent._sync_tools()
@@ -516,6 +617,11 @@ class TestExecuteTool:
 
     def test_unavailable_tool(self, agent: ConcreteAgent) -> None:
         result = agent._execute_tool("disabled_tool", {})
+        assert "error" in result
+        assert "not currently available" in result["error"]
+
+    def test_execute_python_unavailable_when_disabled(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("execute_python", {"code": "print('hello')"})
         assert "error" in result
         assert "not currently available" in result["error"]
 
@@ -578,6 +684,73 @@ class TestExecuteTool:
 
         result = agent._execute_tool("add_numbers", {"a": 3, "b": 7})
         assert result == {"sum": 10}
+
+    def test_execute_python_uses_configured_globals(
+        self,
+        mock_emit: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        code_agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            include_code_execution=True,
+            code_execution_globals={"value": 7},
+        )
+        code_agent._workspace = LocalWorkspace.from_directory_path(tmp_path / "workspace")
+        result = code_agent._execute_tool("execute_python", {"code": "print(value + 5)"})
+        assert "error" not in result
+        assert "12" in result.get("output", "")
+
+    def test_persist_always_wraps_result_and_saves_artifact(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("persist_always", {"text": "small"})
+        assert result["persist_mode"] == "always"
+        assert result["artifact_id"].startswith("a_")
+        assert "artifact_path" in result
+        assert "preview" in result
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert len(artifacts) == 1
+        assert artifacts[0].artifact_id == result["artifact_id"]
+
+    def test_persist_overflow_under_limit_returns_raw_result(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("persist_overflow", {"text": "short"})
+        assert result == {"text": "short"}
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert artifacts == []
+
+    def test_persist_overflow_over_limit_wraps_and_saves_artifact(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("persist_overflow", {"text": "x" * 200})
+        assert result["persist_mode"] == "overflow"
+        assert result["artifact_id"].startswith("a_")
+        assert result["truncated"] is True
+        assert "truncated" in result["preview"]
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert len(artifacts) == 1
+        assert artifacts[0].artifact_id == result["artifact_id"]
+
+    def test_persist_never_returns_raw_and_does_not_save(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("persist_never", {"text": "abc"})
+        assert result == {"text": "abc"}
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert artifacts == []
+
+    def test_token_optimized_persist_saves_raw_not_encoded(
+        self,
+        agent: ConcreteAgent,
+    ) -> None:
+        result = agent._execute_tool("persist_always_token_optimized", {})
+        assert isinstance(result, str)
+        assert "_token_optimized_note" in result
+
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert len(artifacts) == 1
+        artifact_id = artifacts[0].artifact_id
+        stored = agent._workspace.read_artifact(artifact_id)
+        assert "error" not in stored
+        assert '"status": "ok"' in stored["content"]
+
+    def test_token_optimized_without_persist_has_no_note(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("token_optimized_no_persist", {})
+        assert isinstance(result, str)
+        assert "_token_optimized_note" not in result
 
 
 # =============================================================================
@@ -712,7 +885,7 @@ class TestReset:
 class TestDocumentationTools:
     """Tests for the documentation tools on AbstractAgent.
 
-    Note: doc tools use @token_optimized, so _execute_tool returns a compact string
+    Note: doc tools use @agent_tool(token_optimized=True), so _execute_tool returns a compact string
     (not a dict) when the handler itself is invoked. Pre-dispatch validation errors
     (unavailability, missing params) still return dicts.
     """
@@ -1514,6 +1687,15 @@ class TestAgentToolDecorator:
         fake._feature_flag = True
         assert avail_fn(fake) is True
 
+    def test_token_optimized_flag_encodes_output(self) -> None:
+        @agent_tool(token_optimized=True)
+        def _encoded_tool(self) -> dict[str, Any]:
+            """Returns a dict that should be toon-encoded."""
+            return {"status": "ok", "count": 2}
+
+        meta = _encoded_tool._tool_meta
+        assert meta.token_optimized is True
+
     # ---- _tool_meta is attached to the method ----
 
     def test_tool_meta_attached_to_method(self) -> None:
@@ -1704,6 +1886,9 @@ class TestToolMeta:
         assert meta.description == "desc"
         assert meta.parameters == params
         assert meta.availability is True
+        assert meta.persist == ToolResultPersistMode.NEVER
+        assert meta.max_characters == 10_000
+        assert meta.token_optimized is False
 
 
 # =============================================================================
