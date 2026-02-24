@@ -131,6 +131,7 @@ class EmittedMessageType(StrEnum):
     ROUTINE_DISCOVERY_REQUEST = "routine_discovery_request"
     ROUTINE_CREATION_REQUEST = "routine_creation_request"
     STATUS_UPDATE = "status_update"
+    BROWSER_AGENT_STEP = "browser_agent_step"
     ERROR = "error"
 
 
@@ -171,6 +172,14 @@ class StatusUpdateEmittedMessage(BaseEmittedMessage):
     """Ephemeral status/progress update (not persisted as a chat message)."""
     type: Literal[EmittedMessageType.STATUS_UPDATE] = EmittedMessageType.STATUS_UPDATE
     content: str = Field(..., description="Status update text content")
+
+
+class BrowserAgentStepEmittedMessage(BaseEmittedMessage):
+    """Browser agent step progress update with structured data."""
+    type: Literal[EmittedMessageType.BROWSER_AGENT_STEP] = EmittedMessageType.BROWSER_AGENT_STEP
+    content: str = Field(..., description="Human-readable step summary, e.g. '[Step 3] Navigate to login page'")
+    step_number: int = Field(..., description="1-based step counter")
+    goal: str | None = Field(default=None, description="Agent's stated goal for the next action")
 
 
 class ToolInvocationRequestEmittedMessage(BaseEmittedMessage):
@@ -250,6 +259,7 @@ EmittedMessage = Annotated[
     Union[
         ChatResponseEmittedMessage,
         StatusUpdateEmittedMessage,
+        BrowserAgentStepEmittedMessage,
         ToolInvocationRequestEmittedMessage,
         ToolInvocationResultEmittedMessage,
         SuggestedEditEmittedMessage,

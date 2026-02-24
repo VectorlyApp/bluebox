@@ -32,6 +32,7 @@ from bluebox.data_models.browser_agent import (
     sse_event_adapter,
 )
 from bluebox.data_models.llms.interaction import (
+    BrowserAgentStepEmittedMessage,
     Chat,
     ChatResponseEmittedMessage,
     ChatThread,
@@ -674,7 +675,11 @@ class BlueBoxAgent(AbstractAgent):
                 msg = f"[Step {step_counter}]"
                 if event.next_goal:
                     msg += f" {event.next_goal}"
-                self._emit_message(StatusUpdateEmittedMessage(content=msg))
+                self._emit_message(BrowserAgentStepEmittedMessage(
+                    content=msg,
+                    step_number=step_counter,
+                    goal=event.next_goal,
+                ))
                 steps.append({"step": step_counter, "goal": event.next_goal, "is_done": event.is_done})
 
             elif isinstance(event, BrowserAgentDoneEvent):
