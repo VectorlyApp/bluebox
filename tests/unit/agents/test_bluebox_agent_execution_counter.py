@@ -23,14 +23,18 @@ from bluebox.agents.workspace import LocalWorkspace
 # =============================================================================
 
 
-@pytest.fixture
-def agent(tmp_path: Path) -> BlueBoxAgent:
+def _make_agent(tmp_path: Path) -> BlueBoxAgent:
     """Create a BlueBoxAgent with a local workspace for testing."""
     return BlueBoxAgent(
         emit_message_callable=MagicMock(),
         workspace=LocalWorkspace(str(tmp_path)),
         auth_headers_provider=lambda: {"X-Service-Token": "test"},
     )
+
+
+@pytest.fixture
+def agent(tmp_path: Path) -> BlueBoxAgent:
+    return _make_agent(tmp_path)
 
 
 def _mock_response(json_data: dict) -> MagicMock:
@@ -136,3 +140,65 @@ class TestRoutineResultFilenameIndex:
         assert len(raw_files) == 10
         indices = sorted(int(f.stem.split("_")[-1]) for f in raw_files)
         assert indices == list(range(1, 11))
+
+
+class TestCounterResumesFromExistingFiles:
+    """Tests that the counter initializes from existing files in raw/."""
+
+    def test_empty_raw_starts_at_1(self, tmp_path: Path) -> None:
+        """No existing files means counter starts at 1."""
+        agent = _make_agent(tmp_path)
+        assert next(agent._routine_execution_counter) == 1
+
+    def test_resumes_after_existing_files(self, tmp_path: Path) -> None:
+        """If raw/ has files with indices 1-3, counter starts at 4."""
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        for i in range(1, 4):
+            (raw_dir / f"26-02-23-120000-routine_result_{i}.json").write_text("{}")
+
+        agent = _make_agent(tmp_path)
+        assert next(agent._routine_execution_counter) == 4
+
+    def test_resumes_from_max_not_count(self, tmp_path: Path) -> None:
+        """If files have gaps (e.g. 1, 3, 5), counter starts at max+1 = 6."""
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        for i in [1, 3, 5]:
+            (raw_dir / f"26-02-23-120000-routine_result_{i}.json").write_text("{}")
+
+        agent = _make_agent(tmp_path)
+        assert next(agent._routine_execution_counter) == 6
+
+    def test_ignores_non_matching_files(self, tmp_path: Path) -> None:
+        """Files that don't match the pattern are ignored."""
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        (raw_dir / "some_other_file.json").write_text("{}")
+        (raw_dir / "26-02-23-120000-routine_result_3.json").write_text("{}")
+
+        agent = _make_agent(tmp_path)
+        assert next(agent._routine_execution_counter) == 4
+
+    @patch("bluebox.agents.bluebox_agent.requests.post")
+    def test_new_execution_continues_from_existing(
+        self, mock_post: MagicMock, tmp_path: Path,
+    ) -> None:
+        """A new agent with existing files should save the next file correctly."""
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        for i in range(1, 4):
+            (raw_dir / f"26-02-23-120000-routine_result_{i}.json").write_text("{}")
+
+        mock_post.return_value = _mock_response({"result": {"data": "ok"}})
+        agent = _make_agent(tmp_path)
+
+        agent._execute_routines_in_parallel(routine_executions=[
+            MagicMock(routine_id="r1", parameters={}),
+            MagicMock(routine_id="r2", parameters={}),
+        ])
+
+        raw_files = sorted((tmp_path / "raw").glob("*routine_result_*.json"))
+        assert len(raw_files) == 5
+        indices = sorted(int(f.stem.split("_")[-1]) for f in raw_files)
+        assert indices == [1, 2, 3, 4, 5]
