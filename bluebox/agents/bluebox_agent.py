@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -180,7 +181,9 @@ class BlueBoxAgent(AbstractAgent):
 
         self._workspace = workspace or LocalWorkspace()
         self._routine_cache: dict[str, RoutineInfo] = {}
-        self._routine_execution_counter = itertools.count(1)
+        self._routine_execution_counter = itertools.count(
+            self._get_next_routine_result_index()
+        )
 
         # Load context from explicit path or auto-discover from workspace
         self._agent_context: BlueBoxAgentContext | None = self._load_context(context_file)
@@ -310,6 +313,18 @@ class BlueBoxAgent(AbstractAgent):
     ## Context loading
 
     _CONTEXT_PROMPT_MAX_CHARS: int = 20_000
+    _ROUTINE_RESULT_PATTERN = re.compile(r"-routine_result_(\d+)\.json$")
+
+    def _get_next_routine_result_index(self) -> int:
+        """Scan raw/ for existing routine_result files and return max index + 1."""
+        raw_dir = self._workspace.root_path / "raw"
+        max_idx = 0
+        if raw_dir.is_dir():
+            for f in raw_dir.iterdir():
+                m = self._ROUTINE_RESULT_PATTERN.search(f.name)
+                if m:
+                    max_idx = max(max_idx, int(m.group(1)))
+        return max_idx + 1
 
     def _load_context(self, context_file: str | None) -> BlueBoxAgentContext | None:
         """Load context from an explicit path or auto-discover from workspace context/ dir.
