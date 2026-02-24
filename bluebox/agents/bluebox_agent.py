@@ -614,11 +614,11 @@ class BlueBoxAgent(AbstractAgent):
             ) as response:
                 if response.status_code == 402:
                     self._emit_message(ErrorEmittedMessage(
-                        error="Insufficient credits. Please add credits or a payment method to continue.",
+                        error="Insufficient credits. Please add credits or a payment method to continue at https://console.vectorly.app/billing",
                         code="INSUFFICIENT_CREDITS",
                     ))
                     return {
-                        "error": "Insufficient credits. Please add credits or a payment method to continue.",
+                        "error": "Insufficient credits. Please add credits or a payment method to continue at https://console.vectorly.app/billing",
                         "code": "INSUFFICIENT_CREDITS",
                     }
                 response.raise_for_status()
