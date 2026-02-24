@@ -692,7 +692,7 @@ class BlueBoxAgent(AbstractAgent):
                     "n_steps": event.n_steps,
                     "duration_seconds": event.duration_seconds,
                     "execution_id": event.execution_id,
-                    "steps": steps,
+                    "steps": data.get("steps_detail", steps),  # prefer detailed steps from server if available
                     "prompt_tokens": event.prompt_tokens,
                     "completion_tokens": event.completion_tokens,
                     "total_tokens": event.total_tokens,
