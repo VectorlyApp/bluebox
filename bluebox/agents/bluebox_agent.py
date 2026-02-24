@@ -675,7 +675,6 @@ class BlueBoxAgent(AbstractAgent):
                 if event.next_goal:
                     msg += f" {event.next_goal}"
                 self._emit_message(StatusUpdateEmittedMessage(content=msg))
-                self._add_chat(ChatRole.SYSTEM_STATUS_UPDATE, msg)  # persist for refresh
                 steps.append({"step": step_counter, "goal": event.next_goal, "is_done": event.is_done})
 
             elif isinstance(event, BrowserAgentDoneEvent):
@@ -684,7 +683,6 @@ class BlueBoxAgent(AbstractAgent):
                     status = "did not finish"
                 done_msg = f"Browser agent task {status} in {event.duration_seconds or 0:.1f}s ({event.n_steps} steps)."
                 self._emit_message(StatusUpdateEmittedMessage(content=done_msg))
-                self._add_chat(ChatRole.SYSTEM_STATUS_UPDATE, done_msg)
                 result = {
                     "success": event.is_successful or False,
                     "is_done": event.is_done,
@@ -702,7 +700,6 @@ class BlueBoxAgent(AbstractAgent):
             elif isinstance(event, BrowserAgentErrorEvent):
                 error_msg = f"Browser agent error: {event.error}"
                 self._emit_message(StatusUpdateEmittedMessage(content=error_msg))
-                self._add_chat(ChatRole.SYSTEM_STATUS_UPDATE, error_msg)
                 result = {"error": event.error, "execution_id": event.execution_id, "steps": steps}
 
         return result
