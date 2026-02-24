@@ -235,6 +235,10 @@ class ErrorEmittedMessage(BaseEmittedMessage):
     """Error message."""
     type: Literal[EmittedMessageType.ERROR] = EmittedMessageType.ERROR
     error: str = Field(..., description="Error message")
+    code: str | None = Field(
+        default=None,
+        description="Machine-readable error code (e.g. INSUFFICIENT_CREDITS)",
+    )
     content: str | None = Field(
         default=None,
         description="Additional error context",

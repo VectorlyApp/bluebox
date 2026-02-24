@@ -36,6 +36,7 @@ from bluebox.data_models.llms.interaction import (
     ChatResponseEmittedMessage,
     ChatThread,
     EmittedMessage,
+    ErrorEmittedMessage,
     LLMChatResponse,
     StatusUpdateEmittedMessage,
 )
@@ -611,6 +612,15 @@ class BlueBoxAgent(AbstractAgent):
                 stream=True,
                 timeout=330,
             ) as response:
+                if response.status_code == 402:
+                    self._emit_message(ErrorEmittedMessage(
+                        error="Insufficient credits. Please add credits or a payment method to continue.",
+                        code="INSUFFICIENT_CREDITS",
+                    ))
+                    return {
+                        "error": "Insufficient credits. Please add credits or a payment method to continue.",
+                        "code": "INSUFFICIENT_CREDITS",
+                    }
                 response.raise_for_status()
                 result = self._consume_sse_stream(response)
 
