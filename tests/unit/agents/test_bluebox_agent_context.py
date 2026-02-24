@@ -44,7 +44,7 @@ def sample_context() -> BlueBoxAgentContext:
         ],
         python_code=(
             'import csv\n'
-            'with open("outputs/trains.csv", "w") as f:\n'
+            'with open("output/trains.csv", "w") as f:\n'
             '    writer = csv.DictWriter(f, fieldnames=["departure", "price"])\n'
             '    writer.writeheader()\n'
             '    for rr in routine_results:\n'
@@ -52,7 +52,7 @@ def sample_context() -> BlueBoxAgentContext:
             '            writer.writerow(train)\n'
             'print("Done")'
         ),
-        output_files=["outputs/trains.csv"],
+        output_files=["output/trains.csv"],
         output_description="CSV with columns: departure, price. 12 rows of Amtrak trains under $100.",
         summary="Searched Amtrak for NYC-Boston trains on March 15, filtered by price, and exported to CSV.",
         generated_at=datetime(2026, 2, 22, 10, 30, 0, tzinfo=timezone.utc),

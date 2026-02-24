@@ -17,7 +17,6 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 from bluebox.data_models.agents.workspace import (
     ArtifactManifestEntry,
@@ -25,7 +24,6 @@ from bluebox.data_models.agents.workspace import (
     ArtifactSource,
     WorkspaceDelta,
     WorkspaceFileState,
-    WorkspaceRunMetadata,
     WorkspaceSnapshot,
 )
 from bluebox.utils.infra_utils import read_file_lines
@@ -102,7 +100,7 @@ class AgentWorkspace(ABC):
         Return a compact, prompt-ready summary of workspace state.
 
         This is intended for system prompt injection, so it should stay concise
-        and focus on artifact inventory and recent outputs/context.
+        and focus on artifact inventory and recent output/context files.
         """
         pass
 
@@ -116,21 +114,48 @@ class AgentWorkspace(ABC):
 
     # Backward-compatible API
     def save_file(self, subdirectory: str, filename: str, content: str) -> dict[str, str]:
+        normalized_filename = filename.replace("\\", "/")
+        filename_path = Path(normalized_filename)
+        if (
+            not normalized_filename
+            or normalized_filename in {".", ".."}
+            or "/" in normalized_filename
+            or filename_path.name != normalized_filename
+        ):
+            raise ValueError(
+                f"Invalid filename '{filename}'. Filenames must not include path separators.",
+            )
+
         source_map: dict[str, ArtifactSource] = {
             "raw": "raw",
-            "outputs": "output",
+            "output": "output",
             "context": "context",
         }
         if subdirectory in source_map:
-            ref = self.save_artifact(source_map[subdirectory], filename, content)
+            ref = self.save_artifact(source_map[subdirectory], normalized_filename, content)
             return {
                 "output_file": str(self.root_path / ref.relative_path),
                 "artifact_id": ref.artifact_id,
             }
 
-        out_dir = self.root_path / subdirectory
+        normalized_subdirectory = subdirectory.replace("\\", "/")
+        subdirectory_path = Path(normalized_subdirectory)
+        if subdirectory_path.is_absolute() or ".." in subdirectory_path.parts:
+            raise ValueError(
+                f"Invalid subdirectory '{subdirectory}'. Path traversal is not allowed.",
+            )
+
+        root_resolved = self.root_path.resolve()
+        out_dir = (root_resolved / subdirectory_path).resolve()
+        try:
+            out_dir.relative_to(root_resolved)
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid subdirectory '{subdirectory}'. Path must be inside workspace root.",
+            ) from e
+
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / filename
+        out_path = out_dir / normalized_filename
         out_path.write_text(content)
         return {"output_file": str(out_path)}
 
@@ -146,7 +171,7 @@ class AgentWorkspace(ABC):
         return out
 
     def snapshot_outputs(self) -> dict[str, float]:
-        snap = self.snapshot_paths(["outputs"])
+        snap = self.snapshot_paths(["output"])
         return {str(self.root_path / k): float(v.mtime_ns) for k, v in snap.files.items()}
 
     def diff_outputs(self, before: dict[str, float]) -> list[str]:
@@ -167,20 +192,19 @@ class LocalAgentWorkspace(AgentWorkspace):
         agent_id: str | None = None,
         thread_id: str | None = None,
     ) -> None:
+        _ = agent_id
+        _ = thread_id
         self._workspace_dir = Path(workspace_dir)
         self._scratch_dir = self._workspace_dir / "scratch"
         self._raw_dir = self._workspace_dir / "raw"
-        self._outputs_dir = self._workspace_dir / "outputs"
+        self._output_dir = self._workspace_dir / "output"
         self._context_dir = self._workspace_dir / "context"
         self._meta_dir = self._workspace_dir / "meta"
 
         self._manifest_path = self._meta_dir / "manifest.jsonl"
-        self._run_path = self._meta_dir / "run.json"
-        self._counter_path = self._meta_dir / "counters.json"
 
         self.ensure_dirs()
-        self._init_run_metadata(agent_id=agent_id, thread_id=thread_id)
-        self._artifact_index = self._load_counter()
+        self._artifact_index = self._load_last_index_from_manifest()
 
     @classmethod
     def from_directory_path(
@@ -209,9 +233,10 @@ class LocalAgentWorkspace(AgentWorkspace):
     def ensure_dirs(self) -> None:
         self._scratch_dir.mkdir(parents=True, exist_ok=True)
         self._raw_dir.mkdir(parents=True, exist_ok=True)
-        self._outputs_dir.mkdir(parents=True, exist_ok=True)
+        self._output_dir.mkdir(parents=True, exist_ok=True)
         self._context_dir.mkdir(parents=True, exist_ok=True)
         self._meta_dir.mkdir(parents=True, exist_ok=True)
+        self._manifest_path.touch(exist_ok=True)
 
     def cleanup(self, remove_root: bool = False) -> None:
         if remove_root and self._workspace_dir.exists():
@@ -228,40 +253,31 @@ class LocalAgentWorkspace(AgentWorkspace):
             except OSError:
                 pass
 
-    def _init_run_metadata(self, agent_id: str | None, thread_id: str | None) -> None:
-        if self._run_path.exists():
-            return
-        run = WorkspaceRunMetadata(
-            run_id=f"run_{uuid4().hex[:12]}",
-            started_at=datetime.now(timezone.utc).isoformat(),
-            agent_id=agent_id,
-            thread_id=thread_id,
-        )
-        self._run_path.write_text(run.model_dump_json(indent=2))
-
-    def _load_counter(self) -> int:
-        if not self._counter_path.exists():
-            self._counter_path.write_text(json.dumps({"artifact_index": 0}, indent=2))
-            return 0
-        try:
-            data = json.loads(self._counter_path.read_text())
-            return int(data.get("artifact_index", 0))
-        except Exception:
+    def _load_last_index_from_manifest(self) -> int:
+        if not self._manifest_path.exists():
             return 0
 
-    def _save_counter(self, value: int) -> None:
-        self._counter_path.write_text(json.dumps({"artifact_index": value}, indent=2))
+        max_index = 0
+        for line in self._manifest_path.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                entry = ArtifactManifestEntry.model_validate_json(line)
+                if entry.index > max_index:
+                    max_index = entry.index
+            except Exception as e:
+                logger.warning("Bad manifest entry skipped when loading index: %s", e)
+        return max_index
 
     def _next_index(self) -> int:
         self._artifact_index += 1
-        self._save_counter(self._artifact_index)
         return self._artifact_index
 
     def _dir_for_source(self, source: ArtifactSource) -> Path:
         if source == "raw":
             return self._raw_dir
         if source == "output":
-            return self._outputs_dir
+            return self._output_dir
         return self._context_dir
 
     def _coerce_bytes(self, content: str | bytes) -> tuple[bytes, str]:
@@ -298,6 +314,20 @@ class LocalAgentWorkspace(AgentWorkspace):
         suffix = candidate.suffix
         return f"{stem}-{index}{suffix}"
 
+    def _validate_artifact_filename(self, filename: str) -> str:
+        normalized_filename = filename.replace("\\", "/")
+        path = Path(normalized_filename)
+        if (
+            not normalized_filename
+            or normalized_filename in {".", ".."}
+            or "/" in normalized_filename
+            or path.name != normalized_filename
+        ):
+            raise ValueError(
+                f"Invalid filename '{filename}'. Filenames must not include path separators.",
+            )
+        return normalized_filename
+
     def save_artifact(
         self,
         source: ArtifactSource,
@@ -309,11 +339,12 @@ class LocalAgentWorkspace(AgentWorkspace):
         content_type: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> ArtifactRef:
+        safe_input_filename = self._validate_artifact_filename(filename)
         directory = self._dir_for_source(source)
         index = self._next_index()
         artifact_id = f"a_{index:06d}"
 
-        safe_filename = self._dedupe_filename(directory, filename, index)
+        safe_filename = self._dedupe_filename(directory, safe_input_filename, index)
         path = directory / safe_filename
 
         raw_bytes, fallback_ct = self._coerce_bytes(content)

@@ -1030,6 +1030,25 @@ class TestScopedOpen:
         with open(os.path.join(work_dir, "output.csv")) as f:
             assert f.read() == "a,b,c\n1,2,3\n"
 
+    def test_blocks_symlink_escape(self, tmp_path: Path) -> None:
+        """Should block writing through a symlink that points outside work_dir."""
+        if not hasattr(os, "symlink"):
+            pytest.skip("symlink not supported on this platform")
+
+        work_dir = tmp_path / "workspace"
+        outside_dir = tmp_path / "outside"
+        work_dir.mkdir()
+        outside_dir.mkdir()
+
+        link_path = work_dir / "escape_link.txt"
+        outside_target = outside_dir / "target.txt"
+        outside_target.write_text("seed")
+        os.symlink(outside_target, link_path)
+
+        scoped = _create_scoped_open(str(work_dir))
+        with pytest.raises(PermissionError, match="outside the working directory"):
+            scoped("escape_link.txt", "w")
+
 
 class TestBlocklistSandboxWorkDir:
     """Tests for blocklist sandbox with work_dir parameter."""
@@ -1122,6 +1141,18 @@ print("done")
         assert "done" in result["output"]
         assert os.path.exists(os.path.join(work_dir, "outputs", "result.txt"))
 
+    def test_can_write_with_path_write_text(self, tmp_path: object) -> None:
+        """Scoped Path.write_text should allow writes within work_dir."""
+        work_dir = str(tmp_path)
+        code = """
+Path("output.txt").write_text("hello")
+print("done")
+"""
+        result = _execute_blocklist_sandbox(code, work_dir=work_dir)
+        assert "error" not in result
+        assert "done" in result["output"]
+        assert os.path.exists(os.path.join(work_dir, "output.txt"))
+
     def test_csv_module_available(self, tmp_path: object) -> None:
         """csv module should be pre-loaded when work_dir is set."""
         work_dir = str(tmp_path)
@@ -1149,6 +1180,67 @@ with open("../../escape.txt", "w") as f:
         result = _execute_blocklist_sandbox(code, work_dir=work_dir)
         assert "error" in result
         assert "outside" in result["error"].lower() or "denied" in result["error"].lower()
+
+    def test_blocks_pathlib_path_traversal_write(self, tmp_path: object) -> None:
+        """Should block Path.write_text traversal outside work_dir."""
+        work_dir = str(tmp_path / "workspace")
+        os.makedirs(work_dir)
+        code = """
+Path("../../escape.txt").write_text("escaped")
+"""
+        result = _execute_blocklist_sandbox(code, work_dir=work_dir)
+        assert "error" in result
+        assert "outside" in result["error"].lower() or "denied" in result["error"].lower()
+
+    def test_blocks_write_in_read_only_subdir(self, tmp_path: object) -> None:
+        """Should block writes under configured read_only_paths."""
+        work_dir = str(tmp_path)
+        os.makedirs(os.path.join(work_dir, "raw"), exist_ok=True)
+        code = """
+with open("raw/blocked.txt", "w") as f:
+    f.write("blocked")
+"""
+        result = _execute_blocklist_sandbox(
+            code,
+            work_dir=work_dir,
+            read_only_paths=[os.path.join(work_dir, "raw")],
+        )
+        assert "error" in result
+        assert "read-only" in result["error"].lower()
+
+    def test_blocks_pathlib_write_in_read_only_subdir(self, tmp_path: object) -> None:
+        """Should block Path.write_text under configured read_only_paths."""
+        work_dir = str(tmp_path)
+        os.makedirs(os.path.join(work_dir, "raw"), exist_ok=True)
+        code = """
+Path("raw/blocked.txt").write_text("blocked")
+"""
+        result = _execute_blocklist_sandbox(
+            code,
+            work_dir=work_dir,
+            read_only_paths=[os.path.join(work_dir, "raw")],
+        )
+        assert "error" in result
+        assert "read-only" in result["error"].lower()
+
+    def test_allows_read_in_read_only_subdir(self, tmp_path: object) -> None:
+        """Read access should still work for read_only_paths."""
+        work_dir = str(tmp_path)
+        raw_file = os.path.join(work_dir, "raw", "ok.txt")
+        os.makedirs(os.path.dirname(raw_file), exist_ok=True)
+        with open(raw_file, "w") as f:
+            f.write("ok")
+        code = """
+with open("raw/ok.txt", "r") as f:
+    print(f.read())
+"""
+        result = _execute_blocklist_sandbox(
+            code,
+            work_dir=work_dir,
+            read_only_paths=[os.path.join(work_dir, "raw")],
+        )
+        assert "error" not in result
+        assert "ok" in result["output"]
 
     def test_extra_globals_with_work_dir(self, tmp_path: object) -> None:
         """Extra globals should work alongside work_dir."""
@@ -1229,6 +1321,25 @@ print("ok")
             assert "not supported" in result["error"]
         finally:
             sandbox_module.SANDBOX_MODE = original_mode
+
+    def test_rejects_read_only_paths_without_work_dir(self) -> None:
+        """read_only_paths should require work_dir."""
+        result = execute_python_sandboxed(
+            "print('x')",
+            read_only_paths=["/tmp/some-path"],
+        )
+        assert "error" in result
+        assert "requires work_dir" in result["error"]
+
+    def test_rejects_read_only_path_outside_work_dir(self, tmp_path: Path) -> None:
+        """read_only_paths must stay under work_dir."""
+        result = execute_python_sandboxed(
+            "print('x')",
+            work_dir=str(tmp_path),
+            read_only_paths=["/etc"],
+        )
+        assert "error" in result
+        assert "outside work_dir" in result["error"]
 
     def test_docker_mode_passes_work_dir(self) -> None:
         """Docker mode should pass work_dir to _execute_in_docker."""
@@ -1367,3 +1478,22 @@ class TestDockerExecutionWorkDir:
             wrapper_script = mock_run.call_args[1]["input"]
             assert "import json, base64, sys" in wrapper_script
             assert "from pathlib import Path" not in wrapper_script
+
+    def test_docker_mounts_read_only_paths(self, tmp_path: Path) -> None:
+        """Read-only paths should be mounted under /data with :ro."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "ok\n"
+        mock_result.stderr = ""
+
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            _execute_in_docker(
+                "print('ok')",
+                work_dir=str(tmp_path),
+                read_only_paths=[str(raw_dir)],
+            )
+            docker_cmd = mock_run.call_args[0][0]
+            assert any(arg.endswith("/raw:/data/raw:ro") for arg in docker_cmd)

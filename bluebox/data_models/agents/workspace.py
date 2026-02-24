@@ -5,7 +5,6 @@ Pydantic models for the v2 artifact-oriented workspace.
 
 Contains:
 - ArtifactRef / ArtifactManifestEntry: immutable artifact identity and provenance
-- WorkspaceRunMetadata: minimal run metadata persisted as run.json
 - WorkspaceFileState / WorkspaceSnapshot / WorkspaceDelta: snapshot/diff primitives
 """
 
@@ -37,14 +36,6 @@ class ArtifactManifestEntry(BaseModel):
     artifact: ArtifactRef
     tool_name: str | None = None
     code_run_id: str | None = None
-
-
-class WorkspaceRunMetadata(BaseModel):
-    run_id: str
-    started_at: str
-    agent_id: str | None = None
-    thread_id: str | None = None
-    ended_at: str | None = None
 
 
 class WorkspaceFileState(BaseModel):

@@ -19,7 +19,7 @@ import json
 import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import BaseModel, Field
@@ -313,14 +313,14 @@ class TestInitialization:
         assert isinstance(agent._workspace, LocalWorkspace)
 
     def test_code_execution_disabled_by_default(self, agent: ConcreteAgent) -> None:
-        assert agent._include_code_execution is False
+        assert agent._allow_code_execution is False
         assert agent._code_execution_globals == {}
 
     def test_code_execution_globals_require_enabled(self, mock_emit: MagicMock) -> None:
         with pytest.raises(ValueError, match="code_execution_globals must be empty"):
             ConcreteAgent(
                 emit_message_callable=mock_emit,
-                include_code_execution=False,
+                allow_code_execution=False,
                 code_execution_globals={"x": 1},
             )
 
@@ -328,10 +328,10 @@ class TestInitialization:
         configured = {"items": [1, 2, 3], "name": "demo"}
         agent = ConcreteAgent(
             emit_message_callable=mock_emit,
-            include_code_execution=True,
+            allow_code_execution=True,
             code_execution_globals=configured,
         )
-        assert agent._include_code_execution is True
+        assert agent._allow_code_execution is True
         assert agent._code_execution_globals == configured
 
 
@@ -563,7 +563,7 @@ class TestSyncTools:
     def test_execute_python_registered_when_enabled(self, mock_emit: MagicMock) -> None:
         code_agent = ConcreteAgent(
             emit_message_callable=mock_emit,
-            include_code_execution=True,
+            allow_code_execution=True,
             code_execution_globals={},
         )
         code_agent._sync_tools()
@@ -692,13 +692,37 @@ class TestExecuteTool:
     ) -> None:
         code_agent = ConcreteAgent(
             emit_message_callable=mock_emit,
-            include_code_execution=True,
+            allow_code_execution=True,
             code_execution_globals={"value": 7},
         )
         code_agent._workspace = LocalWorkspace.from_directory_path(tmp_path / "workspace")
         result = code_agent._execute_tool("execute_python", {"code": "print(value + 5)"})
         assert "error" not in result
         assert "12" in result.get("output", "")
+
+    def test_execute_python_marks_raw_and_meta_read_only(
+        self,
+        mock_emit: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        code_agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            allow_code_execution=True,
+            code_execution_globals={},
+        )
+        code_agent._workspace = LocalWorkspace.from_directory_path(tmp_path / "workspace")
+
+        with patch(
+            "bluebox.agents.abstract_agent.execute_python_sandboxed",
+            return_value={"output": "(no output)"},
+        ) as mock_exec:
+            result = code_agent._execute_tool("execute_python", {"code": "print('ok')"})
+
+        assert "error" not in result
+        kwargs = mock_exec.call_args.kwargs
+        read_only_paths = kwargs["read_only_paths"]
+        assert str((code_agent._workspace.root_path / "raw").resolve()) in read_only_paths
+        assert str((code_agent._workspace.root_path / "meta").resolve()) in read_only_paths
 
     def test_persist_always_wraps_result_and_saves_artifact(self, agent: ConcreteAgent) -> None:
         result = agent._execute_tool("persist_always", {"text": "small"})

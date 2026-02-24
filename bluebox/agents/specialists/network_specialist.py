@@ -16,8 +16,9 @@ from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlparse, parse_qs
 
-from bluebox.agents.abstract_agent import AgentCard, agent_tool
+from bluebox.agents.abstract_agent import AgentCard, ToolResultPersistMode, agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
+from bluebox.agents.workspace import AgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -25,8 +26,6 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
-from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
-from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -107,6 +106,7 @@ class NetworkSpecialist(AbstractSpecialist):
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
+        workspace: AgentWorkspace | None = None,
     ) -> None:
         """
         Initialize the network specialist agent.
@@ -122,11 +122,14 @@ class NetworkSpecialist(AbstractSpecialist):
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
+            workspace: Optional workspace for file I/O.
         """
         self._network_data_loader = network_data_loader
+        entries = [e.model_dump() for e in self._network_data_loader.entries]
 
         super().__init__(
             emit_message_callable=emit_message_callable,
+            workspace=workspace,
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
@@ -135,6 +138,8 @@ class NetworkSpecialist(AbstractSpecialist):
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
+            allow_code_execution=True,
+            code_execution_globals={"entries": entries},
         )
         logger.debug(
             "NetworkSpecialist initialized with model: %s, chat_thread_id: %s, entries: %d",
@@ -234,8 +239,10 @@ class NetworkSpecialist(AbstractSpecialist):
 
     ## Tool handlers
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
     def _search_responses_by_terms(self, terms: list[str]) -> dict[str, Any]:
         """
         Search RESPONSE bodies by a list of terms.
@@ -264,8 +271,10 @@ class NetworkSpecialist(AbstractSpecialist):
             "results": results,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
     def _get_entry_detail(self, request_id: str) -> dict[str, Any]:
         """
         Get full details of a specific network entry by request_id.
@@ -306,8 +315,10 @@ class NetworkSpecialist(AbstractSpecialist):
             "response_key_structure": key_structure,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
     def _get_response_body_schema(self, request_id: str) -> dict[str, Any]:
         """
         Get the schema of a network entry's JSON response body.
@@ -330,8 +341,10 @@ class NetworkSpecialist(AbstractSpecialist):
             "key_structure": key_structure,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
     def _get_unique_urls(self) -> dict[str, Any]:
         """
         Get all unique URLs from the captured network traffic.
@@ -344,25 +357,10 @@ class NetworkSpecialist(AbstractSpecialist):
             "url_counts": url_counts,
         }
 
-    @agent_tool()
-    def _execute_python(self, code: str) -> dict[str, Any]:
-        """
-        Execute Python code in a sandboxed environment to analyze network entries.
-
-        The variable `entries` is pre-loaded as a list of NetworkTransactionEvent dicts.
-        Each entry has: request_id, url, method, status, mime_type, request_headers,
-        response_headers, post_data, response_body. Use print() to output results.
-        Example: for e in entries[:5]: print(e['url'])
-
-        Args:
-            code: Python code to execute. `entries` is a list of network entry dicts.
-                `json` module is available. Use print() for output. Imports are disabled.
-        """
-        entries = [e.model_dump() for e in self._network_data_loader.entries]
-        return execute_python_sandboxed(code, extra_globals={"entries": entries})
-
-    @agent_tool()
-    @token_optimized
+    @agent_tool(
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
     def _search_requests_by_terms(
         self,
         terms: list[str],
@@ -453,8 +451,10 @@ class NetworkSpecialist(AbstractSpecialist):
             "results": results[:20],  # Top 20
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
     def _search_response_bodies(
         self,
         value: str,

@@ -120,9 +120,9 @@ SENSITIVE_PATH_PREFIXES: tuple[str, ...] = (
 # Workaround hints for blocked modules — returned to the LLM when a block triggers
 BLOCKED_MODULE_WORKAROUNDS: dict[str, str] = {
     "os": "Use open() for file I/O and Path for paths — both are pre-loaded and scoped to the workspace.",
-    "pathlib": "Path is already pre-loaded in your environment. Use it directly without importing: Path('outputs/file.txt').",
+    "pathlib": "Path is already pre-loaded in your environment. Use it directly without importing: Path('output/file.txt').",
     "shutil": "Use open() to read source and write to destination for copying files.",
-    "tempfile": "Write temporary files to the outputs/ directory using open().",
+    "tempfile": "Write temporary files to the output/ directory using open().",
     "glob": "Use Path('.').glob('pattern') or Path('.').rglob('pattern') — Path is pre-loaded.",
     "fnmatch": "Use Path('.').glob('pattern') — Path is pre-loaded.",
     "io": "Use open() for file operations and str for string building.",
@@ -134,7 +134,7 @@ BLOCKED_MODULE_WORKAROUNDS: dict[str, str] = {
     "inspect": "Use dict access (obj['key'] or obj.get('key')) instead of inspecting objects.",
     "pickle": "Use json.dumps()/json.loads() for serialization instead.",
     "marshal": "Use json.dumps()/json.loads() for serialization instead.",
-    "shelve": "Use json for data persistence. Write to outputs/ with open().",
+    "shelve": "Use json for data persistence. Write to output/ with open().",
     "sqlite3": "Database access is not available. Use JSON/CSV files for data storage.",
     "socket": "Network access is not available in the sandbox.",
     "requests": "Network access is not available in the sandbox.",
@@ -146,7 +146,7 @@ BLOCKED_MODULE_WORKAROUNDS: dict[str, str] = {
 # Note: "open(" is skipped when work_dir is set (allow_file_io=True), so its workaround
 # only fires for callers that don't provide a work_dir.
 BLOCKED_PATTERN_WORKAROUNDS: dict[str, str] = {
-    "open(": "open() IS available when a workspace is configured. Use it directly: open('outputs/file.csv', 'w').",
+    "open(": "open() IS available when a workspace is configured. Use it directly: open('output/file.csv', 'w').",
     "getattr(": "Use dict-style access instead: obj['key'] or obj.get('key', default).",
     "setattr(": "Use dict-style assignment instead: obj['key'] = value.",
     "delattr(": "Use dict-style deletion instead: del obj['key'].",
@@ -252,6 +252,7 @@ def _execute_in_docker(
     code: str,
     extra_globals: dict[str, Any] | None = None,
     work_dir: str | None = None,
+    read_only_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Execute Python code in an isolated Docker container.
@@ -268,6 +269,7 @@ def _execute_in_docker(
         code: Python source code to execute.
         extra_globals: Variables to inject (serialized as JSON).
         work_dir: Host directory to mount as /data with read-write access.
+        read_only_paths: Optional list of paths under work_dir to mount read-only.
 
     Returns:
         Dict with 'output' and optionally 'error'.
@@ -325,6 +327,16 @@ exec(code, exec_globals)
     if work_dir:
         abs_work_dir = os.path.abspath(work_dir)
         docker_cmd.extend(["-v", f"{abs_work_dir}:/data:rw", "-w", "/data"])
+        for ro_path in read_only_paths or []:
+            abs_ro_path = os.path.abspath(ro_path)
+            if not os.path.exists(abs_ro_path):
+                continue
+            if not (abs_ro_path == abs_work_dir or abs_ro_path.startswith(abs_work_dir + os.sep)):
+                logger.warning("Skipping read-only mount outside work_dir: %s", abs_ro_path)
+                continue
+            rel_ro = os.path.relpath(abs_ro_path, abs_work_dir)
+            container_ro = "/data" if rel_ro == "." else f"/data/{rel_ro}"
+            docker_cmd.extend(["-v", f"{abs_ro_path}:{container_ro}:ro"])
 
     docker_cmd.extend([DOCKER_IMAGE, "python", "-"])
 
@@ -413,7 +425,260 @@ def create_safe_builtins() -> dict[str, Any]:
     return safe_builtins
 
 
-def _create_scoped_open(work_dir: str) -> Any:
+def _is_within_scoped_root(root: str, candidate: str) -> bool:
+    """Return True when candidate path is equal to or under root."""
+    return candidate == root or candidate.startswith(root + os.sep)
+
+
+def _resolve_scoped_path(work_dir: str, file: str | os.PathLike[str]) -> str:
+    """
+    Resolve a user-provided path under work_dir and reject escapes.
+
+    Resolves symlinks in existing path components to prevent symlink-based
+    escapes from bypassing scope checks.
+    """
+    raw = os.fspath(file)
+    joined = raw if os.path.isabs(raw) else os.path.join(work_dir, raw)
+    resolved = os.path.realpath(joined)
+    if not _is_within_scoped_root(work_dir, resolved):
+        raise PermissionError(f"Access denied: path '{raw}' is outside the working directory")
+    return resolved
+
+
+def _assert_path_writable(
+    resolved_path: str,
+    *,
+    raw_path: str,
+    read_only_paths: tuple[str, ...],
+) -> None:
+    """Reject writes into configured read-only paths."""
+    for ro_path in read_only_paths:
+        if _is_within_scoped_root(ro_path, resolved_path):
+            raise PermissionError(f"Access denied: path '{raw_path}' is read-only")
+
+
+def _create_scoped_path(
+    work_dir: str,
+    scoped_open: Any,
+    read_only_paths: list[str] | None = None,
+) -> type:
+    """
+    Create a Path-like class scoped to work_dir.
+
+    This prevents bypasses where pathlib operations write outside work_dir while
+    still allowing familiar Path ergonomics inside the sandbox.
+    """
+    abs_work_dir = os.path.realpath(os.path.abspath(work_dir))
+    normalized_read_only = tuple(os.path.realpath(os.path.abspath(p)) for p in (read_only_paths or []))
+
+    class ScopedPath:
+        __slots__ = ("__resolved",)
+
+        def __init__(self, *parts: Any) -> None:
+            if not parts:
+                parts = (".",)
+            normalized_parts: list[str] = []
+            for part in parts:
+                if isinstance(part, ScopedPath):
+                    normalized_parts.append(str(part.__resolved))
+                else:
+                    normalized_parts.append(os.fspath(part))
+            joined = pathlib.Path(*normalized_parts)
+            resolved = _resolve_scoped_path(abs_work_dir, os.fspath(joined))
+            self.__resolved = pathlib.Path(resolved)
+
+        @property
+        def name(self) -> str:
+            return self.__resolved.name
+
+        @property
+        def suffix(self) -> str:
+            return self.__resolved.suffix
+
+        @property
+        def stem(self) -> str:
+            return self.__resolved.stem
+
+        @property
+        def parent(self) -> Any:
+            return ScopedPath(str(self.__resolved.parent))
+
+        @property
+        def parts(self) -> tuple[str, ...]:
+            return self.__resolved.parts
+
+        @property
+        def resolved_path(self) -> str:
+            """Absolute, scoped path string."""
+            return str(self.__resolved)
+
+        def __fspath__(self) -> str:
+            return str(self.__resolved)
+
+        def __str__(self) -> str:
+            return str(self.__resolved)
+
+        def __repr__(self) -> str:
+            return f"Path('{self.__resolved}')"
+
+        def __eq__(self, other: object) -> bool:
+            if isinstance(other, ScopedPath):
+                return self.__resolved == other.__resolved
+            if isinstance(other, (str, os.PathLike)):
+                try:
+                    return str(self.__resolved) == _resolve_scoped_path(abs_work_dir, os.fspath(other))
+                except PermissionError:
+                    return False
+            return False
+
+        def __hash__(self) -> int:
+            return hash(str(self.__resolved))
+
+        def __truediv__(self, other: Any) -> Any:
+            return self.joinpath(other)
+
+        def joinpath(self, *others: Any) -> Any:
+            return ScopedPath(str(self.__resolved), *others)
+
+        @classmethod
+        def cwd(cls) -> Any:
+            return cls(".")
+
+        def resolve(self, strict: bool = False) -> Any:
+            if strict and not self.__resolved.exists():
+                raise FileNotFoundError(str(self.__resolved))
+            return ScopedPath(str(self.__resolved))
+
+        def exists(self) -> bool:
+            return self.__resolved.exists()
+
+        def is_file(self) -> bool:
+            return self.__resolved.is_file()
+
+        def is_dir(self) -> bool:
+            return self.__resolved.is_dir()
+
+        def open(self, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+            return scoped_open(str(self.__resolved), mode, *args, **kwargs)
+
+        def read_text(
+            self,
+            encoding: str | None = None,
+            errors: str | None = None,
+        ) -> str:
+            with self.open("r", encoding=encoding, errors=errors) as f:
+                return f.read()
+
+        def write_text(
+            self,
+            data: str,
+            encoding: str | None = None,
+            errors: str | None = None,
+            newline: str | None = None,
+        ) -> int:
+            with self.open("w", encoding=encoding, errors=errors, newline=newline) as f:
+                return f.write(data)
+
+        def read_bytes(self) -> bytes:
+            with self.open("rb") as f:
+                return f.read()
+
+        def write_bytes(self, data: bytes) -> int:
+            with self.open("wb") as f:
+                return f.write(data)
+
+        def mkdir(
+            self,
+            mode: int = 0o777,
+            parents: bool = False,
+            exist_ok: bool = False,
+        ) -> None:
+            _assert_path_writable(
+                str(self.__resolved),
+                raw_path=str(self),
+                read_only_paths=normalized_read_only,
+            )
+            self.__resolved.mkdir(mode=mode, parents=parents, exist_ok=exist_ok)
+
+        def touch(self, mode: int = 0o666, exist_ok: bool = True) -> None:
+            _assert_path_writable(
+                str(self.__resolved),
+                raw_path=str(self),
+                read_only_paths=normalized_read_only,
+            )
+            self.__resolved.touch(mode=mode, exist_ok=exist_ok)
+
+        def unlink(self, missing_ok: bool = False) -> None:
+            _assert_path_writable(
+                str(self.__resolved),
+                raw_path=str(self),
+                read_only_paths=normalized_read_only,
+            )
+            self.__resolved.unlink(missing_ok=missing_ok)
+
+        def rmdir(self) -> None:
+            _assert_path_writable(
+                str(self.__resolved),
+                raw_path=str(self),
+                read_only_paths=normalized_read_only,
+            )
+            self.__resolved.rmdir()
+
+        def rename(self, target: Any) -> Any:
+            target_path = ScopedPath(target)
+            _assert_path_writable(
+                str(self.__resolved),
+                raw_path=str(self),
+                read_only_paths=normalized_read_only,
+            )
+            _assert_path_writable(
+                str(target_path.__resolved),
+                raw_path=os.fspath(target),
+                read_only_paths=normalized_read_only,
+            )
+            renamed = self.__resolved.rename(str(target_path.__resolved))
+            return ScopedPath(str(renamed))
+
+        def replace(self, target: Any) -> Any:
+            target_path = ScopedPath(target)
+            _assert_path_writable(
+                str(self.__resolved),
+                raw_path=str(self),
+                read_only_paths=normalized_read_only,
+            )
+            _assert_path_writable(
+                str(target_path.__resolved),
+                raw_path=os.fspath(target),
+                read_only_paths=normalized_read_only,
+            )
+            replaced = self.__resolved.replace(str(target_path.__resolved))
+            return ScopedPath(str(replaced))
+
+        def iterdir(self) -> Any:
+            for child in self.__resolved.iterdir():
+                try:
+                    yield ScopedPath(str(child))
+                except PermissionError:
+                    continue
+
+        def glob(self, pattern: str) -> Any:
+            for child in self.__resolved.glob(pattern):
+                try:
+                    yield ScopedPath(str(child))
+                except PermissionError:
+                    continue
+
+        def rglob(self, pattern: str) -> Any:
+            for child in self.__resolved.rglob(pattern):
+                try:
+                    yield ScopedPath(str(child))
+                except PermissionError:
+                    continue
+
+    return ScopedPath
+
+
+def _create_scoped_open(work_dir: str, read_only_paths: list[str] | None = None) -> Any:
     """
     Create an open() function that restricts file access to work_dir.
 
@@ -422,18 +687,27 @@ def _create_scoped_open(work_dir: str) -> Any:
 
     Args:
         work_dir: The directory to scope file access to.
+        read_only_paths: Optional absolute paths under work_dir that cannot
+            be opened in write/append/update modes.
     """
-    abs_work_dir = os.path.abspath(work_dir)
+    abs_work_dir = os.path.realpath(os.path.abspath(work_dir))
+    normalized_read_only = tuple(os.path.realpath(os.path.abspath(p)) for p in (read_only_paths or []))
 
     def scoped_open(
-        file: str,
+        file: str | os.PathLike[str],
         mode: str = "r",
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        resolved = os.path.abspath(os.path.join(abs_work_dir, file))
-        if not resolved.startswith(abs_work_dir + os.sep) and resolved != abs_work_dir:
-            raise PermissionError(f"Access denied: path '{file}' is outside the working directory")
+        raw_file = os.fspath(file)
+        resolved = _resolve_scoped_path(abs_work_dir, raw_file)
+        write_intent = ("w" in mode) or ("a" in mode) or ("x" in mode) or ("+" in mode)
+        if write_intent:
+            _assert_path_writable(
+                resolved,
+                raw_path=raw_file,
+                read_only_paths=normalized_read_only,
+            )
         return open(resolved, mode, *args, **kwargs)  # noqa: SIM115
 
     return scoped_open
@@ -443,6 +717,7 @@ def _execute_blocklist_sandbox(
     code: str,
     extra_globals: dict[str, Any] | None = None,
     work_dir: str | None = None,
+    read_only_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Execute code using blocklist-based sandboxing (fallback method).
@@ -454,6 +729,8 @@ def _execute_blocklist_sandbox(
         code: Python source code to execute.
         extra_globals: Variables to inject into the execution namespace.
         work_dir: When set, allows scoped file access to this directory.
+        read_only_paths: Optional list of absolute paths under work_dir that
+            cannot be written.
     """
     # Capture stdout
     old_stdout = sys.stdout
@@ -470,7 +747,11 @@ def _execute_blocklist_sandbox(
             os.makedirs(abs_work_dir, exist_ok=True)
             os.chdir(abs_work_dir)
             # Restore open() scoped to work_dir
-            safe_builtins["open"] = _create_scoped_open(abs_work_dir)
+            scoped_open = _create_scoped_open(
+                abs_work_dir,
+                read_only_paths=read_only_paths,
+            )
+            safe_builtins["open"] = scoped_open
 
         exec_globals: dict[str, Any] = {
             "__builtins__": safe_builtins,
@@ -479,7 +760,11 @@ def _execute_blocklist_sandbox(
 
         if work_dir:
             exec_globals["csv"] = csv
-            exec_globals["Path"] = pathlib.Path
+            exec_globals["Path"] = _create_scoped_path(
+                abs_work_dir,
+                scoped_open,
+                read_only_paths=read_only_paths,
+            )
 
         # Add any extra globals
         if extra_globals:
@@ -505,6 +790,7 @@ def execute_python_sandboxed(
     code: str,
     extra_globals: dict[str, Any] | None = None,
     work_dir: str | None = None,
+    read_only_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Execute Python code in a sandboxed environment.
@@ -527,6 +813,7 @@ def execute_python_sandboxed(
         work_dir: When set, grants read/write file access scoped to this directory.
             In Docker mode, the directory is mounted as /data. In blocklist mode,
             open() is scoped to this directory. Not supported in Lambda mode.
+        read_only_paths: Optional paths under work_dir that are read-only.
 
     Returns:
         Dict with 'output' (stdout) and optionally 'error' if execution failed.
@@ -539,6 +826,15 @@ def execute_python_sandboxed(
         work_dir = os.path.abspath(work_dir)
         if any(work_dir == p or work_dir.startswith(p + os.sep) for p in SENSITIVE_PATH_PREFIXES):
             return {"error": f"work_dir points to a sensitive system path: {work_dir}"}
+    if read_only_paths and not work_dir:
+        return {"error": "read_only_paths requires work_dir"}
+
+    normalized_read_only_paths: list[str] = []
+    for ro_path in read_only_paths or []:
+        abs_ro_path = os.path.abspath(ro_path)
+        if work_dir and not (abs_ro_path == work_dir or abs_ro_path.startswith(work_dir + os.sep)):
+            return {"error": f"read_only_path is outside work_dir: {ro_path}"}
+        normalized_read_only_paths.append(abs_ro_path)
 
     # Check for blocked patterns (allow open() when work_dir is set)
     safety_error = check_code_safety(code, allow_file_io=bool(work_dir))
@@ -575,11 +871,21 @@ def execute_python_sandboxed(
 
     if use_docker:
         logger.debug("Executing code in Docker sandbox (work_dir=%s)", work_dir)
-        return _execute_in_docker(code, extra_globals, work_dir=work_dir)
+        return _execute_in_docker(
+            code,
+            extra_globals,
+            work_dir=work_dir,
+            read_only_paths=normalized_read_only_paths,
+        )
     else:
         if SANDBOX_MODE == "auto":
             logger.warning(
                 "Docker unavailable, using blocklist sandbox. "
                 "This is not secure against adversarial input."
             )
-        return _execute_blocklist_sandbox(code, extra_globals, work_dir=work_dir)
+        return _execute_blocklist_sandbox(
+            code,
+            extra_globals,
+            work_dir=work_dir,
+            read_only_paths=normalized_read_only_paths,
+        )

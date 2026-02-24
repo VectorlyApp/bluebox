@@ -13,26 +13,9 @@ from pathlib import Path
 import pytest
 
 from bluebox.agents.workspace import (
-    ArtifactRef,
     LocalAgentWorkspace,
     LocalWorkspace,
 )
-
-
-# ---------------------------------------------------------------------------
-# Helper: count user files (exclude meta/ directory)
-# ---------------------------------------------------------------------------
-
-def _user_file_count(result: dict) -> int:
-    """Count files reported by list_files, excluding meta/ internals."""
-    count = 0
-    for line in result["tree"].splitlines():
-        stripped = line.strip()
-        # Lines with a size suffix like "(123B)" are file entries
-        if "(" in stripped and ")" in stripped and "/" not in stripped.split("(")[0].strip():
-            # Skip meta/ files
-            count += 1
-    return result["total_files"]
 
 
 class TestBackwardCompatAlias:
@@ -42,17 +25,17 @@ class TestBackwardCompatAlias:
         assert LocalWorkspace is LocalAgentWorkspace
 
     def test_from_directory_path_constructor(self, tmp_path: Path) -> None:
-        ws_dir = tmp_path / 'resumed_workspace'
+        ws_dir = tmp_path / "resumed_workspace"
         ws_dir.mkdir()
 
         ws = LocalAgentWorkspace.from_directory_path(ws_dir)
 
         assert ws.root_path == ws_dir
-        assert (ws_dir / 'raw').is_dir()
-        assert (ws_dir / 'outputs').is_dir()
-        assert (ws_dir / 'context').is_dir()
-        assert (ws_dir / 'scratch').is_dir()
-        assert (ws_dir / 'meta').is_dir()
+        assert (ws_dir / "raw").is_dir()
+        assert (ws_dir / "output").is_dir()
+        assert (ws_dir / "context").is_dir()
+        assert (ws_dir / "scratch").is_dir()
+        assert (ws_dir / "meta").is_dir()
 
 
 class TestSaveFile:
@@ -77,7 +60,6 @@ class TestSaveFile:
         ws = LocalAgentWorkspace(str(tmp_path))
         r1 = ws.save_file("raw", "test.json", "first")
         r2 = ws.save_file("raw", "test.json", "second")
-        # First write lands at test.json, second gets deduplicated
         assert Path(r1["output_file"]).read_text() == "first"
         assert Path(r2["output_file"]).exists()
         assert Path(r2["output_file"]).read_text() == "second"
@@ -85,13 +67,33 @@ class TestSaveFile:
 
     def test_different_extensions(self, tmp_path: Path) -> None:
         ws = LocalAgentWorkspace(str(tmp_path))
-        result = ws.save_file("outputs", "result.md", "# Result")
+        result = ws.save_file("output", "result.md", "# Result")
         assert result["output_file"].endswith(".md")
 
     def test_no_s3_key_in_result(self, tmp_path: Path) -> None:
         ws = LocalAgentWorkspace(str(tmp_path))
         result = ws.save_file("raw", "test.json", "data")
         assert "output_file_s3_key" not in result
+
+    def test_rejects_filename_with_path_separator(self, tmp_path: Path) -> None:
+        ws = LocalAgentWorkspace(str(tmp_path))
+        with pytest.raises(ValueError, match="Invalid filename"):
+            ws.save_file("raw", "../escape.json", "data")
+
+    def test_rejects_filename_with_windows_separator(self, tmp_path: Path) -> None:
+        ws = LocalAgentWorkspace(str(tmp_path))
+        with pytest.raises(ValueError, match="Invalid filename"):
+            ws.save_file("raw", "..\\escape.json", "data")
+
+    def test_rejects_subdirectory_path_traversal(self, tmp_path: Path) -> None:
+        ws = LocalAgentWorkspace(str(tmp_path))
+        with pytest.raises(ValueError, match="Invalid subdirectory"):
+            ws.save_file("../evil", "x.txt", "data")
+
+    def test_rejects_absolute_subdirectory(self, tmp_path: Path) -> None:
+        ws = LocalAgentWorkspace(str(tmp_path))
+        with pytest.raises(ValueError, match="Invalid subdirectory"):
+            ws.save_file("/tmp/evil", "x.txt", "data")
 
 
 class TestSaveArtifact:
@@ -131,7 +133,7 @@ class TestSaveArtifact:
         r2 = ws.save_artifact("output", "b.csv", "a,b")
         r3 = ws.save_artifact("context", "c.md", "# C")
         assert r1.relative_path.startswith("raw/")
-        assert r2.relative_path.startswith("outputs/")
+        assert r2.relative_path.startswith("output/")
         assert r3.relative_path.startswith("context/")
 
     def test_binary_content(self, tmp_path: Path) -> None:
@@ -149,6 +151,16 @@ class TestSaveArtifact:
         ws = LocalAgentWorkspace(str(tmp_path))
         ref = ws.save_artifact("raw", "d.json", "{}", metadata={"key": "val"})
         assert ref.metadata == {"key": "val"}
+
+    def test_rejects_artifact_filename_with_path_separator(self, tmp_path: Path) -> None:
+        ws = LocalAgentWorkspace(str(tmp_path))
+        with pytest.raises(ValueError, match="Invalid filename"):
+            ws.save_artifact("raw", "../escape.json", "{}")
+
+    def test_rejects_artifact_filename_with_windows_separator(self, tmp_path: Path) -> None:
+        ws = LocalAgentWorkspace(str(tmp_path))
+        with pytest.raises(ValueError, match="Invalid filename"):
+            ws.save_artifact("raw", "..\\escape.json", "{}")
 
 
 class TestListArtifacts:
@@ -219,22 +231,22 @@ class TestReadFile:
 class TestListFiles:
     """Tests for LocalAgentWorkspace.list_files."""
 
-    def test_workspace_has_meta_files(self, tmp_path: Path) -> None:
+    def test_workspace_has_manifest_file(self, tmp_path: Path) -> None:
         ws = LocalAgentWorkspace(str(tmp_path))
         result = ws.list_files()
-        # meta/ contains run.json and counters.json
-        assert result["total_files"] >= 2
+        # meta/ contains manifest.jsonl (empty but touched)
+        assert result["total_files"] >= 1
         assert "tree" in result
 
     def test_lists_files_in_subdirs(self, tmp_path: Path) -> None:
         ws = LocalAgentWorkspace(str(tmp_path))
         (tmp_path / "raw" / "result.json").write_text("{}")
-        (tmp_path / "outputs" / "out.csv").write_text("a,b")
+        (tmp_path / "output" / "out.csv").write_text("a,b")
         result = ws.list_files()
         assert "result.json" in result["tree"]
         assert "out.csv" in result["tree"]
-        # 2 user files + 2 meta files
-        assert result["total_files"] >= 4
+        # 2 user files + manifest.jsonl
+        assert result["total_files"] >= 3
 
 
 class TestSummarizeForPrompt:
@@ -256,7 +268,7 @@ class TestSummarizeForPrompt:
         summary = ws.generate_summary(max_artifacts=3)
         assert "Artifacts: 3 total (raw: 1, output: 1, context: 1)" in summary
         assert "a_000001 [raw] raw/a.json" in summary
-        assert "a_000002 [output] outputs/b.csv" in summary
+        assert "a_000002 [output] output/b.csv" in summary
         assert "a_000003 [context] context/c.md" in summary
 
     def test_summary_respects_max_artifacts(self, tmp_path: Path) -> None:
@@ -313,26 +325,26 @@ class TestSnapshotAndDiffOutputs:
     def test_detects_new_file(self, tmp_path: Path) -> None:
         ws = LocalAgentWorkspace(str(tmp_path))
         before = ws.snapshot_outputs()
-        (tmp_path / "outputs" / "new.csv").write_text("data")
+        (tmp_path / "output" / "new.csv").write_text("data")
         changed = ws.diff_outputs(before)
         assert len(changed) == 1
         assert "new.csv" in changed[0]
 
     def test_detects_modified_file(self, tmp_path: Path) -> None:
         ws = LocalAgentWorkspace(str(tmp_path))
-        outputs = tmp_path / "outputs"
-        f = outputs / "existing.csv"
+        output = tmp_path / "output"
+        f = output / "existing.csv"
         f.write_text("old")
         before = ws.snapshot_outputs()
-        time.sleep(0.05)  # Ensure mtime changes
+        time.sleep(0.05)
         f.write_text("new")
         changed = ws.diff_outputs(before)
         assert len(changed) == 1
 
     def test_no_changes(self, tmp_path: Path) -> None:
         ws = LocalAgentWorkspace(str(tmp_path))
-        outputs = tmp_path / "outputs"
-        (outputs / "stable.csv").write_text("data")
+        output = tmp_path / "output"
+        (output / "stable.csv").write_text("data")
         before = ws.snapshot_outputs()
         changed = ws.diff_outputs(before)
         assert changed == []
@@ -350,31 +362,31 @@ class TestSnapshotPaths:
 
     def test_diff_detects_created(self, tmp_path: Path) -> None:
         ws = LocalAgentWorkspace(str(tmp_path))
-        before = ws.snapshot_paths(["outputs"])
-        (tmp_path / "outputs" / "new.csv").write_text("x")
-        after = ws.snapshot_paths(["outputs"])
+        before = ws.snapshot_paths(["output"])
+        (tmp_path / "output" / "new.csv").write_text("x")
+        after = ws.snapshot_paths(["output"])
         delta = ws.diff_snapshot(before, after)
         assert len(delta.created) == 1
-        assert delta.created[0].relative_path == "outputs/new.csv"
+        assert delta.created[0].relative_path == "output/new.csv"
 
     def test_diff_detects_deleted(self, tmp_path: Path) -> None:
         ws = LocalAgentWorkspace(str(tmp_path))
-        f = tmp_path / "outputs" / "old.csv"
+        f = tmp_path / "output" / "old.csv"
         f.write_text("x")
-        before = ws.snapshot_paths(["outputs"])
+        before = ws.snapshot_paths(["output"])
         f.unlink()
-        after = ws.snapshot_paths(["outputs"])
+        after = ws.snapshot_paths(["output"])
         delta = ws.diff_snapshot(before, after)
         assert len(delta.deleted) == 1
 
     def test_diff_detects_modified(self, tmp_path: Path) -> None:
         ws = LocalAgentWorkspace(str(tmp_path))
-        f = tmp_path / "outputs" / "data.csv"
+        f = tmp_path / "output" / "data.csv"
         f.write_text("old")
-        before = ws.snapshot_paths(["outputs"])
+        before = ws.snapshot_paths(["output"])
         time.sleep(0.05)
         f.write_text("new-longer")
-        after = ws.snapshot_paths(["outputs"])
+        after = ws.snapshot_paths(["output"])
         delta = ws.diff_snapshot(before, after)
         assert len(delta.modified) == 1
 
@@ -385,10 +397,11 @@ class TestEnsureDirs:
     def test_creates_all_directories(self, tmp_path: Path) -> None:
         ws = LocalAgentWorkspace(str(tmp_path / "new_workspace"))
         assert (tmp_path / "new_workspace" / "raw").is_dir()
-        assert (tmp_path / "new_workspace" / "outputs").is_dir()
+        assert (tmp_path / "new_workspace" / "output").is_dir()
         assert (tmp_path / "new_workspace" / "context").is_dir()
         assert (tmp_path / "new_workspace" / "scratch").is_dir()
         assert (tmp_path / "new_workspace" / "meta").is_dir()
+        assert (tmp_path / "new_workspace" / "meta" / "manifest.jsonl").is_file()
 
     def test_idempotent(self, tmp_path: Path) -> None:
         ws = LocalAgentWorkspace(str(tmp_path))
@@ -415,30 +428,10 @@ class TestCleanup:
         assert ws_dir.exists()
 
 
-class TestRunMetadata:
-    """Tests for run metadata initialization."""
+class TestArtifactIndexResume:
+    """Tests for manifest-based artifact index resume across instances."""
 
-    def test_run_json_created(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path), agent_id="test-agent")
-        run_path = tmp_path / "meta" / "run.json"
-        assert run_path.exists()
-        data = json.loads(run_path.read_text())
-        assert data["agent_id"] == "test-agent"
-        assert data["run_id"].startswith("run_")
-
-    def test_run_json_not_overwritten(self, tmp_path: Path) -> None:
-        ws1 = LocalAgentWorkspace(str(tmp_path), agent_id="first")
-        run1 = json.loads((tmp_path / "meta" / "run.json").read_text())
-        ws2 = LocalAgentWorkspace(str(tmp_path), agent_id="second")
-        run2 = json.loads((tmp_path / "meta" / "run.json").read_text())
-        assert run1["run_id"] == run2["run_id"]
-        assert run2["agent_id"] == "first"
-
-
-class TestCounterPersistence:
-    """Tests for artifact counter persistence across instances."""
-
-    def test_counter_survives_restart(self, tmp_path: Path) -> None:
+    def test_index_survives_restart(self, tmp_path: Path) -> None:
         ws1 = LocalAgentWorkspace(str(tmp_path))
         ws1.save_artifact("raw", "a.json", "{}")
         ws1.save_artifact("raw", "b.json", "{}")

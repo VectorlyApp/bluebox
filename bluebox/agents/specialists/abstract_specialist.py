@@ -91,6 +91,8 @@ class AbstractSpecialist(AbstractAgent):
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
         workspace: AgentWorkspace | None = None,
+        allow_code_execution: bool = True,
+        code_execution_globals: dict[str, Any] | None = None,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -106,6 +108,8 @@ class AbstractSpecialist(AbstractAgent):
         Args:
             emit_message_callable: Callback to emit messages to the host.
             workspace: Optional workspace for file I/O. Defaults to LocalWorkspace.
+            allow_code_execution: Whether to expose execute_python tool.
+            code_execution_globals: Globals available to execute_python.
             persist_chat_callable: Optional callback to persist Chat objects.
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
@@ -140,6 +144,8 @@ class AbstractSpecialist(AbstractAgent):
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
+            allow_code_execution=allow_code_execution,
+            code_execution_globals=code_execution_globals,
         )
 
     def _add_chat(

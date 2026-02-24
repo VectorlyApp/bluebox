@@ -44,10 +44,7 @@ from bluebox.data_models.llms.interaction import (
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.routine.routine import RoutineExecutionRequest, RoutineInfo
 from bluebox.utils.code_execution_sandbox import (
-    BLOCKED_MODULES,
-    BLOCKED_PATTERNS,
     execute_python_sandboxed,
-    get_active_sandbox_mode,
     get_workaround_for_error,
 )
 from bluebox.utils.llm_utils import token_optimized
@@ -87,7 +84,7 @@ class BlueBoxAgent(AbstractAgent):
         ## Workspace
         Your workspace has the following structure:
         - `raw/` — routine result JSON files, saved automatically when routines execute
-        - `outputs/` — write all your generated output files here (CSV, JSON, JSONL, etc.)
+        - `output/` — write all your generated output files here (CSV, JSON, JSONL, etc.)
         - `context/` — context files (JSON + Markdown) saved by `generate_context`, used for session replay
 
         **Pre-loaded variables in `run_python_code`:**
@@ -98,11 +95,11 @@ class BlueBoxAgent(AbstractAgent):
         - `open()` — scoped to the workspace directory for safe file I/O
 
         **Writing output files:**
-        - Write to the outputs/ subdirectory: `with open("outputs/results.csv", "w") as f: ...`
+        - Write to the output/ subdirectory: `with open("output/results.csv", "w") as f: ...`
 
         **Inspecting files:**
         - Use `list_workspace_files` to see all files in the workspace
-        - Use `read_workspace_file` to read any file by relative path (e.g. "raw/25-01-15-143052-routine_result_1.json" or "outputs/results.csv"). Use optional start_line/end_line for large files.
+        - Use `read_workspace_file` to read any file by relative path (e.g. "raw/25-01-15-143052-routine_result_1.json" or "output/results.csv"). Use optional start_line/end_line for large files.
 
         ## Routine Result Structure
         Each entry in `routine_results` is the raw API response JSON saved by `execute_routines_in_parallel`. The structure is:
@@ -201,11 +198,8 @@ class BlueBoxAgent(AbstractAgent):
             existing_chats=existing_chats,
             documentation_data_loader=None,
             on_llm_response=on_llm_response,
+            allow_code_execution=True,
         )
-
-        # Detect sandbox mode once (work_dir is always set for BlueBoxAgent)
-        self._sandbox_mode = get_active_sandbox_mode(work_dir_set=True)
-        self._is_blocklist_mode = self._sandbox_mode == "blocklist"
 
         logger.debug(
             "BlueBoxAgent initialized with model: %s, chat_thread_id: %s, sandbox_mode: %s, has_context: %s",
@@ -238,40 +232,10 @@ class BlueBoxAgent(AbstractAgent):
         now = datetime.now()
         time_info = f"\n\n## Current Time\n{now.strftime('%Y-%m-%d %H:%M:%S %Z').strip()}"
         prompt = self.SYSTEM_PROMPT + time_info
-        if self._is_blocklist_mode:
-            prompt += self._get_blocklist_sandbox_prompt_section()
+        prompt += self._generate_code_execution_prompt()
         if self._agent_context:
             prompt += self._get_context_prompt_section()
         return prompt
-
-    def _get_blocklist_sandbox_prompt_section(self) -> str:
-        """Build prompt section explaining blocklist sandbox restrictions."""
-        blocked_modules_str = ", ".join(sorted(BLOCKED_MODULES))
-        # Exclude open( from blocked patterns list since it IS available with workspace
-        blocked_patterns_str = ", ".join(
-            f"`{p}`" for p, _ in BLOCKED_PATTERNS if p != "open("
-        )
-
-        return dedent(f"""
-
-            ## Sandbox Restrictions (IMPORTANT — read before writing any Python code)
-            You are running in restricted sandbox mode. Your `run_python_code` calls have strict restrictions.
-
-            **Blocked imports** — do NOT import any of these modules:
-            {blocked_modules_str}
-
-            **Blocked code patterns** — do NOT use any of these in your code:
-            {blocked_patterns_str}
-
-            **Safe imports you CAN use:**
-            `collections`, `re`, `datetime`, `math`, `itertools`, `functools`, `operator`, `string`, `textwrap`, `decimal`, `fractions`, `statistics`, `urllib.parse`, `hashlib`, `hmac`, `base64`, `copy`, `pprint`, `dataclasses`, `enum`, `typing`
-
-            **Key rules to avoid errors:**
-            - Do NOT `import os`, `import pathlib`, `import sys`, or any blocked module
-            - `Path` is already pre-loaded — use it directly, do NOT `import pathlib`
-            - `open()` is already pre-loaded — use it directly for all file I/O
-            - Do NOT use `getattr()` — use dict access: `obj["key"]` or `obj.get("key")`
-        """).rstrip()
 
     ## Routine cache
 
@@ -632,13 +596,13 @@ class BlueBoxAgent(AbstractAgent):
             logger.error("Browser agent API call failed: %s", e)
             return {"error": f"Browser agent request failed: {e}"}
 
-        # Save final_result as a markdown file in outputs/
+        # Save final_result as a markdown file in output/
         final_result = result.get("final_result")
         if final_result:
             try:
                 ts = datetime.now().strftime("%y-%m-%d-%H%M%S")
                 save_info = self._workspace.save_file(
-                    "outputs", f"{ts}-browser_agent.md", final_result,
+                    "output", f"{ts}-browser_agent.md", final_result,
                 )
                 result.update(save_info)
             except Exception as e:
@@ -719,8 +683,8 @@ class BlueBoxAgent(AbstractAgent):
         Pre-loaded variables: `routine_results` (list of dicts from all JSON files
         in the raw/ directory), `json`, `csv`, and `Path` (pathlib.Path).
 
-        Write output files to the outputs/ subdirectory:
-            with open("outputs/results.csv", "w") as f: ...
+        Write output files to the output/ subdirectory:
+            with open("output/results.csv", "w") as f: ...
 
         IMPORTANT: Always include print() statements for debugging — print data shapes,
         key names, row counts, sample values, etc. If the code fails, use the output
@@ -729,14 +693,14 @@ class BlueBoxAgent(AbstractAgent):
         Args:
             code: Python code to execute. Has full file access to the workspace.
                 Pre-loaded: routine_results (list[dict]), json, csv, Path.
-                Write output files to outputs/ subdirectory. Always add print()
+                Write output files to output/ subdirectory. Always add print()
                 statements for debugging.
         """
         # Ensure directories exist
         self._workspace.ensure_dirs()
         work_dir = str(self._workspace.root_path.resolve())
 
-        # Snapshot files in outputs/ before execution
+        # Snapshot files in output/ before execution
         files_before = self._workspace.snapshot_outputs()
 
         # Load all JSON files from raw/ as routine_results
@@ -747,9 +711,13 @@ class BlueBoxAgent(AbstractAgent):
             code,
             extra_globals={"routine_results": routine_results},
             work_dir=work_dir,
+            read_only_paths=[
+                str((self._workspace.root_path / "raw").resolve()),
+                str((self._workspace.root_path / "meta").resolve()),
+            ],
         )
 
-        # Diff files in outputs/ to find new/modified ones
+        # Diff files in output/ to find new/modified ones
         files_created = self._workspace.diff_outputs(files_before)
 
         # Build response
@@ -784,8 +752,8 @@ class BlueBoxAgent(AbstractAgent):
         elif "error" not in sandbox_result:
             result["output"] = result.get("output", "") or "Code ran but produced no files."
             result["_hint"] = (
-                "No files were created in outputs/. Make sure your code writes to "
-                "outputs/ (e.g. open('outputs/results.csv', 'w')). Fix and rerun."
+                "No files were created in output/. Make sure your code writes to "
+                "output/ (e.g. open('output/results.csv', 'w')). Fix and rerun."
             )
 
         return result
@@ -797,7 +765,7 @@ class BlueBoxAgent(AbstractAgent):
         List all files in the workspace directory as a tree.
 
         Shows the full directory structure including raw/ (routine results)
-        and outputs/ (generated files).
+        and output/ (generated files).
         """
         return self._workspace.list_files()
 
@@ -816,7 +784,7 @@ class BlueBoxAgent(AbstractAgent):
 
         Args:
             path: Relative path within the workspace (e.g. "raw/routine_results_2024.json"
-                or "outputs/results.csv").
+                or "output/results.csv").
             start_line: Optional 1-based start line number. Omit to read from the beginning.
             end_line: Optional 1-based end line number (inclusive). Omit to read to the end.
         """
@@ -848,7 +816,7 @@ class BlueBoxAgent(AbstractAgent):
             "CRITICAL: routines_used must include every routine that was executed with exact "
             "routine_id, routine_name, and parameter values.\n"
             "Include the final working python_code snippet if post-processing was done.\n"
-            "Include output_files with relative paths of files written to outputs/.\n"
+            "Include output_files with relative paths of files written to output/.\n"
         )
         if raw_routines:
             system_prompt += "\nRoutines found in execution results:\n"

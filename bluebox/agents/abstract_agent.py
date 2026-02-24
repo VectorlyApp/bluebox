@@ -48,7 +48,13 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader, FileType
 from bluebox.llms.llm_client import LLMClient
 from bluebox.llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
-from bluebox.utils.code_execution_sandbox import execute_python_sandboxed, get_workaround_for_error
+from bluebox.utils.code_execution_sandbox import (
+    BLOCKED_MODULES,
+    BLOCKED_PATTERNS,
+    execute_python_sandboxed,
+    get_active_sandbox_mode,
+    get_workaround_for_error,
+)
 from bluebox.utils.data_utils import format_bytes
 from bluebox.utils.llm_utils import token_optimized as token_optimized_decorator
 from bluebox.utils.logger import get_logger
@@ -227,7 +233,7 @@ class AbstractAgent(ABC):
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
         on_llm_response: Callable[[LLMChatResponse], None] | None = None,
-        include_code_execution: bool = False,
+        allow_code_execution: bool = False,
         code_execution_globals: dict[str, Any] | None = None,
     ) -> None:
         """
@@ -244,14 +250,14 @@ class AbstractAgent(ABC):
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
             on_llm_response: Optional callback invoked after each LLM call with the response (for token tracking).
-            include_code_execution: Whether to expose the generic execute_python tool.
+            allow_code_execution: Whether to expose the generic execute_python tool.
             code_execution_globals: Globals injected into execute_python sandbox runs.
-                Must be empty when include_code_execution is False.
+                Must be empty when allow_code_execution is False.
         """
         normalized_globals = dict(code_execution_globals or {})
-        if not include_code_execution and normalized_globals:
+        if not allow_code_execution and normalized_globals:
             raise ValueError(
-                "code_execution_globals must be empty when include_code_execution is False",
+                "code_execution_globals must be empty when allow_code_execution is False",
             )
 
         self._emit_message_callable = emit_message_callable
@@ -260,8 +266,9 @@ class AbstractAgent(ABC):
         self._stream_chunk_callable = stream_chunk_callable
         self._documentation_data_loader = documentation_data_loader
         self._on_llm_response = on_llm_response
-        self._include_code_execution = include_code_execution
-        self._code_execution_globals = normalized_globals if include_code_execution else {}
+        self._allow_code_execution = allow_code_execution
+        self._code_execution_globals = normalized_globals if allow_code_execution else {}
+        self._sandbox_mode = get_active_sandbox_mode(work_dir_set=True) if allow_code_execution else "blocklist"
         self._previous_response_id: str | None = None
         self._response_id_to_chat_index: dict[str, int] = {}
 
@@ -288,7 +295,7 @@ class AbstractAgent(ABC):
                 self._chats[chat.id] = chat
 
     @agent_tool(
-        availability=lambda self: self._include_code_execution,
+        availability=lambda self: self._allow_code_execution,
         persist=ToolResultPersistMode.OVERFLOW,
     )
     def _execute_python(self, code: str) -> dict[str, Any]:
@@ -307,6 +314,10 @@ class AbstractAgent(ABC):
             code=code,
             extra_globals=self._code_execution_globals,
             work_dir=str(self._workspace.root_path.resolve()),
+            read_only_paths=[
+                str((self._workspace.root_path / "raw").resolve()),
+                str((self._workspace.root_path / "meta").resolve()),
+            ],
         )
         if "error" in sandbox_result:
             workaround = get_workaround_for_error(sandbox_result["error"])
@@ -316,6 +327,66 @@ class AbstractAgent(ABC):
                     "Fix the code and call execute_python again."
                 )
         return sandbox_result
+
+    def _generate_code_execution_prompt(self) -> str:
+        """Generate a prompt section describing the code execution environment.
+
+        Covers sandbox mode (blocklist restrictions vs docker/lambda permissiveness)
+        and any pre-loaded globals available in the sandbox.
+
+        Subclasses can override to add domain-specific guidance, but should call
+        super() to include the base sandbox information.
+        """
+        if not self._allow_code_execution:
+            return ""
+
+        lines: list[str] = ["\n## Code Execution Environment"]
+
+        # Globals section
+        if self._code_execution_globals:
+            global_names = ", ".join(f"`{k}`" for k in sorted(self._code_execution_globals))
+            lines.append(
+                f"\nPre-loaded globals available in `execute_python`: {global_names}."
+                "\nUse these directly — do NOT re-import or re-define them."
+            )
+
+        # Sandbox-specific guidance
+        if self._sandbox_mode == "blocklist":
+            blocked_modules_str = ", ".join(sorted(BLOCKED_MODULES))
+            blocked_patterns_str = ", ".join(
+                f"`{p}`" for p, _ in BLOCKED_PATTERNS if p != "open("
+            )
+            lines.append(
+                "\n### Sandbox Restrictions (IMPORTANT — read before writing any Python code)"
+                "\nYou are running in restricted sandbox mode."
+                "\n"
+                "\n**Blocked imports** — do NOT import any of these modules:"
+                f"\n{blocked_modules_str}"
+                "\n"
+                "\n**Blocked code patterns** — do NOT use any of these in your code:"
+                f"\n{blocked_patterns_str}"
+                "\n"
+                "\n**Safe imports you CAN use:**"
+                "\n`collections`, `re`, `datetime`, `math`, `itertools`, `functools`,"
+                " `operator`, `string`, `textwrap`, `decimal`, `fractions`,"
+                " `statistics`, `urllib.parse`, `hashlib`, `hmac`, `base64`,"
+                " `copy`, `pprint`, `dataclasses`, `enum`, `typing`"
+                "\n"
+                "\n**Key rules to avoid errors:**"
+                "\n- Do NOT `import os`, `import pathlib`, `import sys`, or any blocked module"
+                "\n- `Path` is already pre-loaded — use it directly, do NOT `import pathlib`"
+                "\n- `open()` is already pre-loaded — use it directly for all file I/O"
+                "\n- Do NOT use `getattr()` — use dict access: `obj[\"key\"]` or `obj.get(\"key\")`"
+            )
+        else:
+            # Docker or Lambda — more permissive
+            lines.append(
+                f"\nSandbox mode: **{self._sandbox_mode}** (full Python environment available)."
+                "\nYou have access to the standard library and common packages."
+                "\nFile I/O is scoped to the workspace directory."
+            )
+
+        return "\n".join(lines)
 
     def _serialize_tool_result(self, tool_result: Any) -> tuple[str, str]:
         try:

@@ -73,7 +73,7 @@ class BlueBoxAgentContext(BaseModel):
     )
     output_files: list[str] = Field(
         default_factory=list,
-        description="Relative paths of output files written to outputs/",
+        description="Relative paths of output files written to output/",
     )
     output_description: str = Field(
         ...,
