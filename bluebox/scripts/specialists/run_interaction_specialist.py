@@ -16,6 +16,7 @@ Layout:
 Usage:
     bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl
     bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl --model gpt-5.2
+    bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl --workspace-dir ./bluebox_workspace/interaction_specialist
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from textual import work
 from textual.widgets import RichLog
 
 from bluebox.agents.specialists.interaction_specialist import InteractionSpecialist
+from bluebox.agents.workspace import LocalWorkspace
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.llms.data_loaders.interactions_data_loader import InteractionsDataLoader
@@ -79,10 +81,16 @@ class InteractionSpecialistTUI(AbstractAgentTUI):
         llm_model: LLMModel,
         interaction_store: InteractionsDataLoader,
         data_path: str = "",
+        workspace_dir: str | None = None,
     ) -> None:
-        super().__init__(llm_model)
+        super().__init__(llm_model, working_dir=workspace_dir)
         self._interaction_store = interaction_store
         self._data_path = data_path
+        self._workspace = LocalWorkspace.from_directory_path(
+            workspace_dir or "./bluebox_workspace/interaction_specialist",
+        )
+        if self._data_path:
+            self._workspace.attach_input_file("interaction_events", self._data_path)
 
     # -- Abstract implementations ----------------------------------------------
 
@@ -92,6 +100,7 @@ class InteractionSpecialistTUI(AbstractAgentTUI):
             stream_chunk_callable=self._handle_stream_chunk,
             interaction_data_loader=self._interaction_store,
             llm_model=self._llm_model,
+            workspace=self._workspace,
         )
 
     def _print_welcome(self) -> None:
@@ -265,6 +274,12 @@ def main() -> None:
     add_model_argument(parser)
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")
+    parser.add_argument(
+        "--workspace-dir",
+        type=str,
+        default="./bluebox_workspace/interaction_specialist",
+        help="Workspace directory for tool results, artifacts, and code execution files.",
+    )
     args = parser.parse_args()
 
     console = Console()
@@ -295,6 +310,7 @@ def main() -> None:
         llm_model=llm_model,
         interaction_store=interaction_store,
         data_path=str(jsonl_path),
+        workspace_dir=args.workspace_dir,
     )
     app.run()
 

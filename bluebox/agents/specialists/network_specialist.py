@@ -129,7 +129,6 @@ class NetworkSpecialist(AbstractSpecialist):
             workspace: Optional workspace for file I/O.
         """
         self._network_data_loader = network_data_loader
-        entries = [e.model_dump() for e in self._network_data_loader.entries]
 
         super().__init__(
             emit_message_callable=emit_message_callable,
@@ -143,8 +142,8 @@ class NetworkSpecialist(AbstractSpecialist):
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
             allow_code_execution=True,
-            code_execution_globals={"entries": entries},
         )
+
         logger.debug(
             "NetworkSpecialist initialized with model: %s, chat_thread_id: %s, entries: %d",
             llm_model,
@@ -196,7 +195,13 @@ class NetworkSpecialist(AbstractSpecialist):
         else:
             host_context = ""
 
-        return self.SYSTEM_PROMPT + stats_context + host_context + urls_context
+        return (
+            self.SYSTEM_PROMPT
+            + stats_context
+            + host_context
+            + urls_context
+            + self._generate_code_execution_prompt()
+        )
 
     def _get_autonomous_system_prompt(self) -> str:
         """Get system prompt for autonomous mode with traffic context."""
@@ -220,6 +225,7 @@ class NetworkSpecialist(AbstractSpecialist):
             self.AUTONOMOUS_SYSTEM_PROMPT
             + stats_context
             + urls_context
+            + self._generate_code_execution_prompt()
             + self._get_output_schema_prompt_section()
             + self._get_urgency_notice()
         )
@@ -242,8 +248,11 @@ class NetworkSpecialist(AbstractSpecialist):
         )
 
     def _get_workspace_usage_prompt_section(self) -> str:
-        """Workspace guidance is embedded directly in specialist system prompts."""
-        return ""
+        """Keep embedded workspace guidance and append dynamic mounted-file listing."""
+        mounted_section = self._get_mounted_inputs_prompt_section()
+        if not mounted_section:
+            return ""
+        return f"\n\n{mounted_section}"
 
     ## Tool handlers
 

@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from bluebox.agents.abstract_agent import AgentCard, agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
+from bluebox.agents.workspace import AgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -136,12 +137,14 @@ class InteractionSpecialist(AbstractSpecialist):
         run_mode: RunMode = RunMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
+        workspace: AgentWorkspace | None = None,
     ) -> None:
         self._interaction_data_loader = interaction_data_loader
         self._dom_data_loader = dom_data_loader
 
         super().__init__(
             emit_message_callable=emit_message_callable,
+            workspace=workspace,
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,

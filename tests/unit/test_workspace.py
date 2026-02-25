@@ -6,7 +6,9 @@ Unit tests for AgentWorkspace / LocalAgentWorkspace.
 
 from __future__ import annotations
 
+import errno
 import json
+import os
 import time
 from pathlib import Path
 
@@ -179,6 +181,76 @@ class TestListArtifacts:
         assert len(ws.list_artifacts("output")) == 1
         assert len(ws.list_artifacts("context")) == 0
         assert len(ws.list_artifacts()) == 3
+
+
+class TestMountedInputs:
+    """Tests for attach_input_file/list_mounted_inputs."""
+
+    def test_attach_input_file_creates_hardlink(self, tmp_path: Path) -> None:
+        ws = LocalAgentWorkspace(str(tmp_path))
+        source = tmp_path / "source.jsonl"
+        source.write_text('{"id": 1}\n')
+
+        ref = ws.attach_input_file("network_events", source)
+        target = tmp_path / ref.relative_path
+
+        assert target.exists()
+        assert ref.relative_path == "raw/network_events.jsonl"
+        assert target.read_text() == source.read_text()
+
+        src_stat = source.stat()
+        tgt_stat = target.stat()
+        assert src_stat.st_ino == tgt_stat.st_ino
+        assert src_stat.st_dev == tgt_stat.st_dev
+
+    def test_attach_input_file_rejects_invalid_name(self, tmp_path: Path) -> None:
+        ws = LocalAgentWorkspace(str(tmp_path))
+        source = tmp_path / "source.jsonl"
+        source.write_text("{}\n")
+
+        with pytest.raises(ValueError, match="Invalid mount name"):
+            ws.attach_input_file("../escape", source)
+
+    def test_attach_input_file_rejects_missing_source(self, tmp_path: Path) -> None:
+        ws = LocalAgentWorkspace(str(tmp_path))
+        with pytest.raises(FileNotFoundError):
+            ws.attach_input_file("network_events", tmp_path / "missing.jsonl")
+
+    def test_attach_input_file_rejects_cross_filesystem(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        ws = LocalAgentWorkspace(str(tmp_path))
+        source = tmp_path / "source.jsonl"
+        source.write_text("{}\n")
+
+        def _raise_exdev(src: str | Path, dst: str | Path) -> None:
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+        monkeypatch.setattr(os, "link", _raise_exdev)
+
+        with pytest.raises(ValueError, match="Cannot hardlink across filesystems"):
+            ws.attach_input_file("network_events", source)
+
+    def test_attach_input_file_rejects_conflicting_existing_target(self, tmp_path: Path) -> None:
+        ws = LocalAgentWorkspace(str(tmp_path))
+        source = tmp_path / "source.jsonl"
+        source.write_text('{"id": 1}\n')
+
+        target = tmp_path / "raw" / "network_events.jsonl"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text('{"id": 999}\n')
+
+        with pytest.raises(ValueError, match="already exists with different inode"):
+            ws.attach_input_file("network_events", source)
+
+    def test_list_mounted_inputs_reads_manifest(self, tmp_path: Path) -> None:
+        ws = LocalAgentWorkspace(str(tmp_path))
+        source = tmp_path / "source.jsonl"
+        source.write_text('{"id": 1}\n')
+        created = ws.attach_input_file("network_events", source)
+
+        mounted = ws.list_mounted_inputs()
+        assert len(mounted) == 1
+        assert mounted[0].mount_id == created.mount_id
+        assert mounted[0].relative_path == "raw/network_events.jsonl"
 
 
 class TestReadArtifact:

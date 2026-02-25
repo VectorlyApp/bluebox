@@ -16,6 +16,7 @@ Layout:
 Usage:
     bluebox-value-trace-resolver-specialist --network-jsonl ./cdp_captures/network/events.jsonl
     bluebox-value-trace-resolver-specialist --storage-jsonl ./cdp_captures/storage/events.jsonl
+    bluebox-value-trace-resolver-specialist --workspace-dir ./bluebox_workspace/value_trace_resolver_specialist
     bluebox-value-trace-resolver-specialist \
         --network-jsonl ./cdp_captures/network/events.jsonl \
         --storage-jsonl ./cdp_captures/storage/events.jsonl \
@@ -39,6 +40,7 @@ from textual import work
 from textual.widgets import RichLog
 
 from bluebox.agents.specialists.value_trace_resolver_specialist import ValueTraceResolverSpecialist
+from bluebox.agents.workspace import LocalWorkspace
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
@@ -86,11 +88,27 @@ class ValueTraceResolverTUI(AbstractAgentTUI):
         network_store: NetworkDataLoader | None = None,
         storage_store: StorageDataLoader | None = None,
         window_store: WindowPropertyDataLoader | None = None,
+        network_jsonl_path: str | None = None,
+        storage_jsonl_path: str | None = None,
+        window_props_jsonl_path: str | None = None,
+        workspace_dir: str | None = None,
     ) -> None:
-        super().__init__(llm_model)
+        super().__init__(llm_model, working_dir=workspace_dir)
         self._network_store = network_store
         self._storage_store = storage_store
         self._window_store = window_store
+        self._network_jsonl_path = network_jsonl_path
+        self._storage_jsonl_path = storage_jsonl_path
+        self._window_props_jsonl_path = window_props_jsonl_path
+        self._workspace = LocalWorkspace.from_directory_path(
+            workspace_dir or "./bluebox_workspace/value_trace_resolver_specialist",
+        )
+        if self._network_jsonl_path:
+            self._workspace.attach_input_file("network_events", self._network_jsonl_path)
+        if self._storage_jsonl_path:
+            self._workspace.attach_input_file("storage_events", self._storage_jsonl_path)
+        if self._window_props_jsonl_path:
+            self._workspace.attach_input_file("window_property_events", self._window_props_jsonl_path)
 
     # -- Abstract implementations ----------------------------------------------
 
@@ -102,6 +120,7 @@ class ValueTraceResolverTUI(AbstractAgentTUI):
             storage_data_loader=self._storage_store,
             window_property_data_loader=self._window_store,
             llm_model=self._llm_model,
+            workspace=self._workspace,
         )
 
     def _print_welcome(self) -> None:
@@ -306,6 +325,12 @@ def main() -> None:
         help="Path to JSONL file containing WindowPropertyEvent entries",
     )
     add_model_argument(parser)
+    parser.add_argument(
+        "--workspace-dir",
+        type=str,
+        default="./bluebox_workspace/value_trace_resolver_specialist",
+        help="Workspace directory for tool results, artifacts, and code execution files.",
+    )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")
     args = parser.parse_args()
@@ -373,6 +398,10 @@ def main() -> None:
         network_store=network_store,
         storage_store=storage_store,
         window_store=window_store,
+        network_jsonl_path=args.network_jsonl,
+        storage_jsonl_path=args.storage_jsonl,
+        window_props_jsonl_path=args.window_props_jsonl,
+        workspace_dir=args.workspace_dir,
     )
     app.run()
 

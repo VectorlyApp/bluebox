@@ -5,6 +5,7 @@ Pydantic models for the v2 artifact-oriented workspace.
 
 Contains:
 - ArtifactRef / ArtifactManifestEntry: immutable artifact identity and provenance
+- MountedInputRef: immutable identity and provenance for mounted input files
 - WorkspaceFileState / WorkspaceSnapshot / WorkspaceDelta: snapshot/diff primitives
 """
 
@@ -36,6 +37,18 @@ class ArtifactManifestEntry(BaseModel):
     artifact: ArtifactRef
     tool_name: str | None = None
     code_run_id: str | None = None
+
+
+class MountedInputRef(BaseModel):
+    mount_id: str
+    name: str
+    source_path: str
+    relative_path: str
+    mode: Literal["hardlink"] = "hardlink"
+    size_bytes: int
+    mtime_ns: int
+    created_at: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class WorkspaceFileState(BaseModel):

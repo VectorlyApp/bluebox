@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from bluebox.agents.abstract_agent import AgentCard, agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
+from bluebox.agents.workspace import AgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -26,7 +27,7 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
 from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
-from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
+from bluebox.utils.code_execution_sandbox import execute_python_sandboxed, get_workaround_for_error
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
@@ -123,6 +124,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         run_mode: RunMode = RunMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
+        workspace: AgentWorkspace | None = None,
     ) -> None:
         """
         Initialize the trace hound agent.
@@ -148,6 +150,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
+            workspace=workspace,
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
@@ -547,4 +550,21 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         else:
             extra_globals["window_prop_entries"] = []
 
-        return execute_python_sandboxed(code, extra_globals=extra_globals)
+        self._workspace.ensure_dirs()
+        sandbox_result = execute_python_sandboxed(
+            code=code,
+            extra_globals=extra_globals,
+            work_dir=str(self._workspace.root_path.resolve()),
+            read_only_paths=[
+                str((self._workspace.root_path / "raw").resolve()),
+                str((self._workspace.root_path / "meta").resolve()),
+            ],
+        )
+        if "error" in sandbox_result:
+            workaround = get_workaround_for_error(sandbox_result["error"])
+            if workaround:
+                sandbox_result["_hint"] = (
+                    f"Sandbox restriction: {workaround} "
+                    "Fix the code and call execute_python again."
+                )
+        return sandbox_result

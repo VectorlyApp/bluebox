@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from bluebox.agents.abstract_agent import AgentCard, agent_tool
 from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
+from bluebox.agents.workspace import AgentWorkspace
 from bluebox.cdp.connection import (
     cdp_new_tab,
     create_cdp_helpers,
@@ -136,6 +137,7 @@ class JSSpecialist(AbstractSpecialist):
         existing_chats: list[Chat] | None = None,
         remote_debugging_address: str | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
+        workspace: AgentWorkspace | None = None,
     ) -> None:
         self._dom_snapshots = dom_snapshots or []
         self._remote_debugging_address = remote_debugging_address
@@ -144,6 +146,7 @@ class JSSpecialist(AbstractSpecialist):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
+            workspace=workspace,
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,

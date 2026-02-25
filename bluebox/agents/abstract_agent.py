@@ -910,10 +910,37 @@ class AbstractAgent(ABC):
         override the full section text.
         """
         section = self.WORKSPACE_USAGE_SECTION.strip()
-        if not section:
+        mounted_section = self._get_mounted_inputs_prompt_section()
+        if not section and not mounted_section:
             return ""
 
-        return f"\n\n{section}"
+        parts: list[str] = []
+        if section:
+            parts.append(section)
+        if mounted_section:
+            parts.append(mounted_section)
+
+        return "\n\n" + "\n\n".join(parts)
+
+    def _get_mounted_inputs_prompt_section(self) -> str:
+        """Build a system prompt section listing currently mounted input files."""
+        mounted_inputs = self._workspace.list_mounted_inputs()
+        if not mounted_inputs:
+            return ""
+
+        lines = [
+            "## Mounted Input Files (read-only)",
+            "The following files are mounted under `raw/` and can be read directly without tools:",
+            "```python",
+            "text = open('raw/<file>', encoding='utf-8').read()",
+            "blob = open('raw/<file>', 'rb').read()",
+            "```",
+        ]
+        for item in mounted_inputs:
+            lines.append(
+                f"- `{item.relative_path}` — {item.size_bytes} bytes (source: `{item.source_path}`)"
+            )
+        return "\n".join(lines)
 
     ## LLMs and streaming
 

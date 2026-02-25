@@ -90,6 +90,8 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
         self._workspace = LocalWorkspace.from_directory_path(
             workspace_dir or "./bluebox_workspace/network_specialist",
         )
+        if self._data_path:
+            self._workspace.attach_input_file("network_events", self._data_path)
 
     # ── Abstract implementations ─────────────────────────────────────────
 

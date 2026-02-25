@@ -11,8 +11,11 @@ Contains:
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
+import os
+import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +25,7 @@ from bluebox.data_models.agents.workspace import (
     ArtifactManifestEntry,
     ArtifactRef,
     ArtifactSource,
+    MountedInputRef,
     WorkspaceDelta,
     WorkspaceFileState,
     WorkspaceSnapshot,
@@ -63,6 +67,25 @@ class AgentWorkspace(ABC):
         start_line: int | None = None,
         end_line: int | None = None,
     ) -> dict[str, Any]:
+        pass
+
+    @abstractmethod
+    def attach_input_file(self, name: str, source_path: str | Path) -> MountedInputRef:
+        """
+        Attach an external input file into workspace raw/ via hardlink.
+
+        Args:
+            name: Logical input name, used for target filename.
+            source_path: Source file path on host filesystem.
+
+        Returns:
+            MountedInputRef describing the attached file.
+        """
+        pass
+
+    @abstractmethod
+    def list_mounted_inputs(self) -> list[MountedInputRef]:
+        """List mounted input files from the input-mount manifest."""
         pass
 
     @abstractmethod
@@ -202,6 +225,7 @@ class LocalAgentWorkspace(AgentWorkspace):
         self._meta_dir = self._workspace_dir / "meta"
 
         self._manifest_path = self._meta_dir / "manifest.jsonl"
+        self._input_mounts_manifest_path = self._meta_dir / "input_mounts.jsonl"
 
         self.ensure_dirs()
         self._artifact_index = self._load_last_index_from_manifest()
@@ -237,6 +261,7 @@ class LocalAgentWorkspace(AgentWorkspace):
         self._context_dir.mkdir(parents=True, exist_ok=True)
         self._meta_dir.mkdir(parents=True, exist_ok=True)
         self._manifest_path.touch(exist_ok=True)
+        self._input_mounts_manifest_path.touch(exist_ok=True)
 
     def cleanup(self, remove_root: bool = False) -> None:
         if remove_root and self._workspace_dir.exists():
@@ -328,6 +353,20 @@ class LocalAgentWorkspace(AgentWorkspace):
             )
         return normalized_filename
 
+    def _validate_mount_name(self, name: str) -> str:
+        normalized_name = name.replace("\\", "/")
+        path = Path(normalized_name)
+        if (
+            not normalized_name
+            or normalized_name in {".", ".."}
+            or "/" in normalized_name
+            or path.name != normalized_name
+        ):
+            raise ValueError(
+                f"Invalid mount name '{name}'. Names must not include path separators.",
+            )
+        return normalized_name
+
     def save_artifact(
         self,
         source: ArtifactSource,
@@ -392,6 +431,19 @@ class LocalAgentWorkspace(AgentWorkspace):
                 logger.warning("Bad manifest entry skipped: %s", e)
         return entries
 
+    def _iter_input_mount_manifest(self) -> list[MountedInputRef]:
+        if not self._input_mounts_manifest_path.exists():
+            return []
+        entries: list[MountedInputRef] = []
+        for line in self._input_mounts_manifest_path.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                entries.append(MountedInputRef.model_validate_json(line))
+            except Exception as e:
+                logger.warning("Bad input mount entry skipped: %s", e)
+        return entries
+
     def list_artifacts(self, source: ArtifactSource | None = None) -> list[ArtifactRef]:
         refs = [e.artifact for e in self._iter_manifest()]
         if source is None:
@@ -408,6 +460,57 @@ class LocalAgentWorkspace(AgentWorkspace):
             if ref.artifact_id == artifact_id:
                 return self.read_file(ref.relative_path, start_line=start_line, end_line=end_line)
         return {"error": f"Artifact not found: {artifact_id}"}
+
+    def attach_input_file(self, name: str, source_path: str | Path) -> MountedInputRef:
+        self.ensure_dirs()
+
+        safe_name = self._validate_mount_name(name)
+        source = Path(source_path).expanduser().resolve(strict=True)
+        if not source.is_file():
+            raise ValueError(f"Input source is not a file: {source}")
+
+        suffix = source.suffix if source.suffix else ""
+        filename = safe_name if Path(safe_name).suffix else f"{safe_name}{suffix}"
+        safe_filename = self._validate_artifact_filename(filename)
+        target = self._raw_dir / safe_filename
+
+        try:
+            os.link(source, target)
+        except FileExistsError:
+            source_stat = source.stat()
+            target_stat = target.stat()
+            if source_stat.st_ino != target_stat.st_ino or source_stat.st_dev != target_stat.st_dev:
+                raise ValueError(
+                    f"Input target already exists with different inode: {target}",
+                ) from None
+        except OSError as e:
+            if e.errno == errno.EXDEV:
+                raise ValueError(
+                    f"Cannot hardlink across filesystems: source={source} target={target}",
+                ) from e
+            raise
+
+        st = target.stat()
+        ref = MountedInputRef(
+            mount_id=f"m_{uuid.uuid4().hex}",
+            name=safe_name,
+            source_path=str(source),
+            relative_path=str(target.relative_to(self._workspace_dir)),
+            mode="hardlink",
+            size_bytes=st.st_size,
+            mtime_ns=st.st_mtime_ns,
+            created_at=datetime.now(timezone.utc).isoformat(),
+            metadata={},
+        )
+        with self._input_mounts_manifest_path.open("a", encoding="utf-8") as f:
+            f.write(ref.model_dump_json())
+            f.write("\n")
+
+        logger.info("Attached input file %s -> %s", source, target)
+        return ref
+
+    def list_mounted_inputs(self) -> list[MountedInputRef]:
+        return self._iter_input_mount_manifest()
 
     def read_file(
         self,
