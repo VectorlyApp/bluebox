@@ -7,7 +7,7 @@ subclass behavior, and is_valid_resource_id().
 
 import time
 from abc import ABC
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
@@ -433,3 +433,63 @@ class TestIsValidResourceId:
         """100 generated IDs should all validate."""
         for _ in range(100):
             assert Widget.is_valid_resource_id(Widget.create_new_id()) is True
+
+
+class TestGetUtcTimestamp:
+    """Tests for ResourceBase.get_utc_timestamp()."""
+
+    def test_returns_float(self) -> None:
+        assert isinstance(ResourceBase.get_utc_timestamp(), float)
+
+    def test_value_close_to_now(self) -> None:
+        """Should be within 1 second of actual UTC now."""
+        before = datetime.now(tz=timezone.utc).timestamp()
+        ts = ResourceBase.get_utc_timestamp()
+        after = datetime.now(tz=timezone.utc).timestamp()
+        assert before <= ts <= after
+
+    def test_callable_on_subclass(self) -> None:
+        assert isinstance(SampleResource.get_utc_timestamp(), float)
+
+    def test_callable_on_instance(self) -> None:
+        resource = SampleResource(name="test")
+        assert isinstance(resource.get_utc_timestamp(), float)
+
+    def test_monotonically_increases(self) -> None:
+        """Two successive calls should be non-decreasing."""
+        t1 = ResourceBase.get_utc_timestamp()
+        t2 = ResourceBase.get_utc_timestamp()
+        assert t2 >= t1
+
+    def test_increases_over_time(self) -> None:
+        t1 = ResourceBase.get_utc_timestamp()
+        time.sleep(0.05)
+        t2 = ResourceBase.get_utc_timestamp()
+        assert t2 > t1
+
+    def test_is_utc_not_local(self) -> None:
+        """Returned value should match UTC, not naive local time."""
+        ts = ResourceBase.get_utc_timestamp()
+        utc_now = datetime.now(tz=timezone.utc).timestamp()
+        # if the impl accidentally used naive datetime.now(), the delta would be
+        # hours off in non-UTC timezones; 5 seconds is a safe tolerance here
+        assert abs(ts - utc_now) < 5
+
+    def test_has_subsecond_precision(self) -> None:
+        """Float should carry sub-second data (not truncated to int)."""
+        ts = ResourceBase.get_utc_timestamp()
+        assert ts != int(ts)
+
+    def test_reasonable_epoch_value(self) -> None:
+        """Sanity-check: value should be after 2020-01-01 and before 2100-01-01."""
+        ts = ResourceBase.get_utc_timestamp()
+        assert ts > 1_577_836_800  # 2020-01-01 UTC
+        assert ts < 4_102_444_800  # 2100-01-01 UTC
+
+    def test_consistent_with_field_defaults(self) -> None:
+        """get_utc_timestamp() should use the same clock as created_at/updated_at."""
+        before = ResourceBase.get_utc_timestamp()
+        resource = SampleResource(name="test")
+        after = ResourceBase.get_utc_timestamp()
+        assert before <= resource.created_at <= after
+        assert before <= resource.updated_at <= after
