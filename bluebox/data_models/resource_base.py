@@ -106,6 +106,7 @@ class ResourceBase(BaseModel, ABC):
     def get_utc_timestamp() -> float:
         """
         Return the current UTC time as a Unix timestamp.
+            Useful for updating ``updated_at`` in a consistent manner.
 
         Returns:
             Seconds since the Unix epoch as a float with millisecond precision,
