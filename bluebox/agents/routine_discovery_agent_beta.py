@@ -242,7 +242,7 @@ class RoutineDiscoveryAgentBeta(AbstractAgent):
         js_data_loader: JSDataLoader | None = None,
         interaction_data_loader: InteractionsDataLoader | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
-        llm_model: LLMModel = OpenAIModel.GPT_5_1,
+        llm_model: LLMModel = OpenAIModel.GPT_5_2,
         subagent_llm_model: LLMModel | None = None,
         max_iterations: int = 50,
         remote_debugging_address: str | None = None,

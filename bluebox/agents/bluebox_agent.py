@@ -149,7 +149,7 @@ class BlueBoxAgent(AbstractAgent):
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
-        llm_model: LLMModel = OpenAIModel.GPT_5_1,
+        llm_model: LLMModel = OpenAIModel.GPT_5_2,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         workspace: AgentWorkspace | None = None,

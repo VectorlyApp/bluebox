@@ -344,7 +344,7 @@ class GuideAgent:
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         persist_suggested_edit_callable: Callable[[SuggestedEditUnion], SuggestedEditUnion] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
-        llm_model: OpenAIModel = OpenAIModel.GPT_5_1,
+        llm_model: OpenAIModel = OpenAIModel.GPT_5_2,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         data_store: DiscoveryDataStore | None = None,
