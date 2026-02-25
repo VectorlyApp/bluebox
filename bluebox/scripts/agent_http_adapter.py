@@ -170,7 +170,7 @@ class AgentState:
         self,
         agent_class: type,
         data_loaders: dict[str, Any],
-        llm_model: OpenAIModel = OpenAIModel.GPT_5_1,
+        llm_model: OpenAIModel = OpenAIModel.GPT_5_2,
         subagent_llm_model: OpenAIModel | None = None,
         max_iterations: int = 50,
         remote_debugging_address: str | None = None,
@@ -480,7 +480,7 @@ def main() -> None:
     parser.add_argument("--window-props-jsonl", type=str, default=None)
     parser.add_argument("--js-jsonl", type=str, default=None)
     parser.add_argument("--interaction-jsonl", type=str, default=None)
-    parser.add_argument("--llm-model", type=str, default=OpenAIModel.GPT_5_1.value)
+    parser.add_argument("--llm-model", type=str, default=OpenAIModel.GPT_5_2.value)
     parser.add_argument("--subagent-llm-model", type=str, default=None)
     parser.add_argument("--max-iterations", type=int, default=50)
     parser.add_argument("--remote-debugging-address", type=str, default=None)

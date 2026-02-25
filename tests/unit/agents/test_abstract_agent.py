@@ -189,7 +189,7 @@ class TestInitialization:
         """Agent initializes with expected default state."""
         assert agent._previous_response_id is None
         assert agent._response_id_to_chat_index == {}
-        assert agent.llm_model == OpenAIModel.GPT_5_1
+        assert agent.llm_model == OpenAIModel.GPT_5_2
         assert agent._documentation_data_loader is None
         assert isinstance(agent._thread, ChatThread)
         assert agent._chats == {}

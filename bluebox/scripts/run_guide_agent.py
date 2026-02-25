@@ -374,7 +374,7 @@ class TerminalGuideChat:
         self._agent = GuideAgent(
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
-            llm_model=llm_model if llm_model else OpenAIModel.GPT_5_1,
+            llm_model=llm_model if llm_model else OpenAIModel.GPT_5_2,
             data_store=data_store,
         )
 
@@ -1420,8 +1420,8 @@ def main() -> None:
     parser.add_argument(
         "--model",
         type=str,
-        default=OpenAIModel.GPT_5_1.value,
-        help=f"LLM model to use (default: {OpenAIModel.GPT_5_1.value})",
+        default=OpenAIModel.GPT_5_2.value,
+        help=f"LLM model to use (default: {OpenAIModel.GPT_5_2.value})",
     )
     parser.add_argument(
         "--cdp-captures-dir",
