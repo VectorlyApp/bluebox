@@ -17,7 +17,7 @@ Usage:
     bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl
     bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl --model gpt-5.2
     bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl --model claude-sonnet-4-5
-    bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl --workspace-dir ./bluebox_workspace/network-specialist
+    bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl --workspace-dir ./agent_workspace/network-specialist
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
         self._network_store = network_store
         self._data_path = data_path
         self._workspace = LocalWorkspace.from_directory_path(
-            workspace_dir or "./bluebox_workspace/network_specialist",
+            workspace_dir or "./agent_workspace/network_specialist",
         )
         if self._data_path:
             self._workspace.attach_input_file("network_events", self._data_path)
@@ -316,7 +316,7 @@ def main() -> None:
     parser.add_argument(
         "--workspace-dir",
         type=str,
-        default="./bluebox_workspace/network_specialist",
+        default="./agent_workspace/network_specialist",
         help="Workspace directory for tool results, artifacts, and code execution files.",
     )
     args = parser.parse_args()

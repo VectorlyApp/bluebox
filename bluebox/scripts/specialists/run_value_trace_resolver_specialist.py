@@ -16,7 +16,7 @@ Layout:
 Usage:
     bluebox-value-trace-resolver-specialist --network-jsonl ./cdp_captures/network/events.jsonl
     bluebox-value-trace-resolver-specialist --storage-jsonl ./cdp_captures/storage/events.jsonl
-    bluebox-value-trace-resolver-specialist --workspace-dir ./bluebox_workspace/value_trace_resolver_specialist
+    bluebox-value-trace-resolver-specialist --workspace-dir ./agent_workspace/value_trace_resolver_specialist
     bluebox-value-trace-resolver-specialist \
         --network-jsonl ./cdp_captures/network/events.jsonl \
         --storage-jsonl ./cdp_captures/storage/events.jsonl \
@@ -101,7 +101,7 @@ class ValueTraceResolverTUI(AbstractAgentTUI):
         self._storage_jsonl_path = storage_jsonl_path
         self._window_props_jsonl_path = window_props_jsonl_path
         self._workspace = LocalWorkspace.from_directory_path(
-            workspace_dir or "./bluebox_workspace/value_trace_resolver_specialist",
+            workspace_dir or "./agent_workspace/value_trace_resolver_specialist",
         )
         if self._network_jsonl_path:
             self._workspace.attach_input_file("network_events", self._network_jsonl_path)
@@ -328,7 +328,7 @@ def main() -> None:
     parser.add_argument(
         "--workspace-dir",
         type=str,
-        default="./bluebox_workspace/value_trace_resolver_specialist",
+        default="./agent_workspace/value_trace_resolver_specialist",
         help="Workspace directory for tool results, artifacts, and code execution files.",
     )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")

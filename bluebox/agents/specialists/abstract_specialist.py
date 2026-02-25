@@ -136,7 +136,9 @@ class AbstractSpecialist(AbstractAgent):
         # call parent init
         super().__init__(
             emit_message_callable=emit_message_callable,
-            workspace=workspace or LocalWorkspace(),
+            workspace=workspace or LocalWorkspace.from_directory_path(
+                "./agent_workspace/specialist",
+            ),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,

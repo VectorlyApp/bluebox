@@ -16,7 +16,7 @@ Layout:
 Usage:
     bluebox-dom-specialist --jsonl-path ./cdp_captures/dom/events.jsonl
     bluebox-dom-specialist --jsonl-path ./cdp_captures/dom/events.jsonl --model gpt-5.1
-    bluebox-dom-specialist --jsonl-path ./cdp_captures/dom/events.jsonl --workspace-dir ./bluebox_workspace/dom_specialist
+    bluebox-dom-specialist --jsonl-path ./cdp_captures/dom/events.jsonl --workspace-dir ./agent_workspace/dom_specialist
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ class DOMSpecialistTUI(AbstractAgentTUI):
         self._dom_data_loader = dom_data_loader
         self._data_path = data_path
         self._workspace = LocalWorkspace.from_directory_path(
-            workspace_dir or "./bluebox_workspace/dom_specialist",
+            workspace_dir or "./agent_workspace/dom_specialist",
         )
         if self._data_path:
             self._workspace.attach_input_file("dom_events", self._data_path)
@@ -278,7 +278,7 @@ def main() -> None:
     parser.add_argument(
         "--workspace-dir",
         type=str,
-        default="./bluebox_workspace/dom_specialist",
+        default="./agent_workspace/dom_specialist",
         help="Workspace directory for tool results, artifacts, and code execution files.",
     )
     args = parser.parse_args()

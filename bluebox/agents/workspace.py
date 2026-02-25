@@ -210,7 +210,7 @@ class AgentWorkspace(ABC):
 class LocalAgentWorkspace(AgentWorkspace):
     def __init__(
         self,
-        workspace_dir: str = "./bluebox_workspace",
+        workspace_dir: str,
         *,
         agent_id: str | None = None,
         thread_id: str | None = None,

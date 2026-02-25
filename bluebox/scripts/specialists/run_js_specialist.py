@@ -15,7 +15,7 @@ Layout:
 
 Usage:
     bluebox-js-specialist
-    bluebox-js-specialist --workspace-dir ./bluebox_workspace/js_specialist
+    bluebox-js-specialist --workspace-dir ./agent_workspace/js_specialist
     bluebox-js-specialist --dom-snapshots-path ./cdp_captures/dom/events.jsonl
     bluebox-js-specialist \
         --dom-snapshots-path ./cdp_captures/dom/events.jsonl \
@@ -104,7 +104,7 @@ class JSSpecialistTUI(AbstractAgentTUI):
         self._network_events_jsonl_path = network_events_jsonl_path
         self._remote_debugging_address = remote_debugging_address
         self._workspace = LocalWorkspace.from_directory_path(
-            workspace_dir or "./bluebox_workspace/js_specialist",
+            workspace_dir or "./agent_workspace/js_specialist",
         )
         if self._dom_snapshots_path:
             self._workspace.attach_input_file("dom_events", self._dom_snapshots_path)
@@ -328,7 +328,7 @@ def main() -> None:
     parser.add_argument(
         "--workspace-dir",
         type=str,
-        default="./bluebox_workspace/js_specialist",
+        default="./agent_workspace/js_specialist",
         help="Workspace directory for tool results, artifacts, and code execution files.",
     )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")

@@ -4,10 +4,12 @@ tests/unit/test_blocklist_hints.py
 Unit tests for blocklist workaround hints and sandbox-aware system prompts.
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from bluebox.agents.workspace import LocalWorkspace
 from bluebox.utils.code_execution_sandbox import (
     BLOCKED_MODULE_WORKAROUNDS,
     BLOCKED_PATTERN_WORKAROUNDS,
@@ -125,13 +127,21 @@ class TestBlueBoxAgentBlocklistPrompt:
 
     @patch("bluebox.agents.abstract_agent.get_active_sandbox_mode", return_value="blocklist")
     @patch("bluebox.agents.bluebox_agent.Config")
-    def test_blocklist_prompt_included(self, mock_config: MagicMock, mock_mode: MagicMock) -> None:
+    def test_blocklist_prompt_included(
+        self,
+        mock_config: MagicMock,
+        mock_mode: MagicMock,
+        tmp_path: Path,
+    ) -> None:
         """System prompt should include sandbox restrictions in blocklist mode."""
         mock_config.VECTORLY_SERVICE_TOKEN = "test-token"
         mock_config.VECTORLY_API_BASE = "http://test"
 
         from bluebox.agents.bluebox_agent import BlueBoxAgent
-        agent = BlueBoxAgent(emit_message_callable=MagicMock())
+        agent = BlueBoxAgent(
+            emit_message_callable=MagicMock(),
+            workspace=LocalWorkspace.from_directory_path(tmp_path),
+        )
         prompt = agent._get_system_prompt()
         assert "Sandbox Restrictions" in prompt
         assert "Blocked imports" in prompt
@@ -139,13 +149,21 @@ class TestBlueBoxAgentBlocklistPrompt:
 
     @patch("bluebox.agents.abstract_agent.get_active_sandbox_mode", return_value="docker")
     @patch("bluebox.agents.bluebox_agent.Config")
-    def test_blocklist_prompt_excluded(self, mock_config: MagicMock, mock_mode: MagicMock) -> None:
+    def test_blocklist_prompt_excluded(
+        self,
+        mock_config: MagicMock,
+        mock_mode: MagicMock,
+        tmp_path: Path,
+    ) -> None:
         """System prompt should NOT include sandbox restrictions when Docker is available."""
         mock_config.VECTORLY_SERVICE_TOKEN = "test-token"
         mock_config.VECTORLY_API_BASE = "http://test"
 
         from bluebox.agents.bluebox_agent import BlueBoxAgent
-        agent = BlueBoxAgent(emit_message_callable=MagicMock())
+        agent = BlueBoxAgent(
+            emit_message_callable=MagicMock(),
+            workspace=LocalWorkspace.from_directory_path(tmp_path),
+        )
         prompt = agent._get_system_prompt()
         assert "Sandbox Restrictions" not in prompt
 
@@ -161,6 +179,7 @@ class TestRunPythonCodeBlockedHint:
         mock_config: MagicMock,
         mock_sandbox: MagicMock,
         mock_mode: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """When sandbox returns a blocked module error, _hint should contain workaround."""
         mock_config.VECTORLY_SERVICE_TOKEN = "test-token"
@@ -171,7 +190,10 @@ class TestRunPythonCodeBlockedHint:
         }
 
         from bluebox.agents.bluebox_agent import BlueBoxAgent
-        agent = BlueBoxAgent(emit_message_callable=MagicMock())
+        agent = BlueBoxAgent(
+            emit_message_callable=MagicMock(),
+            workspace=LocalWorkspace.from_directory_path(tmp_path),
+        )
         result = agent._run_python_code("import os")
         kwargs = mock_sandbox.call_args.kwargs
         read_only_paths = kwargs["read_only_paths"]
@@ -188,6 +210,7 @@ class TestRunPythonCodeBlockedHint:
         mock_config: MagicMock,
         mock_sandbox: MagicMock,
         mock_mode: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """When sandbox returns a non-blocklist error, _hint should be generic."""
         mock_config.VECTORLY_SERVICE_TOKEN = "test-token"
@@ -198,7 +221,10 @@ class TestRunPythonCodeBlockedHint:
         }
 
         from bluebox.agents.bluebox_agent import BlueBoxAgent
-        agent = BlueBoxAgent(emit_message_callable=MagicMock())
+        agent = BlueBoxAgent(
+            emit_message_callable=MagicMock(),
+            workspace=LocalWorkspace.from_directory_path(tmp_path),
+        )
         result = agent._run_python_code("print(foo)")
         kwargs = mock_sandbox.call_args.kwargs
         read_only_paths = kwargs["read_only_paths"]

@@ -65,12 +65,13 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
     def __init__(
         self,
         llm_model: LLMModel,
-        workspace_dir: str = "./bluebox_workspace",
+        workspace_dir: str = "./agent_workspace/bluebox_agent",
         context_file: str | None = None,
     ) -> None:
         super().__init__(llm_model, working_dir=workspace_dir)
         self._workspace_dir = workspace_dir
         self._context_file = context_file
+        self._workspace = LocalWorkspace.from_directory_path(self._workspace_dir)
 
     # ── Abstract implementations ─────────────────────────────────────────
 
@@ -79,7 +80,7 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
             emit_message_callable=self._handle_message,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=self._llm_model,
-            workspace=LocalWorkspace(self._workspace_dir),
+            workspace=self._workspace,
             context_file=self._context_file,
         )
 
@@ -175,7 +176,7 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
 
     def _show_context_success(self, context: BlueBoxAgentContext) -> None:
         """Display context generation success in the chat pane."""
-        context_dir = Path(self._workspace_dir) / "context"
+        context_dir = self._workspace.root_path / "context"
         json_path = str(context_dir / "agent_context.json")
         md_path = str(context_dir / "agent_context.md")
         chat = self.query_one("#chat-log", RichLog)
@@ -209,8 +210,8 @@ def main() -> None:
     parser.add_argument(
         "--workspace-dir",
         type=str,
-        default="./bluebox_workspace",
-        help="Workspace directory. Raw results in raw/, output files in outputs/ (default: ./bluebox_workspace)",
+        default="./agent_workspace/bluebox_agent",
+        help="Workspace directory. Raw results in raw/, output files in output/ (default: ./agent_workspace/bluebox_agent)",
     )
     parser.add_argument(
         "--context-file",

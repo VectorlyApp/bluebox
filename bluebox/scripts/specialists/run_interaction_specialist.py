@@ -16,7 +16,7 @@ Layout:
 Usage:
     bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl
     bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl --model gpt-5.2
-    bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl --workspace-dir ./bluebox_workspace/interaction_specialist
+    bluebox-interaction-specialist --jsonl-path ./cdp_captures/interaction/events.jsonl --workspace-dir ./agent_workspace/interaction_specialist
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ class InteractionSpecialistTUI(AbstractAgentTUI):
         self._interaction_store = interaction_store
         self._data_path = data_path
         self._workspace = LocalWorkspace.from_directory_path(
-            workspace_dir or "./bluebox_workspace/interaction_specialist",
+            workspace_dir or "./agent_workspace/interaction_specialist",
         )
         if self._data_path:
             self._workspace.attach_input_file("interaction_events", self._data_path)
@@ -277,7 +277,7 @@ def main() -> None:
     parser.add_argument(
         "--workspace-dir",
         type=str,
-        default="./bluebox_workspace/interaction_specialist",
+        default="./agent_workspace/interaction_specialist",
         help="Workspace directory for tool results, artifacts, and code execution files.",
     )
     args = parser.parse_args()

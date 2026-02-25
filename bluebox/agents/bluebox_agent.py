@@ -22,7 +22,7 @@ from typing import Any, Callable
 import requests
 
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
-from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
+from bluebox.agents.workspace import AgentWorkspace
 from bluebox.config import Config
 from bluebox.data_models.agents.context import BlueBoxAgentContext, UsedRoutine
 from bluebox.data_models.browser_agent import (
@@ -83,9 +83,10 @@ class BlueBoxAgent(AbstractAgent):
 
         ## Workspace
         Your workspace has the following structure:
-        - `raw/` — routine result JSON files, saved automatically when routines execute
+        - `raw/` (read-only) — routine result JSON files and mounted inputs
         - `output/` — write all your generated output files here (CSV, JSON, JSONL, etc.)
         - `context/` — context files (JSON + Markdown) saved by `generate_context`, used for session replay
+        - `meta/` (read-only) — system-managed manifests and metadata
 
         **Pre-loaded variables in `run_python_code`:**
         - `routine_results` — list of dicts, one per JSON file in raw/
@@ -143,13 +144,13 @@ class BlueBoxAgent(AbstractAgent):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
+        workspace: AgentWorkspace,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_2,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
-        workspace: AgentWorkspace | None = None,
         auth_headers_provider: Callable[[], dict[str, str]] | None = None,
         on_llm_response: Callable[[LLMChatResponse], None] | None = None,
         context_file: str | None = None,
@@ -165,7 +166,7 @@ class BlueBoxAgent(AbstractAgent):
             llm_model: The LLM model to use for conversation.
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
-            workspace: Workspace for file I/O. Defaults to LocalWorkspace if not provided.
+            workspace: Workspace for file I/O.
             auth_headers_provider: Optional callback that returns auth headers for
                 downstream API calls. If not provided, falls back to Config.VECTORLY_SERVICE_TOKEN.
             on_llm_response: Optional callback invoked after each LLM call with the response (for token tracking).
@@ -178,7 +179,7 @@ class BlueBoxAgent(AbstractAgent):
         if not auth_headers_provider and not Config.VECTORLY_SERVICE_TOKEN:
             raise ValueError("Either auth_headers_provider or VECTORLY_SERVICE_TOKEN must be provided")
 
-        self._workspace = workspace or LocalWorkspace()
+        self._workspace = workspace
         self._routine_cache: dict[str, RoutineInfo] = {}
         self._routine_execution_counter = itertools.count(
             self._get_next_routine_result_index()
@@ -679,7 +680,8 @@ class BlueBoxAgent(AbstractAgent):
         """
         Execute Python code to post-process routine results and generate output files.
 
-        The code runs with full read/write access to the workspace directory.
+        The code runs with workspace-scoped file access.
+        `raw/` and `meta/` are read-only; write deliverables to `output/`.
         Pre-loaded variables: `routine_results` (list of dicts from all JSON files
         in the raw/ directory), `json`, `csv`, and `Path` (pathlib.Path).
 
@@ -691,7 +693,7 @@ class BlueBoxAgent(AbstractAgent):
         to diagnose and fix. Keep iterating until the output file is correct.
 
         Args:
-            code: Python code to execute. Has full file access to the workspace.
+            code: Python code to execute with workspace-scoped file access.
                 Pre-loaded: routine_results (list[dict]), json, csv, Path.
                 Write output files to output/ subdirectory. Always add print()
                 statements for debugging.
