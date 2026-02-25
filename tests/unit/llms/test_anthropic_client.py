@@ -548,8 +548,8 @@ class TestToolChoiceNormalization:
 
     def test_normalize_other_tool_name(self, client: AnthropicClient) -> None:
         """Test that other tool names normalize correctly."""
-        result = client._normalize_tool_choice("search_docs")
-        assert result == {"type": "tool", "name": "search_docs"}
+        result = client._normalize_tool_choice("search_files")
+        assert result == {"type": "tool", "name": "search_files"}
 
     def test_normalize_none(self, client: AnthropicClient) -> None:
         """Test that 'none' normalizes to {'type': 'none'}."""

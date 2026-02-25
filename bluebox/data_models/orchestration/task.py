@@ -64,8 +64,7 @@ class Task(BaseModel):
     Tasks track the full lifecycle from creation through completion,
     including pause/resume support for long-running operations.
 
-    Note: agent_type values must match AbstractSpecialist.AGENT_TYPE on specialist classes.
-    Use AbstractSpecialist.get_all_agent_types() for runtime discovery of valid types.
+    Note: agent_type values should align with the autonomous agent class used for execution.
     """
     id: str = Field(default_factory=generate_short_id)
     agent_type: SpecialistAgentType = Field(description="Type of specialist to handle this task")

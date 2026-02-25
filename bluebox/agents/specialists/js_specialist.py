@@ -12,9 +12,8 @@ import time
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 
-from bluebox.agents.abstract_agent import AgentCard, agent_tool
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
-from bluebox.agents.workspace import AgentWorkspace
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, AgentExecutionMode, agent_tool
+from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
 from bluebox.cdp.connection import (
     cdp_new_tab,
     create_cdp_helpers,
@@ -39,7 +38,7 @@ if TYPE_CHECKING:
 logger = get_logger(name=__name__)
 
 
-class JSSpecialist(AbstractSpecialist):
+class JSSpecialist(AbstractAgent):
     """
     JavaScript specialist agent.
 
@@ -52,6 +51,7 @@ class JSSpecialist(AbstractSpecialist):
             "extraction, DOM scraping, and page state manipulation."
         ),
     )
+    SUPPORTS_AUTONOMOUS = True
 
     _BASE_CONTEXT: str = dedent("""\
         ## Context
@@ -131,8 +131,8 @@ class JSSpecialist(AbstractSpecialist):
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
-        llm_model: LLMModel = OpenAIModel.GPT_5_2,
-        run_mode: RunMode = RunMode.CONVERSATIONAL,
+        llm_model: LLMModel = OpenAIModel.GPT_5_1,
+        execution_mode: AgentExecutionMode = AgentExecutionMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         remote_debugging_address: str | None = None,
@@ -146,12 +146,12 @@ class JSSpecialist(AbstractSpecialist):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
-            workspace=workspace,
+            workspace=workspace or LocalWorkspace.from_directory_path("./agent_workspace/specialist"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            run_mode=run_mode,
+            execution_mode=execution_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,

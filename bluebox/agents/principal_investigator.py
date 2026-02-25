@@ -26,9 +26,15 @@ from typing import Any, Callable, TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
+from bluebox.agents.abstract_agent import (
+    AbstractAgent,
+    AgentCard,
+    AgentExecutionMode,
+    AutonomousRunConfig,
+    agent_tool,
+)
 from bluebox.agents.routine_inspector import INSPECTION_OUTPUT_SCHEMA, RoutineInspector
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, AutonomousConfig, RunMode
+from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
 from bluebox.agents.workers.experiment_worker import ExperimentWorker
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -179,9 +185,9 @@ class PrincipalInvestigator(AbstractAgent):
         BEFORE planning or dispatching ANY experiments, you MUST review the routine
         documentation to understand the full capabilities available to you. Call:
 
-        1. search_docs("operation") — to see all operation types (navigate, fetch,
+        1. search_files(scope="docs", query="operation", mode="exact") — to see all operation types (navigate, fetch,
            click, input_text, js_evaluate, get_cookies, download, etc.)
-        2. get_doc_file on the Routine and operation model files to understand
+        2. read_file(scope="docs", path="...") on the Routine and operation model files to understand
            what each operation can do and its required fields
 
         This is NOT optional. You cannot dispatch experiments until you have reviewed
@@ -211,7 +217,7 @@ class PrincipalInvestigator(AbstractAgent):
 
         ## Strategy
 
-        1. Review documentation with search_docs and get_doc_file (MANDATORY first step)
+        1. Review documentation with search_files(scope="docs", ...) and read_file(scope="docs", ...) (MANDATORY first step)
         2. Call plan_routines to declare your catalog plan
         3. IDENTIFY AUTH DEPENDENCIES FIRST (see below) — solve auth before data endpoints
         4. Use dispatch_experiments_batch to test routines in parallel (respecting dependencies)
@@ -484,13 +490,13 @@ class PrincipalInvestigator(AbstractAgent):
         operation. This is cheap (one page load) and prevents CORS issues. If you
         see "Failed to fetch" in an inspection blocking issue, ADD A NAVIGATE OP.
 
-        For more details: search_docs("cors-failed-to-fetch")
+        For more details: search_files(scope="docs", query="cors-failed-to-fetch", mode="exact")
 
         ### HTTP 401/403 (Authentication)
         If a fetch returns 401/403, the routine is missing authentication. Check
         experiment findings for auth token endpoints and subscription keys. The
         routine must obtain a token (via fetch + js_evaluate) before calling
-        protected endpoints. For more details: search_docs("unauthenticated")
+        protected endpoints. For more details: search_files(scope="docs", query="unauthenticated", mode="exact")
     """)
 
     # -----------------------------------------------------------------------
@@ -533,6 +539,7 @@ class PrincipalInvestigator(AbstractAgent):
         stream_chunk_callable: Callable[[str], None] | None = None,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
+        workspace: AgentWorkspace | None = None,
     ) -> None:
         # Task
         self._task = task
@@ -572,7 +579,7 @@ class PrincipalInvestigator(AbstractAgent):
         # Accept an existing ledger for resume after context exhaustion
         self._ledger = ledger or DiscoveryLedger(user_task=task)
         self._orchestration_state = AgentOrchestrationState()
-        self._agent_instances: dict[str, AbstractSpecialist] = {}
+        self._agent_instances: dict[str, AbstractAgent] = {}
         self._is_done = False
         self._pipeline_result: RoutineCatalog | None = None
         self._recent_tool_calls: list[str] = []  # Track recent tool names for loop detection
@@ -580,6 +587,7 @@ class PrincipalInvestigator(AbstractAgent):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
+            workspace=workspace or LocalWorkspace.from_directory_path("./agent_workspace/principal_investigator"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
@@ -695,7 +703,7 @@ class PrincipalInvestigator(AbstractAgent):
             initial_message = (
                 f"TASK: {self._task}\n\n"
                 "MANDATORY FIRST STEP: Review the routine documentation before doing anything else.\n"
-                "Call search_docs('operation') and get_doc_file on the Routine/operation model files\n"
+                "Call search_files(scope='docs', query='operation', mode='exact') and read_file(scope='docs', path='...') on the Routine/operation model files\n"
                 "to understand ALL operation types (fetch, click, input_text, js_evaluate, download, etc.).\n"
                 "You CANNOT dispatch experiments until you understand the full routine capabilities.\n\n"
                 "After reviewing docs:\n"
@@ -738,10 +746,12 @@ class PrincipalInvestigator(AbstractAgent):
                 self._process_tool_calls(response.tool_calls)
 
                 # Track docs review — any docs tool call satisfies the gate
-                _DOCS_TOOLS = {"search_docs", "get_doc_file", "search_docs_by_terms", "search_docs_by_regex"}
+                _DOCS_TOOLS = {"search_files", "read_file", "list_files"}
                 for tc in response.tool_calls:
                     if tc.tool_name in _DOCS_TOOLS:
-                        self._docs_reviewed = True
+                        scope = (tc.tool_arguments or {}).get("scope")
+                        if scope == "docs":
+                            self._docs_reviewed = True
 
                 # Loop detection: track recent tool calls (name + whether it errored)
                 for tc in response.tool_calls:
@@ -856,7 +866,7 @@ class PrincipalInvestigator(AbstractAgent):
         except Exception as e:
             logger.warning("on_attempt_record callback failed: %s", e)
 
-    def _dump_agent_thread(self, agent_label: str, agent: AbstractAgent | AbstractSpecialist) -> None:
+    def _dump_agent_thread(self, agent_label: str, agent: AbstractAgent) -> None:
         """Dump an agent's full message history via the on_agent_thread callback."""
         if self._on_agent_thread is None:
             return
@@ -979,7 +989,7 @@ class PrincipalInvestigator(AbstractAgent):
             return {
                 "error": (
                     "You must review the routine documentation BEFORE dispatching experiments. "
-                    "Call search_docs('operation') and get_doc_file to understand all available "
+                    "Call search_files(scope='docs', query='operation', mode='exact') and read_file(scope='docs', path='...') to understand all available "
                     "operation types (fetch, click, input_text, js_evaluate, get_cookies, "
                     "download, etc.). This ensures you design experiments that leverage the "
                     "full routine capabilities."
@@ -1070,7 +1080,7 @@ class PrincipalInvestigator(AbstractAgent):
             return {
                 "error": (
                     "You must review the routine documentation BEFORE dispatching experiments. "
-                    "Call search_docs('operation') and get_doc_file to understand all available "
+                    "Call search_files(scope='docs', query='operation', mode='exact') and read_file(scope='docs', path='...') to understand all available "
                     "operation types (fetch, click, input_text, js_evaluate, get_cookies, "
                     "download, etc.). This ensures you design experiments that leverage the "
                     "full routine capabilities."
@@ -1144,7 +1154,7 @@ class PrincipalInvestigator(AbstractAgent):
                 task.status = TaskStatus.IN_PROGRESS
                 task.started_at = datetime.now()
 
-                config = AutonomousConfig(
+                config = AutonomousRunConfig(
                     min_iterations=1,
                     max_iterations=task.max_loops,
                 )
@@ -1597,8 +1607,8 @@ class PrincipalInvestigator(AbstractAgent):
                 "routine_json": routine_json,
                 "hint": (
                     "Routine validation failed. BEFORE retrying, use your documentation "
-                    "tools to review the correct schema: call search_docs('Routine operation "
-                    "endpoint fetch') or get_doc_file to read the Routine and operation "
+                    "tools to review the correct schema: call search_files(scope='docs', query='Routine operation "
+                    "endpoint fetch', mode='exact') or read_file(scope='docs', path='...') to read the Routine and operation "
                     "model source code. Key reminders: each operation needs 'type' "
                     "(e.g. 'fetch'), fetch operations need 'endpoint': {'url': '...', "
                     "'method': 'GET'}, last operation must be type 'return' or "
@@ -1711,7 +1721,7 @@ class PrincipalInvestigator(AbstractAgent):
                     "all cross-origin fetches fail. Example: if API is at api.example.com "
                     "but CORS allows www.example.com, add {\"type\": \"navigate\", "
                     "\"url\": \"https://www.example.com\"} as the FIRST operation. "
-                    "Review docs: search_docs('cors-failed-to-fetch')."
+                    "Review docs: search_files(scope='docs', query='cors-failed-to-fetch', mode='exact')."
                 )
             if "401" in issues_text or "403" in issues_text or "unauthorized" in issues_text or "access denied" in issues_text:
                 hints.append(
@@ -1719,7 +1729,7 @@ class PrincipalInvestigator(AbstractAgent):
                     "operation to obtain a token/key, then a js_evaluate to extract "
                     "it, then include it in subsequent fetch headers via a "
                     "sessionStorage placeholder. Review docs: "
-                    "search_docs('unauthenticated')."
+                    "search_files(scope='docs', query='unauthenticated', mode='exact')."
                 )
             if "documentation quality" in issues_text:
                 hints.append(
@@ -2038,7 +2048,7 @@ class PrincipalInvestigator(AbstractAgent):
             window_property_data_loader=self._window_property_data_loader,
             # Config
             llm_model=self._worker_llm_model,
-            run_mode=RunMode.AUTONOMOUS,
+            execution_mode=AgentExecutionMode.AUTONOMOUS,
         )
 
     def _create_inspector(self) -> RoutineInspector:
@@ -2046,11 +2056,11 @@ class PrincipalInvestigator(AbstractAgent):
         return RoutineInspector(
             emit_message_callable=self._emit_message_callable,
             llm_model=self._worker_llm_model,
-            run_mode=RunMode.AUTONOMOUS,
+            execution_mode=AgentExecutionMode.AUTONOMOUS,
             documentation_data_loader=self._documentation_data_loader,
         )
 
-    def _get_or_create_agent(self, task: Task) -> AbstractSpecialist:
+    def _get_or_create_agent(self, task: Task) -> AbstractAgent:
         """
         Get existing agent instance or create/reuse one for the task.
 
@@ -2221,7 +2231,7 @@ class PrincipalInvestigator(AbstractAgent):
             inspection_prompt = inspection_prompt[:max_chars] + "\n\n... [TRUNCATED — prompt exceeded 50,000 characters]"
 
         try:
-            config = AutonomousConfig(min_iterations=1, max_iterations=10)
+            config = AutonomousRunConfig(min_iterations=1, max_iterations=10)
 
             # Run inspector with timeout to prevent indefinite hangs
             with ThreadPoolExecutor(max_workers=1) as executor:
@@ -2265,7 +2275,7 @@ class PrincipalInvestigator(AbstractAgent):
                 task.error = "No loops remaining"
                 return {"success": False, "error": "No loops remaining"}
 
-            config = AutonomousConfig(
+            config = AutonomousRunConfig(
                 min_iterations=1,
                 max_iterations=remaining_loops,
             )

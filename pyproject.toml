@@ -75,6 +75,7 @@ bluebox-guide = "bluebox.scripts.run_guide_agent:main"
 
 # Specialist agents
 bluebox-agent = "bluebox.scripts.run_bluebox_agent:main"
+bluebox-dumb-agent = "bluebox.scripts.run_dumb_agent:main"
 bluebox-dom-specialist = "bluebox.scripts.specialists.run_dom_specialist:main"
 bluebox-network-specialist = "bluebox.scripts.specialists.run_network_specialist:main"
 bluebox-js-specialist = "bluebox.scripts.specialists.run_js_specialist:main"

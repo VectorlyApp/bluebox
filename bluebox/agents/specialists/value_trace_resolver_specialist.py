@@ -7,7 +7,7 @@ Agent specialized in tracing where tokens/values originated from.
 
 Contains:
 - ValueTraceResolverSpecialist: Specialist for tracing values across network, storage, and window property data
-- Uses: AbstractSpecialist base class for all agent plumbing
+- Uses: AbstractAgent base class for all agent plumbing
 """
 
 from __future__ import annotations
@@ -15,9 +15,8 @@ from __future__ import annotations
 import textwrap
 from typing import TYPE_CHECKING, Any, Callable
 
-from bluebox.agents.abstract_agent import AgentCard, agent_tool
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
-from bluebox.agents.workspace import AgentWorkspace
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, AgentExecutionMode, agent_tool
+from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -37,7 +36,7 @@ if TYPE_CHECKING:
 logger = get_logger(name=__name__)
 
 
-class ValueTraceResolverSpecialist(AbstractSpecialist):
+class ValueTraceResolverSpecialist(AbstractAgent):
     """
     Trace hound agent that traces where tokens/values originated from.
 
@@ -52,6 +51,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "browser storage, and window properties."
         ),
     )
+    SUPPORTS_AUTONOMOUS = True
 
     SYSTEM_PROMPT: str = textwrap.dedent("""
         You are a token origin specialist that traces where values come from in web traffic.
@@ -120,8 +120,8 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
-        llm_model: LLMModel = OpenAIModel.GPT_5_2,
-        run_mode: RunMode = RunMode.CONVERSATIONAL,
+        llm_model: LLMModel = OpenAIModel.GPT_5_1,
+        execution_mode: AgentExecutionMode = AgentExecutionMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         workspace: AgentWorkspace | None = None,
@@ -138,7 +138,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
             llm_model: The LLM model to use for conversation.
-            run_mode: How the specialist will be run (conversational or autonomous).
+            execution_mode: How the specialist will be run (conversational or autonomous).
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
@@ -150,12 +150,12 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
-            workspace=workspace,
+            workspace=workspace or LocalWorkspace.from_directory_path("./agent_workspace/specialist"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            run_mode=run_mode,
+            execution_mode=execution_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,

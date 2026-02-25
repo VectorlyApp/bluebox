@@ -7,7 +7,7 @@ Agent specialized in searching through network traffic data.
 
 Contains:
 - NetworkSpecialist: Specialist for network traffic analysis
-- Uses: AbstractSpecialist base class for all agent plumbing
+- Uses: AbstractAgent base class for all agent plumbing
 """
 
 from __future__ import annotations
@@ -16,9 +16,14 @@ from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlparse, parse_qs
 
-from bluebox.agents.abstract_agent import AgentCard, ToolResultPersistMode, agent_tool
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
-from bluebox.agents.workspace import AgentWorkspace
+from bluebox.agents.abstract_agent import (
+    AbstractAgent,
+    AgentCard,
+    AgentExecutionMode,
+    ToolResultPersistMode,
+    agent_tool,
+)
+from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -34,11 +39,11 @@ if TYPE_CHECKING:
 logger = get_logger(name=__name__)
 
 
-class NetworkSpecialist(AbstractSpecialist):
+class NetworkSpecialist(AbstractAgent):
     """
     Network specialist agent that helps analyze captured network traffic.
 
-    The agent uses AbstractSpecialist as its base and provides tools to search
+    The agent uses AbstractAgent as its base and provides tools to search
     and analyze network traffic data from JSONL captures.
     """
 
@@ -48,6 +53,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "inspecting request/response data, and semantic search across captured traffic."
         ),
     )
+    SUPPORTS_AUTONOMOUS = True
 
     SYSTEM_PROMPT: str = dedent(f"""
         You are a network traffic analyst specializing in captured browser network data.
@@ -70,7 +76,7 @@ class NetworkSpecialist(AbstractSpecialist):
         - When you find a relevant entry, report its ID and URL
         - Always use search_responses_by_terms first when looking for specific data
 
-        {AbstractSpecialist.WORKSPACE_USAGE_SECTION}
+        {AbstractAgent.WORKSPACE_USAGE_SECTION}
     """).strip()
 
     AUTONOMOUS_SYSTEM_PROMPT: str = dedent(f"""
@@ -93,7 +99,7 @@ class NetworkSpecialist(AbstractSpecialist):
         - Prefer endpoints with structured JSON responses
         - Consider multi-step flows: authentication, search, pagination
 
-        {AbstractSpecialist.WORKSPACE_USAGE_SECTION}
+        {AbstractAgent.WORKSPACE_USAGE_SECTION}
     """).strip()
 
     ## Magic methods
@@ -105,8 +111,8 @@ class NetworkSpecialist(AbstractSpecialist):
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
-        llm_model: LLMModel = OpenAIModel.GPT_5_2,
-        run_mode: RunMode = RunMode.CONVERSATIONAL,
+        llm_model: LLMModel = OpenAIModel.GPT_5_1,
+        execution_mode: AgentExecutionMode = AgentExecutionMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
@@ -122,7 +128,7 @@ class NetworkSpecialist(AbstractSpecialist):
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
             llm_model: The LLM model to use for conversation.
-            run_mode: How the specialist will be run (conversational or autonomous).
+            execution_mode: Preferred execution mode for this agent.
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
@@ -132,12 +138,12 @@ class NetworkSpecialist(AbstractSpecialist):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
-            workspace=workspace,
+            workspace=workspace or LocalWorkspace.from_directory_path("./agent_workspace/specialist"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            run_mode=run_mode,
+            execution_mode=AgentExecutionMode(execution_mode),
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,

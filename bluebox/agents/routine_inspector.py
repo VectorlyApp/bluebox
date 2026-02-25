@@ -17,8 +17,8 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import Any, Callable, TYPE_CHECKING
 
-from bluebox.agents.abstract_agent import AgentCard
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, AgentExecutionMode
+from bluebox.agents.workspace import LocalWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -137,7 +137,7 @@ INSPECTION_OUTPUT_SCHEMA: dict[str, Any] = {
 }
 
 
-class RoutineInspector(AbstractSpecialist):
+class RoutineInspector(AbstractAgent):
     """
     Independent quality gate for constructed routines.
 
@@ -155,6 +155,7 @@ class RoutineInspector(AbstractSpecialist):
             "documentation to provide actionable fix recommendations."
         ),
     )
+    SUPPORTS_AUTONOMOUS = True
 
     SYSTEM_PROMPT: str = dedent("""\
         You are a routine quality inspector. You judge routines objectively.
@@ -296,19 +297,19 @@ class RoutineInspector(AbstractSpecialist):
 
         ## Documentation-Backed Recommendations
 
-        When you have access to documentation tools (search_docs, get_doc_file),
+        When you have access to documentation tools (search_files, read_file),
         use them to provide SPECIFIC, actionable remediation advice in your
         recommendations. Don't just say "fix the auth" — search for the relevant
         doc and cite the exact fix pattern.
 
         Common patterns to search for:
-        - "TypeError: Failed to fetch" → search_docs("cors-failed-to-fetch") →
+        - "TypeError: Failed to fetch" → search_files(scope="docs", query="cors-failed-to-fetch", mode="exact") →
           the fix is adding a navigate operation to the allowed origin
-        - 401/403 errors → search_docs("unauthenticated") → the fix is adding
+        - 401/403 errors → search_files(scope="docs", query="unauthenticated", mode="exact") → the fix is adding
           auth token fetch + js_evaluate extraction before data fetches
-        - Placeholder issues → search_docs("placeholder-not-resolved") →
+        - Placeholder issues → search_files(scope="docs", query="placeholder-not-resolved", mode="exact") →
           check placeholder syntax and resolution types
-        - HTML instead of JSON → search_docs("fetch-returns-html") → wrong URL
+        - HTML instead of JSON → search_files(scope="docs", query="fetch-returns-html", mode="exact") → wrong URL
           or CORS redirect
 
         Your recommendations should include: (1) what's wrong, (2) the specific
@@ -346,18 +347,19 @@ class RoutineInspector(AbstractSpecialist):
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
-        run_mode: RunMode = RunMode.AUTONOMOUS,
+        execution_mode: AgentExecutionMode = AgentExecutionMode.AUTONOMOUS,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
     ) -> None:
         super().__init__(
             emit_message_callable=emit_message_callable,
+            workspace=LocalWorkspace.from_directory_path("./agent_workspace/routine_inspector"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            run_mode=run_mode,
+            execution_mode=execution_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,

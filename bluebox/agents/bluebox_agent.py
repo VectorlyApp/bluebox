@@ -78,7 +78,7 @@ class BlueBoxAgent(AbstractAgent):
         2. **Execute all relevant routines**: Run ALL routines that could plausibly fulfill the user's request via `execute_routines_in_parallel`. When in doubt, include the routine — running an extra routine is cheap, missing a relevant one is costly. Each routine execution requires a `routine_id` from the search results and a `parameters` dict keyed by parameter name with the corresponding value (e.g. {"origin": "New York", "date": "2025-03-01"}). Make sure to provide all required parameters as listed in the search results.
         3. **Fallback to browser agent**: If NO routines match after thorough searching, use `execute_browser_task` to perform the task via an AI-driven browser agent. Write a clear, detailed natural language instruction for the task.
         4. **Post-process results**: Use `run_python_code` to transform routine results into clean output files (CSV, JSON, JSONL, etc.) for the user.
-        5. **Verify output**: After writing files, use `list_workspace_files` and `read_workspace_file` to verify the output looks correct. If it doesn't, fix the code and rerun.
+        5. **Verify output**: After writing files, use `list_files(scope="workspace")` and `read_file(scope="workspace", path=...)` to verify the output looks correct. If it doesn't, fix the code and rerun.
         6. **Report results**: Summarize what was executed and the output files to the user.
 
         ## Workspace
@@ -99,8 +99,8 @@ class BlueBoxAgent(AbstractAgent):
         - Write to the output/ subdirectory: `with open("output/results.csv", "w") as f: ...`
 
         **Inspecting files:**
-        - Use `list_workspace_files` to see all files in the workspace
-        - Use `read_workspace_file` to read any file by relative path (e.g. "raw/25-01-15-143052-routine_result_1.json" or "output/results.csv"). Use optional start_line/end_line for large files.
+        - Use `list_files(scope="workspace")` to see all files in the workspace
+        - Use `read_file(scope="workspace", path="...")` to read any file by relative path (e.g. "raw/25-01-15-143052-routine_result_1.json" or "output/results.csv"). Use optional start_line/end_line for large files.
 
         ## Routine Result Structure
         Each entry in `routine_results` is the raw API response JSON saved by `execute_routines_in_parallel`. The structure is:
@@ -129,7 +129,7 @@ class BlueBoxAgent(AbstractAgent):
         - After routines return results, ALWAYS use `run_python_code` to post-process data and generate clean output files.
         - **ALWAYS add debug print() statements** in your code so you can see what's happening: print key counts, data shapes, sample values, etc. stdout is captured and returned to you.
         - **On first pass, always explore the data**: before writing any output file, print the routine names and top-level keys of each result's payload so you understand the shape. Then write extraction code.
-        - **Be persistent**: If your code errors or produces unexpected results, read the error/output carefully, use `list_workspace_files` and `read_workspace_file` to inspect the data, fix the code, and try again. Keep iterating until you produce the correct output file. NEVER give up after one failed attempt — debug and retry.
+        - **Be persistent**: If your code errors or produces unexpected results, read the error/output carefully, use `list_files(scope="workspace")` and `read_file(scope="workspace", path=...)` to inspect the data, fix the code, and try again. Keep iterating until you produce the correct output file. NEVER give up after one failed attempt — debug and retry.
 
         ## Important Rules
         - **Always prefer routines over `execute_browser_task`**. Routines are faster, cheaper, and more reliable. Only use the browser agent as a fallback when no suitable routine exists.
@@ -359,7 +359,7 @@ class BlueBoxAgent(AbstractAgent):
 
         if len(section) > self._CONTEXT_PROMPT_MAX_CHARS:
             section = section[:self._CONTEXT_PROMPT_MAX_CHARS] + (
-                "\n\n... (context truncated — use `read_workspace_file` to read "
+                "\n\n... (context truncated — use `read_file(scope=\"workspace\", path=\"...\")` to read "
                 "the full context files in `context/` for more detail)"
             )
 
@@ -489,7 +489,7 @@ class BlueBoxAgent(AbstractAgent):
                 summary["_hint"] = (
                     f"Response truncated ({len(raw)} chars). "
                     f"Full result saved to {full_result.get('output_file')}. "
-                    "Use read_workspace_file to inspect the full data, or access it "
+                    "Use read_file(scope='workspace', path='...') to inspect the full data, or access it "
                     "via routine_results in run_python_code."
                 )
             else:
@@ -736,7 +736,7 @@ class BlueBoxAgent(AbstractAgent):
             else:
                 result["_hint"] = (
                     "Code failed. Read the error and stdout above carefully. "
-                    "Use list_workspace_files and read_workspace_file to inspect the data, "
+                    "Use list_files(scope='workspace') and read_file(scope='workspace', path='...') to inspect the data, "
                     "then fix the code and call run_python_code again."
                 )
 
@@ -748,7 +748,7 @@ class BlueBoxAgent(AbstractAgent):
             result["files_created"] = files_created
             result["output_file"] = files_created[0]
             result["_hint"] = (
-                "Files were created. Use read_workspace_file to verify the output "
+                "Files were created. Use read_file(scope='workspace', path='...') to verify the output "
                 "is correct (check first few lines). If not, fix the code and rerun."
             )
         elif "error" not in sandbox_result:
@@ -759,38 +759,6 @@ class BlueBoxAgent(AbstractAgent):
             )
 
         return result
-
-    @agent_tool()
-    @token_optimized
-    def _list_workspace_files(self) -> dict[str, Any]:
-        """
-        List all files in the workspace directory as a tree.
-
-        Shows the full directory structure including raw/ (routine results)
-        and output/ (generated files).
-        """
-        return self._workspace.list_files()
-
-    @agent_tool()
-    def _read_workspace_file(
-        self,
-        path: str,
-        start_line: int | None = None,
-        end_line: int | None = None,
-    ) -> dict[str, Any]:
-        """
-        Read a file from the workspace by relative path.
-
-        Use this to inspect raw routine results, verify generated output files,
-        or debug data issues. Supports optional line ranges for large files.
-
-        Args:
-            path: Relative path within the workspace (e.g. "raw/routine_results_2024.json"
-                or "output/results.csv").
-            start_line: Optional 1-based start line number. Omit to read from the beginning.
-            end_line: Optional 1-based end line number (inclusive). Omit to read to the end.
-        """
-        return self._workspace.read_file(path, start_line=start_line, end_line=end_line)
 
     ## Context generation (structured output, called by TUI slash command)
 

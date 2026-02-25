@@ -26,8 +26,8 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from websocket import WebSocket
 
-from bluebox.agents.abstract_agent import AgentCard, agent_tool
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, AgentExecutionMode, agent_tool
+from bluebox.agents.workspace import LocalWorkspace
 from bluebox.cdp.connection import (
     cdp_new_tab,
     create_cdp_helpers,
@@ -106,7 +106,7 @@ _DOM_FILTER_JS = """
 """.strip()
 
 
-class ExperimentWorker(AbstractSpecialist):
+class ExperimentWorker(AbstractAgent):
     """
     Worker agent that executes experiments in a live browser while referencing
     captured session data.
@@ -126,6 +126,7 @@ class ExperimentWorker(AbstractSpecialist):
             "Has browser tools (navigate, eval JS, CDP, DOM) and capture lookup tools."
         ),
     )
+    SUPPORTS_AUTONOMOUS = True
 
     SYSTEM_PROMPT: str = textwrap.dedent("""\
         You are an experiment worker agent with access to TWO sources of data:
@@ -204,7 +205,7 @@ class ExperimentWorker(AbstractSpecialist):
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
-        run_mode: RunMode = RunMode.AUTONOMOUS,
+        execution_mode: AgentExecutionMode = AgentExecutionMode.AUTONOMOUS,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
@@ -226,11 +227,12 @@ class ExperimentWorker(AbstractSpecialist):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
+            workspace=LocalWorkspace.from_directory_path("./agent_workspace/experiment_worker"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            run_mode=run_mode,
+            execution_mode=execution_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,

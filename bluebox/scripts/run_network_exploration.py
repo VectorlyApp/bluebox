@@ -23,8 +23,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from bluebox.agents.specialists.abstract_specialist import AutonomousConfig, RunMode
+from bluebox.agents.abstract_agent import AgentExecutionMode, AutonomousRunConfig
 from bluebox.agents.specialists.network_specialist import NetworkSpecialist
+from bluebox.agents.workspace import LocalWorkspace
 from bluebox.data_models.api_indexing.exploration import (
     EndpointCategory,
     EndpointCluster,
@@ -226,6 +227,7 @@ def run_network_exploration(
     llm_model: LLMModel = OpenAIModel.GPT_5_1,
     min_iterations: int = 3,
     max_iterations: int = 15,
+    workspace_dir: Path | None = None,
 ) -> NetworkExplorationSummary | None:
     """
     Run network exploration on a CDP captures directory.
@@ -235,6 +237,7 @@ def run_network_exploration(
         llm_model: LLM model to use.
         min_iterations: Minimum iterations before finalize is available.
         max_iterations: Maximum iterations before the loop exits.
+        workspace_dir: Workspace directory for artifacts and mounted inputs.
 
     Returns:
         NetworkExplorationSummary if successful, None if the agent failed or timed out.
@@ -254,12 +257,18 @@ def run_network_exploration(
         loader.stats.unique_hosts,
     )
 
+    workspace = LocalWorkspace.from_directory_path(
+        workspace_dir or Path("./agent_workspace/network_exploration"),
+    )
+    workspace.attach_input_file("network_events", network_jsonl)
+
     # Build the specialist — override its autonomous prompt for exploration
     specialist = NetworkSpecialist(
         emit_message_callable=_emit_message,
         network_data_loader=loader,
         llm_model=llm_model,
-        run_mode=RunMode.AUTONOMOUS,
+        execution_mode=AgentExecutionMode.AUTONOMOUS,
+        workspace=workspace,
     )
 
     # Bump max_output_tokens — the default 4096 is too small for the finalize_with_output
@@ -267,8 +276,6 @@ def run_network_exploration(
     specialist.llm_client._client.DEFAULT_MAX_TOKENS = 16_384
 
     # Monkey-patch the autonomous system prompt for exploration
-    original_get_autonomous_system_prompt = specialist._get_autonomous_system_prompt
-
     def _exploration_system_prompt() -> str:
         stats = loader.stats
         stats_context = (
@@ -317,7 +324,7 @@ def run_network_exploration(
         "hit_count, description, interest (high|medium|low), request_ids (array)."
     )
 
-    config = AutonomousConfig(
+    config = AutonomousRunConfig(
         min_iterations=min_iterations,
         max_iterations=max_iterations,
     )
@@ -379,6 +386,12 @@ def main() -> None:
         help="Path to write output JSON (default: exploration_network.json)",
     )
     parser.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=Path("./agent_workspace/network_exploration"),
+        help="Workspace directory for artifacts and mounted inputs.",
+    )
+    parser.add_argument(
         "--min-iterations",
         type=int,
         default=3,
@@ -413,6 +426,7 @@ def main() -> None:
         llm_model=llm_model,
         min_iterations=args.min_iterations,
         max_iterations=args.max_iterations,
+        workspace_dir=args.workspace_dir,
     )
 
     if summary is None:

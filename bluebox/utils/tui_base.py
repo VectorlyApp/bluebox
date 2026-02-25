@@ -308,6 +308,20 @@ class AbstractAgentTUI(App):
         """Return Rich markup for the user-message prefix."""
         return "[bold green]You>[/bold green]"
 
+    def _print_commands(self) -> None:
+        """Print available slash commands to the chat log on boot."""
+        chat = self.query_one("#chat-log", RichLog)
+        # Skip aliases and duplicates to keep it concise
+        skip = {"/exit", "/q", "/commands", "/?", "/h"}
+        cmds = {k: v for k, v in self.SLASH_COMMANDS.items() if k not in skip}
+        if not cmds:
+            return
+        parts = [f"  [cyan]{cmd}[/cyan] [dim]{desc}[/dim]" for cmd, desc in cmds.items()]
+        chat.write(Text.from_markup(
+            "[bold]Commands:[/bold]\n" + "\n".join(parts)
+        ))
+        chat.write("")
+
     def _add_saved_file(self, filepath: str) -> None:
         """Write a timestamped entry to the saved-files pane."""
         if filepath in self._saved_file_set:
@@ -416,6 +430,7 @@ class AbstractAgentTUI(App):
             return
 
         self._print_welcome()
+        self._print_commands()
         self.call_after_refresh(self._update_status)  # defer until layout is done
         self.set_interval(10, self._update_status)
         self.query_one("#user-input", Input).focus()

@@ -117,6 +117,8 @@ def run_explorations(
     """
     exploration_dir = output_dir / "exploration"
     exploration_dir.mkdir(parents=True, exist_ok=True)
+    workspace_root = output_dir / "agent_workspace"
+    workspace_root.mkdir(parents=True, exist_ok=True)
 
     runners = {
         "network": run_network_exploration,
@@ -131,7 +133,12 @@ def run_explorations(
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = {
-            pool.submit(fn, cdp_captures_dir, llm_model): domain
+            pool.submit(
+                fn,
+                cdp_captures_dir,
+                llm_model,
+                workspace_dir=workspace_root / f"{domain}_exploration",
+            ): domain
             for domain, fn in runners.items()
         }
 

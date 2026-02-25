@@ -102,12 +102,6 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
         chat.write(Text.from_markup("\n".join(lines)))
         chat.write("")
 
-        chat.write(Text.from_markup(
-            "Type [cyan]/help[/cyan] for commands, or ask me to browse the web "
-            "or execute a routine."
-        ))
-        chat.write("")
-
     def _build_status_text(self) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         msg_count = len(self._agent.get_chats()) if self._agent else 0

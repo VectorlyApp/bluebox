@@ -1,21 +1,26 @@
 """
 tests/unit/agents/specialists/test_abstract_specialist.py
 
-Comprehensive unit tests for AbstractSpecialist base class and @agent_tool decorator.
+Comprehensive unit tests for autonomous/finalize behavior on AbstractAgent and @agent_tool decorator.
 """
 
+import tempfile
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel
 
-from bluebox.agents.abstract_agent import AgentCard, agent_tool, _ToolMeta
-from bluebox.agents.specialists.abstract_specialist import (
-    AbstractSpecialist,
-    AutonomousConfig,
-    RunMode,
+from bluebox.agents.abstract_agent import (
+    AbstractAgent,
+    AgentCard,
+    AgentExecutionMode,
+    AutonomousRunConfig,
+    agent_tool,
+    _ToolMeta,
 )
+from bluebox.agents.workspace import LocalWorkspace
 
 
 # =============================================================================
@@ -28,17 +33,21 @@ class DummyResult(BaseModel):
     value: str
 
 
-class ConcreteSpecialist(AbstractSpecialist):
+class ConcreteSpecialist(AbstractAgent):
     """
-    Concrete implementation of AbstractSpecialist for testing.
+    Concrete implementation of AbstractAgent with autonomous support for testing.
 
     Has a mix of tools with different availability conditions and signatures.
     """
 
     AGENT_CARD = AgentCard(description="Test specialist for unit tests.")
+    SUPPORTS_AUTONOMOUS = True
 
     def __init__(self, **kwargs: Any) -> None:
         self._autonomous_result: DummyResult | None = None
+        if "workspace" not in kwargs:
+            workspace_dir = Path(tempfile.mkdtemp(prefix="bluebox-abstract-agent-autonomous-test-"))
+            kwargs["workspace"] = LocalWorkspace.from_directory_path(workspace_dir)
         super().__init__(**kwargs)
 
     def _get_system_prompt(self) -> str:
@@ -161,7 +170,7 @@ def autonomous_specialist(mock_emit: MagicMock) -> ConcreteSpecialist:
     """Create a ConcreteSpecialist in autonomous mode past min_iterations."""
     spec = ConcreteSpecialist(
         emit_message_callable=mock_emit,
-        run_mode=RunMode.AUTONOMOUS,
+        execution_mode=AgentExecutionMode.AUTONOMOUS,
     )
     spec._autonomous_iteration = 5  # past default min_iterations of 3
     return spec
@@ -322,18 +331,17 @@ class TestCollectTools:
             "with_explicit_schema",
             "finalize",
             "add_note",
-            # Generic finalize tools from AbstractSpecialist (both with and without output schema)
+            # Generic finalize tools from AbstractAgent (both with and without output schema)
             "finalize_with_output",
             "finalize_with_failure",
             "finalize_result",
             "finalize_failure",
             # Generic code execution tool from AbstractAgent (availability-gated)
             "execute_python",
-            # Documentation tools from AbstractAgent
-            "search_docs",
-            "get_doc_file",
-            "search_docs_by_terms",
-            "search_docs_by_regex",
+            # Unified file tools from AbstractAgent
+            "list_files",
+            "read_file",
+            "search_files",
         }
         assert tool_names == expected
 
@@ -400,7 +408,7 @@ class TestSyncTools:
         assert "finalize_gated" not in specialist._registered_tool_names
 
         # Switch to autonomous mode and advance past min_iterations
-        specialist.run_mode = RunMode.AUTONOMOUS
+        specialist.execution_mode = AgentExecutionMode.AUTONOMOUS
         specialist._autonomous_iteration = 5
         specialist._sync_tools()
         assert "finalize_gated" in specialist._registered_tool_names
@@ -421,7 +429,7 @@ class TestSyncTools:
     ) -> None:
         """Tool availability tracks state changes: available → unavailable → available."""
         # Phase 1: Make finalize_gated available (autonomous mode, past min_iterations)
-        specialist.run_mode = RunMode.AUTONOMOUS
+        specialist.execution_mode = AgentExecutionMode.AUTONOMOUS
         specialist._autonomous_iteration = 5
         specialist._sync_tools()
 
@@ -430,7 +438,7 @@ class TestSyncTools:
         assert result == {"finalized": True}
 
         # Phase 2: Make unavailable (back to conversational mode)
-        specialist.run_mode = RunMode.CONVERSATIONAL
+        specialist.execution_mode = AgentExecutionMode.CONVERSATIONAL
         specialist._sync_tools()
 
         assert "finalize_gated" not in specialist._registered_tool_names
@@ -439,7 +447,7 @@ class TestSyncTools:
         assert "not currently available" in result["error"]
 
         # Phase 3: Make available again (back to autonomous, past min_iterations)
-        specialist.run_mode = RunMode.AUTONOMOUS
+        specialist.execution_mode = AgentExecutionMode.AUTONOMOUS
         specialist._autonomous_iteration = 10
         specialist._sync_tools()
 
@@ -449,8 +457,8 @@ class TestSyncTools:
 
     def test_availability_changes_mid_iteration(self, specialist: ConcreteSpecialist) -> None:
         """Tool becomes available mid-session as iteration count increases."""
-        specialist.run_mode = RunMode.AUTONOMOUS
-        specialist._autonomous_config = AutonomousConfig(min_iterations=3, max_iterations=10)
+        specialist.execution_mode = AgentExecutionMode.AUTONOMOUS
+        specialist._autonomous_config = AutonomousRunConfig(min_iterations=3, max_iterations=10)
 
         # Iteration 1: not available
         specialist._autonomous_iteration = 1
@@ -640,7 +648,7 @@ class TestCanFinalizeProperty:
 
     def test_false_in_conversational_mode(self, specialist: ConcreteSpecialist) -> None:
         """can_finalize is False in conversational mode regardless of iteration."""
-        specialist.run_mode = RunMode.CONVERSATIONAL
+        specialist.execution_mode = AgentExecutionMode.CONVERSATIONAL
         specialist._autonomous_iteration = 100  # even with high iteration
         assert specialist.can_finalize is False
 
@@ -648,9 +656,9 @@ class TestCanFinalizeProperty:
         """can_finalize is False in autonomous mode before min_iterations."""
         specialist = ConcreteSpecialist(
             emit_message_callable=mock_emit,
-            run_mode=RunMode.AUTONOMOUS,
+            execution_mode=AgentExecutionMode.AUTONOMOUS,
         )
-        specialist._autonomous_config = AutonomousConfig(min_iterations=5, max_iterations=10)
+        specialist._autonomous_config = AutonomousRunConfig(min_iterations=5, max_iterations=10)
         specialist._autonomous_iteration = 3
 
         assert specialist.can_finalize is False
@@ -659,9 +667,9 @@ class TestCanFinalizeProperty:
         """can_finalize is True at exactly min_iterations."""
         specialist = ConcreteSpecialist(
             emit_message_callable=mock_emit,
-            run_mode=RunMode.AUTONOMOUS,
+            execution_mode=AgentExecutionMode.AUTONOMOUS,
         )
-        specialist._autonomous_config = AutonomousConfig(min_iterations=5, max_iterations=10)
+        specialist._autonomous_config = AutonomousRunConfig(min_iterations=5, max_iterations=10)
         specialist._autonomous_iteration = 5
 
         assert specialist.can_finalize is True
@@ -672,36 +680,36 @@ class TestCanFinalizeProperty:
 
 
 class TestAutonomousConfig:
-    """Tests for AutonomousConfig."""
+    """Tests for AutonomousRunConfig."""
 
     def test_default_values(self) -> None:
-        """AutonomousConfig has sensible defaults."""
-        config = AutonomousConfig()
+        """AutonomousRunConfig has sensible defaults."""
+        config = AutonomousRunConfig()
         assert config.min_iterations == 3
         assert config.max_iterations == 10
 
     def test_custom_values(self) -> None:
-        """AutonomousConfig accepts custom values."""
-        config = AutonomousConfig(min_iterations=5, max_iterations=20)
+        """AutonomousRunConfig accepts custom values."""
+        config = AutonomousRunConfig(min_iterations=5, max_iterations=20)
         assert config.min_iterations == 5
         assert config.max_iterations == 20
 
 
 # =============================================================================
-# Tests for RunMode enum
+# Tests for AgentExecutionMode enum
 # =============================================================================
 
 
 class TestRunMode:
-    """Tests for RunMode enum."""
+    """Tests for AgentExecutionMode enum."""
 
     def test_conversational_value(self) -> None:
-        """RunMode.CONVERSATIONAL has correct string value."""
-        assert RunMode.CONVERSATIONAL == "conversational"
+        """AgentExecutionMode.CONVERSATIONAL has correct string value."""
+        assert AgentExecutionMode.CONVERSATIONAL == "conversational"
 
     def test_autonomous_value(self) -> None:
-        """RunMode.AUTONOMOUS has correct string value."""
-        assert RunMode.AUTONOMOUS == "autonomous"
+        """AgentExecutionMode.AUTONOMOUS has correct string value."""
+        assert AgentExecutionMode.AUTONOMOUS == "autonomous"
 
 
 # =============================================================================
@@ -714,7 +722,7 @@ class TestSpecialistLifecycle:
 
     def test_initial_state(self, specialist: ConcreteSpecialist) -> None:
         """Specialist initializes with correct default state."""
-        assert specialist.run_mode == RunMode.CONVERSATIONAL
+        assert specialist.execution_mode == AgentExecutionMode.CONVERSATIONAL
         assert specialist._autonomous_iteration == 0
         assert specialist.can_finalize is False
 
@@ -725,7 +733,7 @@ class TestSpecialistLifecycle:
 
         autonomous_specialist.reset()
 
-        assert autonomous_specialist.run_mode == RunMode.CONVERSATIONAL
+        assert autonomous_specialist.execution_mode == AgentExecutionMode.CONVERSATIONAL
         assert autonomous_specialist._autonomous_iteration == 0
         assert autonomous_specialist._autonomous_result is None
         assert autonomous_specialist.can_finalize is False

@@ -326,7 +326,7 @@ class TestContextPromptInjection:
         section = agent._get_context_prompt_section()
         assert len(section) < 25_000
         assert "context truncated" in section
-        assert "read_workspace_file" in section
+        assert "read_file(scope=\"workspace\"" in section
 
     def test_no_context_no_section(self, tmp_path: Path) -> None:
         agent = BlueBoxAgent(

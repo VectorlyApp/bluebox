@@ -19,15 +19,18 @@ from __future__ import annotations
 
 import json
 import functools
+import re
 from abc import ABC, abstractmethod
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 from textwrap import dedent
-from typing import Any, Callable, ClassVar, get_type_hints
+from typing import Any, Callable, ClassVar, NamedTuple, get_type_hints
 
-from pydantic import TypeAdapter, ValidationError
+import jsonschema
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from bluebox.agents.workspace import AgentWorkspace
 from bluebox.data_models.llms.interaction import (
@@ -46,6 +49,7 @@ from bluebox.data_models.llms.interaction import (
     ToolInvocationStatus,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
+from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader, FileType
 from bluebox.llms.llm_client import LLMClient
 from bluebox.llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
@@ -67,6 +71,23 @@ class ToolResultPersistMode(StrEnum):
     NEVER = "never"
     ALWAYS = "always"
     OVERFLOW = "overflow"
+
+
+class AgentExecutionMode(StrEnum):
+    """Execution mode for agent loops."""
+    CONVERSATIONAL = "conversational"
+    AUTONOMOUS = "autonomous"
+
+
+class AutonomousRunConfig(NamedTuple):
+    """
+    Configuration for autonomous agent runs.
+
+    min_iterations controls when finalize tools become available.
+    max_iterations controls when the autonomous loop gives up.
+    """
+    min_iterations: int = 3
+    max_iterations: int = 10
 
 
 @dataclass(frozen=True)
@@ -200,7 +221,9 @@ class AbstractAgent(ABC):
 
     # Class-level configuration (can be overridden by subclasses)
     AGENT_LOOP_MAX_ITERATIONS: int = 10
+    SUPPORTS_AUTONOMOUS: ClassVar[bool] = False
     AGENT_CARD: ClassVar[AgentCard]  # must be defined by every concrete subclass
+    _subclasses: ClassVar[list[type[AbstractAgent]]] = []
     WORKSPACE_USAGE_SECTION: ClassVar[str] = dedent("""\
         ## Workspace
         - Use `raw/` (read-only) for tool-call artifacts (inputs/results), not deliverables.
@@ -212,7 +235,7 @@ class AbstractAgent(ABC):
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Validate that concrete subclasses define AGENT_CARD."""
         super().__init_subclass__(**kwargs)
-        # skip abstract classes (matches existing naming convention in AbstractSpecialist)
+        # skip abstract classes
         if cls.__name__.startswith("Abstract"):
             return
         # validate that the subclass defines an AGENT_CARD class variable of type AgentCard
@@ -220,6 +243,31 @@ class AbstractAgent(ABC):
             raise TypeError(
                 f"{cls.__name__} must define an AGENT_CARD class variable of type AgentCard"
             )
+        if cls not in cls._subclasses:
+            cls._subclasses.append(cls)
+
+    @classmethod
+    def get_all_subclasses(cls) -> list[type[AbstractAgent]]:
+        """Return a copy of all registered concrete AbstractAgent subclasses."""
+        return cls._subclasses.copy()
+
+    @classmethod
+    def get_by_type(cls, agent_type: str) -> type[AbstractAgent] | None:
+        """Look up a registered agent class by class name."""
+        for subclass in cls._subclasses:
+            if subclass.__name__ == agent_type:
+                return subclass
+        return None
+
+    @classmethod
+    def get_all_agent_types(cls) -> list[str]:
+        """Return all registered agent class names."""
+        return [subclass.__name__ for subclass in cls._subclasses]
+
+    @classmethod
+    def get_all_autonomous_subclasses(cls) -> list[type[AbstractAgent]]:
+        """Return registered agent classes that declare autonomous support."""
+        return [subclass for subclass in cls._subclasses if getattr(subclass, "SUPPORTS_AUTONOMOUS", False)]
 
     ## Abstract methods
 
@@ -232,7 +280,7 @@ class AbstractAgent(ABC):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
-        workspace: AgentWorkspace,
+        workspace: AgentWorkspace | None = None,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -241,6 +289,8 @@ class AbstractAgent(ABC):
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
         on_llm_response: Callable[[LLMChatResponse], None] | None = None,
+        execution_mode: AgentExecutionMode = AgentExecutionMode.CONVERSATIONAL,
+        supports_autonomous: bool | None = None,
         allow_code_execution: bool = False,
         code_execution_globals: dict[str, Any] | None = None,
     ) -> None:
@@ -249,7 +299,8 @@ class AbstractAgent(ABC):
 
         Args:
             emit_message_callable: Callback to emit messages to the host.
-            workspace: Workspace instance used for agent file operations.
+            workspace: Optional workspace used for agent file operations.
+                When omitted, workspace-scoped tools/features are unavailable.
             persist_chat_callable: Optional callback to persist Chat objects.
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
@@ -258,6 +309,8 @@ class AbstractAgent(ABC):
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
             on_llm_response: Optional callback invoked after each LLM call with the response (for token tracking).
+            execution_mode: Agent execution mode (conversational or autonomous).
+            supports_autonomous: Whether this agent supports autonomous runs. Defaults to class-level SUPPORTS_AUTONOMOUS.
             allow_code_execution: Whether to expose the generic execute_python tool.
             code_execution_globals: Globals injected into execute_python sandbox runs.
                 Must be empty when allow_code_execution is False.
@@ -274,14 +327,34 @@ class AbstractAgent(ABC):
         self._stream_chunk_callable = stream_chunk_callable
         self._documentation_data_loader = documentation_data_loader
         self._on_llm_response = on_llm_response
+        self._on_chat_added: Callable[[], None] | None = None
+        self._supports_autonomous = (
+            supports_autonomous
+            if supports_autonomous is not None
+            else self.SUPPORTS_AUTONOMOUS
+        )
+        self.execution_mode = (
+            execution_mode if self._supports_autonomous else AgentExecutionMode.CONVERSATIONAL
+        )
+        self._autonomous_iteration: int = 0
+        self._autonomous_config: AutonomousRunConfig = AutonomousRunConfig()
+        self._task_output_schema: dict[str, Any] | None = None
+        self._task_output_description: str | None = None
+        self._notes: list[str] = []
+        self._wrapped_result: BaseModel | None = None
+        self._finalize_with_output_failed = False
         self._allow_code_execution = allow_code_execution
         self._code_execution_globals = normalized_globals if allow_code_execution else {}
-        self._sandbox_mode = get_active_sandbox_mode(work_dir_set=True) if allow_code_execution else "blocklist"
+        self._sandbox_mode = (
+            get_active_sandbox_mode(work_dir_set=workspace is not None)
+            if allow_code_execution
+            else "blocklist"
+        )
         self._previous_response_id: str | None = None
         self._response_id_to_chat_index: dict[str, int] = {}
 
-        if not isinstance(workspace, AgentWorkspace):
-            raise TypeError("workspace must implement AgentWorkspace")
+        if workspace is not None and not isinstance(workspace, AgentWorkspace):
+            raise TypeError("workspace must implement AgentWorkspace when provided")
         self._workspace = workspace
 
         self.llm_model = llm_model
@@ -302,31 +375,38 @@ class AbstractAgent(ABC):
             for chat in existing_chats:
                 self._chats[chat.id] = chat
 
-    @agent_tool(
-        availability=lambda self: self._allow_code_execution,
-        persist=ToolResultPersistMode.OVERFLOW,
-    )
+    @agent_tool(availability=lambda self: self._allow_code_execution, persist=ToolResultPersistMode.OVERFLOW)
     def _execute_python(self, code: str) -> dict[str, Any]:
         """
-        Execute Python code in a sandbox with workspace-scoped file access.
+        Execute Python code in a sandbox.
 
-        The code runs with `work_dir` set to this agent's workspace root so file
-        I/O is scoped to that directory. Globals passed via `code_execution_globals`
-        are available inside the code.
+        When a workspace is configured, code runs with `work_dir` set to the
+        workspace root so file I/O is scoped to that directory.
+        Without a workspace, execution is compute-only and file I/O (open/Path)
+        remains blocked by sandbox policy.
+
+        Globals passed via `code_execution_globals` are always available.
 
         Args:
             code: Python code to execute.
         """
-        self._workspace.ensure_dirs()
-        sandbox_result = execute_python_sandboxed(
-            code=code,
-            extra_globals=self._code_execution_globals,
-            work_dir=str(self._workspace.root_path.resolve()),
-            read_only_paths=[
-                str((self._workspace.root_path / "raw").resolve()),
-                str((self._workspace.root_path / "meta").resolve()),
-            ],
-        )
+        if self.has_workspace:
+            workspace = self._require_workspace()
+            workspace.ensure_dirs()
+            sandbox_result = execute_python_sandboxed(
+                code=code,
+                extra_globals=self._code_execution_globals,
+                work_dir=str(workspace.root_path.resolve()),
+                read_only_paths=[
+                    str((workspace.root_path / "raw").resolve()),
+                    str((workspace.root_path / "meta").resolve()),
+                ],
+            )
+        else:
+            sandbox_result = execute_python_sandboxed(
+                code=code,
+                extra_globals=self._code_execution_globals,
+            )
         if "error" in sandbox_result:
             workaround = get_workaround_for_error(sandbox_result["error"])
             if workaround:
@@ -350,6 +430,13 @@ class AbstractAgent(ABC):
 
         lines: list[str] = ["\n## Code Execution Environment"]
 
+        if not self.has_workspace:
+            lines.append(
+                "\nNo workspace is configured for this agent."
+                "\nExecution is compute-only: filesystem access is disabled."
+                "\n`open()` and `Path` file operations are unavailable."
+            )
+
         # Globals section
         if self._code_execution_globals:
             global_names = ", ".join(f"`{k}`" for k in sorted(self._code_execution_globals))
@@ -363,6 +450,16 @@ class AbstractAgent(ABC):
             blocked_modules_str = ", ".join(sorted(BLOCKED_MODULES))
             blocked_patterns_str = ", ".join(
                 f"`{p}`" for p, _ in BLOCKED_PATTERNS if p != "open("
+            )
+            path_rule = (
+                "\n- `Path` is already pre-loaded — use it directly, do NOT `import pathlib`"
+                if self.has_workspace
+                else "\n- `Path` is not available without workspace-backed file scope"
+            )
+            open_rule = (
+                "\n- `open()` is already pre-loaded — use it directly for all file I/O"
+                if self.has_workspace
+                else "\n- `open()` is blocked when no workspace is configured"
             )
             lines.append(
                 "\n### Sandbox Restrictions (IMPORTANT — read before writing any Python code)"
@@ -382,8 +479,8 @@ class AbstractAgent(ABC):
                 "\n"
                 "\n**Key rules to avoid errors:**"
                 "\n- Do NOT `import os`, `import pathlib`, `import sys`, or any blocked module"
-                "\n- `Path` is already pre-loaded — use it directly, do NOT `import pathlib`"
-                "\n- `open()` is already pre-loaded — use it directly for all file I/O"
+                f"{path_rule}"
+                f"{open_rule}"
                 "\n- Do NOT use `getattr()` — use dict access: `obj[\"key\"]` or `obj.get(\"key\")`"
             )
         else:
@@ -391,7 +488,11 @@ class AbstractAgent(ABC):
             lines.append(
                 f"\nSandbox mode: **{self._sandbox_mode}** (full Python environment available)."
                 "\nYou have access to the standard library and common packages."
-                "\nFile I/O is scoped to the workspace directory."
+                + (
+                    "\nFile I/O is scoped to the workspace directory."
+                    if self.has_workspace
+                    else "\nNo workspace attached: file I/O is disabled for this run."
+                )
             )
 
         return "\n".join(lines)
@@ -426,9 +527,17 @@ class AbstractAgent(ABC):
         if is_truncated:
             preview += f"\n... (truncated, {char_count} total chars)"
 
+        workspace = self._workspace
+        if workspace is None:
+            logger.debug(
+                "Skipping persistence for '%s': no workspace configured",
+                tool_name,
+            )
+            return tool_result
+
         try:
-            self._workspace.ensure_dirs()
-            ref = self._workspace.save_artifact(
+            workspace.ensure_dirs()
+            ref = workspace.save_artifact(
                 source="raw",
                 filename=filename,
                 content=serialized,
@@ -469,6 +578,276 @@ class AbstractAgent(ABC):
         """Return the current thread ID."""
         return self._thread.id
 
+    @property
+    def has_workspace(self) -> bool:
+        """Whether this agent has an attached workspace."""
+        return self._workspace is not None
+
+    @property
+    def supports_autonomous(self) -> bool:
+        """Whether this agent supports autonomous runs."""
+        return self._supports_autonomous
+
+    @property
+    def autonomous_iteration(self) -> int:
+        """Return the current/final autonomous iteration count."""
+        return self._autonomous_iteration
+
+    @property
+    def can_finalize(self) -> bool:
+        """
+        Whether finalize tools should be available.
+
+        Finalize tools are available only in autonomous mode after min_iterations.
+        """
+        return (
+            self._supports_autonomous
+            and self.execution_mode == AgentExecutionMode.AUTONOMOUS
+            and self._autonomous_iteration >= self._autonomous_config.min_iterations
+        )
+
+    @property
+    def has_output_schema(self) -> bool:
+        """Whether an orchestrator-defined output schema has been set."""
+        return self._task_output_schema is not None
+
+    ## Autonomous extension points
+
+    def _require_workspace(self) -> AgentWorkspace:
+        """Return workspace or raise a clear runtime error when unavailable."""
+        if self._workspace is None:
+            raise RuntimeError(
+                "This agent has no workspace configured. "
+                "Workspace-scoped tools are unavailable.",
+            )
+        return self._workspace
+
+    def _ensure_autonomous_supported(self) -> None:
+        if not self._supports_autonomous:
+            raise RuntimeError(
+                f"{self.__class__.__name__} does not support autonomous runs",
+            )
+
+    def _get_autonomous_system_prompt(self) -> str:
+        """
+        Return system prompt for autonomous mode.
+
+        Subclasses supporting autonomous mode should override this.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must override _get_autonomous_system_prompt() to support run_autonomous()",
+        )
+
+    def _get_autonomous_initial_message(self, task: str) -> str:
+        """
+        Build initial USER message for autonomous mode.
+
+        Subclasses supporting autonomous mode should override this.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must override _get_autonomous_initial_message() to support run_autonomous()",
+        )
+
+    def _check_autonomous_completion(self, tool_name: str) -> bool:
+        """
+        Check whether a tool call signals autonomous completion.
+
+        Default implementation checks generic finalize tool names and
+        requires a wrapped result to be present.
+        """
+        finalize_tools = (
+            "finalize_with_output",
+            "finalize_with_failure",
+            "finalize_result",
+            "finalize_failure",
+        )
+        if tool_name in finalize_tools:
+            return self._wrapped_result is not None
+        return False
+
+    def _get_autonomous_result(self) -> BaseModel | None:
+        """
+        Return autonomous run result.
+
+        Subclasses may override this to map to specialized result objects.
+        """
+        return self._wrapped_result
+
+    def _reset_autonomous_state(self) -> None:
+        """
+        Reset autonomous-mode state before a new run.
+
+        Subclasses can extend this to clear their own autonomous fields.
+        """
+        self._task_output_schema = None
+        self._task_output_description = None
+        self._notes = []
+        self._wrapped_result = None
+        self._finalize_with_output_failed = False
+
+    ## Output schema helpers for autonomous runs
+
+    def set_output_schema(
+        self,
+        schema: dict[str, Any],
+        description: str | None = None,
+    ) -> None:
+        """Set expected output schema for the current autonomous task."""
+        self._task_output_schema = schema
+        self._task_output_description = description
+
+    def _get_output_schema_prompt_section(self) -> str:
+        """Return formatted output schema prompt section for autonomous mode."""
+        if not self._task_output_schema:
+            return ""
+
+        parts = ["\n\n## Expected Output Schema\n"]
+        if self._task_output_description:
+            parts.append(f"**Description:** {self._task_output_description}\n\n")
+        parts.append("**Schema:**\n```json\n")
+        parts.append(json.dumps(self._task_output_schema, indent=2))
+        parts.append("\n```\n")
+        parts.append(
+            "\nWhen ready, call `finalize_with_output(output={...})` with data matching this schema. "
+            "Use `add_note()` before finalizing to record notes, warnings, or errors."
+        )
+        return "".join(parts)
+
+    def _get_urgency_notice(self) -> str:
+        """Iteration-aware urgency notice for autonomous prompts."""
+        finalize_tool = "finalize_with_output" if self.has_output_schema else "finalize_result"
+        if self.can_finalize:
+            remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
+            if remaining <= 2:
+                return f"\n\n## URGENT: Only {remaining} iteration(s) left — call `{finalize_tool}` NOW."
+            if remaining <= 4:
+                return f"\n\n## Finalize soon — {remaining} iterations remaining."
+            return f"\n\n## `{finalize_tool}` is now available."
+        return f"\n\n## Continue exploring (iteration {self._autonomous_iteration})."
+
+    @agent_tool(
+        availability=lambda self: (
+            self._supports_autonomous
+            and self.execution_mode == AgentExecutionMode.AUTONOMOUS
+        )
+    )
+    def add_note(self, note: str) -> dict[str, Any]:
+        """
+        Add a note to the autonomous result wrapper.
+
+        Args:
+            note: Note, warning, complaint, or error to include in final output.
+        """
+        self._notes.append(note)
+        return {"status": "ok", "total_notes": len(self._notes)}
+
+    @agent_tool(availability=lambda self: self.can_finalize and self.has_output_schema)
+    @token_optimized_decorator
+    def _finalize_with_output(self, output: dict[str, Any]) -> dict[str, Any]:
+        """
+        Finalize with output matching the orchestrator's expected schema.
+
+        Args:
+            output: Result data matching the configured JSON schema.
+        """
+        if not self._task_output_schema:
+            return {"error": "No output schema defined for this task"}
+
+        try:
+            jsonschema.validate(instance=output, schema=self._task_output_schema)
+        except jsonschema.ValidationError as e:
+            self._finalize_with_output_failed = True
+            return {
+                "error": "VALIDATION FAILED — output does not match the expected schema.",
+                "validation_error": str(e.message),
+                "schema_path": list(e.absolute_schema_path),
+                "hint": "Fix the output structure and call finalize_with_output again.",
+            }
+
+        self._finalize_with_output_failed = False
+        self._wrapped_result = SpecialistResultWrapper(
+            output=output,
+            success=True,
+            notes=self._notes.copy(),
+            failure_reason=None,
+        )
+        return {
+            "status": "success",
+            "message": "Output validated and stored successfully",
+            "notes_count": len(self._notes),
+        }
+
+    @agent_tool(availability=lambda self: self.can_finalize and self.has_output_schema)
+    @token_optimized_decorator
+    def _finalize_with_failure(self, reason: str) -> dict[str, Any]:
+        """
+        Finalize with failure when a schema-based task cannot be completed.
+
+        Args:
+            reason: Why the task could not be completed.
+        """
+        if self._finalize_with_output_failed:
+            return {
+                "error": (
+                    "REJECTED — finalize_with_output already failed validation. "
+                    "Fix output and retry finalize_with_output instead of giving up."
+                ),
+            }
+
+        self._wrapped_result = SpecialistResultWrapper(
+            output=None,
+            success=False,
+            notes=self._notes.copy(),
+            failure_reason=reason,
+        )
+        return {
+            "status": "failure",
+            "message": "Task marked as failed",
+            "reason": reason,
+        }
+
+    @agent_tool(availability=lambda self: self.can_finalize and not self.has_output_schema)
+    @token_optimized_decorator
+    def _finalize_result(self, output: dict[str, Any]) -> dict[str, Any]:
+        """
+        Finalize and submit result data for tasks without a predefined schema.
+
+        Args:
+            output: Result payload.
+        """
+        self._wrapped_result = SpecialistResultWrapper(
+            output=output,
+            success=True,
+            notes=self._notes.copy(),
+            failure_reason=None,
+        )
+        return {
+            "status": "success",
+            "message": "Result submitted successfully",
+            "notes_count": len(self._notes),
+        }
+
+    @agent_tool(availability=lambda self: self.can_finalize and not self.has_output_schema)
+    @token_optimized_decorator
+    def _finalize_failure(self, reason: str) -> dict[str, Any]:
+        """
+        Finalize with failure for tasks without a predefined schema.
+
+        Args:
+            reason: Why the task could not be completed.
+        """
+        self._wrapped_result = SpecialistResultWrapper(
+            output=None,
+            success=False,
+            notes=self._notes.copy(),
+            failure_reason=reason,
+        )
+        return {
+            "status": "failure",
+            "message": "Task marked as failed",
+            "reason": reason,
+        }
+
     ## Public API
 
     def get_thread(self) -> ChatThread:
@@ -481,6 +860,11 @@ class AbstractAgent(ABC):
 
     def reset(self) -> None:
         """Reset the conversation to a fresh state."""
+        # Reset autonomous mode state
+        self.execution_mode = AgentExecutionMode.CONVERSATIONAL
+        self._autonomous_iteration = 0
+        self._reset_autonomous_state()
+
         old_chat_thread_id = self._thread.id
         self._thread = ChatThread()
         self._thread_persisted = False
@@ -494,6 +878,37 @@ class AbstractAgent(ABC):
         logger.debug("Reset conversation from %s to %s", old_chat_thread_id, self._thread.id)
 
     ## Tool registration and dispatch
+
+    def _get_tool_registration_payload(self, tool_meta: _ToolMeta) -> tuple[str, dict[str, Any]]:
+        """
+        Return (description, parameters) used when registering a tool with the LLM.
+
+        Subclasses can override to dynamically customize registration metadata
+        without reimplementing _sync_tools.
+        """
+        description, parameters = tool_meta.description, tool_meta.parameters
+        if tool_meta.name != "finalize_with_output" or not self._task_output_schema:
+            return description, parameters
+
+        parameters = {
+            "type": "object",
+            "properties": {
+                "output": self._task_output_schema,
+            },
+            "required": ["output"],
+        }
+        desc_suffix = (
+            f" Output description: {self._task_output_description}"
+            if self._task_output_description
+            else ""
+        )
+        description = (
+            "Finalize with output matching the expected schema. "
+            "The output parameter MUST include all required fields "
+            "defined in the schema — do NOT call with empty arguments."
+            + desc_suffix
+        )
+        return description, parameters
 
     def _sync_tools(self) -> None:
         """
@@ -514,10 +929,11 @@ class AbstractAgent(ABC):
             available = tool_meta.availability(self) if callable(tool_meta.availability) else tool_meta.availability
             if not available:
                 continue
+            description, parameters = self._get_tool_registration_payload(tool_meta)
             self.llm_client.register_tool(
                 name=tool_meta.name,
-                description=tool_meta.description,
-                parameters=tool_meta.parameters,
+                description=description,
+                parameters=parameters,
             )
             self._registered_tool_names.add(tool_meta.name)
         logger.debug("Synced %s total tools: %s", len(collected_tools), self._registered_tool_names)
@@ -686,101 +1102,309 @@ class AbstractAgent(ABC):
 
         return "\n".join(lines)
 
+    def _normalize_file_scope(self, scope: str) -> str:
+        """Normalize and validate file tool scope."""
+        normalized_scope = scope.strip().lower()
+        if normalized_scope not in {"workspace", "docs"}:
+            raise ValueError("scope must be 'workspace' or 'docs'")
+        return normalized_scope
+
+    def _parse_search_terms(self, query: str) -> list[str]:
+        """Split query text into distinct terms for terms-mode search."""
+        seen: set[str] = set()
+        terms: list[str] = []
+        for token in re.split(r"[,\\s]+", query):
+            term = token.strip()
+            if term and term not in seen:
+                seen.add(term)
+                terms.append(term)
+        return terms
+
+    def _list_workspace_files_scoped(self, path: str) -> dict[str, Any]:
+        """List files under a workspace subpath."""
+        if not self.has_workspace:
+            return {"error": "workspace scope unavailable: no workspace configured"}
+        normalized_path = path.strip() or "."
+        if normalized_path in {".", "./"}:
+            workspace = self._require_workspace()
+            result = workspace.list_files()
+            return {"scope": "workspace", "path": ".", **result}
+
+        workspace_root = self._require_workspace().root_path.resolve()
+        resolved = (workspace_root / normalized_path).resolve()
+        try:
+            resolved.relative_to(workspace_root)
+        except ValueError:
+            return {"error": f"Access denied: '{path}' is outside the workspace directory"}
+        if not resolved.exists():
+            return {"error": f"Path not found: {path}"}
+        if resolved.is_file():
+            return {
+                "scope": "workspace",
+                "path": normalized_path,
+                "type": "file",
+                "total_files": 1,
+                "files": [{
+                    "path": normalized_path,
+                    "size_bytes": resolved.stat().st_size,
+                }],
+            }
+
+        tree_lines: list[str] = [f"{Path(normalized_path).name or normalized_path}/"]
+        total_files = 0
+        for dirpath, dirnames, filenames in sorted(resolved.walk()):
+            rel_dir = dirpath.relative_to(resolved)
+            depth = len(rel_dir.parts)
+            indent = "  " * depth
+            if depth > 0:
+                tree_lines.append(f"{indent}{rel_dir.name}/")
+            dirnames.sort()
+            for filename in sorted(filenames):
+                tree_lines.append(f"{indent}  {filename}")
+                total_files += 1
+
+        return {
+            "scope": "workspace",
+            "path": normalized_path,
+            "tree": "\n".join(tree_lines),
+            "total_files": total_files,
+        }
+
+    def _list_docs_files(self, file_type: str | None, top_n: int) -> dict[str, Any]:
+        """List indexed documentation/code files."""
+        if self._documentation_data_loader is None:
+            return {"error": "docs scope unavailable: documentation_data_loader is not configured"}
+
+        normalized_file_type = file_type.strip().lower() if file_type else None
+        if normalized_file_type and normalized_file_type not in {"documentation", "code"}:
+            return {"error": "file_type must be 'documentation' or 'code'"}
+
+        rows: list[dict[str, Any]] = []
+        for entry in self._documentation_data_loader.entries:
+            if normalized_file_type and entry.file_type.value != normalized_file_type:
+                continue
+            rows.append({
+                "path": str(entry.path),
+                "file_type": entry.file_type.value,
+                "title": entry.title,
+                "summary": entry.summary,
+                "size_bytes": entry.size_bytes,
+            })
+
+        rows.sort(key=lambda row: row["path"])
+        return {
+            "scope": "docs",
+            "file_type": normalized_file_type,
+            "total_files": len(rows),
+            "files": rows[:max(1, top_n)],
+        }
+
+    def _search_workspace_files(
+        self,
+        query: str,
+        mode: str,
+        case_sensitive: bool,
+        top_n: int,
+    ) -> dict[str, Any]:
+        """Search text files in the workspace."""
+        if not self.has_workspace:
+            return {"error": "workspace scope unavailable: no workspace configured"}
+        if not query:
+            return {"error": "query is required"}
+        if mode not in {"exact", "terms", "regex"}:
+            return {"error": "mode must be 'exact', 'terms', or 'regex'"}
+
+        workspace_root = self._require_workspace().root_path.resolve()
+        compiled_regex: re.Pattern[str] | None = None
+        if mode == "regex":
+            flags = 0 if case_sensitive else re.IGNORECASE
+            try:
+                compiled_regex = re.compile(query, flags)
+            except re.error as e:
+                return {"error": f"Invalid regex pattern: {e}"}
+
+        search_query = query if case_sensitive else query.lower()
+        terms = self._parse_search_terms(query)
+        normalized_terms = terms if case_sensitive else [t.lower() for t in terms]
+
+        results: list[dict[str, Any]] = []
+        for file_path in workspace_root.rglob("*"):
+            if not file_path.is_file():
+                continue
+            try:
+                if file_path.stat().st_size > 512_000:
+                    continue
+                content = file_path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            if "\x00" in content:
+                continue
+
+            score = 0
+            matches: list[dict[str, Any]] = []
+            for line_number, line in enumerate(content.splitlines(), start=1):
+                search_line = line if case_sensitive else line.lower()
+                line_hits = 0
+                if mode == "exact":
+                    line_hits = search_line.count(search_query)
+                elif mode == "terms":
+                    for term in normalized_terms:
+                        line_hits += search_line.count(term)
+                else:
+                    assert compiled_regex is not None
+                    line_hits = len(list(compiled_regex.finditer(line)))
+
+                if line_hits > 0:
+                    score += line_hits
+                    matches.append({
+                        "line_number": line_number,
+                        "line_content": line.strip(),
+                        "hits": line_hits,
+                    })
+                if len(matches) >= 10:
+                    break
+
+            if score == 0:
+                continue
+            results.append({
+                "path": str(file_path.relative_to(workspace_root)),
+                "score": score,
+                "matches": matches,
+            })
+
+        results.sort(key=lambda row: row["score"], reverse=True)
+        capped_results = results[:max(1, top_n)]
+        if not capped_results:
+            return {"scope": "workspace", "mode": mode, "query": query, "message": f"No matches found for '{query}'"}
+        return {
+            "scope": "workspace",
+            "mode": mode,
+            "query": query,
+            "files_with_matches": len(capped_results),
+            "results": capped_results,
+        }
+
     @agent_tool(
-        availability=lambda self: self._documentation_data_loader is not None,
+        availability=lambda self: self.has_workspace or self._documentation_data_loader is not None,
         persist=ToolResultPersistMode.OVERFLOW,
         token_optimized=True,
         parameters={
             "type": "object",
             "properties": {
-                "query": {
+                "scope": {
                     "type": "string",
-                    "description": "The exact string to search for.",
+                    "enum": ["workspace", "docs"],
+                    "description": "Where to list files from.",
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Workspace path to list (workspace scope only). Defaults to '.'.",
                 },
                 "file_type": {
                     "type": "string",
                     "enum": ["documentation", "code"],
-                    "description": "Optional filter by file type.",
+                    "description": "Optional docs-only file type filter.",
                 },
-                "case_sensitive": {
-                    "type": "boolean",
-                    "description": "Whether the search should be case-sensitive. Defaults to false.",
+                "top_n": {
+                    "type": "integer",
+                    "description": "Max docs files to return. Defaults to 200.",
                 },
             },
-            "required": ["query"],
+            "required": ["scope"],
         },
     )
-    def _search_docs(
+    def _list_files(
         self,
-        query: str,
+        scope: str,
+        path: str = ".",
         file_type: str | None = None,
-        case_sensitive: bool = False,
+        top_n: int = 200,
     ) -> dict[str, Any]:
         """
-        Search documentation/code file contents for an exact query string (like Cmd+F).
-
-        Returns line numbers where matches are found. Use get_doc_file to read around those lines.
+        List files from workspace or docs.
 
         Args:
-            query: The exact string to search for.
-            file_type: Optional filter: 'documentation' for docs, 'code' for source files.
-            case_sensitive: Whether the search should be case-sensitive. Defaults to false.
+            scope: Either 'workspace' or 'docs'.
+            path: Workspace subpath to list when scope='workspace'. Defaults to '.'.
+            file_type: Optional docs-only filter.
+            top_n: Max docs entries to return.
         """
-        if not query:
-            return {"error": "query is required"}
+        try:
+            normalized_scope = self._normalize_file_scope(scope)
+        except ValueError as e:
+            return {"error": str(e)}
 
-        file_type_enum = FileType(file_type) if file_type else None
-
-        results = self._documentation_data_loader.search_content_with_lines(
-            query=query,
-            file_type=file_type_enum,
-            case_sensitive=case_sensitive,
-            max_matches_per_file=10,
-        )
-
-        if not results:
-            return {"message": f"No matches found for '{query}'", "case_sensitive": case_sensitive}
-
-        return {
-            "query": query,
-            "case_sensitive": case_sensitive,
-            "files_with_matches": len(results),
-            "results": results[:20],
-        }
+        if normalized_scope == "workspace":
+            return self._list_workspace_files_scoped(path)
+        return self._list_docs_files(file_type=file_type, top_n=top_n)
 
     @agent_tool(
-        availability=lambda self: self._documentation_data_loader is not None,
+        availability=lambda self: self.has_workspace or self._documentation_data_loader is not None,
         persist=ToolResultPersistMode.OVERFLOW,
         token_optimized=True,
+        parameters={
+            "type": "object",
+            "properties": {
+                "scope": {
+                    "type": "string",
+                    "enum": ["workspace", "docs"],
+                    "description": "Where to read the file from.",
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Path to file. Workspace paths are relative to workspace root.",
+                },
+                "start_line": {
+                    "type": "integer",
+                    "description": "Optional 1-based start line number.",
+                },
+                "end_line": {
+                    "type": "integer",
+                    "description": "Optional 1-based end line number (inclusive).",
+                },
+            },
+            "required": ["scope", "path"],
+        },
     )
-    def _get_doc_file(
+    def _read_file(
         self,
+        scope: str,
         path: str,
         start_line: int | None = None,
         end_line: int | None = None,
     ) -> dict[str, Any]:
         """
-        Read documentation/code file content by path.
-
-        Supports optional line range. Use start_line/end_line to read around matches from search_docs.
+        Read a file from workspace or docs.
 
         Args:
-            path: The file path (can be partial, will match).
-            start_line: Starting line number (1-indexed, inclusive). Omit for beginning.
-            end_line: Ending line number (1-indexed, inclusive). Omit to read to end.
+            scope: Either 'workspace' or 'docs'.
+            path: Path to file (workspace-relative when scope='workspace').
+            start_line: Optional 1-based start line number.
+            end_line: Optional 1-based end line number (inclusive).
         """
         if not path:
             return {"error": "path is required"}
+        try:
+            normalized_scope = self._normalize_file_scope(scope)
+        except ValueError as e:
+            return {"error": str(e)}
+
+        if normalized_scope == "workspace":
+            if not self.has_workspace:
+                return {"error": "workspace scope unavailable: no workspace configured"}
+            workspace = self._require_workspace()
+            return {"scope": "workspace", **workspace.read_file(path, start_line=start_line, end_line=end_line)}
+
+        if self._documentation_data_loader is None:
+            return {"error": "docs scope unavailable: documentation_data_loader is not configured"}
 
         if start_line is not None or end_line is not None:
-            result = self._documentation_data_loader.get_file_lines(
-                path=path, start_line=start_line, end_line=end_line,
-            )
+            result = self._documentation_data_loader.get_file_lines(path, start_line=start_line, end_line=end_line)
             if result is None:
                 return {"error": f"File '{path}' not found"}
-
             content, total_lines = result
             return {
+                "scope": "docs",
                 "path": path,
                 "lines_shown": f"{start_line or 1}-{end_line or total_lines}",
                 "total_lines": total_lines,
@@ -793,13 +1417,12 @@ class AbstractAgent(ABC):
 
         content = entry.content
         total_lines = content.count("\n") + 1
-
         if len(content) > 10000:
             content = content[:10000] + f"\n... (truncated, {len(entry.content)} total chars)"
-
         return {
+            "scope": "docs",
             "path": str(entry.path),
-            "file_type": entry.file_type,
+            "file_type": entry.file_type.value,
             "title": entry.title,
             "summary": entry.summary,
             "total_lines": total_lines,
@@ -807,74 +1430,145 @@ class AbstractAgent(ABC):
         }
 
     @agent_tool(
-        availability=lambda self: self._documentation_data_loader is not None,
+        availability=lambda self: self.has_workspace or self._documentation_data_loader is not None,
         persist=ToolResultPersistMode.OVERFLOW,
         token_optimized=True,
         parameters={
             "type": "object",
             "properties": {
-                "terms": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of search terms (case-insensitive).",
-                },
-                "top_n": {
-                    "type": "integer",
-                    "description": "Number of top results to return. Defaults to 20.",
-                },
-            },
-            "required": ["terms"],
-        },
-    )
-    def _search_docs_by_terms(self, terms: list[str], top_n: int = 20) -> dict[str, Any]:
-        """
-        Search documentation files by multiple terms with relevance scoring.
-
-        Ranks files by how many terms match and total hit count. Good for broad topic searches.
-
-        Args:
-            terms: List of search terms (case-insensitive).
-            top_n: Number of top results to return. Defaults to 20.
-        """
-        if not terms:
-            return {"error": "terms list is required"}
-
-        results = self._documentation_data_loader.search_by_terms(terms=terms, top_n=top_n)
-        return {"terms": terms, "results_count": len(results), "results": results}
-
-    @agent_tool(
-        availability=lambda self: self._documentation_data_loader is not None,
-        persist=ToolResultPersistMode.OVERFLOW,
-        token_optimized=True,
-        parameters={
-            "type": "object",
-            "properties": {
-                "pattern": {
+                "scope": {
                     "type": "string",
-                    "description": "Regex pattern to search for.",
+                    "enum": ["workspace", "docs"],
+                    "description": "Where to search files.",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Search query.",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["exact", "terms", "regex"],
+                    "description": "Search mode. Defaults to exact.",
+                },
+                "file_type": {
+                    "type": "string",
+                    "enum": ["documentation", "code"],
+                    "description": "Optional docs-only file type filter.",
+                },
+                "case_sensitive": {
+                    "type": "boolean",
+                    "description": "Whether matching is case-sensitive. Defaults to false.",
                 },
                 "top_n": {
                     "type": "integer",
-                    "description": "Max entries to return. Defaults to 20.",
+                    "description": "Maximum number of results to return. Defaults to 20.",
                 },
             },
-            "required": ["pattern"],
+            "required": ["scope", "query"],
         },
     )
-    def _search_docs_by_regex(self, pattern: str, top_n: int = 20) -> dict[str, Any]:
+    def _search_files(
+        self,
+        scope: str,
+        query: str,
+        mode: str = "exact",
+        file_type: str | None = None,
+        case_sensitive: bool = False,
+        top_n: int = 20,
+    ) -> dict[str, Any]:
         """
-        Search documentation files by regex pattern with timeout protection.
-
-        Returns matching snippets with context. Useful for pattern-based searches.
+        Search files in workspace or docs.
 
         Args:
-            pattern: Regex pattern to search for.
-            top_n: Max entries to return. Defaults to 20.
+            scope: Either 'workspace' or 'docs'.
+            query: Query string.
+            mode: Search mode: exact, terms, or regex.
+            file_type: Optional docs-only file type filter.
+            case_sensitive: Whether to match case-sensitively.
+            top_n: Maximum number of results to return.
         """
-        if not pattern:
-            return {"error": "pattern is required"}
+        try:
+            normalized_scope = self._normalize_file_scope(scope)
+        except ValueError as e:
+            return {"error": str(e)}
+        normalized_mode = mode.strip().lower()
 
-        return self._documentation_data_loader.search_by_regex(pattern=pattern, top_n=top_n)
+        if normalized_scope == "workspace":
+            return self._search_workspace_files(
+                query=query,
+                mode=normalized_mode,
+                case_sensitive=case_sensitive,
+                top_n=top_n,
+            )
+
+        if self._documentation_data_loader is None:
+            return {"error": "docs scope unavailable: documentation_data_loader is not configured"}
+        if not query:
+            return {"error": "query is required"}
+
+        normalized_file_type = file_type.strip().lower() if file_type else None
+        if normalized_file_type and normalized_file_type not in {"documentation", "code"}:
+            return {"error": "file_type must be 'documentation' or 'code'"}
+        file_type_enum = FileType(normalized_file_type) if normalized_file_type else None
+
+        if normalized_mode == "exact":
+            results = self._documentation_data_loader.search_content_with_lines(
+                query=query,
+                file_type=file_type_enum,
+                case_sensitive=case_sensitive,
+                max_matches_per_file=10,
+            )
+            if not results:
+                return {"scope": "docs", "mode": "exact", "query": query, "message": f"No matches found for '{query}'"}
+            return {
+                "scope": "docs",
+                "mode": "exact",
+                "query": query,
+                "case_sensitive": case_sensitive,
+                "files_with_matches": len(results),
+                "results": results[:max(1, top_n)],
+            }
+
+        if normalized_mode == "terms":
+            terms = self._parse_search_terms(query)
+            if not terms:
+                return {"error": "query must contain at least one term for terms mode"}
+            results = self._documentation_data_loader.search_by_terms(terms=terms, top_n=top_n)
+            if normalized_file_type:
+                filtered: list[dict[str, Any]] = []
+                for row in results:
+                    entry_id = row.get("id")
+                    if not entry_id:
+                        continue
+                    entry = self._documentation_data_loader.get_file_by_path(entry_id)
+                    if entry and entry.file_type.value == normalized_file_type:
+                        filtered.append(row)
+                results = filtered
+            return {
+                "scope": "docs",
+                "mode": "terms",
+                "query": query,
+                "terms": terms,
+                "results_count": len(results),
+                "results": results,
+            }
+
+        if normalized_mode == "regex":
+            regex_results = self._documentation_data_loader.search_by_regex(pattern=query, top_n=top_n)
+            if normalized_file_type and "matches" in regex_results:
+                matches = regex_results.get("matches", [])
+                filtered_matches: list[dict[str, Any]] = []
+                for match in matches:
+                    entry_id = match.get("id")
+                    if not entry_id:
+                        continue
+                    entry = self._documentation_data_loader.get_file_by_path(entry_id)
+                    if entry and entry.file_type.value == normalized_file_type:
+                        filtered_matches.append(match)
+                regex_results["matches"] = filtered_matches
+            return {"scope": "docs", "mode": "regex", "query": query, **regex_results}
+
+        return {"error": "mode must be 'exact', 'terms', or 'regex'"}
 
     ## Tool availability prompt section
 
@@ -909,6 +1603,8 @@ class AbstractAgent(ABC):
         Uses class-level WORKSPACE_USAGE_SECTION so specialized agents can
         override the full section text.
         """
+        if not self.has_workspace:
+            return ""
         section = self.WORKSPACE_USAGE_SECTION.strip()
         mounted_section = self._get_mounted_inputs_prompt_section()
         if not section and not mounted_section:
@@ -924,7 +1620,10 @@ class AbstractAgent(ABC):
 
     def _get_mounted_inputs_prompt_section(self) -> str:
         """Build a system prompt section listing currently mounted input files."""
-        mounted_inputs = self._workspace.list_mounted_inputs()
+        if not self.has_workspace:
+            return ""
+        workspace = self._require_workspace()
+        mounted_inputs = workspace.list_mounted_inputs()
         if not mounted_inputs:
             return ""
 
@@ -1015,6 +1714,18 @@ class AbstractAgent(ABC):
 
     ## Chat helpers
 
+    def _after_chat_added(self, chat: Chat) -> None:
+        """
+        Hook called after a chat is added to thread state.
+
+        Subclasses may override for side effects (e.g., eager persistence).
+        """
+        if self._on_chat_added is not None:
+            try:
+                self._on_chat_added()
+            except Exception:
+                pass
+
     def _emit_message(self, message: EmittedMessage) -> None:
         """Emit a message via the callback."""
         self._emit_message_callable(message)
@@ -1070,6 +1781,8 @@ class AbstractAgent(ABC):
 
         if self._persist_chat_thread_callable:
             self._thread = self._persist_chat_thread_callable(self._thread)
+
+        self._after_chat_added(chat)
 
         return chat
 
@@ -1190,6 +1903,120 @@ class AbstractAgent(ABC):
                 f"Tool '{tool_call.tool_name}' result: {result_str}",
                 tool_call_id=tool_call.call_id,
             )
+
+    ## autonomous loop
+
+    def run_autonomous(
+        self,
+        task: str,
+        config: AutonomousRunConfig | None = None,
+        output_schema: dict[str, Any] | None = None,
+        output_description: str | None = None,
+    ) -> BaseModel | None:
+        """
+        Run the agent autonomously to completion.
+
+        Agents that opt into autonomous mode should provide autonomous prompts
+        and completion logic via the extension hooks above.
+        """
+        self._ensure_autonomous_supported()
+
+        self.execution_mode = AgentExecutionMode.AUTONOMOUS
+        self._autonomous_iteration = 0
+        self._autonomous_config = config or AutonomousRunConfig()
+
+        # Subclasses should clear specialized result fields in overrides.
+        self._reset_autonomous_state()
+
+        # Set output schema after reset so it is retained for this run.
+        if output_schema:
+            self.set_output_schema(output_schema, output_description)
+
+        initial_message = self._get_autonomous_initial_message(task)
+        self._add_chat(ChatRole.USER, initial_message)
+
+        logger.info(
+            "Starting %s autonomous run for task: %s",
+            self.__class__.__name__, task,
+        )
+        self._run_autonomous_loop()
+
+        self.execution_mode = AgentExecutionMode.CONVERSATIONAL
+        return self._get_autonomous_result()
+
+    def _run_autonomous_loop(self) -> None:
+        """Run the autonomous loop with iteration tracking and finalize gating."""
+        max_iterations = self._autonomous_config.max_iterations
+        for iteration in range(max_iterations):
+            self._autonomous_iteration = iteration + 1
+            logger.debug(
+                "Autonomous loop iteration %d/%d",
+                self._autonomous_iteration,
+                max_iterations,
+            )
+
+            messages = self._build_messages_for_llm()
+            try:
+                response = self._call_llm(
+                    messages,
+                    self._get_autonomous_system_prompt(),
+                    tool_choice="required",
+                )
+
+                if response.response_id:
+                    self._previous_response_id = response.response_id
+
+                if response.content or response.tool_calls:
+                    chat = self._add_chat(
+                        role=ChatRole.ASSISTANT,
+                        content=response.content or "",
+                        tool_calls=response.tool_calls if response.tool_calls else None,
+                        llm_provider_response_id=response.response_id,
+                    )
+                    if response.content:
+                        self._emit_message(
+                            ChatResponseEmittedMessage(
+                                content=response.content,
+                                chat_id=chat.id,
+                                chat_thread_id=self._thread.id,
+                            )
+                        )
+
+                if not response.tool_calls:
+                    logger.warning(
+                        "Autonomous loop: no tool calls in iteration %d (unexpected with tool_choice=required)",
+                        self._autonomous_iteration,
+                    )
+                    return
+
+                for tool_call in response.tool_calls:
+                    result_str = self._auto_execute_tool(
+                        tool_call.tool_name,
+                        tool_call.tool_arguments,
+                    )
+
+                    self._add_chat(
+                        role=ChatRole.TOOL,
+                        content=f"Tool '{tool_call.tool_name}' result: {result_str}",
+                        tool_call_id=tool_call.call_id,
+                    )
+
+                    if self._check_autonomous_completion(tool_call.tool_name):
+                        logger.debug(
+                            "Autonomous run completed at iteration %d",
+                            self._autonomous_iteration,
+                        )
+                        return
+
+            except Exception as e:
+                logger.exception("Error in autonomous loop: %s", e)
+                self._emit_message(ErrorEmittedMessage(error=str(e)))
+                return
+
+        logger.warning(
+            "Autonomous loop hit max iterations (%d) without finalization",
+            max_iterations,
+        )
 
     ## agent loop (basic implementation, can be overridden)
 

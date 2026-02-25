@@ -22,8 +22,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from bluebox.agents.specialists.abstract_specialist import AutonomousConfig, RunMode
+from bluebox.agents.abstract_agent import AgentExecutionMode, AutonomousRunConfig
 from bluebox.agents.specialists.value_trace_resolver_specialist import ValueTraceResolverSpecialist
+from bluebox.agents.workspace import LocalWorkspace
 from bluebox.data_models.api_indexing.exploration import StorageExplorationSummary
 from bluebox.data_models.llms.interaction import EmittedMessage
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
@@ -179,6 +180,7 @@ def run_storage_exploration(
     llm_model: LLMModel = OpenAIModel.GPT_5_1,
     min_iterations: int = 3,
     max_iterations: int = 15,
+    workspace_dir: Path | None = None,
 ) -> StorageExplorationSummary | None:
     """
     Run storage exploration on a CDP captures directory.
@@ -189,6 +191,7 @@ def run_storage_exploration(
         llm_model: LLM model to use.
         min_iterations: Minimum iterations before finalize is available.
         max_iterations: Maximum iterations before the loop exits.
+        workspace_dir: Workspace directory for artifacts and mounted inputs.
 
     Returns:
         StorageExplorationSummary if successful, None if the agent failed or timed out.
@@ -234,6 +237,16 @@ def run_storage_exploration(
         )
         return None
 
+    workspace = LocalWorkspace.from_directory_path(
+        workspace_dir or Path("./agent_workspace/storage_exploration"),
+    )
+    if storage_jsonl.exists():
+        workspace.attach_input_file("storage_events", storage_jsonl)
+    if window_jsonl.exists():
+        workspace.attach_input_file("window_property_events", window_jsonl)
+    if network_jsonl.exists():
+        workspace.attach_input_file("network_events", network_jsonl)
+
     # Build the specialist
     specialist = ValueTraceResolverSpecialist(
         emit_message_callable=_emit_message,
@@ -241,7 +254,8 @@ def run_storage_exploration(
         window_property_data_loader=window_loader,
         network_data_loader=network_loader,
         llm_model=llm_model,
-        run_mode=RunMode.AUTONOMOUS,
+        execution_mode=AgentExecutionMode.AUTONOMOUS,
+        workspace=workspace,
     )
 
     # Bump max_output_tokens for the finalize call
@@ -297,7 +311,7 @@ def run_storage_exploration(
         "data_blocks (array of strings), narrative (string)."
     )
 
-    config = AutonomousConfig(
+    config = AutonomousRunConfig(
         min_iterations=min_iterations,
         max_iterations=max_iterations,
     )
@@ -359,6 +373,12 @@ def main() -> None:
         help="Path to write output JSON (default: exploration_storage.json)",
     )
     parser.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=Path("./agent_workspace/storage_exploration"),
+        help="Workspace directory for artifacts and mounted inputs.",
+    )
+    parser.add_argument(
         "--min-iterations",
         type=int,
         default=3,
@@ -393,6 +413,7 @@ def main() -> None:
         llm_model=llm_model,
         min_iterations=args.min_iterations,
         max_iterations=args.max_iterations,
+        workspace_dir=args.workspace_dir,
     )
 
     if summary is None:

@@ -1,8 +1,8 @@
 """
 Generic HTTP adapter for Bluebox agents.
 
-Works with any agent extending AbstractAgent, including all AbstractSpecialist
-subclasses (auto-discovered at runtime via the specialist registry).
+Works with any agent extending AbstractAgent, including autonomous agents
+auto-discovered from `bluebox.agents.specialists`.
 
 Uses inspect.signature to auto-wire each agent's constructor params to the
 available data loaders, handling the _loader/_store naming split transparently.
@@ -18,7 +18,7 @@ Endpoints (all agents):
     GET  /status
     POST /chat          {"message": "..."}
 
-Agents with discovery support (specialists):
+Agents with discovery support (autonomous agents):
     POST /discover      {"task": "..."}
     GET  /routine
 """
@@ -41,7 +41,6 @@ from typing import Any
 from pydantic import BaseModel
 
 from bluebox.agents.abstract_agent import AbstractAgent
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist
 from bluebox.config import Config
 from bluebox.data_models.llms.interaction import (
     BaseEmittedMessage,
@@ -90,10 +89,9 @@ def discover_agent_classes() -> dict[str, type]:
     registry: dict[str, type] = {
         "BlueBoxAgent": BlueBoxAgent,
     }
-    for name in AbstractSpecialist.get_all_agent_types():
-        cls = AbstractSpecialist.get_by_type(name)
-        if cls is not None:
-            registry[name] = cls
+    for cls in AbstractAgent.get_all_subclasses():
+        if cls.__module__.startswith("bluebox.agents.specialists."):
+            registry[cls.__name__] = cls
     return registry
 
 
@@ -254,12 +252,12 @@ class AgentState:
             return {"ok": True, "messages": self._flush()}
 
     def discover(self, task: str) -> dict[str, Any]:
-        """Run discovery. Specialists use run_autonomous(), others use run()."""
+        """Run discovery. Autonomous agents use run_autonomous(), others use run()."""
         with self._lock:
             self._flush()
 
-            # Specialists: run_autonomous(task)
-            if issubclass(self._agent_class, AbstractSpecialist):
+            # Autonomous agents: run_autonomous(task)
+            if getattr(self._agent_class, "SUPPORTS_AUTONOMOUS", False):
                 agent = self._make_agent()
                 result = agent.run_autonomous(task)
                 messages = self._flush()
@@ -324,7 +322,7 @@ class AgentState:
     @property
     def supports_discover(self) -> bool:
         return (
-            issubclass(self._agent_class, AbstractSpecialist)
+            getattr(self._agent_class, "SUPPORTS_AUTONOMOUS", False)
             or _has_own_method(self._agent_class, "run")
         )
 
@@ -497,7 +495,7 @@ def main() -> None:
             for pname, param in sig.parameters.items():
                 if pname in _DATA_PARAM_TO_KEY and param.default is inspect.Parameter.empty:
                     required.append(_DATA_PARAM_TO_KEY[pname])
-            specialist = " (specialist)" if issubclass(cls, AbstractSpecialist) else ""
+            specialist = " (autonomous)" if getattr(cls, "SUPPORTS_AUTONOMOUS", False) else ""
             req = f"  requires: {', '.join(required)}" if required else ""
             print(f"  {name}{specialist}{req}")
         return

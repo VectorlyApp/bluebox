@@ -169,10 +169,6 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
             chat.write(Text.from_markup("\n".join(url_lines)))
             chat.write("")
 
-        chat.write(Text.from_markup(
-            "Type [cyan]/help[/cyan] for commands, or ask questions about the network traffic."
-        ))
-        chat.write("")
 
     def _build_status_text(self) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
