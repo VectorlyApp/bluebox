@@ -115,6 +115,30 @@ class ResourceBase(BaseModel, ABC):
         return datetime.now(tz=timezone.utc).timestamp()
 
     @property
+    def uuid(self) -> UUID:
+        """Extract the UUID portion from this resource's ID.
+
+        Supports two formats:
+        - Prefixed: ``ClassName_<uuid>`` — strips the prefix and parses the UUID.
+        - Bare UUID: the entire ID is a valid UUID string.
+
+        Returns:
+            The UUID object parsed from the ID.
+
+        Raises:
+            ValueError: If the ID has a prefix that doesn't match the class name,
+                or if the UUID portion is not a valid UUID.
+        """
+        prefix = f"{self.__class__.__name__}_"
+        if self.id.startswith(prefix):
+            return UUID(self.id[len(prefix):])
+        # Check if the entire ID is a bare UUID
+        try:
+            return UUID(self.id)
+        except ValueError:
+            raise ValueError(f"Invalid resource id: {self.id}")
+
+    @property
     def resource_type(self) -> str:
         """Return the resource type name (class name) for this instance."""
         return self.__class__.__name__
