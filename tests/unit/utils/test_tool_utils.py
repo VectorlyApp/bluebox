@@ -4,6 +4,8 @@ tests/unit/test_tool_utils.py
 Unit tests for LLM tool utilities.
 """
 
+from pydantic import BaseModel
+
 from bluebox.llms.tools.tool_utils import (
     extract_description_from_docstring,
     generate_parameters_schema,
@@ -115,3 +117,62 @@ class TestGenerateParametersSchema:
         schema = generate_parameters_schema(example_func)
         # pydantic represents str | None as anyOf
         assert "anyOf" in schema["properties"]["value"]
+
+    def test_pydantic_model_defs_hoisted_to_root(self) -> None:
+        """$defs from Pydantic model params should be at the schema root,
+        not nested inside individual properties."""
+        class Item(BaseModel):
+            name: str
+            value: int
+
+        def example_func(items: list[Item]) -> None:
+            pass
+
+        schema = generate_parameters_schema(example_func)
+        # $defs should be at root level
+        assert "$defs" in schema
+        assert "Item" in schema["$defs"]
+        # $defs should NOT be inside the property
+        assert "$defs" not in schema["properties"]["items"]
+        # property should reference via $ref
+        assert schema["properties"]["items"]["items"]["$ref"] == "#/$defs/Item"
+
+    def test_nullable_pydantic_model_list_defs_hoisted(self) -> None:
+        """list[PydanticModel] | None should have $defs at root, not in property."""
+        class Config(BaseModel):
+            key: str
+            value: str
+
+        def example_func(configs: list[Config] | None = None) -> None:
+            pass
+
+        schema = generate_parameters_schema(example_func)
+        # $defs at root
+        assert "$defs" in schema
+        assert "Config" in schema["$defs"]
+        # not inside the property
+        assert "$defs" not in schema["properties"]["configs"]
+
+    def test_multiple_pydantic_params_merge_defs(self) -> None:
+        """$defs from multiple params should all be merged at the root."""
+        class Alpha(BaseModel):
+            x: int
+
+        class Beta(BaseModel):
+            y: str
+
+        def example_func(a: list[Alpha], b: list[Beta]) -> None:
+            pass
+
+        schema = generate_parameters_schema(example_func)
+        assert "$defs" in schema
+        assert "Alpha" in schema["$defs"]
+        assert "Beta" in schema["$defs"]
+
+    def test_no_defs_when_no_pydantic_models(self) -> None:
+        """Simple types should not produce $defs at the root."""
+        def example_func(name: str, count: int) -> None:
+            pass
+
+        schema = generate_parameters_schema(example_func)
+        assert "$defs" not in schema
