@@ -28,6 +28,7 @@ from typing import Any, Callable, ClassVar, get_type_hints
 from pydantic import TypeAdapter, ValidationError
 
 from bluebox.data_models.llms.interaction import (
+    BrowserAgentStepEmittedMessage,
     Chat,
     ChatRole,
     ChatThread,
@@ -699,11 +700,18 @@ class AbstractAgent(ABC):
         """Emit a message via the callback."""
         self._emit_message_callable(message)
         # Persist status updates as Chat objects
-        if isinstance(message, StatusUpdateEmittedMessage):
-            metadata = None
+        if isinstance(message, (StatusUpdateEmittedMessage, BrowserAgentStepEmittedMessage)):
+            metadata: dict[str, Any] = {}
             if self._current_assistant_chat_id:
-                metadata = {"associated_chat_id": self._current_assistant_chat_id}
-            self._add_chat(role=ChatRole.SYSTEM_STATUS_UPDATE, content=message.content, metadata=metadata)
+                metadata["associated_chat_id"] = self._current_assistant_chat_id
+            if isinstance(message, BrowserAgentStepEmittedMessage):
+                metadata["source"] = "browser_agent"
+                metadata["step_number"] = message.step_number
+            self._add_chat(
+                role=ChatRole.SYSTEM_STATUS_UPDATE,
+                content=message.content,
+                metadata=metadata or None,
+            )
 
     def _add_chat(
         self,

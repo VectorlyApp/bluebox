@@ -32,6 +32,7 @@ from bluebox.data_models.browser_agent import (
     sse_event_adapter,
 )
 from bluebox.data_models.llms.interaction import (
+    BrowserAgentStepEmittedMessage,
     Chat,
     ChatResponseEmittedMessage,
     ChatThread,
@@ -674,16 +675,19 @@ class BlueBoxAgent(AbstractAgent):
                 msg = f"[Step {step_counter}]"
                 if event.next_goal:
                     msg += f" {event.next_goal}"
-                self._emit_message(StatusUpdateEmittedMessage(content=msg))
+                self._emit_message(BrowserAgentStepEmittedMessage(
+                    content=msg,
+                    step_number=step_counter,
+                    goal=event.next_goal,
+                ))
                 steps.append({"step": step_counter, "goal": event.next_goal, "is_done": event.is_done})
 
             elif isinstance(event, BrowserAgentDoneEvent):
                 status = "succeeded" if event.is_successful else "completed (not confirmed successful)"
                 if not event.is_done:
                     status = "did not finish"
-                self._emit_message(StatusUpdateEmittedMessage(
-                    content=f"Browser agent task {status} in {event.duration_seconds or 0:.1f}s ({event.n_steps} steps).",
-                ))
+                done_msg = f"Browser agent task {status} in {event.duration_seconds or 0:.1f}s ({event.n_steps} steps)."
+                self._emit_message(StatusUpdateEmittedMessage(content=done_msg))
                 result = {
                     "success": event.is_successful or False,
                     "is_done": event.is_done,
@@ -699,7 +703,8 @@ class BlueBoxAgent(AbstractAgent):
                 }
 
             elif isinstance(event, BrowserAgentErrorEvent):
-                self._emit_message(StatusUpdateEmittedMessage(content=f"Browser agent error: {event.error}"))
+                error_msg = f"Browser agent error: {event.error}"
+                self._emit_message(StatusUpdateEmittedMessage(content=error_msg))
                 result = {"error": event.error, "execution_id": event.execution_id, "steps": steps}
 
         return result
