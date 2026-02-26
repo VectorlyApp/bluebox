@@ -222,5 +222,5 @@ downloads/
 benchmarks/
 routine_output/
 bluebox_workspace/
-api_indexing_output/
-agent_workspace/
+api_indexing_output*/
+agent_workspaces/

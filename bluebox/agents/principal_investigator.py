@@ -85,13 +85,13 @@ logger = get_logger(name=__name__)
 
 # ---------------------------------------------------------------------------
 # Worker tool descriptions — injected into PI system prompt so the PI knows
-# what workers can do and references tools by name in experiment prompts.
+# what workers can do and references tools by name in experiment methodologies.
 # ---------------------------------------------------------------------------
 
 WORKER_CAPABILITIES = dedent("""\
     ## Worker Capabilities
 
-    Workers have access to the following tools. When writing experiment prompts,
+    Workers have access to the following tools. When writing experiment methodologies,
     reference these tools by name so the worker knows exactly what to use.
 
     BROWSER TOOLS (act in the live browser):
@@ -144,6 +144,13 @@ class PrincipalInvestigator(AbstractAgent):
     # If execution payload exceeds this size, persist it to inspector workspace raw/
     # and have the inspector analyze from file instead of inline prompt JSON.
     INSPECTOR_INLINE_EXECUTION_MAX_CHARS: int = 20_000
+    # Default worker experiment output schema when PI omits one.
+    # This enforces finalize_with_output(output={...}) instead of finalize_result.
+    DEFAULT_WORKER_OUTPUT_SCHEMA: dict[str, Any] = {
+        "type": "object",
+        "description": "Structured experiment findings object.",
+        "additionalProperties": True,
+    }
     # Error patterns → common-issues doc paths.
     # When an experiment result contains these keywords, the matching doc is
     # auto-injected into the get_experiment_result response so the PI sees
@@ -196,7 +203,7 @@ class PrincipalInvestigator(AbstractAgent):
         - In Python, read mounted capture files from `raw/` when needed (for example,
           to inspect exact payloads or run focused filtering).
         - Prefer targeted queries over broad dumps; summarize findings back into
-          concise experiment prompts and routine designs.
+          concise experiment methodologies and routine designs.
 
         ## MANDATORY: Review Documentation First
 
@@ -228,7 +235,7 @@ class PrincipalInvestigator(AbstractAgent):
         Each experiment has:
         - **hypothesis**: What you're testing (specific and falsifiable)
         - **rationale**: WHY — what evidence led here, what you expect to learn
-        - **prompt**: Instructions for the worker (reference worker tools by name!)
+        - **methodology**: Instructions for the worker (reference worker tools by name!)
 
         The worker executes the experiment and returns structured output.
         You review the output, record a verdict, and decide what to try next.
@@ -238,7 +245,7 @@ class PrincipalInvestigator(AbstractAgent):
         For API endpoint validation, your DEFAULT first experiment should be:
         "Perform the exact fetch request as observed in capture, then report what changed."
 
-        Your experiment prompt should explicitly instruct the worker to:
+        Your experiment methodology should explicitly instruct the worker to:
         1. Call `capture_search_transactions` to find the candidate request
         2. Call `capture_get_transaction` for the exact captured request
         3. Re-run the same request in live browser using `browser_navigate` + `browser_eval_js`
@@ -249,7 +256,7 @@ class PrincipalInvestigator(AbstractAgent):
            - Status code and response shape differences
         5. If the replay fails, test one minimal delta at a time (never many at once)
 
-        Include this sentence in prompts when relevant:
+        Include this sentence in methodologies when relevant:
         "Replay the exact captured fetch first; do not generalize until exact replay is tested."
 
         ## Strategy
@@ -289,10 +296,10 @@ class PrincipalInvestigator(AbstractAgent):
 
         **Phase B — Test data endpoints WITH proven auth:**
         1. NOW batch experiments for data endpoints
-        2. Each experiment prompt must include the proven auth details from Phase A
+        2. Each experiment methodology must include the proven auth details from Phase A
            so the worker can authenticate before calling the data endpoint
         3. Workers are independent — they do NOT share state. You must pass the
-           auth instructions (token URL, headers, key) in every experiment prompt.
+           auth instructions (token URL, headers, key) in every experiment methodology.
 
         **NEVER do this:**
         - Batch auth + data experiments in parallel (data will fail without auth)
@@ -322,7 +329,7 @@ class PrincipalInvestigator(AbstractAgent):
         - Meta tags: `<meta name="csrf-token" content="...">`
         - Inline config: `window.__CONFIG__ = { apiKey: "..." }`
         - Data attributes: `<div data-api-key="...">`
-        - Experiment prompt: "Navigate to {url}, then run JS to check:
+        - Experiment methodology: "Navigate to {url}, then run JS to check:
           document.querySelector('meta[name=csrf-token]'), window.__CONFIG__,
           window.__INITIAL_STATE__, window.ENV. We saw a key like '{observed_value}'
           in the captured session — is it still the same or has it changed?"
@@ -330,7 +337,7 @@ class PrincipalInvestigator(AbstractAgent):
 
         **Source 3: Browser storage (localStorage / sessionStorage)**
         Sites store tokens after their JS authenticates on page load.
-        - Experiment prompt: "Navigate to {url}, wait 3 seconds for JS to execute,
+        - Experiment methodology: "Navigate to {url}, wait 3 seconds for JS to execute,
           then dump sessionStorage and localStorage. Look for keys containing
           'token', 'auth', 'jwt', 'session'. In the capture we saw '{key_name}'
           with value starting '{prefix}...'"
@@ -339,7 +346,7 @@ class PrincipalInvestigator(AbstractAgent):
 
         **Source 4: Cookies**
         Some sites use cookie-based auth — navigation establishes the session.
-        - Experiment prompt: "Navigate to {url}, then try calling {data_endpoint}
+        - Experiment methodology: "Navigate to {url}, then try calling {data_endpoint}
           with credentials:'include'. If it works, auth is cookie-based and the
           routine just needs navigate + fetch with credentials:'include'. If it
           fails, dump cookies with get_cookies to see what exists."
@@ -347,13 +354,13 @@ class PrincipalInvestigator(AbstractAgent):
 
         **Source 5: Window properties (JS globals)**
         Sites set global variables with config and auth.
-        - Experiment prompt: "Navigate to {url}, run JS to check window.__CONFIG__,
+        - Experiment methodology: "Navigate to {url}, run JS to check window.__CONFIG__,
           window.__INITIAL_STATE__, window.ENV, window.__NEXT_DATA__"
         - Routine uses: `{{windowProperty:__CONFIG__.apiKey}}`
 
         **Source 6: JS evaluation (compute from page state)**
         When tokens are derived/computed by the site's JS and stored in non-obvious places.
-        - Experiment prompt: "Navigate to {url}, wait for page load. The site's JS
+        - Experiment methodology: "Navigate to {url}, wait for page load. The site's JS
           likely stores auth state somewhere. Try: JSON.parse(sessionStorage.getItem(
           'persist:root')).auth, or look through all sessionStorage keys for anything
           containing 'token'. Extract the value and try using it."
@@ -469,7 +476,7 @@ class PrincipalInvestigator(AbstractAgent):
         ## CRITICAL RULES
 
         - NEVER guess at request details. Always dispatch experiments to verify.
-        - Write experiment prompts that reference worker tools by name.
+        - Write experiment methodologies that reference worker tools by name.
         - Record a verdict for EVERY completed experiment via record_finding.
         - Always include reusable takeaways in record_finding so future workers
           receive concrete lessons (claim + how_to_apply_next + evidence).
@@ -482,7 +489,7 @@ class PrincipalInvestigator(AbstractAgent):
           NEVER give up on data endpoints just because they returned 401 — that means
           you need to solve auth first, not that the endpoint is broken.
         - Workers do NOT share browser state. When an endpoint requires auth, your
-          experiment prompt must include FULL auth instructions (token URL, headers,
+          experiment methodology must include FULL auth instructions (token URL, headers,
           subscription key) so the worker can authenticate within its own session.
         - mark_routine_failed is globally gated: you cannot fail any routine until at
           least 5 routine attempts have failed across the pipeline. Keep iterating and
@@ -1169,36 +1176,32 @@ class PrincipalInvestigator(AbstractAgent):
             return ""
         return "\n".join(lines)
 
-    def _compose_worker_prompt(self, prompt: str, routine_spec_id: str | None) -> str:
-        """Compose final worker task prompt with briefing + assigned experiment."""
+    def _compose_worker_methodology(self, methodology: str, routine_spec_id: str | None) -> str:
+        """Compose final worker task methodology with briefing + assigned experiment."""
         briefing = self._build_worker_briefing(routine_spec_id)
         if not briefing:
-            return prompt
-        return f"{briefing}\n\n## Assigned Experiment\n{prompt}"
+            return methodology
+        return f"{briefing}\n\n## Assigned Experiment Methodology\n{methodology}"
 
     @agent_tool(token_optimized=True)
     def _dispatch_experiment(
         self,
         hypothesis: str,
         rationale: str,
-        prompt: str,
-        output_schema: dict[str, Any] | None = None,
+        methodology: str,
         output_description: str | None = None,
-        priority: int = 1,
     ) -> dict[str, Any]:
         """
         Create and dispatch an experiment to a worker.
 
-        The worker has browser tools and capture lookup tools. Write the prompt
+        The worker has browser tools and capture lookup tools. Write the methodology
         so the worker knows exactly what to do — reference tools by name.
 
         Args:
             hypothesis: What we're testing. Specific and falsifiable.
             rationale: WHY we're testing this — evidence, reasoning, expectations.
-            prompt: Instructions for the worker. Reference worker tools by name.
-            output_schema: Optional JSON schema for the worker's structured answer.
+            methodology: Instructions for the worker. Reference worker tools by name.
             output_description: Description of expected output.
-            priority: 1=critical, 2=important, 3=nice-to-have.
         """
         # Gate: must review docs first
         if not self._docs_reviewed and self._documentation_data_loader is not None:
@@ -1212,15 +1215,18 @@ class PrincipalInvestigator(AbstractAgent):
                 )
             }
 
-        worker_prompt = self._compose_worker_prompt(prompt=prompt, routine_spec_id=None)
+        worker_methodology = self._compose_worker_methodology(
+            methodology=methodology,
+            routine_spec_id=None,
+        )
+        resolved_output_description = output_description or "Structured experiment findings."
 
         # Create experiment entry
         experiment = ExperimentEntry(
             hypothesis=hypothesis,
             rationale=rationale,
-            prompt=worker_prompt,
+            methodology=worker_methodology,
             routine_spec_id=None,
-            priority=priority,
             status=ExperimentStatus.RUNNING,
         )
         self._ledger.add_experiment(experiment)
@@ -1228,10 +1234,10 @@ class PrincipalInvestigator(AbstractAgent):
         # Create and dispatch task
         task = Task(
             agent_type=SpecialistAgentType.EXPERIMENT_WORKER,
-            prompt=worker_prompt,
+            prompt=worker_methodology,
             max_loops=self._worker_max_loops,
-            output_schema=output_schema,
-            output_description=output_description,
+            output_schema=self.DEFAULT_WORKER_OUTPUT_SCHEMA,
+            output_description=resolved_output_description,
         )
         self._orchestration_state.add_task(task)
         experiment.task_id = task.id
@@ -1276,10 +1282,8 @@ class PrincipalInvestigator(AbstractAgent):
             experiments: List of experiment dicts, each with:
                 - hypothesis: What we're testing (specific and falsifiable)
                 - rationale: WHY we're testing this
-                - prompt: Instructions for the worker (reference tools by name!)
-                - output_schema: (optional) JSON schema for structured output
+                - methodology: Instructions for the worker (reference tools by name!)
                 - output_description: (optional) Description of expected output
-                - priority: (optional) 1=critical, 2=important, 3=nice-to-have
         """
         if not experiments:
             return {"error": "No experiments provided"}
@@ -1308,27 +1312,29 @@ class PrincipalInvestigator(AbstractAgent):
         # Phase 1: Create all experiment entries and tasks (sequential — fast, no I/O)
         task_experiment_pairs: list[tuple[Task, ExperimentEntry]] = []
         for exp_dict in experiments:
-            worker_prompt = self._compose_worker_prompt(
-                prompt=exp_dict.get("prompt", ""),
+            worker_methodology = self._compose_worker_methodology(
+                methodology=exp_dict.get("methodology", ""),
                 routine_spec_id=None,
+            )
+            resolved_output_description = (
+                exp_dict.get("output_description") or "Structured experiment findings."
             )
 
             experiment = ExperimentEntry(
                 hypothesis=exp_dict.get("hypothesis", ""),
                 rationale=exp_dict.get("rationale", ""),
-                prompt=worker_prompt,
+                methodology=worker_methodology,
                 routine_spec_id=None,
-                priority=exp_dict.get("priority", 1),
                 status=ExperimentStatus.RUNNING,
             )
             self._ledger.add_experiment(experiment)
 
             task = Task(
                 agent_type=SpecialistAgentType.EXPERIMENT_WORKER,
-                prompt=worker_prompt,
+                prompt=worker_methodology,
                 max_loops=self._worker_max_loops,
-                output_schema=exp_dict.get("output_schema"),
-                output_description=exp_dict.get("output_description"),
+                output_schema=self.DEFAULT_WORKER_OUTPUT_SCHEMA,
+                output_description=resolved_output_description,
             )
             self._orchestration_state.add_task(task)
             experiment.task_id = task.id

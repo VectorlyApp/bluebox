@@ -185,8 +185,10 @@ class ExperimentWorker(AbstractAgent):
 
         - Do NOT navigate away from the current page unless the experiment requires it
         - Use browser_eval_js as your Swiss army knife for all browser interactions
+        - You ALWAYS have `execute_python` available in this agent.
         - Use `execute_python` when you need structured filtering/aggregation over capture data.
           If workspace is present, `raw/` contains mounted capture files for direct reads.
+          In python, you can read files directly, e.g. `open("raw/<file>", encoding="utf-8").read()`.
         - Report exact values and observations, not guesses
     """)
 
@@ -406,7 +408,9 @@ class ExperimentWorker(AbstractAgent):
             f"EXPERIMENT: {task}\n\n"
             f"Execute this experiment. Use capture_* tools for reference data and "
             f"browser_* tools for live interaction. When done, call {finalize_success} "
-            f"with your findings."
+            f"with your findings.\n\n"
+            "You have `execute_python` access in this run. If workspace files are mounted, "
+            "inspect them under `raw/` using Python file I/O as needed."
         )
 
     def _get_data_context_section(self) -> str:

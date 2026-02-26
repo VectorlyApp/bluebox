@@ -60,12 +60,11 @@ class ExperimentEntry(BaseModel):
     id: str = Field(default_factory=generate_short_id)
     hypothesis: str = Field(description="Specific, falsifiable hypothesis being tested")
     rationale: str = Field(description="Why we're testing this — evidence, reasoning, expectations")
-    prompt: str = Field(description="Instructions sent to the worker")
+    methodology: str = Field(description="Experiment methodology sent to the worker")
     routine_spec_id: str | None = Field(
         default=None,
         description="RoutineSpec this experiment supports; None for shared/global experiments",
     )
-    priority: int = Field(default=1, description="1=critical, 2=important, 3=nice-to-have")
     task_id: str | None = Field(default=None, description="Reference to the dispatched Task")
     status: ExperimentStatus = Field(default=ExperimentStatus.PENDING)
     verdict: ExperimentVerdict | None = Field(default=None)

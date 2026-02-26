@@ -154,8 +154,20 @@ def create_cdp_helpers(
 
     def recv_json(ws_conn: WebSocket, deadline: float) -> dict:
         """Read a single JSON message from WebSocket, skipping empty/non-JSON frames."""
-        while time.time() < deadline:
-            raw = ws_conn.recv()
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            try:
+                # Override the socket timeout per read so the caller's deadline
+                # (not the connect-time socket timeout) controls command waits.
+                ws_conn.settimeout(min(remaining, 1.0))
+                raw = ws_conn.recv()
+            except websocket.WebSocketTimeoutException:
+                # No frame yet; keep waiting until deadline.
+                continue
+            except Exception as e:
+                raise RuntimeError(f"CDP WebSocket receive failed: {e}") from e
             if not raw:
                 continue
             try:
