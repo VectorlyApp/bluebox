@@ -171,7 +171,6 @@ class AsyncCDPSession:
         # handle general command replies
         if cmd_id is not None and cmd_id in self.pending_responses:
             future = self.pending_responses.pop(cmd_id)
-            #logger.info("📥 Found pending response for id=%s", cmd_id)
 
             if "result" in msg:
                 future.set_result(msg["result"])
@@ -182,7 +181,7 @@ class AsyncCDPSession:
                 future.set_result(None)
             return
 
-        logger.info("📥 Command reply not handled: id=%s", cmd_id)
+        logger.debug("📥 Command reply not handled: id=%s", cmd_id)
 
 
     # Public methods _______________________________________________________________________________________________________
@@ -395,7 +394,7 @@ class AsyncCDPSession:
             if captured_session_id and target_type in ["page", "iframe"]:
                 self.page_session_id = captured_session_id
                 self._session_id_event.set()  # signal that sessionId is available
-                logger.info("🎯 Captured page sessionId: %s (target type: %s)", self.page_session_id, target_type)
+                logger.debug("🎯 Captured page sessionId: %s (target type: %s)", self.page_session_id, target_type)
 
         # handle network events via AsyncNetworkMonitor
         handled_network = await self.network_monitor.handle_network_message(msg, self)
