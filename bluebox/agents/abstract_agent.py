@@ -73,6 +73,10 @@ class ToolResultPersistMode(StrEnum):
     OVERFLOW = "overflow"
 
 
+# Keep persisted tool previews small so iterative runs don't blow context.
+PERSISTED_TOOL_PREVIEW_MAX_CHARS = 800
+
+
 class AgentExecutionMode(StrEnum):
     """Execution mode for agent loops."""
     CONVERSATIONAL = "conversational"
@@ -375,7 +379,10 @@ class AbstractAgent(ABC):
             for chat in existing_chats:
                 self._chats[chat.id] = chat
 
-    @agent_tool(availability=lambda self: self._allow_code_execution, persist=ToolResultPersistMode.OVERFLOW)
+    @agent_tool(
+        availability=lambda self: self._allow_code_execution,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
     def _execute_python(self, code: str) -> dict[str, Any]:
         """
         Execute Python code in a sandbox.
@@ -523,9 +530,10 @@ class AbstractAgent(ABC):
         extension = ".json" if content_type == "json" else ".txt"
         filename = f"{datetime.now().strftime('%Y-%m-%d-%H%M%S-%f')}-{safe_tool_name}_result{extension}"
         is_truncated = char_count > tool_meta.max_characters
-        preview = serialized[:tool_meta.max_characters]
-        if is_truncated:
-            preview += f"\n... (truncated, {char_count} total chars)"
+        preview_limit = min(tool_meta.max_characters, PERSISTED_TOOL_PREVIEW_MAX_CHARS)
+        preview = serialized[:preview_limit]
+        if char_count > preview_limit:
+            preview += f"\n... (preview truncated, {char_count} total chars)"
 
         workspace = self._workspace
         if workspace is None:
@@ -547,6 +555,7 @@ class AbstractAgent(ABC):
                     "persist_mode": persist_mode.value,
                     "char_count": char_count,
                     "max_characters": tool_meta.max_characters,
+                    "preview_max_characters": preview_limit,
                 },
             )
             logger.debug(
@@ -715,14 +724,18 @@ class AbstractAgent(ABC):
 
     def _get_urgency_notice(self) -> str:
         """Iteration-aware urgency notice for autonomous prompts."""
-        finalize_tool = "finalize_with_output" if self.has_output_schema else "finalize_result"
+        finalize_tool = (
+            "`finalize_with_output(output={...})`"
+            if self.has_output_schema
+            else "`finalize_result(output={...})`"
+        )
         if self.can_finalize:
             remaining = self._autonomous_config.max_iterations - self._autonomous_iteration
             if remaining <= 2:
-                return f"\n\n## URGENT: Only {remaining} iteration(s) left — call `{finalize_tool}` NOW."
+                return f"\n\n## URGENT: Only {remaining} iteration(s) left — call {finalize_tool} NOW."
             if remaining <= 4:
                 return f"\n\n## Finalize soon — {remaining} iterations remaining."
-            return f"\n\n## `{finalize_tool}` is now available."
+            return f"\n\n## {finalize_tool} is now available."
         return f"\n\n## Continue exploring (iteration {self._autonomous_iteration})."
 
     @agent_tool(
@@ -887,6 +900,14 @@ class AbstractAgent(ABC):
         without reimplementing _sync_tools.
         """
         description, parameters = tool_meta.description, tool_meta.parameters
+        if tool_meta.name == "finalize_result":
+            description = (
+                "Finalize and submit result data. "
+                "You MUST call this with a non-empty `output` object: "
+                "`finalize_result(output={...})`. Do NOT call with empty arguments."
+            )
+            return description, parameters
+
         if tool_meta.name != "finalize_with_output" or not self._task_output_schema:
             return description, parameters
 
@@ -1286,7 +1307,7 @@ class AbstractAgent(ABC):
 
     @agent_tool(
         availability=lambda self: self.has_workspace or self._documentation_data_loader is not None,
-        persist=ToolResultPersistMode.OVERFLOW,
+        persist=ToolResultPersistMode.NEVER,
         token_optimized=True,
         parameters={
             "type": "object",
@@ -1340,7 +1361,7 @@ class AbstractAgent(ABC):
 
     @agent_tool(
         availability=lambda self: self.has_workspace or self._documentation_data_loader is not None,
-        persist=ToolResultPersistMode.OVERFLOW,
+        persist=ToolResultPersistMode.NEVER,
         token_optimized=True,
         parameters={
             "type": "object",
@@ -1403,6 +1424,14 @@ class AbstractAgent(ABC):
             if result is None:
                 return {"error": f"File '{path}' not found"}
             content, total_lines = result
+            content_lines = content.count("\n") + (1 if content else 0)
+            read_start = start_line or 1
+            read_end = read_start + max(content_lines - 1, 0)
+            if len(content) > 5_000:
+                content = (
+                    content[:5_000]
+                    + f"\n... [output too large... read lines {read_start} - {read_end}]"
+                )
             return {
                 "scope": "docs",
                 "path": path,
@@ -1417,8 +1446,8 @@ class AbstractAgent(ABC):
 
         content = entry.content
         total_lines = content.count("\n") + 1
-        if len(content) > 10000:
-            content = content[:10000] + f"\n... (truncated, {len(entry.content)} total chars)"
+        if len(content) > 5_000:
+            content = content[:5_000] + f"\n... [output too large... read lines 1 - {total_lines}]"
         return {
             "scope": "docs",
             "path": str(entry.path),

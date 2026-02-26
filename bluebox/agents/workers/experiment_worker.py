@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from websocket import WebSocket
 
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, AgentExecutionMode, agent_tool
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.agents.workspace import AgentWorkspace
 from bluebox.cdp.connection import (
     cdp_new_tab,
     create_cdp_helpers,
@@ -43,7 +43,6 @@ from bluebox.llms.data_loaders.dom_data_loader import DOMDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
 from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
-from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
@@ -159,6 +158,9 @@ class ExperimentWorker(AbstractAgent):
         - Use browser_eval_js for most browser interactions — it covers fetch, DOM reads,
           clicks, typing, storage access, and more
         - browser_get_dom is useful for understanding page structure before writing JS
+        - Use `execute_python` for focused analysis across captured data structures.
+          If a workspace is attached, mounted capture files are available under `raw/`
+          and can be read directly in Python when needed.
         - Keep browser_eval_js expressions focused and concise
         - Report exact values, not approximations
     """)
@@ -183,6 +185,8 @@ class ExperimentWorker(AbstractAgent):
 
         - Do NOT navigate away from the current page unless the experiment requires it
         - Use browser_eval_js as your Swiss army knife for all browser interactions
+        - Use `execute_python` when you need structured filtering/aggregation over capture data.
+          If workspace is present, `raw/` contains mounted capture files for direct reads.
         - Report exact values and observations, not guesses
     """)
 
@@ -209,6 +213,7 @@ class ExperimentWorker(AbstractAgent):
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
+        workspace: AgentWorkspace | None = None,
     ) -> None:
         # Browser connection — lazy init on first browser tool call
         self._remote_debugging_address = remote_debugging_address
@@ -227,7 +232,7 @@ class ExperimentWorker(AbstractAgent):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
-            workspace=LocalWorkspace.from_directory_path("./agent_workspace/experiment_worker"),
+            workspace=workspace,
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
@@ -236,6 +241,7 @@ class ExperimentWorker(AbstractAgent):
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
+            allow_code_execution=True,
         )
 
         logger.debug(
@@ -370,12 +376,26 @@ class ExperimentWorker(AbstractAgent):
 
     def _get_system_prompt(self) -> str:
         parts = [self.SYSTEM_PROMPT]
+        if self.has_workspace:
+            try:
+                summary = self._require_workspace().generate_summary()
+                parts.append(f"\n\n## Workspace Summary\n{summary}")
+            except Exception as e:
+                logger.warning("Failed to generate worker workspace summary: %s", e)
         parts.append(self._get_data_context_section())
+        parts.append(self._generate_code_execution_prompt())
         return "".join(parts)
 
     def _get_autonomous_system_prompt(self) -> str:
         parts = [self.AUTONOMOUS_SYSTEM_PROMPT]
+        if self.has_workspace:
+            try:
+                summary = self._require_workspace().generate_summary()
+                parts.append(f"\n\n## Workspace Summary\n{summary}")
+            except Exception as e:
+                logger.warning("Failed to generate worker workspace summary: %s", e)
         parts.append(self._get_data_context_section())
+        parts.append(self._generate_code_execution_prompt())
         parts.append(self._get_output_schema_prompt_section())
         parts.append(self._get_urgency_notice())
         return "".join(parts)
@@ -969,69 +989,3 @@ class ExperimentWorker(AbstractAgent):
             "count": len(results),
             "elements": results[:30],
         }
-
-    # ===================================================================
-    # PYTHON SANDBOX — quick data analysis across all capture sources
-    # ===================================================================
-
-    @agent_tool()
-    def _execute_python(self, code: str) -> dict[str, Any]:
-        """
-        Execute Python code in a sandboxed environment to analyze captured data.
-
-        Pre-loaded variables (lists of dicts, from recorded capture data):
-        - `network_entries`: Network transactions (request_id, url, method,
-          status_code, request_headers, response_headers, request_body, response_body)
-        - `storage_entries`: Storage events (type, origin, key, value, etc.)
-        - `window_prop_entries`: Window property events (url, timestamp, changes)
-
-        The `json` module is available. Use print() to output results.
-        Imports are disabled for security.
-
-        Examples:
-            # Find all POST requests
-            for e in network_entries:
-                if e['method'] == 'POST':
-                    print(e['url'])
-
-            # Find all cookies with 'token' in the key
-            for e in storage_entries:
-                if 'token' in (e.get('key') or '').lower():
-                    print(e['key'], e.get('value', '')[:100])
-
-            # Count requests per host
-            from collections import Counter  # not allowed — use dict instead
-            hosts = {}
-            for e in network_entries:
-                host = e['url'].split('/')[2] if '/' in e['url'] else e['url']
-                hosts[host] = hosts.get(host, 0) + 1
-            for h, c in sorted(hosts.items(), key=lambda x: -x[1]):
-                print(f"{h}: {c}")
-
-        Args:
-            code: Python code to execute. Use print() for output.
-        """
-        extra_globals: dict[str, Any] = {}
-
-        if self._network_data_loader:
-            extra_globals["network_entries"] = [
-                e.model_dump() for e in self._network_data_loader.entries
-            ]
-        else:
-            extra_globals["network_entries"] = []
-
-        if self._storage_data_loader:
-            extra_globals["storage_entries"] = [
-                e.model_dump() for e in self._storage_data_loader.entries
-            ]
-        else:
-            extra_globals["storage_entries"] = []
-
-        if self._window_property_data_loader:
-            extra_globals["window_prop_entries"] = [
-                e.model_dump() for e in self._window_property_data_loader.entries
-            ]
-        else:
-            extra_globals["window_prop_entries"] = []
-
-        return execute_python_sandboxed(code, extra_globals=extra_globals)

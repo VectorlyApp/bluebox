@@ -287,7 +287,12 @@ def run_network_exploration(
 
         likely_urls = loader.api_urls
         if likely_urls:
-            urls_list = "\n".join(f"- {url}" for url in likely_urls[:50])
+            # Cap count and per-line length so system prompt stays under model context limits.
+            trimmed_lines = []
+            for url in likely_urls[:20]:
+                short_url = url if len(url) <= 220 else url[:220] + "..."
+                trimmed_lines.append(f"- {short_url}")
+            urls_list = "\n".join(trimmed_lines)
             urls_context = f"\n\n## Likely API Endpoints\n{urls_list}"
         else:
             urls_context = ""
@@ -312,6 +317,17 @@ def run_network_exploration(
         )
 
     specialist._get_autonomous_system_prompt = _exploration_system_prompt  # type: ignore[assignment]
+
+    # Override initial message so exploration framing is explicit.
+    def _exploration_initial_message(task_text: str) -> str:
+        return (
+            f"NETWORK EXPLORATION TASK: {task_text}\n\n"
+            "This is broad capture exploration. Survey URLs, clusters, auth signals, "
+            "and endpoint categories across the full dataset, then finalize with the "
+            "complete structured output."
+        )
+
+    specialist._get_autonomous_initial_message = _exploration_initial_message  # type: ignore[assignment]
 
     # Run autonomous exploration
     task = (

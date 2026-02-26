@@ -367,17 +367,29 @@ class NetworkSpecialist(AbstractAgent):
     @agent_tool(
         token_optimized=True,
         persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=2_500,
     )
-    def _get_unique_urls(self) -> dict[str, Any]:
+    def _get_unique_urls(self, max_urls: int = 100) -> dict[str, Any]:
         """
-        Get all unique URLs from the captured network traffic.
+        Get unique URLs from the captured network traffic.
 
-        Returns a sorted list of all unique URLs observed in the traffic.
+        Returns a count-sorted subset to avoid oversized tool payloads.
+
+        Args:
+            max_urls: Maximum number of URLs to return (default 100, max 500).
         """
+        if max_urls <= 0:
+            return {"error": "max_urls must be > 0"}
+        max_urls = min(max_urls, 500)
+
         url_counts = self._network_data_loader.url_counts
+        sorted_items = sorted(url_counts.items(), key=lambda x: x[1], reverse=True)
+        limited_url_counts = dict(sorted_items[:max_urls])
         return {
             "total_unique_urls": len(url_counts),
-            "url_counts": url_counts,
+            "returned_unique_urls": len(limited_url_counts),
+            "omitted_unique_urls": max(0, len(url_counts) - len(limited_url_counts)),
+            "url_counts": limited_url_counts,
         }
 
     @agent_tool(

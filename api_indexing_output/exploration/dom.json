@@ -1,42 +1,45 @@
 {
   "total_snapshots": 5,
   "pages": [
-    "[0] https://www.carvana.com/ \u2014 Just a moment... (Cloudflare challenge page with minimal meta tags, no app content, purpose is bot/human verification before accessing site).",
-    "[1] https://www.carvana.com/ \u2014 Carvana home page with hero content, search bar form (make/model/keyword), navigation header/footer, marketing sections, used to start shopping for vehicles.",
-    "[2] https://www.carvana.com/cars/suv?refSource=home \u2014 SUVs search results page (App Router SRP), with left filter sidebar, top filter chips, search input form, and a grid of SUV vehicle tiles; main browsing page for SUVs.",
-    "[3] https://www.carvana.com/vehicle/4195259?refSource=srp \u2014 Vehicle detail page (VDP) for a 2025 Chevrolet Trailblazer, with photo carousel, pricing, specs, financing CTA buttons, and structured data for the specific vehicle.",
-    "[4] https://www.carvana.com/cars?refSource=header \u2014 General used-cars search results page (App Router SRP) similar to SUVs SRP but for all body styles, with filters, search input, and grid of vehicle tiles."
+    "https://www.amtrak.com/home (Train Tickets, Schedules & Routes | Amtrak) \u2014 marketing/landing page with travel status widgets, trip lookup, and account modals; Angular-based interactive components and many analytics tags.",
+    "https://www.amtrak.com/tickets/departure.html (Amtrak - Reservations - Select Train) \u2014 booking flow page to select trains/results; Angular tickets app scripts, same account/help modals, and heavy sessionStorage-driven analytics."
   ],
   "forms": [
-    "[1] https://www.carvana.com/ \u2014 Main homepage search form (action='.', method=GET implied) with INPUT[type=search,id=merch-search-bar-legacy-input,placeholder='Search Make, Model, or Keyword'] and BUTTON[type=button,data-qa=search-bar-go]; used to start a vehicle search from the hero search bar.",
-    "[2] https://www.carvana.com/cars/suv?refSource=home \u2014 SRP search box form (class 'relative z-1 h-full w-full', autocomplete=off) with single INPUT[name=search,placeholder='Search make, model, or keyword']; used to refine SUV results by keyword.",
-    "[4] https://www.carvana.com/cars?refSource=header \u2014 SRP search box form (same structure as SUVs SRP) with INPUT[name=search,placeholder='Search make, model, or keyword']; used to search across all used cars."
+    "https://www.amtrak.com/home \u2014 Train status / schedules form (travel-status-form / travel-status-form1; method not specified in DOM, likely SPA) with From station (input[formcontrolname=searchKey], combobox), To station (input[formcontrolname=searchKey], combobox), depart date picker button + hidden departTime/returnTime inputs, swap button, and disabled Submit (status_submit).",
+    "https://www.amtrak.com/home \u2014 Find trip form (find-trip; method not specified) with Reservation/Ticket Number (input#res-number formcontrolname=resNumber), a select/dropdown trigger button (button#brn-select-0--trigger), and disabled submit FIND TRIP.",
+    "https://www.amtrak.com/home \u2014 AskJulie/help search form (need-help-form) with text input#askJulie and submit button (search).",
+    "https://www.amtrak.com/home \u2014 Sign-in form (#signInForm) POST /v3/account/signin with fields username (email), password, show-password button, forgot-password modal trigger, hidden _cmstcversionnumber_login=3.0.14, and submit button.",
+    "https://www.amtrak.com/home \u2014 Terms acceptance sign-in form (signin-register-form_tnc-acceptance) POST (action not present) with submit button #signin_tnc-btn-b2c.",
+    "https://www.amtrak.com/home \u2014 Enrollment/join form (#signup-form) POST /v3/account/enroll with firstName, lastName, password, confirmPassword, emailAddress, country select (_cmscountry), email opt-in/out radios, hidden enrollmentSourceCode=Amtrak.com, hidden _cmstcversionnumber_register=3.0.14, hidden subscriber=\"false\", hidden _cmsemailcommunication, and submit button.",
+    "https://www.amtrak.com/home \u2014 Forgot password email reset form (am-js__forgot-password-email-reset; action not present) with input name=_name and submit button.",
+    "https://www.amtrak.com/home \u2014 Forgot password security question forms (multiple q-step* forms) POST /content/amtrak/en-us/public/home-page/_jcr_content.checkSecurityQuestion.json with input name=question and step submit buttons.",
+    "https://www.amtrak.com/home \u2014 Forgot password set new password form POST /content/amtrak/en-us/public/home-page/_jcr_content.setNewPassword.json with newPassword input, show-password button, and submit button.",
+    "https://www.amtrak.com/tickets/departure.html \u2014 Same train status / schedules form widgets (travel-status-form / travel-status-form1) with station comboboxes, date picker controls, hidden departTime/returnTime, swap button, and disabled submit.",
+    "https://www.amtrak.com/tickets/departure.html \u2014 Same Find trip form with resNumber, dropdown trigger, and disabled FIND TRIP submit.",
+    "https://www.amtrak.com/tickets/departure.html \u2014 Same AskJulie/help search form with input#askJulie and submit.",
+    "https://www.amtrak.com/tickets/departure.html \u2014 Same account modal forms: POST /v3/account/signin and POST /v3/account/enroll plus forgot-password flows."
   ],
   "embedded_tokens": [
-    "[0] meta[http-equiv=refresh] on Cloudflare challenge page \u2014 numeric refresh interval 360 seconds, not a CSRF but indicates timed challenge refresh.",
-    "[1] meta[name=robots] on home page \u2014 value 'index,follow' (SEO directive, no secret), plus two meta[name=google-site-verification] tokens with long opaque strings used for Google Search Console site ownership verification.",
-    "[2] meta[name=robots] on SUVs SRP \u2014 value 'index, follow' (SEO directive, not secret).",
-    "[3] meta[name=robots] on VDP \u2014 value 'index,follow' (SEO directive, not secret).",
-    "[4] meta[name=robots] on cars SRP \u2014 value 'index, follow' (SEO directive, not secret).",
-    "[1] __NEXT_DATA__ script tag on home page \u2014 large JSON blob (~445 KB) containing clientId, correlationId, browserCookieId, experiments, internal link groups, and various context objects, including opaque IDs and cookie values but no obvious public API keys.",
-    "[2] App Router flight data scripts on SUVs SRP (multiple self.__next_f pushes) \u2014 streamed React/Next flight data containing route tree, cookie names/values (e.g., CVCurrentCity, BrowserCookieId, mdt-session-id), experiment buckets, and configuration flags; treated as server-rendered data rather than classical CSRF tokens.",
-    "[2] application/ld+json[data-qa=vehicle-ld] scripts on SUVs SRP \u2014 repeated Vehicle schema objects including VINs, SKU numbers, and price data for many vehicles; sensitive identifiers but standard structured data, not auth tokens.",
-    "[3] __NEXT_DATA__ script tag on VDP \u2014 JSON (~41 KB) with clientId 'vdp_ui', correlationId, browserCookieId, searchRequestId, vehicleId, configuration flags, and serverCookies snapshot (e.g., __cf_bm, BrowserCookieId) but no recognizable API key.",
-    "[4] App Router flight data scripts on cars SRP (self.__next_f) \u2014 similar to SUVs SRP: cookies (CVCurrentCity/State/Zip, BrowserCookieId), experiment cookies, configuration and SEO link data; again opaque IDs but no explicit CSRF/meta auth tokens.",
-    "[1,2,3,4] Various analytics/ads scripts (GTM, gtag, Facebook Pixel, Bing, Snowplow, Spotify pixel, ImpactRadius) include IDs like GTM-PCCP2G, G-YGPT2P3T9Z, AW-928301978, Facebook pixel ID 2178741032440639, Snowplow appId 'carvana-3cb788c9-22ed-412c-b607-d16c9a38cc81' \u2014 these are tracking identifiers, not user-specific tokens."
+    "meta[name=store-config] on /home \u2014 JSON config containing graphqlEndpoint \"/api/graphql\" and locale \"en-US\" (static across /home snapshots).",
+    "meta[http-equiv=origin-trial] on both pages \u2014 long base64 token for Chrome origin trial (appears identical across snapshots).",
+    "meta[name=\"p:domain_verify\"] on both pages \u2014 Pinterest domain verification token \"0e678e1c1c24914606ede69ae2fe5412\" (static).",
+    "hidden input[name=_cmstcversionnumber_login] in #signInForm \u2014 value \"3.0.14\" (static; not CSRF).",
+    "hidden input[name=_cmstcversionnumber_register] in #signup-form \u2014 value \"3.0.14\" (static; not CSRF).",
+    "hidden input[name=enrollmentSourceCode] in #signup-form \u2014 value \"Amtrak.com\" (static).",
+    "hidden input[name=subscriber] in #signup-form \u2014 value \"false\" (static).",
+    "hidden input[name=stationSearchCode] in station search UI \u2014 present but no value in capture (used by station autocomplete).",
+    "hidden inputs[formcontrolname=departTime/returnTime] \u2014 sometimes populated with dates (e.g., departTime=3/26/2026 and returnTime=4/23/2026 in later snapshots), indicating client-side state rather than security token.",
+    "script inline \u2014 Branch.io initialization contains public key string \"key_live_op5Lpy3kFhkGafb9N0I2PpbeyxdQOlCY\" (marketing SDK key).",
+    "script src Google reCAPTCHA Enterprise \u2014 site render key appears in URL query: render=6Le_FmYaAAAAAL_YYFMa4JzOwiyuxNj477iPYoNY (public site key)."
   ],
   "data_blobs": [
-    "[0] Cloudflare inline challenge script on 'Just a moment...' page \u2014 window._cf_chl_opt object with cZone, cRay, cH, UTM-like tokens and encoded parameters (~5.5 KB), used by Cloudflare Turnstile to orchestrate the bot challenge.",
-    "[1] script#__NEXT_DATA__ on home page \u2014 massive Next.js data blob (~445 KB) containing props.pageProps for 'home_ui' including deviceTypeProps, experimentContext (experiment names and buckets), internalLinksGroups (body styles, top locations), and various configuration flags (gtmId, feature toggles).",
-    "[2] Numerous application/ld+json[data-qa=vehicle-ld] scripts on SUVs SRP \u2014 each is a Vehicle schema JSON with fields like name, modelDate, manufacturer, VIN, mileageFromOdometer, price, priceCurrency, availability, and canonical VDP URL; about two dozen such blobs describing search results.",
-    "[2] React/Next App Router flight data scripts (self.__next_s and many self.__next_f pushes) on SUVs SRP \u2014 serialized React tree and router state including route structure, stylesheets, cookies (BrowserCookieId, CVCurrent*), configuration (useSrpAppRouter, VINWhyBuyNarrativeConfig), and SEO metadata; very large combined payload (>600 KB).",
-    "[3] script#__NEXT_DATA__ on VDP \u2014 Next.js page data for 'vdp_ui' including acquisition, analytics, and common static context, with payloadMetaAttributes (inventoryType, offering, page, searchRequestId, vehicleId), configuration flags, and serverCookies snapshot; medium-sized JSON (~41 KB).",
-    "[3] Single application/ld+json Vehicle schema on VDP head \u2014 describes the specific 2025 Chevrolet Trailblazer (VIN, SKU, mileage, price, offers) for rich snippets.",
-    "[4] application/ld+json[data-qa=vehicle-ld] scripts on cars SRP \u2014 many Vehicle schema blobs similar to SUVs SRP but covering a broader set of vehicles and colors, each with VIN, price, and URL; dozens of such entries.",
-    "[4] App Router flight data scripts on cars SRP (self.__next_f) \u2014 same pattern as SUVs SRP: route tree, cookies, filters context (none initially), SEO internalLinks (bodyStyles, bodyStylesYears, topLocations), and configuration; large streaming JSON-like payload.",
-    "[1,2,3,4] Web-vitals polyfill inline scripts \u2014 small inline JS to polyfill first input delay metrics; not data blobs but repeated shared code across pages."
+    "meta[name=store-config] \u2014 embedded JSON (~100-200 bytes) with graphqlEndpoint/method/locale and client-side price-loading flag.",
+    "inline script \u2014 digitalData/newDigitalData objects assembled from sessionStorage (ibsession/profile/searchresults) for analytics; large on departure.html (tens of KB) and smaller on home.",
+    "inline scripts \u2014 multiple _satellite (Adobe Launch) runScript blocks and OptanonWrapper (OneTrust) consent wiring; configuration/logic blobs (several KB each, truncated in capture).",
+    "inline script \u2014 Akamai bot/defense cookie snippet: bazadebezolkohpepadr=\"853533168\".",
+    "external script references \u2014 Angular bundle set for tickets app: /etc/designs/tickets/angular/{runtime,polyfills,scripts,vendor,main}.js (framework/runtime blobs delivered as separate files, not inline)."
   ],
   "tables": [],
-  "inferred_framework": "Next.js (React)",
-  "narrative": "Navigation sequence: user first hits a Cloudflare 'Just a moment...' challenge at https://www.carvana.com/, then is allowed through to the Next.js-powered Carvana home page, navigates to the SUVs search results (App Router /cars/suv), then to a specific VDP (pages router /vehicle/[vehicleId]), and finally to the general used-cars SRP (/cars). All main app pages (home, SRPs, VDP) are clearly built on Next.js/React: the home and VDP use the classic pages router with a single __NEXT_DATA__ JSON blob plus _next/static chunk scripts, while the SRPs use the newer App Router with React Server Components flight data via self.__next_f/self.__next_s and many _next/static/chunks/app/... scripts. The home page exposes one primary search form (search bar with input+button) and the SRPs each expose a simple keyword search input form; no login, checkout, or multi-field forms appear in these snapshots, and there are no CSRF meta tags or hidden inputs. Embedded tokens are mostly SEO/verification (robots, google-site-verification) and analytics IDs (GTM, gtag, FB pixel, Snowplow), with more sensitive but still expected cookie IDs and VINs living inside __NEXT_DATA__, App Router flight data, and ld+json Vehicle blobs. The SRPs and VDP both provide rich structured data via many application/ld+json Vehicle entries, describing inventory in detail (VIN, price, mileage, URLs) for search engines. No HTML <table> elements are present; all lists and grids (vehicle tiles, filters) are rendered as div-based React components. Overall, this is a single-page-like React/Next.js application with heavy client-side chunking, server-rendered JSON configuration, and marketing/analytics integrations, fronted by Cloudflare for bot protection."
+  "inferred_framework": "Angular (plus Adobe Experience Manager clientlibs)",
+  "narrative": "Navigation sequence alternates between /home and /tickets/departure.html; both pages embed Angular-driven widgets (ng-*, formcontrolname) and shared account/help modal forms, while departure.html adds large inline analytics state parsing from sessionStorage for booking/search results; no obvious CSRF meta tags or __NEXT_DATA__/__NUXT__ blobs were found, but the DOM includes a GraphQL endpoint config (/api/graphql), Branch.io and reCAPTCHA site keys, and extensive third-party analytics/consent scripts."
 }

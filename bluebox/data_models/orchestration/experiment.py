@@ -32,6 +32,28 @@ class ExperimentStatus(StrEnum):
     FAILED = "failed"
 
 
+class ExperimentTakeaway(BaseModel):
+    """Reusable lesson extracted from an experiment result."""
+
+    claim: str = Field(description="Concrete claim learned from the experiment")
+    evidence: str | None = Field(
+        default=None,
+        description="Evidence supporting the claim (endpoint/status/value/log snippet)",
+    )
+    how_to_apply_next: str | None = Field(
+        default=None,
+        description="How future workers should apply this claim",
+    )
+    confidence: float | None = Field(
+        default=None,
+        description="Confidence in [0, 1]",
+    )
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Tags like auth, pagination, anti_bot, endpoint, parameter",
+    )
+
+
 class ExperimentEntry(BaseModel):
     """A single experiment in the PI's log."""
 
@@ -39,11 +61,19 @@ class ExperimentEntry(BaseModel):
     hypothesis: str = Field(description="Specific, falsifiable hypothesis being tested")
     rationale: str = Field(description="Why we're testing this — evidence, reasoning, expectations")
     prompt: str = Field(description="Instructions sent to the worker")
+    routine_spec_id: str | None = Field(
+        default=None,
+        description="RoutineSpec this experiment supports; None for shared/global experiments",
+    )
     priority: int = Field(default=1, description="1=critical, 2=important, 3=nice-to-have")
     task_id: str | None = Field(default=None, description="Reference to the dispatched Task")
     status: ExperimentStatus = Field(default=ExperimentStatus.PENDING)
     verdict: ExperimentVerdict | None = Field(default=None)
     summary: str | None = Field(default=None, description="What we learned (recorded by PI)")
+    takeaways: list[ExperimentTakeaway] = Field(
+        default_factory=list,
+        description="Reusable lessons that future workers can apply",
+    )
     output: dict[str, Any] | None = Field(default=None, description="Raw worker output")
 
 
@@ -129,6 +159,10 @@ class ExperimentLog(BaseModel):
                 lines.append(f"- {exp.id}: {status_str} {exp.hypothesis}")
                 if exp.summary:
                     lines.append(f"  → {exp.summary}")
+                if exp.takeaways:
+                    first_claim = exp.takeaways[0].claim.strip()
+                    preview = first_claim[:120] + ("..." if len(first_claim) > 120 else "")
+                    lines.append(f"  → takeaways={len(exp.takeaways)} (e.g. {preview})")
             lines.append("")
 
         # Proven artifacts

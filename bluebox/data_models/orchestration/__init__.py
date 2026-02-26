@@ -10,6 +10,7 @@ from bluebox.data_models.orchestration.experiment import (
     ExperimentEntry,
     ExperimentLog,
     ExperimentStatus,
+    ExperimentTakeaway,
     ExperimentVerdict,
     ProvenArtifacts,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "ExperimentEntry",
     "ExperimentLog",
     "ExperimentStatus",
+    "ExperimentTakeaway",
     "ExperimentVerdict",
     "generate_short_id",
     "ProvenArtifacts",

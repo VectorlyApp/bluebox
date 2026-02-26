@@ -29,10 +29,12 @@ import shutil
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from itertools import count
 from pathlib import Path
 from typing import Any
 
 from bluebox.agents.principal_investigator import PrincipalInvestigator
+from bluebox.agents.workspace import LocalWorkspace
 from bluebox.data_models.api_indexing.exploration import (
     DOMExplorationSummary,
     NetworkExplorationSummary,
@@ -99,6 +101,25 @@ def _write_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, indent=2, default=str))
 
 
+def _collect_capture_input_files(cdp_captures_dir: Path) -> list[tuple[str, Path]]:
+    """Return capture input files to mount into agent workspaces."""
+    candidates: list[tuple[str, Path]] = [
+        ("network_events", cdp_captures_dir / "network" / "events.jsonl"),
+        ("storage_events", cdp_captures_dir / "storage" / "events.jsonl"),
+        ("dom_events", cdp_captures_dir / "dom" / "events.jsonl"),
+        ("window_properties_events", cdp_captures_dir / "window_properties" / "events.jsonl"),
+        ("js_events", cdp_captures_dir / "js" / "events.jsonl"),
+        ("interaction_events", cdp_captures_dir / "interaction" / "events.jsonl"),
+    ]
+    return [(name, path) for name, path in candidates if path.exists()]
+
+
+def _mount_capture_inputs(workspace: LocalWorkspace, capture_inputs: list[tuple[str, Path]]) -> None:
+    """Attach capture files into workspace raw/ as mounted inputs."""
+    for name, source_path in capture_inputs:
+        workspace.attach_input_file(name=name, source_path=source_path)
+
+
 # ---------------------------------------------------------------------------
 # Phase 1: Exploration
 # ---------------------------------------------------------------------------
@@ -117,7 +138,7 @@ def run_explorations(
     """
     exploration_dir = output_dir / "exploration"
     exploration_dir.mkdir(parents=True, exist_ok=True)
-    workspace_root = output_dir / "agent_workspace"
+    workspace_root = output_dir / "agent_workspaces"
     workspace_root.mkdir(parents=True, exist_ok=True)
 
     runners = {
@@ -362,6 +383,26 @@ def run_pi_with_recovery(
 
     # Persistence layer — writes to disk incrementally
     persistence = PipelinePersistence(output_dir)
+    agent_workspaces_root = output_dir / "agent_workspaces"
+    capture_inputs = _collect_capture_input_files(cdp_captures_dir)
+    pi_workspace = LocalWorkspace.from_directory_path(agent_workspaces_root / "PI")
+    _mount_capture_inputs(pi_workspace, capture_inputs)
+    worker_idx_counter = count(start=1)
+    inspector_idx_counter = count(start=1)
+
+    def _make_worker_workspace() -> LocalWorkspace:
+        worker_idx = next(worker_idx_counter)
+        worker_root = agent_workspaces_root / f"worker_{worker_idx}"
+        worker_workspace = LocalWorkspace.from_directory_path(worker_root)
+        _mount_capture_inputs(worker_workspace, capture_inputs)
+        return worker_workspace
+
+    def _make_inspector_workspace() -> LocalWorkspace:
+        inspector_idx = next(inspector_idx_counter)
+        inspector_root = agent_workspaces_root / f"inspector_{inspector_idx}"
+        inspector_workspace = LocalWorkspace.from_directory_path(inspector_root)
+        _mount_capture_inputs(inspector_workspace, capture_inputs)
+        return inspector_workspace
 
     ledger: DiscoveryLedger | None = None
     catalog: RoutineCatalog | None = None
@@ -395,6 +436,9 @@ def run_pi_with_recovery(
             on_ledger_change=persistence.on_ledger_change,
             on_agent_thread=persistence.on_agent_thread,
             on_attempt_record=persistence.on_attempt_record,
+            workspace=pi_workspace,
+            worker_workspace_factory=_make_worker_workspace,
+            inspector_workspace_factory=_make_inspector_workspace,
         )
 
         try:
@@ -482,8 +526,14 @@ def run_api_indexing(
         print("\n  [!] No exploration summaries available. Cannot proceed.", file=sys.stderr)
         return None
 
-    # Clean up Phase 2 artifacts from previous runs (preserve exploration/)
-    for subdir in ["experiments", "attempts", "attempt_records", "routines", "agent_threads"]:
+    # Clean up Phase 2 artifacts from previous runs (preserve exploration + workspaces)
+    for subdir in [
+        "experiments",
+        "attempts",
+        "attempt_records",
+        "routines",
+        "agent_threads",
+    ]:
         p = output_dir / subdir
         if p.exists():
             shutil.rmtree(p)

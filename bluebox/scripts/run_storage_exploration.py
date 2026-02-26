@@ -108,8 +108,8 @@ UI preferences) is noise — count it but don't catalog it.
 
 ## Process
 
-1. **Survey**: Use `execute_python` to dump all storage keys and window property
-   paths. Get the lay of the land — how many events, what origins, what keys exist.
+1. **Survey**: Use `search_in_storage`, `get_storage_by_key`, `search_in_window_props`,
+   and `get_window_prop_changes` to map high-signal keys/paths and values.
 2. **Identify tokens**: Look for values that look like auth material:
    - JWTs (three dot-separated base64 segments)
    - Session IDs (long opaque strings, often hex or base64)
@@ -253,6 +253,7 @@ def run_storage_exploration(
         storage_data_loader=storage_loader,
         window_property_data_loader=window_loader,
         network_data_loader=network_loader,
+        enable_execute_python=False,
         llm_model=llm_model,
         execution_mode=AgentExecutionMode.AUTONOMOUS,
         workspace=workspace,
@@ -300,6 +301,17 @@ def run_storage_exploration(
         )
 
     specialist._get_autonomous_system_prompt = _exploration_system_prompt  # type: ignore[assignment]
+
+    # Override initial message too, so we don't inherit trace-by-single-value framing.
+    def _exploration_initial_message(task_text: str) -> str:
+        return (
+            f"STORAGE EXPLORATION TASK: {task_text}\n\n"
+            "This is broad exploration, not single-value tracing. Survey all available "
+            "storage and window property data, identify tokens and meaningful data blocks, "
+            "count noise, and finalize with a complete structured output."
+        )
+
+    specialist._get_autonomous_initial_message = _exploration_initial_message  # type: ignore[assignment]
 
     # Run autonomous exploration
     task = (

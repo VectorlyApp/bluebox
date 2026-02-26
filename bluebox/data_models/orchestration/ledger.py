@@ -363,6 +363,12 @@ class DiscoveryLedger(BaseModel):
                 lines.append(f"  [{verdict_icon}] {exp.id}: {exp.hypothesis}")
                 if exp.summary:
                     lines.append(f"      → {exp.summary}")
+                if exp.takeaways:
+                    preview = exp.takeaways[0].claim.strip()
+                    preview = preview[:100] + ("..." if len(preview) > 100 else "")
+                    lines.append(
+                        f"      → takeaways: {len(exp.takeaways)} (example: {preview})"
+                    )
             lines.append("")
 
         # Proven artifacts

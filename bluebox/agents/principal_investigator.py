@@ -24,17 +24,19 @@ from datetime import datetime
 from textwrap import dedent
 from typing import Any, Callable, TYPE_CHECKING
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+from toon import encode as toon_encode
 
 from bluebox.agents.abstract_agent import (
     AbstractAgent,
     AgentCard,
     AgentExecutionMode,
     AutonomousRunConfig,
+    ToolResultPersistMode,
     agent_tool,
 )
 from bluebox.agents.routine_inspector import INSPECTION_OUTPUT_SCHEMA, RoutineInspector
-from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
+from bluebox.agents.workspace import AgentWorkspace
 from bluebox.agents.workers.experiment_worker import ExperimentWorker
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -47,6 +49,7 @@ from bluebox.data_models.orchestration.experiment import (
     ArtifactType,
     ExperimentEntry,
     ExperimentStatus,
+    ExperimentTakeaway,
     ExperimentVerdict,
 )
 from bluebox.data_models.orchestration.ledger import (
@@ -138,7 +141,9 @@ class PrincipalInvestigator(AbstractAgent):
     # Maximum time (seconds) a single worker or inspector can run before being killed.
     # Covers both LLM call hangs and browser/CDP hangs.
     WORKER_TIMEOUT_SECONDS: int = 180  # 3 minutes
-
+    # If execution payload exceeds this size, persist it to inspector workspace raw/
+    # and have the inspector analyze from file instead of inline prompt JSON.
+    INSPECTOR_INLINE_EXECUTION_MAX_CHARS: int = 20_000
     # Error patterns → common-issues doc paths.
     # When an experiment result contains these keywords, the matching doc is
     # auto-injected into the get_experiment_result response so the PI sees
@@ -180,6 +185,19 @@ class PrincipalInvestigator(AbstractAgent):
         8. Ship routines that pass, iterate on ones that fail
         9. Call mark_complete when all routines are addressed
 
+        ## Data + Python Access (PI and Workers)
+
+        You and your workers both have Python execution tools and workspace access.
+        Capture files are mounted under each agent workspace `raw/` directory.
+
+        Use this intentionally:
+        - For quick, precise analysis, call `execute_python` on the PI or delegate
+          Python analysis to workers.
+        - In Python, read mounted capture files from `raw/` when needed (for example,
+          to inspect exact payloads or run focused filtering).
+        - Prefer targeted queries over broad dumps; summarize findings back into
+          concise experiment prompts and routine designs.
+
         ## MANDATORY: Review Documentation First
 
         BEFORE planning or dispatching ANY experiments, you MUST review the routine
@@ -214,6 +232,25 @@ class PrincipalInvestigator(AbstractAgent):
 
         The worker executes the experiment and returns structured output.
         You review the output, record a verdict, and decide what to try next.
+
+        ## Experiment Pattern — Exact Replay First
+
+        For API endpoint validation, your DEFAULT first experiment should be:
+        "Perform the exact fetch request as observed in capture, then report what changed."
+
+        Your experiment prompt should explicitly instruct the worker to:
+        1. Call `capture_search_transactions` to find the candidate request
+        2. Call `capture_get_transaction` for the exact captured request
+        3. Re-run the same request in live browser using `browser_navigate` + `browser_eval_js`
+        4. Report a field-by-field diff:
+           - URL/path/query differences
+           - Header differences
+           - Body shape/value differences
+           - Status code and response shape differences
+        5. If the replay fails, test one minimal delta at a time (never many at once)
+
+        Include this sentence in prompts when relevant:
+        "Replay the exact captured fetch first; do not generalize until exact replay is tested."
 
         ## Strategy
 
@@ -434,6 +471,8 @@ class PrincipalInvestigator(AbstractAgent):
         - NEVER guess at request details. Always dispatch experiments to verify.
         - Write experiment prompts that reference worker tools by name.
         - Record a verdict for EVERY completed experiment via record_finding.
+        - Always include reusable takeaways in record_finding so future workers
+          receive concrete lessons (claim + how_to_apply_next + evidence).
         - If an experiment is ambiguous, use follow_up — don't dispatch a new one.
         - ALWAYS provide test_parameters when calling submit_routine — the routine
           WILL be executed and inspected. Use realistic values the experiments proved work.
@@ -445,6 +484,9 @@ class PrincipalInvestigator(AbstractAgent):
         - Workers do NOT share browser state. When an endpoint requires auth, your
           experiment prompt must include FULL auth instructions (token URL, headers,
           subscription key) so the worker can authenticate within its own session.
+        - mark_routine_failed is globally gated: you cannot fail any routine until at
+          least 5 routine attempts have failed across the pipeline. Keep iterating and
+          submitting improved routines before giving up on individual specs.
 
         ## Resilience — NEVER Give Up Early
 
@@ -523,9 +565,10 @@ class PrincipalInvestigator(AbstractAgent):
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
         worker_llm_model: LLMModel | None = None,
         max_iterations: int = 200,
-        worker_max_loops: int = 10,
+        worker_max_loops: int = 30,
         max_attempts_per_routine: int = 5,
         min_experiments_before_fail: int = 10,
+        min_global_failed_attempts_before_routine_failure: int = 5,
         # Agent pool sizes
         num_workers: int = 3,
         num_inspectors: int = 1,
@@ -540,6 +583,8 @@ class PrincipalInvestigator(AbstractAgent):
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         workspace: AgentWorkspace | None = None,
+        worker_workspace_factory: Callable[[], AgentWorkspace] | None = None,
+        inspector_workspace_factory: Callable[[], AgentWorkspace] | None = None,
     ) -> None:
         # Task
         self._task = task
@@ -547,9 +592,15 @@ class PrincipalInvestigator(AbstractAgent):
         self._worker_max_loops = worker_max_loops
         self._max_attempts_per_routine = max_attempts_per_routine
         self._min_experiments_before_fail = min_experiments_before_fail
+        self._min_global_failed_attempts_before_routine_failure = max(
+            0,
+            int(min_global_failed_attempts_before_routine_failure),
+        )
 
         # Exploration context
-        self._exploration_summaries = exploration_summaries or {}
+        raw_summaries = exploration_summaries or {}
+        self._exploration_summaries_raw = dict(raw_summaries)
+        self._exploration_summaries = self._toonify_exploration_summaries(raw_summaries)
 
         # Data loaders (passed through to workers)
         self._network_data_loader = network_data_loader
@@ -574,6 +625,8 @@ class PrincipalInvestigator(AbstractAgent):
         self._on_ledger_change = on_ledger_change
         self._on_agent_thread = on_agent_thread
         self._on_attempt_record = on_attempt_record
+        self._worker_workspace_factory = worker_workspace_factory
+        self._inspector_workspace_factory = inspector_workspace_factory
 
         # Internal state — the Discovery Ledger tracks everything
         # Accept an existing ledger for resume after context exhaustion
@@ -587,7 +640,7 @@ class PrincipalInvestigator(AbstractAgent):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
-            workspace=workspace or LocalWorkspace.from_directory_path("./agent_workspace/principal_investigator"),
+            workspace=workspace,
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
@@ -595,6 +648,7 @@ class PrincipalInvestigator(AbstractAgent):
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
+            allow_code_execution=True,
         )
 
         logger.debug(
@@ -603,12 +657,56 @@ class PrincipalInvestigator(AbstractAgent):
             list(self._exploration_summaries.keys()),
         )
 
+    @staticmethod
+    def _toonify_exploration_summaries(
+        summaries: dict[str, str],
+    ) -> dict[str, str]:
+        """
+        TOON-encode exploration summaries for prompt efficiency.
+
+        If a summary is JSON text, parse and encode the underlying object.
+        Non-JSON text is passed through unchanged.
+        """
+        toonified: dict[str, str] = {}
+        for domain, summary in summaries.items():
+            if not isinstance(summary, str):
+                toonified[domain] = toon_encode(summary)
+                continue
+
+            stripped = summary.strip()
+            if not stripped:
+                toonified[domain] = summary
+                continue
+
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                toonified[domain] = summary
+                continue
+
+            toonified[domain] = toon_encode(parsed)
+        return toonified
+
+    @staticmethod
+    def _encode_prompt_payload(payload: Any) -> str:
+        """TOON-encode prompt payloads with a JSON fallback."""
+        try:
+            return toon_encode(payload)
+        except Exception:
+            return json.dumps(payload, ensure_ascii=False, default=str)
+
     # -----------------------------------------------------------------------
     # System prompt
     # -----------------------------------------------------------------------
 
     def _get_system_prompt(self) -> str:
         parts: list[str] = [self.SYSTEM_PROMPT_CORE]
+        if self.has_workspace:
+            try:
+                summary = self._require_workspace().generate_summary()
+                parts.append(f"\n\n## Workspace Summary\n{summary}")
+            except Exception as e:
+                logger.warning("Failed to generate PI workspace summary: %s", e)
 
         # Routine JSON schema — auto-generated from the Pydantic models
         parts.append("\n## Routine JSON Schema\n\n")
@@ -649,6 +747,7 @@ class PrincipalInvestigator(AbstractAgent):
 
         # Worker capabilities
         parts.append(WORKER_CAPABILITIES)
+        parts.append(self._generate_code_execution_prompt())
 
         # Exploration summaries
         if self._exploration_summaries:
@@ -657,14 +756,33 @@ class PrincipalInvestigator(AbstractAgent):
                 parts.append(f"### {domain}\n{summary}\n")
 
         # Discovery Ledger
-        ledger_summary = self._ledger.to_summary()
-        if ledger_summary != "(no activity yet)":
-            parts.append(f"\n## Discovery Ledger\n\n{ledger_summary}")
+        if self._ledger.routine_specs or self._ledger.experiments or self._ledger.attempts:
+            ledger_payload = self._ledger.model_dump(
+                mode="json",
+                exclude={
+                    "experiments": {
+                        "__all__": {
+                            "prompt": True,
+                            "output": True,
+                        }
+                    },
+                    "attempts": {
+                        "__all__": {
+                            "routine_json": True,
+                            "execution_result": True,
+                            "inspection_result": True,
+                        }
+                    },
+                },
+            )
+            parts.append("\n## Discovery Ledger\n")
+            parts.append(self._encode_prompt_payload(ledger_payload))
 
         # Task queue status
         queue = self._orchestration_state.get_queue_status()
         if any(v > 0 for v in queue.values()):
-            parts.append(f"\n## Task Queue\n{json.dumps(queue)}")
+            parts.append("\n## Task Queue\n")
+            parts.append(self._encode_prompt_payload(queue))
 
         return "".join(parts)
 
@@ -958,13 +1076,112 @@ class PrincipalInvestigator(AbstractAgent):
     # EXPERIMENT TOOLS
     # ===================================================================
 
-    @agent_tool()
+    def _truncate_text_for_briefing(self, value: Any, max_chars: int = 220) -> str:
+        """Normalize arbitrary values to a compact, single-line string."""
+        text = value if isinstance(value, str) else json.dumps(value, default=str)
+        text = text.replace("\n", " ").strip()
+        if len(text) > max_chars:
+            return text[:max_chars] + "..."
+        return text
+
+    def _build_worker_briefing(self, routine_spec_id: str | None) -> str:
+        """
+        Build compact reusable context for workers from ledger state.
+
+        Includes proven artifacts, reusable experiment takeaways, and known blockers
+        from latest failed routine attempts.
+        """
+        lines: list[str] = [
+            "## Worker Briefing (Reusable Context)",
+            "Use this as prior context. Verify assumptions against live/browser evidence.",
+        ]
+
+        # Proven artifacts (compact, capped)
+        proven_lines: list[str] = []
+        for fetch in self._ledger.proven.fetches[-5:]:
+            method = self._truncate_text_for_briefing(fetch.get("method", "?"), 24)
+            url = self._truncate_text_for_briefing(fetch.get("url", "?"), 140)
+            proven_lines.append(f"- FETCH: {method} {url}")
+        for nav in self._ledger.proven.navigations[-4:]:
+            url = self._truncate_text_for_briefing(nav.get("url", "?"), 160)
+            proven_lines.append(f"- NAV: {url}")
+        for token in self._ledger.proven.tokens[-4:]:
+            name = self._truncate_text_for_briefing(token.get("name", "?"), 40)
+            source = self._truncate_text_for_briefing(token.get("source", "?"), 120)
+            proven_lines.append(f"- TOKEN: {name} (source: {source})")
+        for param in self._ledger.proven.parameters[-5:]:
+            name = self._truncate_text_for_briefing(param.get("name", "?"), 40)
+            ptype = self._truncate_text_for_briefing(param.get("type", "?"), 24)
+            example = self._truncate_text_for_briefing(param.get("example_value", ""), 90)
+            proven_lines.append(f"- PARAM: {name} ({ptype}) example={example}")
+        if proven_lines:
+            lines.append("\n### Proven Artifacts")
+            lines.extend(proven_lines[:12])
+
+        # Reusable takeaways from confirmed/partial experiments
+        relevant_takeaways: list[tuple[ExperimentEntry, ExperimentTakeaway]] = []
+        for exp in reversed(self._ledger.experiments):
+            if exp.verdict not in {ExperimentVerdict.CONFIRMED, ExperimentVerdict.PARTIAL}:
+                continue
+            if exp.routine_spec_id is not None and routine_spec_id is not None:
+                if exp.routine_spec_id != routine_spec_id:
+                    continue
+            elif exp.routine_spec_id is not None and routine_spec_id is None:
+                # Shared experiments should not inherit routine-specific assumptions by default.
+                continue
+
+            for takeaway in exp.takeaways:
+                relevant_takeaways.append((exp, takeaway))
+                if len(relevant_takeaways) >= 8:
+                    break
+            if len(relevant_takeaways) >= 8:
+                break
+
+        if relevant_takeaways:
+            lines.append("\n### Prior Experiment Takeaways")
+            for exp, takeaway in relevant_takeaways:
+                claim = self._truncate_text_for_briefing(takeaway.claim, 190)
+                tags = ", ".join(takeaway.tags[:4]) if takeaway.tags else ""
+                prefix = f"[{exp.id}]"
+                if tags:
+                    prefix += f" [{tags}]"
+                lines.append(f"- {prefix} {claim}")
+                if takeaway.how_to_apply_next:
+                    how = self._truncate_text_for_briefing(takeaway.how_to_apply_next, 180)
+                    lines.append(f"- apply: {how}")
+                if takeaway.evidence:
+                    ev = self._truncate_text_for_briefing(takeaway.evidence, 180)
+                    lines.append(f"- evidence: {ev}")
+
+        # Latest blockers for this routine spec
+        if routine_spec_id:
+            attempts = self._ledger.get_attempts_for_spec(routine_spec_id)
+            latest_failed = next(
+                (attempt for attempt in reversed(attempts) if attempt.status == RoutineAttemptStatus.FAILED),
+                None,
+            )
+            if latest_failed and latest_failed.blocking_issues:
+                lines.append("\n### Known Blockers (Latest Failed Attempt)")
+                for issue in latest_failed.blocking_issues[:4]:
+                    lines.append(f"- {self._truncate_text_for_briefing(issue, 220)}")
+
+        if len(lines) <= 2:
+            return ""
+        return "\n".join(lines)
+
+    def _compose_worker_prompt(self, prompt: str, routine_spec_id: str | None) -> str:
+        """Compose final worker task prompt with briefing + assigned experiment."""
+        briefing = self._build_worker_briefing(routine_spec_id)
+        if not briefing:
+            return prompt
+        return f"{briefing}\n\n## Assigned Experiment\n{prompt}"
+
+    @agent_tool(token_optimized=True)
     def _dispatch_experiment(
         self,
         hypothesis: str,
         rationale: str,
         prompt: str,
-        routine_spec_id: str | None = None,
         output_schema: dict[str, Any] | None = None,
         output_description: str | None = None,
         priority: int = 1,
@@ -979,7 +1196,6 @@ class PrincipalInvestigator(AbstractAgent):
             hypothesis: What we're testing. Specific and falsifiable.
             rationale: WHY we're testing this — evidence, reasoning, expectations.
             prompt: Instructions for the worker. Reference worker tools by name.
-            routine_spec_id: Which routine this experiment is for (None = shared/auth).
             output_schema: Optional JSON schema for the worker's structured answer.
             output_description: Description of expected output.
             priority: 1=critical, 2=important, 3=nice-to-have.
@@ -996,29 +1212,23 @@ class PrincipalInvestigator(AbstractAgent):
                 )
             }
 
+        worker_prompt = self._compose_worker_prompt(prompt=prompt, routine_spec_id=None)
+
         # Create experiment entry
         experiment = ExperimentEntry(
             hypothesis=hypothesis,
             rationale=rationale,
-            prompt=prompt,
+            prompt=worker_prompt,
+            routine_spec_id=None,
             priority=priority,
             status=ExperimentStatus.RUNNING,
         )
         self._ledger.add_experiment(experiment)
 
-        # Link to routine spec if provided
-        spec_id = routine_spec_id or self._ledger.active_spec_id
-        if spec_id:
-            spec = self._ledger.get_spec(spec_id)
-            if spec:
-                spec.experiment_ids.append(experiment.id)
-                if spec.status == RoutineSpecStatus.PLANNED:
-                    spec.status = RoutineSpecStatus.EXPERIMENTING
-
         # Create and dispatch task
         task = Task(
             agent_type=SpecialistAgentType.EXPERIMENT_WORKER,
-            prompt=prompt,
+            prompt=worker_prompt,
             max_loops=self._worker_max_loops,
             output_schema=output_schema,
             output_description=output_description,
@@ -1047,7 +1257,7 @@ class PrincipalInvestigator(AbstractAgent):
             "result": result,
         }
 
-    @agent_tool()
+    @agent_tool(token_optimized=True)
     def _dispatch_experiments_batch(
         self,
         experiments: list[dict[str, Any]],
@@ -1067,7 +1277,6 @@ class PrincipalInvestigator(AbstractAgent):
                 - hypothesis: What we're testing (specific and falsifiable)
                 - rationale: WHY we're testing this
                 - prompt: Instructions for the worker (reference tools by name!)
-                - routine_spec_id: (optional) Which routine this is for
                 - output_schema: (optional) JSON schema for structured output
                 - output_description: (optional) Description of expected output
                 - priority: (optional) 1=critical, 2=important, 3=nice-to-have
@@ -1099,27 +1308,24 @@ class PrincipalInvestigator(AbstractAgent):
         # Phase 1: Create all experiment entries and tasks (sequential — fast, no I/O)
         task_experiment_pairs: list[tuple[Task, ExperimentEntry]] = []
         for exp_dict in experiments:
+            worker_prompt = self._compose_worker_prompt(
+                prompt=exp_dict.get("prompt", ""),
+                routine_spec_id=None,
+            )
+
             experiment = ExperimentEntry(
                 hypothesis=exp_dict.get("hypothesis", ""),
                 rationale=exp_dict.get("rationale", ""),
-                prompt=exp_dict.get("prompt", ""),
+                prompt=worker_prompt,
+                routine_spec_id=None,
                 priority=exp_dict.get("priority", 1),
                 status=ExperimentStatus.RUNNING,
             )
             self._ledger.add_experiment(experiment)
 
-            # Link to routine spec
-            spec_id = exp_dict.get("routine_spec_id") or self._ledger.active_spec_id
-            if spec_id:
-                spec = self._ledger.get_spec(spec_id)
-                if spec:
-                    spec.experiment_ids.append(experiment.id)
-                    if spec.status == RoutineSpecStatus.PLANNED:
-                        spec.status = RoutineSpecStatus.EXPERIMENTING
-
             task = Task(
                 agent_type=SpecialistAgentType.EXPERIMENT_WORKER,
-                prompt=exp_dict.get("prompt", ""),
+                prompt=worker_prompt,
                 max_loops=self._worker_max_loops,
                 output_schema=exp_dict.get("output_schema"),
                 output_description=exp_dict.get("output_description"),
@@ -1272,7 +1478,7 @@ class PrincipalInvestigator(AbstractAgent):
             "to give up on this routine spec.\n\n" + "\n\n".join(doc_sections)
         )
 
-    @agent_tool()
+    @agent_tool(token_optimized=True)
     def _get_experiment_result(self, experiment_id: str) -> dict[str, Any]:
         """
         Read the result of a completed experiment.
@@ -1287,9 +1493,11 @@ class PrincipalInvestigator(AbstractAgent):
         result: dict[str, Any] = {
             "experiment_id": experiment.id,
             "hypothesis": experiment.hypothesis,
+            "routine_spec_id": experiment.routine_spec_id,
             "status": experiment.status.value,
             "verdict": experiment.verdict.value if experiment.verdict else None,
             "summary": experiment.summary,
+            "takeaways": [t.model_dump(mode="json") for t in experiment.takeaways],
             "output": experiment.output,
         }
 
@@ -1364,6 +1572,7 @@ class PrincipalInvestigator(AbstractAgent):
         experiment_id: str,
         verdict: str,
         summary: str,
+        takeaways: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """
         Record a verdict after reviewing an experiment result.
@@ -1375,6 +1584,13 @@ class PrincipalInvestigator(AbstractAgent):
             experiment_id: ID of the experiment.
             verdict: One of 'confirmed', 'refuted', 'partial', 'needs_followup'.
             summary: What we learned, in one or two sentences.
+            takeaways: Optional reusable lessons for future workers.
+                Each item should include:
+                - claim (required): concrete fact to reuse
+                - evidence (optional): supporting detail
+                - how_to_apply_next (optional): instruction for later experiments
+                - confidence (optional): float in [0, 1]
+                - tags (optional): short labels like auth/pagination/endpoint
         """
         experiment = self._ledger.get_experiment(experiment_id)
         if experiment is None:
@@ -1389,12 +1605,53 @@ class PrincipalInvestigator(AbstractAgent):
             }
 
         experiment.summary = summary
+        if takeaways is not None:
+            parsed_takeaways: list[ExperimentTakeaway] = []
+            for idx, raw_takeaway in enumerate(takeaways):
+                if not isinstance(raw_takeaway, dict):
+                    return {"error": f"takeaways[{idx}] must be an object"}
+                claim = raw_takeaway.get("claim")
+                if not isinstance(claim, str) or not claim.strip():
+                    return {"error": f"takeaways[{idx}].claim is required and must be a non-empty string"}
+
+                confidence = raw_takeaway.get("confidence")
+                if confidence is not None:
+                    try:
+                        confidence = float(confidence)
+                    except (TypeError, ValueError):
+                        return {"error": f"takeaways[{idx}].confidence must be a float in [0, 1]"}
+                    if confidence < 0 or confidence > 1:
+                        return {"error": f"takeaways[{idx}].confidence must be between 0 and 1"}
+
+                tags_raw = raw_takeaway.get("tags", [])
+                if tags_raw is None:
+                    tags_raw = []
+                if not isinstance(tags_raw, list):
+                    return {"error": f"takeaways[{idx}].tags must be a list of strings"}
+
+                tags: list[str] = []
+                for t in tags_raw:
+                    if isinstance(t, str):
+                        tag = t.strip()
+                        if tag:
+                            tags.append(tag)
+                parsed_takeaways.append(
+                    ExperimentTakeaway(
+                        claim=claim.strip(),
+                        evidence=raw_takeaway.get("evidence"),
+                        how_to_apply_next=raw_takeaway.get("how_to_apply_next"),
+                        confidence=confidence,
+                        tags=tags,
+                    )
+                )
+            experiment.takeaways = parsed_takeaways
 
         self._persist(f"finding_{experiment.id}")
         return {
             "experiment_id": experiment.id,
             "verdict": experiment.verdict.value,
             "summary": summary,
+            "takeaway_count": len(experiment.takeaways),
         }
 
     @agent_tool()
@@ -1454,7 +1711,7 @@ class PrincipalInvestigator(AbstractAgent):
     # ROUTINE SUBMISSION TOOLS
     # ===================================================================
 
-    @agent_tool()
+    @agent_tool(persist=ToolResultPersistMode.ALWAYS, token_optimized=True)
     def _submit_routine(
         self,
         spec_id: str,
@@ -1599,12 +1856,17 @@ class PrincipalInvestigator(AbstractAgent):
         # Step 1: Validate routine JSON against the Routine model
         try:
             routine = Routine.model_validate(routine_json)
-        except Exception as e:
+        except ValidationError as e:
+            issues: list[str] = []
+            for err in e.errors():
+                loc = ".".join(str(part) for part in err.get("loc", [])) or "root"
+                msg = err.get("msg", "Invalid value")
+                issues.append(f"{loc}: {msg}")
             return {
                 "success": False,
                 "stage": "validation",
-                "validation_errors": [str(e)],
-                "routine_json": routine_json,
+                "validation_errors": issues or [str(e)],
+                "issues": issues or [str(e)],
                 "hint": (
                     "Routine validation failed. BEFORE retrying, use your documentation "
                     "tools to review the correct schema: call search_files(scope='docs', query='Routine operation "
@@ -1614,6 +1876,17 @@ class PrincipalInvestigator(AbstractAgent):
                     "'method': 'GET'}, last operation must be type 'return' or "
                     "'return_html' or 'download', and the routine needs at least 2 "
                     "operations. Check the schema in your system prompt carefully."
+                ),
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "stage": "validation",
+                "validation_errors": [str(e)],
+                "issues": [str(e)],
+                "hint": (
+                    "Routine validation failed. BEFORE retrying, use your documentation "
+                    "tools to review the correct schema and operation requirements."
                 ),
             }
 
@@ -1684,17 +1957,11 @@ class PrincipalInvestigator(AbstractAgent):
             "parameters_count": len(routine.parameters),
         }
 
-        # Execution summary
+        # Prepare execution payload (appended as the LAST response key below)
         if execution_result is not None:
-            response["execution"] = {
-                "ok": execution_result.ok,
-                "error": execution_result.error,
-                "content_type": str(execution_result.content_type) if execution_result.content_type else None,
-                "data_preview": str(execution_result.data)[:500] if execution_result.data else None,
-                "warnings": execution_result.warnings,
-            }
+            execution_payload: dict[str, Any] = execution_result.model_dump(mode="json")
         else:
-            response["execution"] = {"ok": False, "error": attempt.execution_error}
+            execution_payload = {"ok": False, "error": attempt.execution_error}
 
         # Inspection summary
         if inspection_result is not None:
@@ -1749,6 +2016,9 @@ class PrincipalInvestigator(AbstractAgent):
             execution_result=execution_result,
             inspection_result=inspection_result,
         )
+
+        # Keep execution as the final key for readability in tool responses.
+        response["execution"] = execution_payload
 
         return response
 
@@ -1820,6 +2090,23 @@ class PrincipalInvestigator(AbstractAgent):
         if spec.status == RoutineSpecStatus.SHIPPED:
             return {"error": f"Routine '{spec.name}' is already shipped. Cannot mark as failed."}
 
+        # Global guardrail: require enough failed routine attempts across the pipeline
+        failed_attempts_global = sum(
+            1 for attempt in self._ledger.attempts
+            if attempt.status == RoutineAttemptStatus.FAILED
+        )
+        if failed_attempts_global < self._min_global_failed_attempts_before_routine_failure:
+            return {
+                "error": (
+                    f"Cannot mark routine '{spec.name}' as failed yet. "
+                    f"Global failed routine attempts: {failed_attempts_global}/"
+                    f"{self._min_global_failed_attempts_before_routine_failure} required. "
+                    "Keep iterating: submit improved routine attempts, inspect failures, "
+                    "run experiments to delegate exploration to workers when needed, "
+                    "and only mark routines failed after enough global evidence exists."
+                )
+            }
+
         # Guardrail: require minimum experimentation before giving up
         spec_experiments = self._ledger.get_experiments_for_spec(spec_id)
         if len(spec_experiments) < 2:
@@ -1843,7 +2130,7 @@ class PrincipalInvestigator(AbstractAgent):
     # DASHBOARD TOOL
     # ===================================================================
 
-    @agent_tool()
+    @agent_tool(token_optimized=True)
     def _get_ledger(self) -> dict[str, Any]:
         """
         Read the full Discovery Ledger — routine specs, experiments, proven
@@ -1982,12 +2269,14 @@ class PrincipalInvestigator(AbstractAgent):
             if spec.status == RoutineSpecStatus.SHIPPED and spec.shipped_attempt_id:
                 attempt = self._ledger.get_attempt(spec.shipped_attempt_id)
                 if attempt:
+                    routine_name = attempt.routine_json.get("name") or spec.name
+                    routine_description = attempt.routine_json.get("description") or spec.description
                     shipped_routines.append(ShippedRoutine(
                         routine_spec_id=spec.id,
                         routine_json=attempt.routine_json,
-                        name=spec.name,
-                        description=spec.description,
-                        when_to_use=f"Use to {spec.description.lower()}",
+                        name=routine_name,
+                        description=routine_description,
+                        when_to_use=f"Use to {routine_description.lower()}",
                         parameters_summary=[],
                         inspection_score=attempt.inspection_result.get("overall_score", 0)
                         if attempt.inspection_result else 0,
@@ -2001,7 +2290,7 @@ class PrincipalInvestigator(AbstractAgent):
 
         # Infer site from exploration summaries or first URL
         site = "unknown"
-        for summary_text in self._exploration_summaries.values():
+        for summary_text in self._exploration_summaries_raw.values():
             if "://" in summary_text:
                 # Try to extract domain
                 match = re.search(r'https?://([^/\s]+)', summary_text)
@@ -2037,6 +2326,11 @@ class PrincipalInvestigator(AbstractAgent):
 
     def _create_worker(self) -> ExperimentWorker:
         """Create a new ExperimentWorker instance with all available context."""
+        worker_workspace = (
+            self._worker_workspace_factory()
+            if self._worker_workspace_factory is not None
+            else None
+        )
         return ExperimentWorker(
             emit_message_callable=self._emit_message_callable,
             # Browser context
@@ -2049,15 +2343,22 @@ class PrincipalInvestigator(AbstractAgent):
             # Config
             llm_model=self._worker_llm_model,
             execution_mode=AgentExecutionMode.AUTONOMOUS,
+            workspace=worker_workspace,
         )
 
     def _create_inspector(self) -> RoutineInspector:
         """Create a new RoutineInspector instance."""
+        inspector_workspace = (
+            self._inspector_workspace_factory()
+            if self._inspector_workspace_factory is not None
+            else None
+        )
         return RoutineInspector(
             emit_message_callable=self._emit_message_callable,
             llm_model=self._worker_llm_model,
             execution_mode=AgentExecutionMode.AUTONOMOUS,
             documentation_data_loader=self._documentation_data_loader,
+            workspace=inspector_workspace,
         )
 
     def _get_or_create_agent(self, task: Task) -> AbstractAgent:
@@ -2186,49 +2487,95 @@ class PrincipalInvestigator(AbstractAgent):
         # the routine on its own merits (correctness, robustness, data quality),
         # not whether it fulfills the user's high-level goal.
         prompt_parts: list[str] = [
-            f"## Routine Name\n{spec.name}\n",
-            f"## Routine Description\n{spec.description}\n",
+            f"## Routine Name\n{routine.name}\n",
+            f"## Routine Description\n{routine.description}\n",
             f"## Routine JSON\n```json\n{json.dumps(routine.model_dump(), indent=2, default=str)}\n```\n",
         ]
 
-        # Flag description downgrades — if the routine's own description is weaker
-        # than the spec description, the inspector must catch this.
-        routine_description = routine.description
-        if routine_description != spec.description:
-            prompt_parts.append(
-                f"## Spec vs Routine Description Comparison\n"
-                f"**Original spec description:** {spec.description}\n\n"
-                f"**Routine's own description:** {routine_description}\n\n"
-                f"IMPORTANT: If the routine's description is significantly weaker or narrower "
-                f"than the original spec description, this is a BLOCKING issue. The routine must "
-                f"deliver on the spec's promise, not just its own watered-down claims.\n"
-            )
-
         if execution_result is not None:
-            exec_data = execution_result.model_dump()
-            prompt_parts.append(
-                f"## Execution Result\n```json\n{json.dumps(exec_data, indent=2, default=str)}\n```\n"
-            )
+            exec_data = execution_result.model_dump(mode="json")
+            exec_json = json.dumps(exec_data, indent=2, default=str)
+
+            persisted_for_inspector = False
+            if (
+                len(exec_json) > self.INSPECTOR_INLINE_EXECUTION_MAX_CHARS
+                and inspector.has_workspace
+            ):
+                try:
+                    inspector_workspace = inspector._require_workspace()
+                    inspector_workspace.ensure_dirs()
+                    safe_spec = re.sub(r"[^a-zA-Z0-9_.-]+", "_", spec.name).strip("_")
+                    if not safe_spec:
+                        safe_spec = spec.id
+                    artifact_ref = inspector_workspace.save_artifact(
+                        source="raw",
+                        filename=f"{safe_spec}_execution_result.json",
+                        content=exec_json,
+                        tool_name="pi_run_inspection",
+                        content_type="json",
+                        metadata={
+                            "spec_id": spec.id,
+                            "spec_name": spec.name,
+                            "char_count": len(exec_json),
+                        },
+                    )
+                    prompt_parts.append(
+                        "## Execution Result\n"
+                        f"Execution payload is large ({len(exec_json)} chars) and was saved to:\n"
+                        f"- workspace path: `{artifact_ref.relative_path}`\n"
+                        f"- artifact_id: `{artifact_ref.artifact_id}`\n\n"
+                        "Use `execute_python` or `read_file(scope=\"workspace\", path=\"...\")` to inspect "
+                        "this file directly and base your judgment on the full payload.\n"
+                        "Do not claim truncation — the full execution result is available in workspace raw/.\n"
+                    )
+                    persisted_for_inspector = True
+                except Exception as e:
+                    logger.warning(
+                        "Failed to persist large execution payload for inspector; falling back to inline JSON: %s",
+                        e,
+                    )
+
+            if not persisted_for_inspector:
+                prompt_parts.append(
+                    f"## Execution Result\n```json\n{exec_json}\n```\n"
+                )
         else:
             prompt_parts.append("## Execution Result\nNot available (no browser or execution failed).\n")
 
-        # Add exploration summaries for cross-reference
+        base_prompt = "\n".join(prompt_parts)
+
+        # Add exploration summaries for cross-reference. If the combined prompt gets too
+        # large, drop exploration summaries first. Do NOT truncate execution payload.
+        exploration_section = ""
         if self._exploration_summaries:
-            prompt_parts.append("## Exploration Summaries\n")
+            exploration_parts: list[str] = ["## Exploration Summaries\n"]
             for domain, summary in self._exploration_summaries.items():
-                prompt_parts.append(f"### {domain}\n{summary}\n")
+                exploration_parts.append(f"### {domain}\n{summary}\n")
+            exploration_section = "\n".join(exploration_parts)
 
-        inspection_prompt = "\n".join(prompt_parts)
+        inspection_prompt = (
+            f"{base_prompt}\n\n{exploration_section}"
+            if exploration_section
+            else base_prompt
+        )
 
-        # Truncate if too large to avoid overwhelming the inspector LLM
-        max_chars = 50_000
+        max_chars = 120_000
+        if len(inspection_prompt) > max_chars and exploration_section:
+            logger.warning(
+                "Inspection prompt too large (%d chars); omitting exploration summaries to preserve full execution payload",
+                len(inspection_prompt),
+            )
+            inspection_prompt = (
+                f"{base_prompt}\n\n"
+                "## Exploration Summaries\n"
+                "[omitted due prompt size; consult persisted exploration artifacts if needed]\n"
+            )
+
         if len(inspection_prompt) > max_chars:
             logger.warning(
-                "Inspection prompt too large (%d chars), truncating to %d",
+                "Inspection prompt still large after omitting summaries (%d chars); sending full routine + execution payload without truncation",
                 len(inspection_prompt),
-                max_chars,
             )
-            inspection_prompt = inspection_prompt[:max_chars] + "\n\n... [TRUNCATED — prompt exceeded 50,000 characters]"
 
         try:
             config = AutonomousRunConfig(min_iterations=1, max_iterations=10)

@@ -1,609 +1,374 @@
 {
-  "total_requests": 484,
+  "total_requests": 419,
   "endpoints": [
     {
-      "url_pattern": "https://apim.carvana.io/vehicle-details-api/api/v1/vehicledetails",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 1,
-      "description": "Returns detailed vehicle information for a specific vehicleId (core VDP data).",
-      "interest": "high",
-      "request_ids": [
-        "interception-job-5525.0"
-      ]
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/search/api/v2/search",
+      "url_pattern": "https://www.amtrak.com/dotcom/journey-solution-option",
       "method": "POST",
       "category": "action",
-      "hit_count": 16,
-      "description": "Search endpoint for inventory on the cars SRP (search results page); only OPTIONS preflights are visible due to Cloudflare blocking.",
+      "hit_count": 10,
+      "description": "Submits trip search / journey solution request (returns available journey options).",
       "interest": "high",
       "request_ids": [
-        "interception-job-4954.0",
-        "94BC36B18ECFE6FDC6697B9C5709EF4F"
+        "interception-job-529.0",
+        "interception-job-1843.0"
       ]
     },
     {
-      "url_pattern": "https://apik.carvana.io/merch/search/api/v2/search/facets",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 16,
-      "description": "Returns facet/aggregation data for the vehicle search (filters, counts); only OPTIONS preflights are captured.",
-      "interest": "high",
-      "request_ids": [
-        "interception-job-4954.0",
-        "94BC36B18ECFE6FDC6697B9C5709EF4F"
-      ]
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/search/api/v2/pricing",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 8,
-      "description": "Pricing endpoint for search results, likely returning price breakdowns for vehicles on SRP; only OPTIONS preflights visible.",
-      "interest": "high",
-      "request_ids": [
-        "interception-job-4750.0",
-        "E0552F206C4713E631BCA4A686C99F2C",
-        "interception-job-5000.0"
-      ]
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/vehicledetails/api/v1/availability",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Returns availability and delivery options for a specific vehicle and zip code on the VDP.",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/vehicledetails/api/v1/inspection/report/{vehicleId}",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Returns vehicle inspection report data for a specific vehicle.",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/merchui/api/servicecontracts/v1/get",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Returns available service contract options for a vehicle given VIN and effective date.",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apimpub.carvana.com/ancillary-products-api/api/v2/GapWaiver/availability",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Determines GAP waiver product availability for a given vehicle, state, and financing context.",
-      "interest": "high",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/buffering/api/v1/soonestavailabilitybulk",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 6,
-      "description": "Returns soonest availability dates in bulk for multiple vehicles (delivery/pickup timing).",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/core/discount/api/v1/discount",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Returns discount information for a given state and user context.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/carvanamerchcontextapi/api/v3/delivery",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 6,
-      "description": "Returns delivery context/options for a given zip code (delivery windows, eligibility).",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/carvanamerchcontextapi/api/v3/distance",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Returns distance-related context for a given zip code (likely shipping distance from hub).",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/reviews/api/review/sv",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Returns vehicle or site reviews summary data for display on SRP/VDP.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/vehicledetails/api/v1/recall",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Returns recall information for a specific vehicleId.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/search/api/v1/recommendations/personalized-recs",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 4,
-      "description": "Returns personalized vehicle recommendations for the user on the home/SRP experience.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/search/api/v1/suggest/filters",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 24,
-      "description": "Returns suggested filters for search (likely dynamic filter suggestions based on inventory and user behavior); only OPTIONS captured.",
-      "interest": "medium",
-      "request_ids": [
-        "interception-job-4794.0",
-        "B78E58205CC0B29A73E3B77AFB3EE650",
-        "interception-job-4955.0"
-      ]
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/merch/search/api/v4/suggest",
+      "url_pattern": "https://www.amtrak.com/services/contentService.stationsinfo.json",
       "method": "GET",
       "category": "data",
       "hit_count": 10,
-      "description": "Autosuggest search endpoint (query-based suggestions like 'a', 'au', 'audi').",
-      "interest": "medium",
+      "description": "Returns station metadata used for origin/destination selection (stations info).",
+      "interest": "high",
       "request_ids": [
-        "interception-job-4989.0",
-        "C170A892FF656FB83001DDB14BA01551",
-        "interception-job-4990.0"
+        "interception-job-97.0"
       ]
     },
     {
-      "url_pattern": "https://apik.carvana.io/core/headerapi/api/v2/header",
+      "url_pattern": "https://www.amtrak.com/services/data.stations.json",
       "method": "GET",
-      "category": "data",
-      "hit_count": 8,
-      "description": "Returns header configuration and app settings (partner, device, appsettings).",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/core/consent-api/api/v1/consent/disclosures",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 24,
-      "description": "Returns consent disclosure content for legal/privacy banners.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/traffic/content",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 4,
-      "description": "Returns CMS content for the /cars page (copy/marketing content).",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/traffic/links/v3/kill/byurl",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 4,
-      "description": "Returns kill-switch/link configuration for a given URL path.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apik.carvana.io/traffic/reviews/v4",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 4,
-      "description": "Returns review aggregates/content for the /cars page context.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://apim.carvana.io/web-eventable/api/graph",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 10,
-      "description": "Ingests first-party behavioral events such as carvana-page-load and header nav clicks (internal analytics).",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 60,
-      "description": "Carvana analytics event ingestion endpoint used for dozens of UI/performance events (SRP Viewed, Suggested filters, etc.).",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.carvana.io/edge/split-test/api/v2/buckets",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 16,
-      "description": "Retrieves experiment bucket assignments for A/B tests.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.carvana.io/edge/split-test/api/v2/buckets/bundle",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 6,
-      "description": "Retrieves bundled experiment bucket data for multiple experiments at once.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.carvana.io/edge/device-detection/api/v1/devicedetection",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 4,
-      "description": "Sends device fingerprinting data for analytics/optimization.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?performance-metrics",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 20,
-      "description": "Grouped performance metric events (first-contentful-paint, dom-interactive, time-to-first-byte, etc.) to analytics.graph endpoint.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?user-journey-events",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 40,
-      "description": "Grouped user journey/UI interaction events (SRP Viewed, Vehicle Details, Search Bar, etc.) to analytics.graph endpoint.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.audioeye.com/v1/send",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 4,
-      "description": "Accessibility/AudioEye analytics beacon endpoint.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://pixels.spotify.com/v1/ingest",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 8,
-      "description": "Spotify marketing pixel event ingestion.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://pixels.spotify.com/v1/config/{id}",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 8,
-      "description": "Spotify pixel configuration fetch.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://t.getletterpress.com/com.snowplowanalytics.snowplow/tp2",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 8,
-      "description": "Snowplow tracking pixel for marketing/analytics.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://bat.bing.com/action",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 5,
-      "description": "Bing tracking pixel for page load/custom events.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://bat.bing.com/action",
-      "method": "POST",
       "category": "data",
       "hit_count": 1,
-      "description": "Bing tracking pixel POST for custom event data.",
+      "description": "Returns stations dataset (alternate stations feed).",
+      "interest": "high",
+      "request_ids": [
+        "interception-job-95.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.amtrak.com/services/data.popularstations.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Returns popular stations list for UI defaults/autocomplete.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-96.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.amtrak.com/services/routes-list.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Returns route list reference data.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-98.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.amtrak.com/services/staticmappingjson",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Returns static mapping/config JSON used by the site.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-90.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.amtrak.com/services/globalerrorjson",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 10,
+      "description": "Returns global error/config JSON for client error handling.",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-94.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.amtrak.com/libs/granite/csrf/token.json",
+      "method": "GET",
+      "category": "auth",
+      "hit_count": 10,
+      "description": "Fetches CSRF token (AEM Granite CSRF endpoint).",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-80.0",
+        "interception-job-589.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.amtrak.com/content/amtrak/en-us/reference-data/wsdot-stations-api.jsondata.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 20,
+      "description": "Reference-data content fragment containing station mapping array (WSDOT stations).",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-92.0",
+        "interception-job-91.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.amtrak.com/content/amtrak/en-us/reference-data/static-fare/jcr:content/root/contentfragment.staticFare.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Reference-data content fragment with static fare rules/labels (fare type comparison).",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-624.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.amtrak.com/content/amtrak/en-us/reference-data/dc-api/jcr:content/root/contentfragment.datasearch.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Reference-data content fragment used for datasearch/config (supporting search UI).",
+      "interest": "medium",
+      "request_ids": [
+        "interception-job-626.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.amtrak.com/content/amtrak/en-us/api/terms-and-conditions/version.model.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Returns terms-and-conditions version model JSON.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-115.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.amtrak.com/content/amtrak/en-us/home.alertsService.emergency-alerts.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Returns emergency alerts JSON for homepage banner.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-114.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.amtrak.com/content/amtrak/en-us/home.alertsService.homepage-alerts.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Returns homepage alerts JSON.",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-113.0"
+      ]
+    },
+    {
+      "url_pattern": "https://www.amtrak.com/nuance/nuanceChat.html",
+      "method": "GET",
+      "category": "navigation",
+      "hit_count": 10,
+      "description": "Loads Nuance chat iframe page.",
       "interest": "low",
       "request_ids": []
     },
     {
-      "url_pattern": "https://www.google.com/pagead/form-data/{id}",
-      "method": "POST",
+      "url_pattern": "https://media-us1.digital.nuance.com/media/launch/all_10006734.json",
+      "method": "GET",
       "category": "data",
-      "hit_count": 3,
-      "description": "Google Ads tracking/measurement beacons.",
+      "hit_count": 10,
+      "description": "Nuance chat launcher/config JSON.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://www.google.com/recaptcha/enterprise/anchor",
+      "method": "GET",
+      "category": "auth",
+      "hit_count": 5,
+      "description": "reCAPTCHA Enterprise anchor/initialization.",
       "interest": "low",
       "request_ids": []
     },
     {
       "url_pattern": "https://www.google.com/ccm/form-data/{id}",
       "method": "POST",
-      "category": "data",
-      "hit_count": 4,
-      "description": "Google consent/measurement beacons.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://api.consentjs.datagrail.io/save_open",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 4,
-      "description": "ConsentJS endpoint for saving consent banner open/non-open state.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?experiments",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 4,
-      "description": "Analytics events related to experiment exposure.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://storage.googleapis.com/chat-ui-ngcp-prod/build/assets-manifest.json",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 8,
-      "description": "Static manifest for Carvana chat UI bundle.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://static.fastly.carvana.io/{module}/assets-manifest.json",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 42,
-      "description": "Static JS/CSS asset manifests for various Carvana microfrontends (header, footer, appraisal, etc.).",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://assets.fastly.carvana.io/{module}/assets-manifest.json",
-      "method": "GET",
-      "category": "navigation",
+      "category": "auth",
       "hit_count": 30,
-      "description": "Static asset manifests for Carvana UI modules (auth flows, footer, spinner, etc.).",
+      "description": "reCAPTCHA Enterprise telemetry / form-data submission.",
       "interest": "low",
       "request_ids": []
     },
     {
-      "url_pattern": "https://assets.fastly.carvana.io/merchui/_next/static/prefetch-manifest.json",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 2,
-      "description": "Next.js prefetch manifest for Carvana merch UI.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://assets.fastly.carvana.io/spinner/standalone/64/latest/version.txt",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 2,
-      "description": "Spinner component version metadata.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://spinnerdata.carvana.io/spinnerdata/{id}/spinnerData.json",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 1,
-      "description": "Returns 360-degree spinner image metadata for a vehicle.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://wsv3cdn.audioeye.com/static-scripts/v2/{date}/locales/en/compliance.json",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 8,
-      "description": "AudioEye accessibility compliance configuration.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?Sebastian%20Questions",
+      "url_pattern": "https://www.amtrak.com/sPu4u-zM/Vor/ku5/XIDmXs2Abk/G1YwGNwbkXrcSm/b3o0AQ/Y3o-/Z0FufVQB",
       "method": "POST",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Analytics events for Sebastian vehicle questions widget.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://descartes-external.ngcp.prod.cvna.info/vehicle-questions/",
-      "method": "GET",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Fetches vehicle questions content (Sebastian Q&A) for the VDP.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://accounts.google.com/gsi/fedcm.json",
-      "method": "GET",
       "category": "auth",
-      "hit_count": 1,
-      "description": "Google Identity Services FedCM configuration for one-tap sign-in.",
-      "interest": "medium",
-      "request_ids": []
+      "hit_count": 30,
+      "description": "Bot-detection / Akamai sensor endpoint (opaque path, frequent POSTs).",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-86.0",
+        "interception-job-186.0"
+      ]
     },
     {
-      "url_pattern": "https://accounts.google.com/gsi/fedcm/listaccounts",
+      "url_pattern": "https://www.amtrak.com/akam/13/pixel_32dfe345",
       "method": "POST",
       "category": "auth",
       "hit_count": 1,
-      "description": "Google Identity Services endpoint to list Google accounts for one-tap sign-in.",
-      "interest": "medium",
-      "request_ids": []
+      "description": "Akamai pixel/sensor (anti-bot).",
+      "interest": "low",
+      "request_ids": [
+        "interception-job-133.0",
+        "55421.291"
+      ]
     },
     {
-      "url_pattern": "https://google.com/.well-known/web-identity",
-      "method": "GET",
-      "category": "auth",
-      "hit_count": 1,
-      "description": "Web identity discovery endpoint used with FedCM/Google Identity.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://www.carvana.com/",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 5,
-      "description": "Main Carvana home page HTML navigation endpoint.",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://www.carvana.com/cars",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 2,
-      "description": "Cars SRP page navigation endpoint (HTML).",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://www.carvana.com/cars/suv",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 2,
-      "description": "SUV SRP page navigation endpoint (HTML).",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://www.carvana.com/vehicle/{vehicleId}",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 2,
-      "description": "Vehicle details page navigation endpoint (HTML VDP).",
-      "interest": "medium",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://carvana.com/",
-      "method": "GET",
-      "category": "navigation",
-      "hit_count": 2,
-      "description": "Alternate host for Carvana homepage, likely redirect/HTML.",
+      "url_pattern": "https://collection.decibelinsight.net/i/{id}/da/",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 95,
+      "description": "Decibel Insight session replay/telemetry collector.",
       "interest": "low",
       "request_ids": []
     },
     {
-      "url_pattern": "https://www.carvana.com/cdn-cgi/challenge-platform",
+      "url_pattern": "https://collection.decibelinsight.net/i/{id}/{id}/c.json",
       "method": "GET",
-      "category": "navigation",
+      "category": "data",
       "hit_count": 6,
-      "description": "Cloudflare challenge/anti-bot endpoints used before allowing access to Carvana pages/APIs.",
+      "description": "Decibel Insight config JSON.",
       "interest": "low",
       "request_ids": []
     },
     {
-      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?mega-srp-vehicle-data",
+      "url_pattern": "https://smetrics.at.amtrak.com/rest/v1/delivery",
       "method": "POST",
       "category": "data",
-      "hit_count": 4,
-      "description": "Analytics events summarizing vehicle data shown on mega SRP (not the raw data itself).",
+      "hit_count": 22,
+      "description": "Adobe Analytics (smetrics) event delivery endpoint.",
       "interest": "low",
       "request_ids": []
     },
     {
-      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?mega-vdp",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 2,
-      "description": "Analytics events for the mega vehicle details page experience.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?mega-srp-user-info",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 4,
-      "description": "Analytics events containing user-info context for mega SRP (not primary data).",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?search_bar_viewed",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 1,
-      "description": "Analytics event for search bar viewed.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?search_bar",
-      "method": "POST",
-      "category": "data",
-      "hit_count": 3,
-      "description": "Analytics events for search bar interactions.",
-      "interest": "low",
-      "request_ids": []
-    },
-    {
-      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?SRP%20Viewed",
+      "url_pattern": "https://api2.branch.io/v1/pageview",
       "method": "POST",
       "category": "data",
       "hit_count": 10,
-      "description": "Analytics events for SRP viewed state.",
+      "description": "Branch.io pageview tracking.",
       "interest": "low",
       "request_ids": []
     },
     {
-      "url_pattern": "https://analytics.carvana.io/edge/web-eventable/api/graph?Vehicle%20Details",
+      "url_pattern": "https://api2.branch.io/v1/open",
       "method": "POST",
       "category": "data",
+      "hit_count": 2,
+      "description": "Branch.io open event tracking.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://ct.pinterest.com/ct.html",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 5,
+      "description": "Pinterest tag base script/pixel.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://ct.pinterest.com/user/",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 10,
+      "description": "Pinterest user tracking pixel calls.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://pixel-config.reddit.com/pixels/t2_bhuwkbfw/config",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 10,
+      "description": "Reddit pixel configuration fetch.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://px.ads.linkedin.com/attribution_trigger",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 10,
+      "description": "LinkedIn ads attribution trigger.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://assets.adobetarget.com/amtrakdigital/production/v1/rules.json",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 8,
+      "description": "Adobe Target personalization rules.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://amtrak.inq.com/tagserver/postToServer.min.htm",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 5,
+      "description": "iPerceptions/ForeSee/inq feedback/engagement tag endpoint.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://datacore-write.securitytrfx.com/blob/farenet/{id}/4MTR4K",
+      "method": "POST",
+      "category": "data",
+      "hit_count": 4,
+      "description": "SecurityTrfx blob collector (likely fraud/bot/security telemetry).",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://amtrak.us-7.evergage.com/api2/event/production",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 2,
+      "description": "Evergage/Salesforce Interaction Studio event beacon.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://amtrak.us-7.evergage.com/pr",
+      "method": "GET",
+      "category": "data",
       "hit_count": 1,
-      "description": "Analytics events when vehicle details section is viewed.",
+      "description": "Evergage performance/route beacon.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://beacon.sojern.com/pixel/p/{id}",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Sojern marketing pixel.",
+      "interest": "low",
+      "request_ids": []
+    },
+    {
+      "url_pattern": "https://bat.bing.com/.well-known/interest-group/permissions/",
+      "method": "GET",
+      "category": "data",
+      "hit_count": 1,
+      "description": "Bing interest-group permissions check (ads).",
       "interest": "low",
       "request_ids": []
     }
   ],
   "auth_observations": [
-    "No first-party Bearer or API key headers are visible on captured API calls; access to apik.carvana.io and apim.carvana.io is blocked by Cloudflare, so authenticated calls likely include additional headers or cookies not seen here.",
-    "CORS preflight OPTIONS requests to apik.carvana.io include Access-Control-Request-Headers: authorization,content-type,correlation-context, indicating that actual POST calls carry an Authorization header and a correlation-context header for tracing.",
-    "All blocked API responses from apim.carvana.io and apik.carvana.io return Cloudflare HTML with no Set-Cookie or auth tokens, confirming that the blocking happens before app-level auth.",
-    "Google Identity Services (accounts.google.com gsi/fedcm.json and fedcm/listaccounts plus google.com/.well-known/web-identity) are used for optional Google One Tap sign-in, but no Carvana-specific auth token exchange is visible in this capture.",
-    "Most analytics and tracking endpoints (analytics.carvana.io, pixels.spotify.com, t.getletterpress.com, bat.bing.com, analytics.audioeye.com, api.consentjs.datagrail.io) use anonymous or cookie-based tracking; no reusable API tokens are exposed in headers."
+    "Amtrak first-party requests rely heavily on cookies (Akamai bot-mitigation cookies like bm_sz, _abck, ak_bmsc; plus Adobe/Optanon consent cookies).",
+    "CSRF token endpoint exists at /libs/granite/csrf/token.json (AEM Granite). In the captured journey search POST, the request header shows `CSRF-Token: undefined`, suggesting CSRF may be optional for that endpoint or set via JS in other flows.",
+    "No Authorization: Bearer tokens or API keys were observed in inspected first-party API calls; session appears primarily cookie-based.",
+    "Bot mitigation is prominent: frequent POSTs to an opaque /sPu4u-zM/... path and /akam/ pixel endpoints (Akamai).",
+    "reCAPTCHA Enterprise traffic is present (anchor GET and /ccm/form-data POSTs to google.com)."
   ],
-  "narrative": "484 total requests were captured across 20 hosts. Method distribution is POST 191, OPTIONS 168, GET 125. Using host and path heuristics, roughly 290 requests are clear noise (analytics beacons, static assets, CDNs, tracking pixels, Cloudflare challenges). The remaining ~190 are to Carvana business APIs and HTML navigation endpoints.\n\nThe most important business APIs are under apik.carvana.io and apim.carvana.io. However, Cloudflare blocked access to these APIs from the capture environment, so nearly all calls to these hosts are either OPTIONS preflight requests or 403 HTML responses. Despite this, the URL patterns and query parameters clearly reveal the intended API surface.\n\nFor the user task of browsing/searching inventory and inspecting a specific vehicle, the main high-interest endpoints are:\n- apik.carvana.io/merch/search/api/v2/search (POST): the core search endpoint for the SRP, taking a JSON body (not visible) and returning matching vehicles.\n- apik.carvana.io/merch/search/api/v2/search/facets (POST): complementary endpoint returning facets/filters for the current search.\n- apik.carvana.io/merch/search/api/v2/pricing (POST): returns pricing information for vehicles on the SRP.\n- apim.carvana.io/vehicle-details-api/api/v1/vehicledetails (GET): the primary vehicle details API for a given vehicleId; this is the main endpoint for VDP data, though the single captured request returns a Cloudflare block page.\n- Several supporting vehicle endpoints on apik.carvana.io/merch/vehicledetails (availability, inspection report, recall) and merchui/servicecontracts plus apimpub GapWaiver for add-on products.\n\nThese patterns indicate a fairly standard separation: apik.carvana.io hosts merchandising/search and vehicle-detail microservices, while apim.carvana.io hosts a composite vehicle-details-api. The capture includes one GET to apim.carvana.io/vehicle-details-api/api/v1/vehicledetails?vehicleId=4195259 which is the clearest candidate for \"main API endpoint that returns the data needed\" for a vehicle details page. For search results, /merch/search/api/v2/search is the core data provider, with facets and pricing as adjuncts.\n\nAuth-wise, no Bearer tokens or explicit API keys appear in the captured headers, likely because Cloudflare blocked the calls before they reached app-level authentication. CORS preflights to apik.carvana.io request authorization and correlation-context headers, strongly suggesting that real POST requests include an Authorization header (probably a JWT or opaque token) plus a correlation ID. Google Identity Services FedCM endpoints are present for optional Google One Tap sign-in, but no downstream Carvana auth token exchange is visible.\n\nMost other endpoints are low-interest analytics and tracking: analytics.carvana.io's web-eventable/graph and split-test APIs, Snowplow at t.getletterpress.com, Spotify pixels, Bing and Google Ads beacons, AudioEye accessibility analytics, and ConsentJS. Static asset manifests and spinner data live on static.fastly.carvana.io, assets.fastly.carvana.io, storage.googleapis.com, and spinnerdata.carvana.io.\n\nIn summary, the capture is heavily impacted by Cloudflare blocking, but still reveals the primary Carvana APIs. For automation, the key endpoints are apim.carvana.io/vehicle-details-api/api/v1/vehicledetails for detailed vehicle data and apik.carvana.io/merch/search/api/v2/search (plus facets and pricing) for search results. Any real automation against these endpoints will need to replicate whatever auth and anti-bot mechanisms Carvana uses (likely cookies, Authorization headers, and Cloudflare challenges), which are not fully observable in this trace."
+  "narrative": "Capture contains 419 total requests across 15 hosts; a large majority are analytics/telemetry (Decibel Insight 101 reqs, Adobe Analytics smetrics 22, Branch.io 12, multiple ad pixels) plus bot-mitigation (Akamai sensor posts) and chat (Nuance). The core functional Amtrak endpoints relevant to automation are concentrated on www.amtrak.com and include a primary action endpoint `POST /dotcom/journey-solution-option` for journey search/solutions and several supporting data feeds for stations and reference data (stations info, station mappings, routes list, static fare rules). First-party API responses are JSON and appear to be served from an AEM/dispatcher-style content path (/content/amtrak/...) and /services/* JSON endpoints. Auth/session handling appears cookie-driven with CSRF token support available via Granite; no bearer-token style API auth was evident in the inspected calls. Noise requests include numerous trackers/pixels and security telemetry; these should be excluded from automation except where bot/recaptcha challenges must be handled."
 }

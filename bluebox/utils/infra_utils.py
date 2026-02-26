@@ -91,6 +91,7 @@ def read_file_lines(
     start_line: int | None = None,
     end_line: int | None = None,
     max_lines: int = 200,
+    max_characters: int = 5_000,
 ) -> dict[str, Any]:
     """
     Read a text file with optional line range, streaming to avoid loading
@@ -116,6 +117,8 @@ def read_file_lines(
 
     lines: list[str] = []
     total_lines = 0
+    read_line_start: int | None = None
+    read_line_end: int | None = None
     try:
         with file_path.open("r") as f:
             for i, raw in enumerate(f):
@@ -124,6 +127,10 @@ def read_file_lines(
                     if not has_range and len(lines) >= max_lines:
                         continue
                     lines.append(raw.rstrip("\n"))
+                    line_num = i + 1
+                    if read_line_start is None:
+                        read_line_start = line_num
+                    read_line_end = line_num
                 if upper is not None and total_lines >= upper:
                     remaining = sum(1 for _ in f)
                     total_lines += remaining
@@ -143,9 +150,21 @@ def read_file_lines(
         else:
             line_range = f"all {total_lines} lines"
 
+    content = "\n".join(lines)
+    if max_characters > 0 and len(content) > max_characters:
+        line_start = read_line_start or (start_line or 1)
+        line_end = read_line_end or line_start
+        content = (
+            content[:max_characters]
+            + f"\n... [output too large... read lines {line_start} - {line_end}]"
+        )
+
     return {
         "line_range": line_range,
-        "content": "\n".join(lines),
+        "lines_read": len(lines),
+        "read_line_start": read_line_start,
+        "read_line_end": read_line_end,
+        "content": content,
     }
 
 

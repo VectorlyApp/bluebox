@@ -254,6 +254,17 @@ def run_ui_exploration(
 
     specialist._get_autonomous_system_prompt = _exploration_system_prompt  # type: ignore[assignment]
 
+    # Override initial message so exploration framing is explicit.
+    def _exploration_initial_message(task_text: str) -> str:
+        return (
+            f"UI EXPLORATION TASK: {task_text}\n\n"
+            "This is broad interaction exploration. Reconstruct inputs, clicks, "
+            "navigation flow, and user intent across all events, then finalize with "
+            "the complete structured output."
+        )
+
+    specialist._get_autonomous_initial_message = _exploration_initial_message  # type: ignore[assignment]
+
     # Build task message
     task = (
         "Analyze ALL interaction events in this capture. Discover what the user "

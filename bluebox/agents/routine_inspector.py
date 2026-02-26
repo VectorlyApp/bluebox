@@ -18,7 +18,7 @@ from textwrap import dedent
 from typing import Any, Callable, TYPE_CHECKING
 
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, AgentExecutionMode
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.agents.workspace import AgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -351,10 +351,11 @@ class RoutineInspector(AbstractAgent):
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
+        workspace: AgentWorkspace | None = None,
     ) -> None:
         super().__init__(
             emit_message_callable=emit_message_callable,
-            workspace=LocalWorkspace.from_directory_path("./agent_workspace/routine_inspector"),
+            workspace=workspace,
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
@@ -363,6 +364,7 @@ class RoutineInspector(AbstractAgent):
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
+            allow_code_execution=True,
         )
         logger.debug("RoutineInspector initialized")
 
@@ -371,12 +373,13 @@ class RoutineInspector(AbstractAgent):
     # -----------------------------------------------------------------------
 
     def _get_system_prompt(self) -> str:
-        return self.SYSTEM_PROMPT
+        return self.SYSTEM_PROMPT + self._generate_code_execution_prompt()
 
     def _get_autonomous_system_prompt(self) -> str:
         return (
             self.AUTONOMOUS_SYSTEM_PROMPT
             + self._get_output_schema_prompt_section()
+            + self._generate_code_execution_prompt()
             + self._get_documentation_prompt_section()
             + self._get_urgency_notice()
         )
