@@ -1656,12 +1656,14 @@ class TestAgentToolDecorator:
         assert meta.availability is True
 
         # --- parameters schema: build expected and compare ---
-        # The routine param schema should match what Pydantic generates
+        # The routine param schema should match what Pydantic generates,
+        # with $defs hoisted to the root level (not nested inside the property).
         routine_schema = TypeAdapter(Routine).json_schema()
         routine_schema.pop("title", None)
         routine_schema["description"] = "The full routine object to update."
+        hoisted_defs = routine_schema.pop("$defs", {})
 
-        expected_parameters = {
+        expected_parameters: dict[str, Any] = {
             "type": "object",
             "properties": {
                 "routine": routine_schema,
@@ -1672,6 +1674,8 @@ class TestAgentToolDecorator:
             },
             "required": ["routine"],
         }
+        if hoisted_defs:
+            expected_parameters["$defs"] = hoisted_defs
 
         assert meta.parameters == expected_parameters
 

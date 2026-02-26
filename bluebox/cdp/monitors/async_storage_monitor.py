@@ -291,7 +291,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
         )
         try:
             await self.event_callback_fn(self.get_monitor_category(), event)
-            logger.info("📊 Emitted %s cleared event for origin: %s", storage_type, origin)
+            logger.debug("📊 Emitted %s cleared event for origin: %s", storage_type, origin)
         except Exception as e:
             logger.error("❌ Error calling event_callback for %s cleared: %s", storage_type, e, exc_info=True)
 
@@ -319,7 +319,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
         )
         try:
             await self.event_callback_fn(self.get_monitor_category(), event)
-            logger.info("📊 Emitted %s item removed event: origin=%s, key=%s", storage_type, origin, key)
+            logger.debug("📊 Emitted %s item removed event: origin=%s, key=%s", storage_type, origin, key)
         except Exception as e:
             logger.error("❌ Error calling event_callback for %s removed: %s", storage_type, e, exc_info=True)
 
@@ -351,7 +351,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
         )
         try:
             await self.event_callback_fn(self.get_monitor_category(), event)
-            logger.info("📊 Emitted %s item added event: origin=%s, key=%s", storage_type, origin, key)
+            logger.debug("📊 Emitted %s item added event: origin=%s, key=%s", storage_type, origin, key)
         except Exception as e:
             logger.error("❌ Error calling event_callback for %s added: %s", storage_type, e, exc_info=True)
 
@@ -385,7 +385,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
         )
         try:
             await self.event_callback_fn(self.get_monitor_category(), event)
-            logger.info("📊 Emitted %s item updated event: origin=%s, key=%s", storage_type, origin, key)
+            logger.debug("📊 Emitted %s item updated event: origin=%s, key=%s", storage_type, origin, key)
         except Exception as e:
             logger.error("❌ Error calling event_callback for %s updated: %s", storage_type, e, exc_info=True)
 
@@ -414,7 +414,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
         )
         try:
             await self.event_callback_fn(self.get_monitor_category(), event)
-            logger.info("📊 Emitted IndexedDB event")
+            logger.debug("📊 Emitted IndexedDB event")
         except Exception as e:
             logger.error("❌ Error calling event_callback for IndexedDB event: %s", e, exc_info=True)
 
@@ -501,7 +501,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
             return False  # don't swallow this event
         if method == "Page.loadEventFired":
             # trigger cookie check after page load - this is when cookies are most likely to be set
-            logger.info("🍪 Page loaded, triggering cookie check")
+            logger.debug("🍪 Page loaded, triggering cookie check")
             await self._trigger_native_cookie_check(cdp_session)
             return False  # don't swallow this event
 
@@ -547,7 +547,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
         if cmd_id in self.pending_storage_commands:
             command_info = self.pending_storage_commands.pop(cmd_id)
             command_type = command_info.get("type")
-            logger.info("🍪 Handling storage command reply: cmd_id=%s, type=%s", cmd_id, command_type)
+            logger.debug("🍪 Handling storage command reply: cmd_id=%s, type=%s", cmd_id, command_type)
 
             if command_type in ["getAllCookies", "getCookies"]:
                 await self._handle_get_cookies_reply(msg, command_info)

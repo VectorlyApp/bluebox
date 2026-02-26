@@ -89,6 +89,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         self.req_meta: dict[str, dict[str, Any]] = {}  # request_id -> metadata
         self.fetch_get_body_wait: dict[int, dict[str, Any]] = {}  # cmd_id -> context
         self.completed_transactions: int = 0  # counter for emitted transactions
+        logger.info("AsyncNetworkMonitor initialized")
 
 
     # Static methods _______________________________________________________________________________________________________
@@ -321,13 +322,13 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
 
         # Response stage
         if response_status is not None:
-            logger.info("🔄 Fetch.requestPaused (RESPONSE STAGE)")
+            logger.debug("🔄 Fetch.requestPaused (RESPONSE STAGE)")
             # Use requestId as the key since networkId might not be set
             fetch_id = rid  # Use Fetch requestId as the key
 
             # Get or create metadata
             if fetch_id not in self.req_meta:
-                logger.info("🔄 Creating new metadata for fetch_id=%s", fetch_id)
+                logger.debug("🔄 Creating new metadata for fetch_id=%s", fetch_id)
                 self.req_meta[fetch_id] = {
                     "requestId": fetch_id,
                     "url": url,
@@ -357,13 +358,13 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
             # Request response body for resources we want to capture
             if resource_type in AsyncNetworkMonitor.CAPTURE_RESOURCES:
                 try:
-                    logger.info("📥 Requesting response body for fetch_id=%s", fetch_id)
+                    logger.debug("📥 Requesting response body for fetch_id=%s", fetch_id)
                     rb_id = await cdp_session.send("Fetch.getResponseBody", {"requestId": rid})
                     self.fetch_get_body_wait[rb_id] = {
                         "rid": rid,
                         "fetch_id": fetch_id,
                     }
-                    logger.info("⏳ Waiting for response body (cmd_id=%s)", rb_id)
+                    logger.debug("⏳ Waiting for response body (cmd_id=%s)", rb_id)
                     return True
                 except Exception as e:
                     logger.warning("❌ Failed to get response body: %s", e)
@@ -373,7 +374,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
                     return True
             else:
                 # Not capturing, but still emit the transaction
-                logger.info("🔄 Resource type %s not in capture list, emitting without body", resource_type)
+                logger.debug("🔄 Resource type %s not in capture list, emitting without body", resource_type)
                 await self._emit_transaction(fetch_id)
 
             await self._safe_continue_response(rid, cdp_session)
@@ -465,7 +466,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
             logger.debug("⏭️ Static asset (skipping): %s", url)
             return True
 
-        logger.info("📥 Network.responseReceived: status=%s (id=%s)", status, request_id)
+        logger.debug("📥 Network.responseReceived: status=%s (id=%s)", status, request_id)
 
         meta = self.req_meta.get(request_id)
         if meta:
@@ -500,7 +501,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         if meta:
             url = meta.get("url", "unknown")
             method = meta.get("method", "unknown")
-            status = meta.get("status", "unknown")
+            status = meta.get("status")  # None if responseReceived never fired
 
             # ensure responseBody is cleaned before emission
             raw_body = meta.get("responseBody")
@@ -519,10 +520,10 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
                 post_data=meta.get("postData"),
                 response_body=cleaned_body,
                 response_body_base64=False,  # always False after cleaning
-                mime_type=meta.get("mimeType"),
+                mime_type=meta.get("mimeType") or "",
             )
             try:
-                logger.info(
+                logger.debug(
                     "📞 _on_loading_finished: emitting transaction with responseBody len=%d",
                     len(cleaned_body) if cleaned_body else 0
                 )
@@ -600,7 +601,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         if not fetch_id:
             logger.warning("⚠️ No fetch_id found in context for cmd_id=%s", cmd_id)
             return False
-        logger.info("📦 Received response body for fetch_id=%s (cmd_id=%s)", fetch_id, cmd_id)
+        logger.debug("📦 Received response body for fetch_id=%s (cmd_id=%s)", fetch_id, cmd_id)
 
         if "error" in msg:
             logger.warning("❌ Error getting response body: %s", msg.get("error"))
@@ -614,13 +615,13 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         is_b64 = body_info.get("base64Encoded", False)
         body_size = len(body)
 
-        logger.info("📦 Response body size: %d bytes (base64=%s)", body_size, is_b64)
+        logger.debug("📦 Response body size: %d bytes (base64=%s)", body_size, is_b64)
 
         # decode base64 if needed
         if is_b64 and body:
             try:
                 decoded_body = base64.b64decode(body).decode('utf-8', errors='replace')
-                logger.info("📦 Decoded base64 body: %d bytes -> %d chars", body_size, len(decoded_body))
+                logger.debug("📦 Decoded base64 body: %d bytes -> %d chars", body_size, len(decoded_body))
                 body = decoded_body
                 is_b64 = False  # already decoded
             except Exception as e:
@@ -634,8 +635,8 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
             cleaned_body = AsyncNetworkMonitor._clean_response_body(body, content_type)
             meta["responseBody"] = cleaned_body
             meta["responseBodyBase64"] = False  # always false after decoding and cleaning
-            logger.info(
-                "💾 Stored response body in metadata for fetch_id=%s (was_base64=%s, cleaned_len=%d)", 
+            logger.debug(
+                "💾 Stored response body in metadata for fetch_id=%s (was_base64=%s, cleaned_len=%d)",
                 fetch_id, is_b64, len(cleaned_body)
             )
 
@@ -689,18 +690,18 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
             url=url,
             method=meta.get("method", "unknown"),
             type=meta.get("type"),
-            status=meta.get("status", "unknown"),
+            status=meta.get("status"),  # None if responseReceived never fired
             status_text=meta.get("statusText"),
             request_headers=meta.get("requestHeaders", {}),
             response_headers=meta.get("responseHeaders", {}),
             post_data=meta.get("postData"),
             response_body=cleaned_body,
             response_body_base64=False,  # always False after cleaning
-            mime_type=meta.get("mimeType"),
+            mime_type=meta.get("mimeType") or "",
         )
 
         try:
-            logger.info(
+            logger.debug(
                 "📞 _emit_transaction: emitting transaction with responseBody len=%d",
                 len(cleaned_body) if cleaned_body else 0
             )
