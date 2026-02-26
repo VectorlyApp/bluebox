@@ -493,3 +493,73 @@ class TestGetUtcTimestamp:
         after = ResourceBase.get_utc_timestamp()
         assert before <= resource.created_at <= after
         assert before <= resource.updated_at <= after
+
+
+class TestUuidProperty:
+    """Tests for ResourceBase.uuid property."""
+
+    def test_returns_uuid_object(self) -> None:
+        """uuid property should return a UUID instance."""
+        resource = SampleResource(name="test")
+        assert isinstance(resource.uuid, UUID)
+
+    def test_uuid_matches_id_suffix(self) -> None:
+        """uuid should match the UUID portion after the class prefix."""
+        resource = SampleResource(name="test")
+        uuid_str = resource.id.split("_", 1)[1]
+        assert resource.uuid == UUID(uuid_str)
+
+    def test_uuid_is_v4(self) -> None:
+        """Auto-generated IDs should yield v4 UUIDs."""
+        resource = SampleResource(name="test")
+        assert resource.uuid.version == 4
+
+    def test_uuid_usable_as_string(self) -> None:
+        """str(resource.uuid) should be a valid UUID string usable as e.g. a Qdrant point ID."""
+        resource = SampleResource(name="test")
+        uuid_str = str(resource.uuid)
+        assert UUID(uuid_str) == resource.uuid
+
+    def test_uuid_different_subclasses(self) -> None:
+        """uuid should work on any subclass."""
+        r1 = SampleResource(name="test")
+        r2 = SampleResourceWithCustomFields(title="t", value=1)
+        assert isinstance(r1.uuid, UUID)
+        assert isinstance(r2.uuid, UUID)
+        assert r1.uuid != r2.uuid
+
+    def test_uuid_with_custom_valid_id(self) -> None:
+        """uuid should work when a valid custom ID is provided."""
+        resource = SampleResource(name="test", id=f"SampleResource_{VALID_V4_UUID}")
+        assert resource.uuid == UUID(VALID_V4_UUID)
+
+    def test_uuid_with_bare_uuid_id(self) -> None:
+        """uuid should work when the entire ID is a bare UUID string."""
+        resource = SampleResource(name="test", id=VALID_V4_UUID)
+        assert resource.uuid == UUID(VALID_V4_UUID)
+
+    def test_uuid_with_bare_uuid_str_roundtrip(self) -> None:
+        """str(resource.uuid) should equal the original bare UUID id."""
+        resource = SampleResource(name="test", id=VALID_V4_UUID)
+        assert str(resource.uuid) == VALID_V4_UUID
+
+    def test_uuid_raises_on_wrong_prefix(self) -> None:
+        """uuid should raise ValueError if the ID has a wrong prefix and isn't a bare UUID."""
+        resource = SampleResource(name="test", id="WrongPrefix_not-a-uuid")
+        with pytest.raises(ValueError, match="Invalid resource id"):
+            _ = resource.uuid
+
+    def test_uuid_raises_on_garbage_string(self) -> None:
+        """uuid should raise ValueError for a non-UUID, non-prefixed string."""
+        resource = SampleResource(name="test", id="just-a-bare-string")
+        with pytest.raises(ValueError, match="Invalid resource id"):
+            _ = resource.uuid
+
+    def test_uuid_on_grandchild(self) -> None:
+        """uuid should use the runtime class name, not a parent class."""
+        class GrandChild(SampleResource):
+            extra: str = "x"
+
+        resource = GrandChild(name="test")
+        assert resource.id.startswith("GrandChild_")
+        assert isinstance(resource.uuid, UUID)
