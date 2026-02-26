@@ -448,7 +448,7 @@ class AsyncCDPSession:
                         message_count += 1
                         if message_count % 500 == 0:
                             # log total message count once every 500 messages
-                            logger.info("📊📊📊 Processed %d messages total", message_count)
+                            logger.debug("📊📊📊 Processed %d messages total", message_count)
                         try:
                             msg = json.loads(message)
                             await self.handle_message(msg)

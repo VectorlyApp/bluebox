@@ -501,7 +501,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
         if meta:
             url = meta.get("url", "unknown")
             method = meta.get("method", "unknown")
-            status = meta.get("status", "unknown")
+            status = meta.get("status")  # None if responseReceived never fired
 
             # ensure responseBody is cleaned before emission
             raw_body = meta.get("responseBody")
@@ -520,7 +520,7 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
                 post_data=meta.get("postData"),
                 response_body=cleaned_body,
                 response_body_base64=False,  # always False after cleaning
-                mime_type=meta.get("mimeType"),
+                mime_type=meta.get("mimeType") or "",
             )
             try:
                 logger.debug(
@@ -690,14 +690,14 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
             url=url,
             method=meta.get("method", "unknown"),
             type=meta.get("type"),
-            status=meta.get("status", "unknown"),
+            status=meta.get("status"),  # None if responseReceived never fired
             status_text=meta.get("statusText"),
             request_headers=meta.get("requestHeaders", {}),
             response_headers=meta.get("responseHeaders", {}),
             post_data=meta.get("postData"),
             response_body=cleaned_body,
             response_body_base64=False,  # always False after cleaning
-            mime_type=meta.get("mimeType"),
+            mime_type=meta.get("mimeType") or "",
         )
 
         try:

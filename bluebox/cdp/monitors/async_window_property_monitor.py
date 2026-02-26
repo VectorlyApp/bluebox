@@ -291,7 +291,7 @@ class AsyncWindowPropertyMonitor(AbstractAsyncMonitor):
 
     async def _collect_window_properties(self, cdp_session: AsyncCDPSession) -> None:
         """Collect all window properties into a flat dictionary. Fully non-blocking, fail-fast."""
-        logger.info("🔧 Collecting window properties...")
+        logger.debug("🔧 Collecting window properties...")
 
         # reset abort flag at start of collection
         self.abort_collection = False
@@ -422,7 +422,7 @@ class AsyncWindowPropertyMonitor(AbstractAsyncMonitor):
 
                 processed_count += 1
 
-            logger.info(
+            logger.debug(
                 "📊 Collected window properties: total=%d, processed=%d, skipped=%d",
                 total_props, processed_count, skipped_count
             )
@@ -502,9 +502,9 @@ class AsyncWindowPropertyMonitor(AbstractAsyncMonitor):
                         changes=changes,
                         total_keys=len(self.history_db),
                     )
-                    logger.info("📞 Calling event_callback with category='window_property' (%d changes)", len(changes))
+                    logger.debug("📞 Calling event_callback with category='window_property' (%d changes)", len(changes))
                     await self.event_callback_fn(self.get_monitor_category(), event)
-                    logger.info("✅ Successfully called event_callback for window_property")
+                    logger.debug("✅ Successfully called event_callback for window_property")
                 except Exception as e:
                     logger.error("❌ Error calling event_callback: %s", e, exc_info=True)
 
@@ -533,7 +533,7 @@ class AsyncWindowPropertyMonitor(AbstractAsyncMonitor):
         Args:
             cdp_session: Async CDP session.
         """
-        logger.info("🔧 Triggering collection task...")
+        logger.debug("🔧 Triggering collection task...")
         if (self.collection_task and not self.collection_task.done()):
             return
         self.collection_task = asyncio.create_task(
