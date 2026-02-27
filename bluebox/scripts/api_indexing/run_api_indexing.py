@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from bluebox.agents.principal_investigator import PrincipalInvestigator
+from bluebox.cdp.connection import get_browser_websocket_url
 from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.api_indexing.exploration import (
     DOMExplorationSummary,
@@ -45,7 +46,11 @@ from bluebox.data_models.api_indexing.exploration import (
     UIExplorationSummary,
 )
 from bluebox.data_models.llms.interaction import EmittedMessage
-from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
+from bluebox.data_models.llms.vendors import (
+    LLMModel,
+    get_all_model_values,
+    get_model_by_value,
+)
 from bluebox.data_models.orchestration.ledger import DiscoveryLedger, RoutineCatalog
 from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
 from bluebox.llms.data_loaders.dom_data_loader import DOMDataLoader
@@ -65,22 +70,14 @@ from bluebox.utils.logger import get_logger
 logger = get_logger(name=__name__)
 
 BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_MAX_PI_ATTEMPTS = 3
+DEFAULT_MODEL_VALUE = "gpt-5.2"
+
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _resolve_model(model_str: str) -> LLMModel:
-    """Resolve a model string to an LLMModel enum value."""
-    for member in OpenAIModel:
-        if member.value == model_str:
-            return member
-    raise ValueError(
-        f"Unknown model: {model_str}. "
-        f"Available: {[m.value for m in OpenAIModel]}"
-    )
 
 
 def _emit_message(msg: EmittedMessage) -> None:
@@ -89,9 +86,6 @@ def _emit_message(msg: EmittedMessage) -> None:
         print(f"[agent] {msg.content}", file=sys.stderr)
     elif hasattr(msg, "error") and msg.error:
         print(f"[error] {msg.error}", file=sys.stderr)
-
-
-DEFAULT_MAX_PI_ATTEMPTS = 3
 
 
 def _load_if_exists(loader_cls: type, jsonl_path: Path) -> Any:
@@ -495,7 +489,7 @@ def run_api_indexing(
     cdp_captures_dir: Path,
     task: str,
     output_dir: Path = Path("./api_indexing_output"),
-    llm_model: LLMModel = OpenAIModel.GPT_5_1,
+    llm_model: LLMModel | None = None,
     remote_debugging_address: str = "http://127.0.0.1:9222",
     skip_exploration: bool = False,
     max_pi_iterations: int = 200,
@@ -531,20 +525,42 @@ def run_api_indexing(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     start_time = time.time()
+    resolved_llm_model = llm_model or get_model_by_value(DEFAULT_MODEL_VALUE)
+    if resolved_llm_model is None:
+        raise RuntimeError(f"Invalid default model configured: {DEFAULT_MODEL_VALUE}")
 
     print(f"\nAPI Indexing Pipeline", file=sys.stderr)
     print(f"  Task: {task}", file=sys.stderr)
     print(f"  Captures: {cdp_captures_dir}", file=sys.stderr)
     print(f"  Output: {output_dir}", file=sys.stderr)
-    print(f"  Model: {llm_model.value}", file=sys.stderr)
+    print(f"  Model: {resolved_llm_model.value}", file=sys.stderr)
+    remote_debugging_address = remote_debugging_address.strip()
     print(f"  Browser: {remote_debugging_address}", file=sys.stderr)
+
+    if not remote_debugging_address:
+        print(
+            "\n  [!] Chrome remote debugging address is empty. "
+            "Provide --remote-debugging-address (example: http://127.0.0.1:9222).",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        get_browser_websocket_url(remote_debugging_address)
+    except Exception as e:
+        print(
+            f"\n  [!] Chrome is not reachable at {remote_debugging_address}. "
+            "Ensure Chrome is running with --remote-debugging-port and that the address is correct. "
+            f"Underlying error: {e}",
+            file=sys.stderr,
+        )
+        return None
 
     # Phase 1: Exploration
     if skip_exploration:
         print("\n  Skipping exploration (--skip-exploration), loading from disk...", file=sys.stderr)
         summaries = load_explorations(output_dir)
     else:
-        summaries = run_explorations(cdp_captures_dir, output_dir, llm_model)
+        summaries = run_explorations(cdp_captures_dir, output_dir, resolved_llm_model)
 
     if not summaries:
         print("\n  [!] No exploration summaries available. Cannot proceed.", file=sys.stderr)
@@ -576,7 +592,7 @@ def run_api_indexing(
         summaries=summaries,
         cdp_captures_dir=cdp_captures_dir,
         output_dir=output_dir,
-        llm_model=llm_model,
+        llm_model=resolved_llm_model,
         remote_debugging_address=remote_debugging_address,
         max_pi_iterations=max_pi_iterations,
         min_experiments_before_fail=min_experiments_before_fail,
@@ -639,8 +655,8 @@ def main() -> None:
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-5.1",
-        help="LLM model to use (default: gpt-5.1)",
+        default=DEFAULT_MODEL_VALUE,
+        help=f"LLM model to use (default: {DEFAULT_MODEL_VALUE}). Options: {', '.join(get_all_model_values())}",
     )
     parser.add_argument(
         "--remote-debugging-address",
@@ -705,7 +721,11 @@ def main() -> None:
         print(f"Error: {args.cdp_captures_dir} does not exist", file=sys.stderr)
         sys.exit(1)
 
-    llm_model = _resolve_model(args.model)
+    llm_model = get_model_by_value(args.model)
+    if llm_model is None:
+        print(f"Error: Unknown model '{args.model}'", file=sys.stderr)
+        print(f"Available models: {', '.join(get_all_model_values())}", file=sys.stderr)
+        sys.exit(1)
 
     catalog = run_api_indexing(
         cdp_captures_dir=args.cdp_captures_dir,
