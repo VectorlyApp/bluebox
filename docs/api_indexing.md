@@ -57,9 +57,15 @@ Phase 2 has exactly one orchestrator:
 
 Any agent may get these, depending on constructor flags/context:
 
-- File tools: `list_files`, `read_file`, `search_files` (workspace/docs scoped)
-- Python tool: `execute_python` (only if `allow_code_execution=True`)
-- Autonomous-only finalize tools: `add_note`, `finalize_with_output` / `finalize_with_failure` (or `finalize_result` / `finalize_failure` when no output schema)
+- `list_files` — List files in workspace or docs.
+- `read_file` — Read file content by path.
+- `search_files` — Search text across files.
+- `execute_python` — Run sandboxed Python analysis code.
+- `add_note` — Attach note to finalized wrapper.
+- `finalize_with_output` — Finalize with schema-validated output object.
+- `finalize_with_failure` — Finalize schema task with failure reason.
+- `finalize_result` — Finalize with freeform output object.
+- `finalize_failure` — Finalize freeform task with failure reason.
 
 Prompt plumbing automatically injected by base class:
 
@@ -75,18 +81,22 @@ Role:
 
 Custom tools:
 
-- `search_responses_by_terms`
-- `get_entry_detail`
-- `get_response_body_schema`
-- `get_unique_urls`
-- `search_requests_by_terms`
-- `search_response_bodies`
+- `search_responses_by_terms` — Rank responses by term relevance.
+- `get_entry_detail` — Return full request and response details.
+- `get_response_body_schema` — Infer JSON response structure and types.
+- `get_unique_urls` — List unique URLs with request counts.
+- `search_requests_by_terms` — Rank requests by matching request terms.
+- `search_response_bodies` — Find value matches in response bodies.
 
 Inherited tools in current pipeline runs:
 
-- `execute_python` enabled
-- file tools available (workspace scope; docs scope only if docs loader supplied)
-- autonomous finalize tools
+- `execute_python` — Run sandboxed Python over capture context.
+- `list_files` — List workspace or docs files.
+- `read_file` — Read file content by path.
+- `search_files` — Search text in files.
+- `add_note` — Attach note before finalization.
+- `finalize_with_output` — Submit schema-validated final output.
+- `finalize_with_failure` — Submit schema-task failure reason.
 
 Data access:
 
@@ -109,20 +119,24 @@ Role:
 
 Custom tools:
 
-- `search_everywhere`
-- `search_in_network`
-- `search_in_storage`
-- `search_in_window_props`
-- `get_network_entry`
-- `get_storage_entry`
-- `get_window_prop_changes`
-- `get_storage_by_key`
+- `search_everywhere` — Search value across all available sources.
+- `search_in_network` — Search value inside network responses.
+- `search_in_storage` — Search value in storage events.
+- `search_in_window_props` — Search value in window property history.
+- `get_network_entry` — Return full network transaction by ID.
+- `get_storage_entry` — Return one storage event by index.
+- `get_window_prop_changes` — Return changes for one window path.
+- `get_storage_by_key` — Return events for specific storage key.
 
 Inherited tools in current pipeline runs:
 
-- file tools available (workspace scope; docs scope only if docs loader supplied)
-- autonomous finalize tools
-- `execute_python` is configurable; in `run_storage_exploration.py` it is intentionally disabled (`enable_execute_python=False`)
+- `list_files` — List workspace or docs files.
+- `read_file` — Read file content by path.
+- `search_files` — Search text in files.
+- `add_note` — Attach note before finalization.
+- `finalize_with_output` — Submit schema-validated final output.
+- `finalize_with_failure` — Submit schema-task failure reason.
+- `execute_python` — Configurable; disabled in storage exploration runner.
 
 Data access:
 
@@ -145,21 +159,25 @@ Role:
 
 Custom tools:
 
-- `list_pages`
-- `get_elements`
-- `get_forms`
-- `get_tables`
-- `get_scripts`
-- `get_text_content`
-- `search_strings`
-- `get_snapshot_diff`
-- `get_navigation_sequence`
+- `list_pages` — List captured pages with metadata.
+- `get_elements` — Return typed DOM elements from snapshots.
+- `get_forms` — Return forms with fields and actions.
+- `get_tables` — Return tables with headers and counts.
+- `get_scripts` — Return script tags and inline blobs.
+- `get_text_content` — Return extracted text from snapshot.
+- `search_strings` — Search text across DOM snapshots.
+- `get_snapshot_diff` — Compare two snapshots for structural changes.
+- `get_navigation_sequence` — Return ordered page transition sequence.
 
 Inherited tools in current pipeline runs:
 
-- file tools available (workspace scope; docs scope only if docs loader supplied)
-- autonomous finalize tools
-- no `execute_python` (not enabled)
+- `list_files` — List workspace or docs files.
+- `read_file` — Read file content by path.
+- `search_files` — Search text in files.
+- `add_note` — Attach note before finalization.
+- `finalize_with_output` — Submit schema-validated final output.
+- `finalize_with_failure` — Submit schema-task failure reason.
+- `execute_python` — Not enabled for this agent.
 
 Data access:
 
@@ -180,20 +198,31 @@ Role:
 
 Custom tools:
 
-- `get_interaction_summary`
-- `search_interactions_by_type`
-- `search_interactions_by_element`
-- `get_interaction_detail`
-- `get_form_inputs`
-- `get_unique_elements`
-- optional DOM cross-reference tools (when DOM loader is present):
-  - `list_pages`, `get_inputs`, `get_buttons`, `get_links`, `get_forms`, `get_tables`, `get_headings`, `get_navigation_sequence`, `search_strings`
+- `get_interaction_summary` — Summarize interaction event counts and types.
+- `search_interactions_by_type` — Filter events by interaction type.
+- `search_interactions_by_element` — Filter events by element attributes.
+- `get_interaction_detail` — Return one interaction event details.
+- `get_form_inputs` — Extract typed and selected form values.
+- `get_unique_elements` — List unique interacted elements.
+- `list_pages` — List pages for interaction context.
+- `get_inputs` — Return input elements from DOM snapshots.
+- `get_buttons` — Return button elements from DOM snapshots.
+- `get_links` — Return link elements from DOM snapshots.
+- `get_forms` — Return form elements from DOM snapshots.
+- `get_tables` — Return table elements from DOM snapshots.
+- `get_headings` — Return heading structure from DOM snapshots.
+- `get_navigation_sequence` — Return captured page navigation sequence.
+- `search_strings` — Search DOM strings for supporting clues.
 
 Inherited tools in current pipeline runs:
 
-- file tools available (workspace scope; docs scope only if docs loader supplied)
-- autonomous finalize tools
-- no `execute_python` (not enabled)
+- `list_files` — List workspace or docs files.
+- `read_file` — Read file content by path.
+- `search_files` — Search text in files.
+- `add_note` — Attach note before finalization.
+- `finalize_with_output` — Submit schema-validated final output.
+- `finalize_with_failure` — Submit schema-task failure reason.
+- `execute_python` — Not enabled for this agent.
 
 Data access:
 
@@ -233,8 +262,10 @@ Custom orchestration tools:
 
 Inherited tools:
 
-- `execute_python` enabled
-- `list_files`, `read_file`, `search_files`
+- `execute_python` — Run sandboxed Python for PI analysis.
+- `list_files` — List workspace or docs files.
+- `read_file` — Read docs or workspace file.
+- `search_files` — Search docs or workspace text.
 - no autonomous finalize tools (PI is conversational loop, `self.run` is the equivalent of autonomous mode)
 
 Data access:
@@ -267,23 +298,27 @@ Role:
 Custom tools:
 
 - Live browser:
-  - `browser_navigate`
-  - `browser_eval_js`
-  - `browser_cdp_command`
-  - `browser_get_dom`
+  - `browser_navigate` — Navigate tab and wait for load.
+  - `browser_eval_js` — Execute JavaScript in live page.
+  - `browser_cdp_command` — Send raw CDP method call.
+  - `browser_get_dom` — Return filtered live DOM tree.
 - Recorded lookups:
-  - `search_recorded_transactions`
-  - `get_recorded_transaction`
-  - `search_recorded_storage`
-  - `trace_recorded_value`
-  - `get_recorded_dom_snapshot`
-  - `get_recorded_dom_elements`
+  - `search_recorded_transactions` — Search captured transactions by keywords.
+  - `get_recorded_transaction` — Return captured transaction full details.
+  - `search_recorded_storage` — Search captured storage events by value.
+  - `trace_recorded_value` — Trace value across all recorded domains.
+  - `get_recorded_dom_snapshot` — Return one captured DOM snapshot summary.
+  - `get_recorded_dom_elements` — Return captured elements by type.
 
 Inherited tools in current pipeline runs:
 
-- `execute_python` enabled
-- file tools available (workspace scope; docs scope only if docs loader supplied)
-- autonomous finalize tools
+- `execute_python` — Run sandboxed Python during experiments.
+- `list_files` — List workspace or docs files.
+- `read_file` — Read file content by path.
+- `search_files` — Search text in files.
+- `add_note` — Attach note before finalization.
+- `finalize_with_output` — Submit schema-validated final output.
+- `finalize_with_failure` — Submit schema-task failure reason.
 
 Data access:
 
@@ -308,9 +343,13 @@ Custom tools:
 
 Inherited tools in current pipeline runs:
 
-- `execute_python` enabled
-- `list_files`, `read_file`, `search_files` (workspace/docs)
-- autonomous finalize tools (`finalize_with_output` is used with schema)
+- `execute_python` — Run sandboxed Python for inspection analysis.
+- `list_files` — List workspace or docs files.
+- `read_file` — Read docs or workspace file.
+- `search_files` — Search docs or workspace text.
+- `add_note` — Attach note before finalization.
+- `finalize_with_output` — Submit schema-validated inspection result.
+- `finalize_with_failure` — Submit inspection failure reason.
 
 Data access:
 
@@ -478,3 +517,218 @@ Created by run script (not by agent classes):
 - `agent_workspaces/inspector_1`, `agent_workspaces/inspector_2`, ...
 
 All receive mounted capture inputs in `raw/`, enabling direct Python/file inspection during autonomous runs.
+
+## Massive End-to-End Diagram
+
+```mermaid
+flowchart TD
+    %% =========================
+    %% Entry + Capture
+    %% =========================
+    subgraph A["Phase 0: Capture and Inputs"]
+        U["User Task + Browser Session"] --> M["bluebox-monitor"]
+        M --> C1["cdp_captures/network/events.jsonl"]
+        M --> C2["cdp_captures/storage/events.jsonl"]
+        M --> C3["cdp_captures/dom/events.jsonl"]
+        M --> C4["cdp_captures/interaction/events.jsonl"]
+        M --> C5["cdp_captures/window_properties/events.jsonl"]
+        M --> C6["cdp_captures/session_summary.json"]
+        C1 --> API["bluebox-api-index"]
+        C2 --> API
+        C3 --> API
+        C4 --> API
+        C5 --> API
+    end
+
+    %% =========================
+    %% Phase 1 Exploration
+    %% =========================
+    subgraph B["Phase 1: Parallel Exploration"]
+        API --> P1["run_explorations"]
+
+        subgraph B1["Network Exploration"]
+            NRun["run_network_exploration"] --> NAgent["NetworkSpecialist Autonomous"]
+            NAgent --> NTools["Tools: network + base tools"]
+            NAgent --> NSchema["Output schema: NetworkExplorationSummary"]
+            NSchema --> NOut["output/exploration/network.json"]
+        end
+
+        subgraph B2["Storage and Window Exploration"]
+            SRun["run_storage_exploration"] --> SAgent["ValueTraceResolverSpecialist Autonomous"]
+            SAgent --> STools["Tools: trace + base tools"]
+            SAgent --> SSchema["Output schema: StorageExplorationSummary"]
+            SSchema --> SOut["output/exploration/storage.json"]
+        end
+
+        subgraph B3["DOM Exploration"]
+            DRun["run_dom_exploration"] --> DAgent["DOMSpecialist Autonomous"]
+            DAgent --> DTools["Tools: dom + base tools"]
+            DAgent --> DSchema["Output schema: DOMExplorationSummary"]
+            DSchema --> DOut["output/exploration/dom.json"]
+        end
+
+        subgraph B4["UI Exploration"]
+            URun["run_ui_exploration"] --> UAgent["InteractionSpecialist Autonomous"]
+            UAgent --> UTools["Tools: interaction + base tools"]
+            UAgent --> USchema["Output schema: UIExplorationSummary"]
+            USchema --> UOut["output/exploration/ui.json"]
+        end
+
+        P1 --> NRun
+        P1 --> SRun
+        P1 --> DRun
+        P1 --> URun
+
+        NOut --> ES["Exploration Summaries Map"]
+        SOut --> ES
+        DOut --> ES
+        UOut --> ES
+    end
+
+    %% =========================
+    %% Workspaces + Mounting
+    %% =========================
+    subgraph W["Workspace Topology Created by Run Script"]
+        W0["output/agent_workspaces/PI"]
+        W1["output/agent_workspaces/worker_1..N"]
+        W2["output/agent_workspaces/inspector_1..N"]
+        RawMount["Mount raw capture inputs into each workspace raw/"]
+        W0 --> RawMount
+        W1 --> RawMount
+        W2 --> RawMount
+    end
+
+    C1 --> RawMount
+    C2 --> RawMount
+    C3 --> RawMount
+    C4 --> RawMount
+    C5 --> RawMount
+
+    %% =========================
+    %% Phase 2 PI Orchestration
+    %% =========================
+    subgraph C["Phase 2: PI Orchestration"]
+        API --> PIStart["run_pi_with_recovery"]
+        ES --> PIInit["PrincipalInvestigator Init"]
+        PIStart --> PIInit
+        W0 --> PIInit
+
+        PIInit --> Ledger["DiscoveryLedger"]
+        PIInit --> Docs["DocumentationDataLoader"]
+        PIInit --> Prompt["PI System Prompt Build"]
+
+        Prompt --> PromptA["SYSTEM_PROMPT_CORE"]
+        Prompt --> PromptB["Routine JSON Schema section"]
+        Prompt --> PromptC["Worker Capabilities section"]
+        Prompt --> PromptD["Exploration Summaries section"]
+        Prompt --> PromptE["Discovery Ledger section"]
+        Prompt --> PromptF["Task Queue section"]
+        Prompt --> PromptG["Base-injected sections: tools + workspace + docs"]
+
+        PIInit --> PITools["PI Orchestration Tools"]
+        PITools --> T1["plan_routines"]
+        PITools --> T2["dispatch_experiments_batch"]
+        PITools --> T3["get_experiment_result"]
+        PITools --> T4["record_finding"]
+        PITools --> T5["record_proven_artifact"]
+        PITools --> T6["submit_routine"]
+        PITools --> T7["mark_routine_shipped"]
+        PITools --> T8["mark_routine_failed"]
+        PITools --> T9["mark_complete"]
+
+        T1 --> Specs["RoutineSpec List"]
+        Specs --> Ledger
+    end
+
+    %% =========================
+    %% Worker Execution
+    %% =========================
+    subgraph D["Worker Experiment Execution"]
+        T2 --> TaskCreate["Create ExperimentEntry + Task"]
+        TaskCreate --> Queue["AgentOrchestrationState Task Queue"]
+        Queue --> WorkerPool["ExperimentWorker Pool"]
+        W1 --> WorkerPool
+
+        WorkerPool --> WorkerCtx["Worker Context"]
+        WorkerCtx --> Browser["Live Browser Tab via CDP"]
+        WorkerCtx --> Recorded["Recorded Loaders: network storage dom window"]
+        WorkerCtx --> WorkerTools["Worker Tools: browser_* + recorded_* + execute_python + base tools"]
+
+        WorkerTools --> ExpOut["Experiment Output Payload"]
+        ExpOut --> ExperimentsDir["output/experiments/exp_*.json"]
+        ExpOut --> Ledger
+        T3 --> ExpOut
+    end
+
+    %% =========================
+    %% Submit Routine Pipeline
+    %% =========================
+    subgraph E["submit_routine Pipeline"]
+        T6 --> Gate1["Documentation Quality Gate"]
+        Gate1 --> Gate2["Routine Pydantic Validation"]
+        Gate2 --> Exec["routine.execute with test_parameters"]
+        Exec --> ExecResult["RoutineExecutionResultWithMetadata"]
+
+        ExecResult --> InspectorPrep["Build Inspection Prompt"]
+        InspectorPrep --> BigCheck{"Execution payload > PI inline threshold"}
+        BigCheck -- "Yes" --> PersistExec["Persist payload to inspector raw/*.json"]
+        BigCheck -- "No" --> InlineExec["Inline execution JSON in prompt"]
+
+        PersistExec --> InspectRun["RoutineInspector Autonomous"]
+        InlineExec --> InspectRun
+
+        W2 --> InspectRun
+        Docs --> InspectRun
+
+        InspectRun --> InspectSchema["Output schema: RoutineInspectionResult"]
+        InspectSchema --> Attempt["RoutineAttempt pass/fail fields"]
+        Attempt --> AttemptsDir["output/attempts/attempt_*.json"]
+        Attempt --> AttemptRecord["output/attempt_records/*_attempt_*.json"]
+        Attempt --> Ledger
+
+        T7 --> Shipped["Spec status shipped + shipped_attempt_id"]
+        T8 --> FailedSpec["Spec status failed + failure_reason"]
+        Shipped --> Ledger
+        FailedSpec --> Ledger
+    end
+
+    %% =========================
+    %% Persistence Hooks
+    %% =========================
+    subgraph F["Incremental Persistence Hooks"]
+        PersistHook["on_ledger_change"] --> LFile["output/ledger.json"]
+        PersistHook --> CFile["output/catalog.json"]
+        PersistHook --> RDir["output/routines/*.json"]
+        PersistHook --> EDir["output/experiments/*.json"]
+        PersistHook --> ADir["output/attempts/*.json"]
+
+        ThreadHook["on_agent_thread"] --> Threads["output/agent_threads/*.json"]
+        AttemptHook["on_attempt_record"] --> AttemptRecord
+    end
+
+    Ledger --> PersistHook
+    PIInit --> ThreadHook
+    WorkerPool --> ThreadHook
+    InspectRun --> ThreadHook
+    Attempt --> AttemptHook
+
+    %% =========================
+    %% Completion + Recovery + Analysis
+    %% =========================
+    subgraph G["Completion and Recovery"]
+        T9 --> BuildCatalog["Build RoutineCatalog"]
+        BuildCatalog --> CatalogObj["RoutineCatalog object"]
+        CatalogObj --> CFile
+        CatalogObj --> StdoutJSON["Final catalog JSON stdout"]
+
+        PIStart --> Retry{"PI exception or context exhaustion"}
+        Retry -- "Yes" --> Resume["Create fresh PI with preserved ledger"]
+        Resume --> PIInit
+        Retry -- "No" --> Done["Pipeline completed"]
+    end
+
+    subgraph H["Optional Post-Run Analysis"]
+        Done --> Analyze["analyze_pipeline_output"]
+        Analyze --> AnalysisTxt["output/analysis.txt"]
+    end
+```
