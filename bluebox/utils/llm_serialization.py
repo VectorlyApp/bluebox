@@ -119,7 +119,7 @@ def _excluded_fields(model_cls: type[BaseModel]) -> frozenset[str]:
     return frozenset(
         name
         for name, info in model_cls.model_fields.items()
-        if any(isinstance(m, LLMExclude) for m in info.metadata)
+        if any(m is LLMExclude or isinstance(m, LLMExclude) for m in info.metadata)
     )
 
 
