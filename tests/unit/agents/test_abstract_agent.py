@@ -272,6 +272,43 @@ class ConcreteAgent(AbstractAgent):
         """
         return CleanModel(x="visible", y=42)
 
+    @agent_tool(
+        availability=lambda self: getattr(self, "_kitchen_sink_enabled", False),
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=80,
+        token_optimized=True,
+    )
+    def _kitchen_sink(self, url: str, verbose: bool = False) -> TransactionModel:
+        """
+        Tool exercising every decorator arg and returning a model with LLMExclude fields.
+
+        Args:
+            url: The URL to fetch.
+            verbose: Enable verbose output.
+        """
+        return TransactionModel(
+            url=url,
+            method="GET",
+            status_code=200,
+            response_body='{"huge": "payload that should be excluded"}',
+            raw_headers={"x-secret": "hidden"},
+        )
+
+    @agent_tool(
+        availability=lambda self: getattr(self, "_kitchen_sink_enabled", False),
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=80,
+        token_optimized=True,
+    )
+    def _kitchen_sink_boom(self, url: str) -> TransactionModel:
+        """
+        Same decorator args as kitchen_sink but always raises.
+
+        Args:
+            url: Ignored — always raises.
+        """
+        raise RuntimeError(f"boom while fetching {url}")
+
 
 @pytest.fixture
 def mock_emit() -> MagicMock:
@@ -605,6 +642,8 @@ class TestCollectTools:
             # LLMExclude integration test tools
             "get_transaction", "get_transaction_direct", "get_computed",
             "get_transaction_list", "get_clean_model",
+            # Kitchen-sink tools (all decorator args + LLMExclude model)
+            "kitchen_sink", "kitchen_sink_boom",
             "add_note", "finalize_with_output", "finalize_with_failure", "finalize_result", "finalize_failure",
             "execute_python",
             # Unified file tools from AbstractAgent
@@ -1028,6 +1067,504 @@ class TestExecuteToolLLMExclude:
         assert result["url"] == "https://example.com"
         assert "response_body" not in result
         assert "raw_headers" not in result
+
+
+# =============================================================================
+# Kitchen-sink tool: all @agent_tool args + LLMExclude model return
+# =============================================================================
+
+
+class TestKitchenSinkTool:
+    """Tests for a tool that combines every @agent_tool decorator arg
+    (availability, persist, max_characters, token_optimized) with a return type
+    that is a Pydantic model containing LLMExclude-annotated fields.
+
+    Validates that all features compose correctly and don't interfere.
+    """
+
+    # ---- decorator metadata ----
+
+    def test_meta_has_all_decorator_args(self) -> None:
+        """_ToolMeta captures every kwarg from the decorator."""
+        meta = ConcreteAgent._kitchen_sink._tool_meta
+        assert meta.name == "kitchen_sink"
+        assert callable(meta.availability)
+        assert meta.persist == ToolResultPersistMode.OVERFLOW
+        assert meta.max_characters == 80
+        assert meta.token_optimized is True
+
+    def test_schema_has_correct_params(self) -> None:
+        """Parameter schema reflects the function signature, not the model fields."""
+        meta = ConcreteAgent._kitchen_sink._tool_meta
+        schema = meta.parameters
+        assert sorted(schema["required"]) == ["url"]
+        assert "url" in schema["properties"]
+        assert "verbose" in schema["properties"]
+        assert schema["properties"]["url"]["type"] == "string"
+        assert schema["properties"]["verbose"]["type"] == "boolean"
+        assert schema["properties"]["url"]["description"] == "The URL to fetch."
+        assert schema["properties"]["verbose"]["description"] == "Enable verbose output."
+        # self excluded, model fields not leaked into top-level params
+        assert "self" not in schema["properties"]
+        assert "response_body" not in schema["properties"]
+        assert "raw_headers" not in schema["properties"]
+
+    def test_description_extracted_from_docstring(self) -> None:
+        meta = ConcreteAgent._kitchen_sink._tool_meta
+        assert "every decorator arg" in meta.description
+        assert "Args:" not in meta.description
+
+    # ---- availability gating ----
+
+    def test_unavailable_when_flag_off(self, agent: ConcreteAgent) -> None:
+        """Tool is gated out when the availability lambda returns False."""
+        agent._kitchen_sink_enabled = False
+        agent._sync_tools()
+        assert "kitchen_sink" not in agent._registered_tool_names
+
+    def test_available_when_flag_on(self, agent: ConcreteAgent) -> None:
+        agent._kitchen_sink_enabled = True
+        agent._sync_tools()
+        assert "kitchen_sink" in agent._registered_tool_names
+
+    def test_execute_returns_error_when_unavailable(self, agent: ConcreteAgent) -> None:
+        agent._kitchen_sink_enabled = False
+        result = agent._execute_tool("kitchen_sink", {"url": "https://x.com"})
+        assert "error" in result
+        assert "not currently available" in result["error"]
+
+    # ---- LLMExclude stripping on the returned model ----
+
+    def test_llm_exclude_fields_stripped(self, agent: ConcreteAgent) -> None:
+        """response_body and raw_headers (LLMExclude) must not appear in the result."""
+        agent._kitchen_sink_enabled = True
+        result = agent._execute_tool("kitchen_sink", {"url": "https://api.test.com"})
+        # token_optimized returns a TOON-encoded string, not JSON
+        result_str = result if isinstance(result, str) else json.dumps(result)
+        assert "response_body" not in result_str
+        assert "raw_headers" not in result_str
+        assert "x-secret" not in result_str
+
+    def test_visible_fields_preserved(self, agent: ConcreteAgent) -> None:
+        agent._kitchen_sink_enabled = True
+        result = agent._execute_tool("kitchen_sink", {"url": "https://api.test.com"})
+        result_str = result if isinstance(result, str) else json.dumps(result)
+        assert "https://api.test.com" in result_str
+        assert "GET" in result_str
+        assert "200" in result_str
+
+    # ---- token_optimized encoding ----
+
+    def test_token_optimized_returns_string(self, agent: ConcreteAgent) -> None:
+        """token_optimized tools return an encoded string, not a raw dict."""
+        agent._kitchen_sink_enabled = True
+        result = agent._execute_tool("kitchen_sink", {"url": "https://small.io"})
+        # token_optimized encodes result as a string (or overflow wraps it)
+        assert isinstance(result, (str, dict))
+
+    # ---- persist=OVERFLOW + max_characters=80 ----
+
+    def test_small_result_not_persisted(self, agent: ConcreteAgent) -> None:
+        """Result under max_characters (80) should NOT create an artifact."""
+        agent._kitchen_sink_enabled = True
+        agent._execute_tool("kitchen_sink", {"url": "https://t.co"})
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert artifacts == []
+
+    def test_large_url_overflows_and_persists(self, agent: ConcreteAgent) -> None:
+        """A long URL pushes the serialized result over 80 chars, triggering overflow persist."""
+        agent._kitchen_sink_enabled = True
+        long_url = "https://example.com/" + "x" * 200
+        result = agent._execute_tool("kitchen_sink", {"url": long_url})
+        # token_optimized + overflow returns a TOON-encoded string with persist metadata
+        assert isinstance(result, str)
+        assert "persist_mode: overflow" in result
+        assert "artifact_id: a_" in result
+        assert "truncated" in result
+        # Verify artifact was actually saved
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert len(artifacts) == 1
+        stored = agent._workspace.read_artifact(artifacts[0].artifact_id)
+        assert "error" not in stored
+        # The persisted artifact should contain the full URL but NOT the LLMExclude fields
+        assert long_url in stored["content"]
+        assert "response_body" not in stored["content"]
+        assert "raw_headers" not in stored["content"]
+
+    # ---- auto_execute_tool path (full pipeline) ----
+
+    def test_auto_execute_strips_excluded_and_emits(
+        self, agent: ConcreteAgent, mock_emit: MagicMock,
+    ) -> None:
+        """Full _auto_execute_tool path: LLMExclude stripped, emit called, result is valid JSON."""
+        agent._kitchen_sink_enabled = True
+        result_json = agent._auto_execute_tool("kitchen_sink", {"url": "https://tiny.io"})
+        # Should be parseable JSON
+        parsed = json.loads(result_json)
+        assert "response_body" not in str(parsed)
+        assert "raw_headers" not in str(parsed)
+        # Verify emission happened
+        tool_msgs = [
+            c for c in mock_emit.call_args_list
+            if isinstance(c[0][0], ToolInvocationResultEmittedMessage)
+        ]
+        assert len(tool_msgs) == 1
+
+    # ---- process_tool_calls integration ----
+
+    def test_process_tool_calls_with_kitchen_sink(self, agent: ConcreteAgent) -> None:
+        """Kitchen sink tool works through the full _process_tool_calls path."""
+        agent._kitchen_sink_enabled = True
+        tool_call = LLMToolCall(
+            tool_name="kitchen_sink",
+            tool_arguments={"url": "https://integration.test", "verbose": True},
+            call_id="ks_1",
+        )
+        agent._process_tool_calls([tool_call])
+        chats = agent.get_chats()
+        assert len(chats) == 1
+        assert chats[0].role == ChatRole.TOOL
+        assert chats[0].tool_call_id == "ks_1"
+        # LLMExclude fields must not leak into chat content
+        assert "response_body" not in chats[0].content
+        assert "raw_headers" not in chats[0].content
+        # Visible fields present
+        assert "https://integration.test" in chats[0].content
+
+    # ---- full round-trip: user message -> LLM tool call -> result -> final ----
+
+    def test_full_round_trip_with_kitchen_sink(
+        self, agent: ConcreteAgent, mock_emit: MagicMock,
+    ) -> None:
+        """End-to-end: user message triggers kitchen_sink, all features compose."""
+        agent._kitchen_sink_enabled = True
+        agent._sync_tools()
+
+        tool_call = LLMToolCall(
+            tool_name="kitchen_sink",
+            tool_arguments={"url": "https://e2e.test"},
+            call_id="ks_e2e",
+        )
+        response1 = LLMChatResponse(content="", tool_calls=[tool_call], response_id="r1")
+        response2 = LLMChatResponse(content="Done fetching.", response_id="r2")
+        agent.llm_client.call_sync = MagicMock(side_effect=[response1, response2])
+
+        agent.process_new_message("fetch https://e2e.test")
+
+        chats = agent.get_chats()
+        roles = [c.role for c in chats]
+        assert roles == [ChatRole.USER, ChatRole.ASSISTANT, ChatRole.TOOL, ChatRole.ASSISTANT]
+        # Tool result chat has no excluded fields
+        tool_chat = chats[2]
+        assert "response_body" not in tool_chat.content
+        assert "x-secret" not in tool_chat.content
+        # Final assistant response preserved
+        assert chats[3].content == "Done fetching."
+
+    # ---- edge: optional param uses default ----
+
+    def test_optional_verbose_defaults_to_false(self, agent: ConcreteAgent) -> None:
+        agent._kitchen_sink_enabled = True
+        # Omit verbose — should default to False and not error
+        result = agent._execute_tool("kitchen_sink", {"url": "https://defaults.test"})
+        result_str = result if isinstance(result, str) else json.dumps(result)
+        assert "https://defaults.test" in result_str
+
+    # ---- edge: missing required param ----
+
+    def test_missing_url_returns_error(self, agent: ConcreteAgent) -> None:
+        agent._kitchen_sink_enabled = True
+        result = agent._execute_tool("kitchen_sink", {})
+        assert "error" in result
+        assert "Missing required parameter" in result["error"]
+
+    # ---- edge: no workspace degrades gracefully (persist disabled) ----
+
+    def test_no_workspace_returns_raw_without_persist(self, mock_emit: MagicMock) -> None:
+        """Without workspace, overflow persist is skipped; result returned raw."""
+        no_ws_agent = ConcreteAgent(emit_message_callable=mock_emit, workspace=None)
+        no_ws_agent._kitchen_sink_enabled = True
+        long_url = "https://example.com/" + "z" * 200
+        result = no_ws_agent._execute_tool("kitchen_sink", {"url": long_url})
+        # Without workspace, persist can't happen — result comes back as-is
+        result_str = result if isinstance(result, str) else json.dumps(result)
+        assert long_url in result_str
+        assert "response_body" not in result_str
+
+    # ---- edge: validation errors bypass post-execution pipeline ----
+
+    def test_validation_error_not_token_optimized(self, agent: ConcreteAgent) -> None:
+        """Validation errors return raw dicts — never TOON-encoded, never persisted."""
+        agent._kitchen_sink_enabled = True
+        # Wrong type for url: int instead of str
+        result = agent._execute_tool("kitchen_sink", {"url": 12345})
+        # Error dict must be a plain dict, not a TOON string
+        assert isinstance(result, dict)
+        assert "error" in result
+        assert "Invalid argument type" in result["error"]
+
+    def test_extra_params_error_not_token_optimized(self, agent: ConcreteAgent) -> None:
+        """Extra unknown params return raw error dict — not TOON-encoded."""
+        agent._kitchen_sink_enabled = True
+        result = agent._execute_tool("kitchen_sink", {"url": "https://x.com", "bogus": 42})
+        assert isinstance(result, dict)
+        assert "error" in result
+        assert "Unknown parameter" in result["error"]
+
+    def test_unavailable_error_not_token_optimized(self, agent: ConcreteAgent) -> None:
+        """Unavailable error is raw dict, not TOON."""
+        agent._kitchen_sink_enabled = False
+        result = agent._execute_tool("kitchen_sink", {"url": "https://x.com"})
+        assert isinstance(result, dict)
+        assert "error" in result
+
+    def test_validation_error_does_not_persist(self, agent: ConcreteAgent) -> None:
+        """Validation failures must not create artifacts."""
+        agent._kitchen_sink_enabled = True
+        agent._execute_tool("kitchen_sink", {"url": 999})
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert artifacts == []
+
+    # ---- edge: handler exception bypasses post-execution pipeline ----
+
+    def test_handler_exception_via_auto_execute_returns_plain_error(
+        self, agent: ConcreteAgent, mock_emit: MagicMock,
+    ) -> None:
+        """When handler raises, _auto_execute_tool catches it.
+        The error dict is NOT token_optimized and NOT persisted."""
+        agent._kitchen_sink_enabled = True
+        result_json = agent._auto_execute_tool("kitchen_sink_boom", {"url": "https://fail.test"})
+        result = json.loads(result_json)
+        assert "error" in result
+        assert "boom while fetching" in result["error"]
+        # Error must NOT have persist/overflow keys
+        assert "persist_mode" not in result
+        assert "artifact_id" not in result
+        assert "_token_optimized_note" not in result
+
+    def test_handler_exception_does_not_persist_artifact(self, agent: ConcreteAgent) -> None:
+        """A raising handler must not leave behind any artifacts."""
+        agent._kitchen_sink_enabled = True
+        agent._auto_execute_tool("kitchen_sink_boom", {"url": "https://fail.test"})
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert artifacts == []
+
+    def test_handler_exception_emits_error_tool_result(
+        self, agent: ConcreteAgent, mock_emit: MagicMock,
+    ) -> None:
+        """Exception path still emits a ToolInvocationResultEmittedMessage with the error."""
+        agent._kitchen_sink_enabled = True
+        agent._auto_execute_tool("kitchen_sink_boom", {"url": "https://fail.test"})
+        tool_msgs = [
+            c for c in mock_emit.call_args_list
+            if isinstance(c[0][0], ToolInvocationResultEmittedMessage)
+        ]
+        assert len(tool_msgs) == 1
+        assert "error" in tool_msgs[0][0][0].tool_result
+
+    # ---- edge: exception in process_tool_calls chat content ----
+
+    def test_process_tool_calls_exception_no_excluded_leak(self, agent: ConcreteAgent) -> None:
+        """Exception through _process_tool_calls: error in chat, no LLMExclude fields."""
+        agent._kitchen_sink_enabled = True
+        tool_call = LLMToolCall(
+            tool_name="kitchen_sink_boom",
+            tool_arguments={"url": "https://crash.test"},
+            call_id="ks_crash",
+        )
+        agent._process_tool_calls([tool_call])
+        chats = agent.get_chats()
+        assert len(chats) == 1
+        assert "error" in chats[0].content
+        assert "boom while fetching" in chats[0].content
+        # No model fields leaked into error content
+        assert "response_body" not in chats[0].content
+        assert "raw_headers" not in chats[0].content
+
+    # ---- edge: availability toggles between calls ----
+
+    def test_availability_toggles_dynamically(self, agent: ConcreteAgent) -> None:
+        """Availability lambda re-evaluated on each _sync_tools call."""
+        agent._kitchen_sink_enabled = False
+        agent._sync_tools()
+        assert "kitchen_sink" not in agent._registered_tool_names
+
+        agent._kitchen_sink_enabled = True
+        agent._sync_tools()
+        assert "kitchen_sink" in agent._registered_tool_names
+
+        # Execute while available
+        result = agent._execute_tool("kitchen_sink", {"url": "https://toggle.test"})
+        result_str = result if isinstance(result, str) else json.dumps(result)
+        assert "https://toggle.test" in result_str
+
+        # Toggle back off
+        agent._kitchen_sink_enabled = False
+        agent._sync_tools()
+        result = agent._execute_tool("kitchen_sink", {"url": "https://toggle.test"})
+        assert isinstance(result, dict)
+        assert "not currently available" in result["error"]
+
+    # ---- edge: result exactly at max_characters boundary ----
+
+    def test_result_exactly_at_boundary_not_persisted(self, agent: ConcreteAgent) -> None:
+        """Result whose serialized length == max_characters should NOT overflow."""
+        agent._kitchen_sink_enabled = True
+        # Use a very short URL to keep the serialized result compact
+        result = agent._execute_tool("kitchen_sink", {"url": "http://a.b"})
+        # Check no artifact was created (result should be under 80 chars after LLMExclude strip)
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert artifacts == []
+
+    # ---- edge: token_optimized + no workspace + overflow-sized result ----
+
+    def test_no_workspace_large_result_still_token_optimized(self, mock_emit: MagicMock) -> None:
+        """Without workspace: persist skipped, but token_optimized encoding still applied."""
+        no_ws_agent = ConcreteAgent(emit_message_callable=mock_emit, workspace=None)
+        no_ws_agent._kitchen_sink_enabled = True
+        result = no_ws_agent._execute_tool("kitchen_sink", {"url": "https://short.io"})
+        # Should be TOON-encoded string (token_optimized is independent of persist)
+        assert isinstance(result, str)
+        assert "https://short.io" in result
+        # Should NOT have persist metadata since no workspace
+        assert "artifact_id" not in result
+        assert "persist_mode" not in result
+
+    # ---- edge: parallel kitchen_sink calls via _process_tool_calls ----
+
+    def test_parallel_kitchen_sink_calls_isolated(self, agent: ConcreteAgent) -> None:
+        """Multiple parallel calls produce separate results in order, no cross-contamination."""
+        agent._kitchen_sink_enabled = True
+        calls = [
+            LLMToolCall(tool_name="kitchen_sink", tool_arguments={"url": "https://one.test"}, call_id="p1"),
+            LLMToolCall(tool_name="kitchen_sink", tool_arguments={"url": "https://two.test"}, call_id="p2"),
+            LLMToolCall(tool_name="kitchen_sink_boom", tool_arguments={"url": "https://fail.test"}, call_id="p3"),
+        ]
+        agent._process_tool_calls(calls)
+        chats = agent.get_chats()
+        assert len(chats) == 3
+        # Order preserved
+        assert chats[0].tool_call_id == "p1"
+        assert chats[1].tool_call_id == "p2"
+        assert chats[2].tool_call_id == "p3"
+        # Successes have visible fields, no excluded
+        assert "https://one.test" in chats[0].content
+        assert "response_body" not in chats[0].content
+        assert "https://two.test" in chats[1].content
+        assert "response_body" not in chats[1].content
+        # Failure has error, no model fields
+        assert "error" in chats[2].content
+        assert "boom while fetching" in chats[2].content
+
+    # ---- edge: overflow persisted artifact is valid JSON with correct fields ----
+
+    def test_persisted_artifact_is_valid_json_with_only_visible_fields(
+        self, agent: ConcreteAgent,
+    ) -> None:
+        """The artifact stored on disk is parseable JSON with excluded fields removed."""
+        agent._kitchen_sink_enabled = True
+        long_url = "https://example.com/" + "a" * 200
+        agent._execute_tool("kitchen_sink", {"url": long_url})
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert len(artifacts) == 1
+        stored = agent._workspace.read_artifact(artifacts[0].artifact_id)
+        content = json.loads(stored["content"])
+        # Only visible TransactionModel fields present
+        assert content["url"] == long_url
+        assert content["method"] == "GET"
+        assert content["status_code"] == 200
+        assert "response_body" not in content
+        assert "raw_headers" not in content
+
+    # ---- edge: full round-trip with overflow persistence ----
+
+    def test_full_round_trip_overflow_persists_and_chat_clean(
+        self, agent: ConcreteAgent, mock_emit: MagicMock,
+    ) -> None:
+        """E2E: overflow-sized result persists artifact, chat content has truncated preview."""
+        agent._kitchen_sink_enabled = True
+        agent._sync_tools()
+
+        long_url = "https://example.com/" + "q" * 200
+        tool_call = LLMToolCall(
+            tool_name="kitchen_sink",
+            tool_arguments={"url": long_url},
+            call_id="ks_overflow_e2e",
+        )
+        response1 = LLMChatResponse(content="", tool_calls=[tool_call], response_id="r1")
+        response2 = LLMChatResponse(content="Got it.", response_id="r2")
+        agent.llm_client.call_sync = MagicMock(side_effect=[response1, response2])
+
+        agent.process_new_message("fetch big url")
+
+        chats = agent.get_chats()
+        tool_chat = chats[2]
+        # Chat must reference the artifact, not contain the full result
+        assert "artifact_id" in tool_chat.content
+        assert "persist_mode: overflow" in tool_chat.content
+        # No excluded fields in chat
+        assert "response_body" not in tool_chat.content
+        assert "raw_headers" not in tool_chat.content
+        # Artifact was persisted
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert len(artifacts) == 1
+
+    # ---- edge: full round-trip with handler exception ----
+
+    def test_full_round_trip_with_exception(
+        self, agent: ConcreteAgent, mock_emit: MagicMock,
+    ) -> None:
+        """E2E: handler exception produces error chat, LLM still gets second turn."""
+        agent._kitchen_sink_enabled = True
+        agent._sync_tools()
+
+        tool_call = LLMToolCall(
+            tool_name="kitchen_sink_boom",
+            tool_arguments={"url": "https://kaboom.test"},
+            call_id="ks_boom_e2e",
+        )
+        response1 = LLMChatResponse(content="", tool_calls=[tool_call], response_id="r1")
+        response2 = LLMChatResponse(content="That failed, sorry.", response_id="r2")
+        agent.llm_client.call_sync = MagicMock(side_effect=[response1, response2])
+
+        agent.process_new_message("try the boom tool")
+
+        chats = agent.get_chats()
+        roles = [c.role for c in chats]
+        assert roles == [ChatRole.USER, ChatRole.ASSISTANT, ChatRole.TOOL, ChatRole.ASSISTANT]
+        # Tool chat has the error
+        assert "boom while fetching" in chats[2].content
+        # LLM still gets to respond
+        assert chats[3].content == "That failed, sorry."
+        # No artifacts created
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert artifacts == []
+
+    # ---- edge: _execute_tool raises directly (not _auto_execute_tool) ----
+
+    def test_execute_tool_propagates_handler_exception(self, agent: ConcreteAgent) -> None:
+        """_execute_tool does NOT catch handler exceptions — they propagate to caller."""
+        agent._kitchen_sink_enabled = True
+        with pytest.raises(RuntimeError, match="boom while fetching"):
+            agent._execute_tool("kitchen_sink_boom", {"url": "https://raw.test"})
+
+    # ---- edge: consecutive calls don't cross-contaminate persist state ----
+
+    def test_consecutive_calls_independent_artifacts(self, agent: ConcreteAgent) -> None:
+        """Two overflow calls produce two separate artifacts."""
+        agent._kitchen_sink_enabled = True
+        url1 = "https://example.com/" + "m" * 200
+        url2 = "https://example.com/" + "n" * 200
+        agent._execute_tool("kitchen_sink", {"url": url1})
+        agent._execute_tool("kitchen_sink", {"url": url2})
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert len(artifacts) == 2
+        contents = {
+            json.loads(agent._workspace.read_artifact(a.artifact_id)["content"])["url"]
+            for a in artifacts
+        }
+        assert url1 in contents
+        assert url2 in contents
 
 
 # =============================================================================
