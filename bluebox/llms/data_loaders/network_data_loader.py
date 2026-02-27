@@ -354,10 +354,14 @@ class NetworkDataLoader(AbstractDataLoader[NetworkTransactionEvent, NetworkStats
         """
         Search entries by a list of terms and rank by relevance.
 
-        For each entry, searches the response body for each term and computes:
+        For each entry, searches the URL, request headers, and response body
+        for each term and computes:
         - unique_terms_found: how many different terms were found
-        - total_hits: total number of term matches across all terms
+        - total_hits: total number of term matches across all searchable fields
         - score: (total_hits / num_terms) * unique_terms_found
+
+        URL matches are boosted (×3) since URL path searches are the most
+        common use case for transaction discovery.
 
         Args:
             terms: List of search terms (case-insensitive).
@@ -375,20 +379,29 @@ class NetworkDataLoader(AbstractDataLoader[NetworkTransactionEvent, NetworkStats
             return results
 
         for entry in self._entries:
-            if not entry.response_body:
+            # Build searchable text from multiple fields
+            url_lower = entry.url.lower() if entry.url else ""
+            headers_lower = str(entry.request_headers).lower() if entry.request_headers else ""
+            body_lower = entry.response_body.lower() if entry.response_body else ""
+
+            # Skip entries with no searchable content
+            if not url_lower and not body_lower:
                 continue
 
-            content_lower = entry.response_body.lower()
-
-            # Count hits for each term
+            # Count hits for each term across all fields
             unique_terms_found = 0
             total_hits = 0
 
             for term in terms_lower:
-                count = content_lower.count(term)
-                if count > 0:
+                url_count = url_lower.count(term)
+                headers_count = headers_lower.count(term)
+                body_count = body_lower.count(term)
+
+                # Boost URL matches since URL path queries are the primary use case
+                term_total = (url_count * 3) + headers_count + body_count
+                if term_total > 0:
                     unique_terms_found += 1
-                    total_hits += count
+                    total_hits += term_total
 
             # Skip entries with no hits
             if unique_terms_found == 0:

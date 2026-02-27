@@ -10,6 +10,7 @@ Contains:
 - generate_type_js(): Input text typing with clear option
 - generate_scroll_element_js(), generate_scroll_window_js(): Scrolling
 - generate_wait_for_url_js(): URL regex matching
+- generate_get_dom_js(): Filtered DOM snapshot for browser_get_dom tool
 - generate_js_evaluate_wrapper_js(): Custom JS execution wrapper
 - _get_placeholder_resolution_js_helpers(): sessionStorage/localStorage/cookie access
 """
@@ -750,6 +751,75 @@ def generate_wait_for_url_js(url_regex: str) -> str:
                 pattern: {json.dumps(url_regex)}
             }};
         }})()
+    """)
+
+
+def generate_get_dom_js(
+    selector: str | None = None,
+    max_depth: int = 5,
+    include_tags: list[str] | None = None,
+) -> str:
+    """
+    Generate JavaScript to capture a filtered DOM tree snapshot.
+
+    Args:
+        selector: Optional CSS selector to scope traversal root.
+        max_depth: Maximum traversal depth from the chosen root.
+        include_tags: Optional list of allowed tag names; when provided, other
+            tags are skipped while still traversing descendants.
+
+    Returns:
+        JavaScript expression string for Runtime.evaluate.
+    """
+    selector_js = json.dumps(selector) if selector is not None else "null"
+    include_tags_js = json.dumps(include_tags) if include_tags else "null"
+    max_depth_js = int(max_depth)
+    return dedent(f"""\
+        (function(selector, maxDepth, includeTags) {{
+          function walk(node, depth) {{
+            if (depth > maxDepth) return null;
+            var tag = node.nodeName.toLowerCase();
+            if (includeTags && includeTags.length > 0 && !includeTags.includes(tag) && tag !== '#document' && tag !== 'html' && tag !== 'head' && tag !== 'body') {{
+              var kids = [];
+              for (var i = 0; i < node.childNodes.length; i++) {{
+                var c = walk(node.childNodes[i], depth);
+                if (c) kids.push(c);
+              }}
+              return kids.length === 1 ? kids[0] : kids.length > 1 ? kids : null;
+            }}
+            if (node.nodeType === 3) {{
+              var text = node.textContent.trim();
+              return text ? text.substring(0, 200) : null;
+            }}
+            if (node.nodeType !== 1) return null;
+            var obj = {{ tag: tag }};
+            var attrs = {{}};
+            for (var j = 0; j < node.attributes.length; j++) {{
+              var a = node.attributes[j];
+              if (['id', 'class', 'name', 'type', 'href', 'src', 'action', 'method', 'value', 'placeholder', 'role', 'aria-label', 'data-testid'].includes(a.name)) {{
+                attrs[a.name] = a.value.substring(0, 200);
+              }}
+            }}
+            if (Object.keys(attrs).length) obj.attrs = attrs;
+            var children = [];
+            for (var k = 0; k < node.childNodes.length; k++) {{
+              var child = walk(node.childNodes[k], depth + 1);
+              if (child) {{
+                if (Array.isArray(child)) children = children.concat(child);
+                else children.push(child);
+              }}
+            }}
+            if (children.length) obj.children = children;
+            return obj;
+          }}
+          var root = selector ? document.querySelector(selector) : document.documentElement;
+          if (!root) return JSON.stringify({{ error: 'selector not found: ' + selector }});
+          var result = JSON.stringify(walk(root, 0));
+          if (result.length > 15000) {{
+            return result.substring(0, 15000) + '... [TRUNCATED at 15K chars]';
+          }}
+          return result;
+        }})({selector_js}, {max_depth_js}, {include_tags_js})
     """)
 
 

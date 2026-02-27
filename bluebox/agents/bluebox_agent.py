@@ -22,7 +22,7 @@ from typing import Any, Callable
 import requests
 
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
-from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
+from bluebox.workspace import AgentWorkspace
 from bluebox.config import Config
 from bluebox.data_models.agents.context import BlueBoxAgentContext, UsedRoutine
 from bluebox.data_models.browser_agent import (
@@ -43,14 +43,6 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.routine.routine import RoutineExecutionRequest, RoutineInfo
-from bluebox.utils.code_execution_sandbox import (
-    BLOCKED_MODULES,
-    BLOCKED_PATTERNS,
-    execute_python_sandboxed,
-    get_active_sandbox_mode,
-    get_workaround_for_error,
-)
-from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -80,32 +72,28 @@ class BlueBoxAgent(AbstractAgent):
         1. **Search broadly**: When the user makes a request, use `search_routines` with a task description that describes what the user wants to do. This runs semantic search, so add some detail. You can run this multiple times if needed to get more results.
         2. **Execute all relevant routines**: Run ALL routines that could plausibly fulfill the user's request via `execute_routines_in_parallel`. When in doubt, include the routine — running an extra routine is cheap, missing a relevant one is costly. Each routine execution requires a `routine_id` from the search results and a `parameters` dict keyed by parameter name with the corresponding value (e.g. {"origin": "New York", "date": "2025-03-01"}). Make sure to provide all required parameters as listed in the search results.
         3. **Fallback to browser agent**: If NO routines match after thorough searching, use `execute_browser_task` to perform the task via an AI-driven browser agent. Write a clear, detailed natural language instruction for the task.
-        4. **Post-process results**: Use `run_python_code` to transform routine results into clean output files (CSV, JSON, JSONL, etc.) for the user.
-        5. **Verify output**: After writing files, use `list_workspace_files` and `read_workspace_file` to verify the output looks correct. If it doesn't, fix the code and rerun.
+        4. **Post-process results**: Use `execute_python` to transform routine results into clean output files (CSV, JSON, JSONL, etc.) for the user.
+        5. **Verify output**: After writing files, use `list_files(scope="workspace")` and `read_file(scope="workspace", path=...)` to verify the output looks correct. If it doesn't, fix the code and rerun.
         6. **Report results**: Summarize what was executed and the output files to the user.
 
         ## Workspace
         Your workspace has the following structure:
-        - `raw/` — routine result JSON files, saved automatically when routines execute
-        - `outputs/` — write all your generated output files here (CSV, JSON, JSONL, etc.)
+        - `raw/` (read-only) — routine result JSON files and mounted inputs
+        - `output/` — write all your generated output files here (CSV, JSON, JSONL, etc.)
         - `context/` — context files (JSON + Markdown) saved by `generate_context`, used for session replay
+        - `meta/` (read-only) — system-managed manifests and metadata
 
-        **Pre-loaded variables in `run_python_code`:**
-        - `routine_results` — list of dicts, one per JSON file in raw/
-        - `json` — for parsing and serialization
-        - `csv` — for CSV reading/writing
-        - `Path` — from pathlib, for path operations (do NOT import pathlib — use `Path` directly)
-        - `open()` — scoped to the workspace directory for safe file I/O
+        **Reading routine outputs in `execute_python`:**
+        - Use `list_files(scope="workspace")` to see files in `raw/`
+        - Read raw JSON files directly in Python:
+          `records = [json.loads(p.read_text()) for p in Path("raw").glob("*.json")]`
+        - Use `read_file(scope="workspace", path="...")` to inspect any file by relative path (e.g. "raw/25-01-15-143052-routine_result_1.json" or "output/results.csv"). Use optional start_line/end_line for large files.
 
         **Writing output files:**
-        - Write to the outputs/ subdirectory: `with open("outputs/results.csv", "w") as f: ...`
-
-        **Inspecting files:**
-        - Use `list_workspace_files` to see all files in the workspace
-        - Use `read_workspace_file` to read any file by relative path (e.g. "raw/25-01-15-143052-routine_result_1.json" or "outputs/results.csv"). Use optional start_line/end_line for large files.
+        - Write to the output/ subdirectory: `with open("output/results.csv", "w") as f: ...`
 
         ## Routine Result Structure
-        Each entry in `routine_results` is the raw API response JSON saved by `execute_routines_in_parallel`. The structure is:
+        Each JSON file in `raw/` from `execute_routines_in_parallel` has this structure:
 
         ```
         {
@@ -122,16 +110,16 @@ class BlueBoxAgent(AbstractAgent):
         }
         ```
 
-        **Path to the payload:** `rr["result"]["data"]` for each `rr` in `routine_results`.
-        **Input parameters:** `rr["parameters"]` for each `rr` in `routine_results`.
+        **Path to the payload:** `record["result"]["data"]`.
+        **Input parameters:** `record["parameters"]`.
 
-        **Important:** The payload shape varies per routine — different routines return different key names and structures. Always start your post-processing code by printing `rr["routine_name"]` and `rr["result"]["data"].keys()` to understand what each routine returned before trying to extract specific fields.
+        **Important:** The payload shape varies per routine — different routines return different key names and structures. Always inspect a few raw records first before extracting fields.
 
         ## Post-Processing with Python
-        - After routines return results, ALWAYS use `run_python_code` to post-process data and generate clean output files.
+        - After routines return results, ALWAYS use `execute_python` to post-process data and generate clean output files.
         - **ALWAYS add debug print() statements** in your code so you can see what's happening: print key counts, data shapes, sample values, etc. stdout is captured and returned to you.
-        - **On first pass, always explore the data**: before writing any output file, print the routine names and top-level keys of each result's payload so you understand the shape. Then write extraction code.
-        - **Be persistent**: If your code errors or produces unexpected results, read the error/output carefully, use `list_workspace_files` and `read_workspace_file` to inspect the data, fix the code, and try again. Keep iterating until you produce the correct output file. NEVER give up after one failed attempt — debug and retry.
+        - **On first pass, always explore the data**: before writing any output file, load records from `raw/*.json`, print routine names and top-level keys, then write extraction code.
+        - **Be persistent**: If your code errors or produces unexpected results, read the error/output carefully, use `list_files(scope="workspace")` and `read_file(scope="workspace", path=...)` to inspect the data, fix the code, and try again. Keep iterating until you produce the correct output file. NEVER give up after one failed attempt — debug and retry.
 
         ## Important Rules
         - **Always prefer routines over `execute_browser_task`**. Routines are faster, cheaper, and more reliable. Only use the browser agent as a fallback when no suitable routine exists.
@@ -146,13 +134,13 @@ class BlueBoxAgent(AbstractAgent):
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
+        workspace: AgentWorkspace,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_2,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
-        workspace: AgentWorkspace | None = None,
         auth_headers_provider: Callable[[], dict[str, str]] | None = None,
         on_llm_response: Callable[[LLMChatResponse], None] | None = None,
         context_file: str | None = None,
@@ -168,7 +156,7 @@ class BlueBoxAgent(AbstractAgent):
             llm_model: The LLM model to use for conversation.
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
-            workspace: Workspace for file I/O. Defaults to LocalWorkspace if not provided.
+            workspace: Workspace for file I/O.
             auth_headers_provider: Optional callback that returns auth headers for
                 downstream API calls. If not provided, falls back to Config.VECTORLY_SERVICE_TOKEN.
             on_llm_response: Optional callback invoked after each LLM call with the response (for token tracking).
@@ -181,7 +169,7 @@ class BlueBoxAgent(AbstractAgent):
         if not auth_headers_provider and not Config.VECTORLY_SERVICE_TOKEN:
             raise ValueError("Either auth_headers_provider or VECTORLY_SERVICE_TOKEN must be provided")
 
-        self._workspace = workspace or LocalWorkspace()
+        self._workspace = workspace
         self._routine_cache: dict[str, RoutineInfo] = {}
         self._routine_execution_counter = itertools.count(
             self._get_next_routine_result_index()
@@ -192,6 +180,7 @@ class BlueBoxAgent(AbstractAgent):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
+            workspace=self._workspace,
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
@@ -200,11 +189,8 @@ class BlueBoxAgent(AbstractAgent):
             existing_chats=existing_chats,
             documentation_data_loader=None,
             on_llm_response=on_llm_response,
+            allow_code_execution=True,
         )
-
-        # Detect sandbox mode once (work_dir is always set for BlueBoxAgent)
-        self._sandbox_mode = get_active_sandbox_mode(work_dir_set=True)
-        self._is_blocklist_mode = self._sandbox_mode == "blocklist"
 
         logger.debug(
             "BlueBoxAgent initialized with model: %s, chat_thread_id: %s, sandbox_mode: %s, has_context: %s",
@@ -237,40 +223,10 @@ class BlueBoxAgent(AbstractAgent):
         now = datetime.now()
         time_info = f"\n\n## Current Time\n{now.strftime('%Y-%m-%d %H:%M:%S %Z').strip()}"
         prompt = self.SYSTEM_PROMPT + time_info
-        if self._is_blocklist_mode:
-            prompt += self._get_blocklist_sandbox_prompt_section()
+        prompt += self._generate_code_execution_prompt()
         if self._agent_context:
             prompt += self._get_context_prompt_section()
         return prompt
-
-    def _get_blocklist_sandbox_prompt_section(self) -> str:
-        """Build prompt section explaining blocklist sandbox restrictions."""
-        blocked_modules_str = ", ".join(sorted(BLOCKED_MODULES))
-        # Exclude open( from blocked patterns list since it IS available with workspace
-        blocked_patterns_str = ", ".join(
-            f"`{p}`" for p, _ in BLOCKED_PATTERNS if p != "open("
-        )
-
-        return dedent(f"""
-
-            ## Sandbox Restrictions (IMPORTANT — read before writing any Python code)
-            You are running in restricted sandbox mode. Your `run_python_code` calls have strict restrictions.
-
-            **Blocked imports** — do NOT import any of these modules:
-            {blocked_modules_str}
-
-            **Blocked code patterns** — do NOT use any of these in your code:
-            {blocked_patterns_str}
-
-            **Safe imports you CAN use:**
-            `collections`, `re`, `datetime`, `math`, `itertools`, `functools`, `operator`, `string`, `textwrap`, `decimal`, `fractions`, `statistics`, `urllib.parse`, `hashlib`, `hmac`, `base64`, `copy`, `pprint`, `dataclasses`, `enum`, `typing`
-
-            **Key rules to avoid errors:**
-            - Do NOT `import os`, `import pathlib`, `import sys`, or any blocked module
-            - `Path` is already pre-loaded — use it directly, do NOT `import pathlib`
-            - `open()` is already pre-loaded — use it directly for all file I/O
-            - Do NOT use `getattr()` — use dict access: `obj["key"]` or `obj.get("key")`
-        """).rstrip()
 
     ## Routine cache
 
@@ -393,7 +349,7 @@ class BlueBoxAgent(AbstractAgent):
 
         if len(section) > self._CONTEXT_PROMPT_MAX_CHARS:
             section = section[:self._CONTEXT_PROMPT_MAX_CHARS] + (
-                "\n\n... (context truncated — use `read_workspace_file` to read "
+                "\n\n... (context truncated — use `read_file(scope=\"workspace\", path=\"...\")` to read "
                 "the full context files in `context/` for more detail)"
             )
 
@@ -406,7 +362,19 @@ class BlueBoxAgent(AbstractAgent):
         and status from a previous execution. Returns deduplicated list
         of successfully executed routines.
         """
-        raw_results = self._workspace.load_raw_json()
+        raw_results: list[dict[str, Any]] = []
+        raw_refs = sorted(
+            (ref for ref in self._workspace.list_artifacts("raw") if ref.relative_path.endswith(".json")),
+            key=lambda ref: ref.index,
+        )
+        for ref in raw_refs:
+            try:
+                file_data = self._workspace.read_file(ref.relative_path)
+                content = file_data.get("content")
+                if isinstance(content, str):
+                    raw_results.append(json.loads(content))
+            except Exception as e:
+                logger.warning("Failed to parse raw JSON artifact %s: %s", ref.relative_path, e)
         seen: set[str] = set()
         routines: list[UsedRoutine] = []
         for rr in raw_results:
@@ -426,8 +394,7 @@ class BlueBoxAgent(AbstractAgent):
 
     ## Tool handlers
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _search_routines(self, task: str) -> dict[str, Any]:
         """
         Search for routines by keywords. Matches against routine name and description.
@@ -485,11 +452,17 @@ class BlueBoxAgent(AbstractAgent):
             try:
                 idx = next(self._routine_execution_counter)
                 ts = datetime.now().strftime("%y-%m-%d-%H%M%S")
-                save_info = self._workspace.save_file(
-                    "raw", f"{ts}-routine_result_{idx}.json",
+                ref = self._workspace.save_artifact(
+                    "raw",
+                    f"{ts}-routine_result_{idx}.json",
                     json.dumps(result, indent=2, default=str),
                 )
-                result.update(save_info)
+                result.update(
+                    {
+                        "output_file": str(self._workspace.root_path / ref.relative_path),
+                        "artifact_id": ref.artifact_id,
+                    },
+                )
             except Exception as e:
                 logger.exception("Failed to save routine result to file: %s", e)
                 result["output_file_error"] = str(e)
@@ -523,8 +496,7 @@ class BlueBoxAgent(AbstractAgent):
                 summary["_hint"] = (
                     f"Response truncated ({len(raw)} chars). "
                     f"Full result saved to {full_result.get('output_file')}. "
-                    "Use read_workspace_file to inspect the full data, or access it "
-                    "via routine_results in run_python_code."
+                    "Use read_file(scope='workspace', path='...') to inspect the full data, or execute_python to parse it."
                 )
             else:
                 summary["response_preview"] = raw
@@ -631,15 +603,22 @@ class BlueBoxAgent(AbstractAgent):
             logger.error("Browser agent API call failed: %s", e)
             return {"error": f"Browser agent request failed: {e}"}
 
-        # Save final_result as a markdown file in outputs/
+        # Save final_result as a markdown file in output/
         final_result = result.get("final_result")
         if final_result:
             try:
                 ts = datetime.now().strftime("%y-%m-%d-%H%M%S")
-                save_info = self._workspace.save_file(
-                    "outputs", f"{ts}-browser_agent.md", final_result,
+                ref = self._workspace.save_artifact(
+                    "output",
+                    f"{ts}-browser_agent.md",
+                    final_result,
                 )
-                result.update(save_info)
+                result.update(
+                    {
+                        "output_file": str(self._workspace.root_path / ref.relative_path),
+                        "artifact_id": ref.artifact_id,
+                    },
+                )
             except Exception as e:
                 logger.exception("Failed to save browser agent result: %s", e)
                 result["output_file_error"] = str(e)
@@ -709,118 +688,6 @@ class BlueBoxAgent(AbstractAgent):
 
         return result
 
-    @agent_tool()
-    def _run_python_code(self, code: str) -> dict[str, Any]:
-        """
-        Execute Python code to post-process routine results and generate output files.
-
-        The code runs with full read/write access to the workspace directory.
-        Pre-loaded variables: `routine_results` (list of dicts from all JSON files
-        in the raw/ directory), `json`, `csv`, and `Path` (pathlib.Path).
-
-        Write output files to the outputs/ subdirectory:
-            with open("outputs/results.csv", "w") as f: ...
-
-        IMPORTANT: Always include print() statements for debugging — print data shapes,
-        key names, row counts, sample values, etc. If the code fails, use the output
-        to diagnose and fix. Keep iterating until the output file is correct.
-
-        Args:
-            code: Python code to execute. Has full file access to the workspace.
-                Pre-loaded: routine_results (list[dict]), json, csv, Path.
-                Write output files to outputs/ subdirectory. Always add print()
-                statements for debugging.
-        """
-        # Ensure directories exist
-        self._workspace.ensure_dirs()
-        work_dir = str(self._workspace.root_path.resolve())
-
-        # Snapshot files in outputs/ before execution
-        files_before = self._workspace.snapshot_outputs()
-
-        # Load all JSON files from raw/ as routine_results
-        routine_results = self._workspace.load_raw_json()
-
-        # Execute in sandbox with work_dir for file access
-        sandbox_result = execute_python_sandboxed(
-            code,
-            extra_globals={"routine_results": routine_results},
-            work_dir=work_dir,
-        )
-
-        # Diff files in outputs/ to find new/modified ones
-        files_created = self._workspace.diff_outputs(files_before)
-
-        # Build response
-        result: dict[str, Any] = {}
-
-        if "error" in sandbox_result:
-            result["error"] = sandbox_result["error"]
-            workaround = get_workaround_for_error(sandbox_result["error"])
-            if workaround:
-                result["_hint"] = (
-                    f"Sandbox restriction: {workaround} "
-                    "Fix the code and call run_python_code again."
-                )
-            else:
-                result["_hint"] = (
-                    "Code failed. Read the error and stdout above carefully. "
-                    "Use list_workspace_files and read_workspace_file to inspect the data, "
-                    "then fix the code and call run_python_code again."
-                )
-
-        output = sandbox_result.get("output", "")
-        if output and output != "(no output)":
-            result["output"] = output
-
-        if files_created:
-            result["files_created"] = files_created
-            result["output_file"] = files_created[0]
-            result["_hint"] = (
-                "Files were created. Use read_workspace_file to verify the output "
-                "is correct (check first few lines). If not, fix the code and rerun."
-            )
-        elif "error" not in sandbox_result:
-            result["output"] = result.get("output", "") or "Code ran but produced no files."
-            result["_hint"] = (
-                "No files were created in outputs/. Make sure your code writes to "
-                "outputs/ (e.g. open('outputs/results.csv', 'w')). Fix and rerun."
-            )
-
-        return result
-
-    @agent_tool()
-    @token_optimized
-    def _list_workspace_files(self) -> dict[str, Any]:
-        """
-        List all files in the workspace directory as a tree.
-
-        Shows the full directory structure including raw/ (routine results)
-        and outputs/ (generated files).
-        """
-        return self._workspace.list_files()
-
-    @agent_tool()
-    def _read_workspace_file(
-        self,
-        path: str,
-        start_line: int | None = None,
-        end_line: int | None = None,
-    ) -> dict[str, Any]:
-        """
-        Read a file from the workspace by relative path.
-
-        Use this to inspect raw routine results, verify generated output files,
-        or debug data issues. Supports optional line ranges for large files.
-
-        Args:
-            path: Relative path within the workspace (e.g. "raw/routine_results_2024.json"
-                or "outputs/results.csv").
-            start_line: Optional 1-based start line number. Omit to read from the beginning.
-            end_line: Optional 1-based end line number (inclusive). Omit to read to the end.
-        """
-        return self._workspace.read_file(path, start_line=start_line, end_line=end_line)
-
     ## Context generation (structured output, called by TUI slash command)
 
     def generate_context(self, focus: str | None = None) -> BlueBoxAgentContext:
@@ -847,7 +714,7 @@ class BlueBoxAgent(AbstractAgent):
             "CRITICAL: routines_used must include every routine that was executed with exact "
             "routine_id, routine_name, and parameter values.\n"
             "Include the final working python_code snippet if post-processing was done.\n"
-            "Include output_files with relative paths of files written to outputs/.\n"
+            "Include output_files with relative paths of files written to output/.\n"
         )
         if raw_routines:
             system_prompt += "\nRoutines found in execution results:\n"
@@ -879,14 +746,22 @@ class BlueBoxAgent(AbstractAgent):
             )
 
         # Save canonical JSON
-        json_save = self._workspace.save_file(
-            "context", "agent_context.json", context.model_dump_json(indent=2),
+        json_ref = self._workspace.save_artifact(
+            "context",
+            "agent_context.json",
+            context.model_dump_json(indent=2),
         )
 
         # Save companion Markdown
-        md_save = self._workspace.save_file(
-            "context", "agent_context.md", context.to_markdown(),
+        md_ref = self._workspace.save_artifact(
+            "context",
+            "agent_context.md",
+            context.to_markdown(),
         )
 
-        logger.info("Context files saved: %s, %s", json_save["output_file"], md_save["output_file"])
+        logger.info(
+            "Context files saved: %s, %s",
+            self._workspace.root_path / json_ref.relative_path,
+            self._workspace.root_path / md_ref.relative_path,
+        )
         return context

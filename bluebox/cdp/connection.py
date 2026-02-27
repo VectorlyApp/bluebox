@@ -12,6 +12,7 @@ This module provides the core functionality for:
 import contextvars
 import json
 import time
+from dataclasses import dataclass
 from json import JSONDecodeError
 from typing import Callable
 from urllib.parse import urlparse, urlunparse
@@ -154,8 +155,20 @@ def create_cdp_helpers(
 
     def recv_json(ws_conn: WebSocket, deadline: float) -> dict:
         """Read a single JSON message from WebSocket, skipping empty/non-JSON frames."""
-        while time.time() < deadline:
-            raw = ws_conn.recv()
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            try:
+                # Override the socket timeout per read so the caller's deadline
+                # (not the connect-time socket timeout) controls command waits.
+                ws_conn.settimeout(min(remaining, 1.0))
+                raw = ws_conn.recv()
+            except websocket.WebSocketTimeoutException:
+                # No frame yet; keep waiting until deadline.
+                continue
+            except Exception as e:
+                raise RuntimeError(f"CDP WebSocket receive failed: {e}") from e
             if not raw:
                 continue
             try:
@@ -178,6 +191,18 @@ def create_cdp_helpers(
 # Tab/context management __________________________________________________________________________
 
 
+@dataclass
+class CDPTargetSession:
+    """Browser target + attached flattened CDP session."""
+
+    target_id: str
+    browser_context_id: str | None
+    browser_ws: WebSocket
+    session_id: str
+    send_cmd: Callable
+    recv_until: Callable
+
+
 def get_existing_tabs(remote_debugging_address: str) -> list[dict]:
     """
     Get list of existing browser tabs/targets.
@@ -197,6 +222,100 @@ def get_existing_tabs(remote_debugging_address: str) -> list[dict]:
         return response.json()
     except Exception as e:
         raise RuntimeError(f"Failed to get existing tabs: {e}")
+
+
+def cdp_attach_and_enable(
+    browser_ws: WebSocket,
+    target_id: str,
+    *,
+    enable_domains: tuple[str, ...] = ("Page", "Runtime"),
+    timeout_seconds: float = 10.0,
+) -> tuple[str, Callable, Callable]:
+    """
+    Attach to a target with flattened session and enable requested domains.
+
+    Args:
+        browser_ws: Browser-level WebSocket.
+        target_id: Target/tab ID to attach.
+        enable_domains: CDP domains to enable (e.g., ("Page", "Runtime")).
+        timeout_seconds: Timeout per command.
+
+    Returns:
+        Tuple of (session_id, send_cmd, recv_until).
+
+    Raises:
+        RuntimeError: If attach/enable fails.
+    """
+    send_cmd, _, recv_until = create_cdp_helpers(browser_ws)
+
+    attach_id = send_cmd(
+        "Target.attachToTarget",
+        {"targetId": target_id, "flatten": True},
+    )
+    attach_reply = recv_until(lambda m: m.get("id") == attach_id, time.time() + timeout_seconds)
+    if "error" in attach_reply:
+        raise RuntimeError(f"Failed to attach to browser tab: {attach_reply['error']}")
+
+    session_id = attach_reply.get("result", {}).get("sessionId")
+    if not session_id:
+        raise RuntimeError("No sessionId returned from Target.attachToTarget")
+
+    for domain in enable_domains:
+        enable_id = send_cmd(f"{domain}.enable", session_id=session_id)
+        enable_reply = recv_until(lambda m: m.get("id") == enable_id, time.time() + timeout_seconds)
+        if "error" in enable_reply:
+            raise RuntimeError(f"Failed to enable {domain}: {enable_reply['error']}")
+
+    return session_id, send_cmd, recv_until
+
+
+def cdp_open_new_tab_session(
+    remote_debugging_address: str = "http://127.0.0.1:9222",
+    *,
+    incognito: bool = True,
+    url: str = "about:blank",
+    proxy_address: str | None = None,
+    enable_domains: tuple[str, ...] = ("Page", "Runtime"),
+    timeout_seconds: float = 10.0,
+) -> CDPTargetSession:
+    """
+    Create a new tab, attach a flattened session, and enable requested domains.
+
+    Raises:
+        RuntimeError: If tab/session setup fails.
+    """
+    target_id, browser_context_id, browser_ws = cdp_new_tab(
+        remote_debugging_address=remote_debugging_address,
+        incognito=incognito,
+        url=url,
+        proxy_address=proxy_address,
+    )
+    try:
+        session_id, send_cmd, recv_until = cdp_attach_and_enable(
+            browser_ws=browser_ws,
+            target_id=target_id,
+            enable_domains=enable_domains,
+            timeout_seconds=timeout_seconds,
+        )
+        return CDPTargetSession(
+            target_id=target_id,
+            browser_context_id=browser_context_id,
+            browser_ws=browser_ws,
+            session_id=session_id,
+            send_cmd=send_cmd,
+            recv_until=recv_until,
+        )
+    except Exception:
+        try:
+            cdp_close_tab_session(
+                target_id=target_id,
+                browser_context_id=browser_context_id,
+                browser_ws=browser_ws,
+                remote_debugging_address=remote_debugging_address,
+            )
+        except Exception:
+            pass
+        raise
 
 
 def cdp_attach_to_existing_tab(
@@ -328,6 +447,47 @@ def cdp_new_tab(
             except Exception:
                 pass
         raise RuntimeError(f"Failed to create target: {e}")
+
+
+def cdp_close_tab_session(
+    *,
+    target_id: str | None,
+    browser_context_id: str | None,
+    browser_ws: WebSocket | None,
+    remote_debugging_address: str | None = None,
+) -> None:
+    """
+    Best-effort close target, dispose context, and close browser WebSocket.
+    """
+    if browser_ws is not None and target_id:
+        try:
+            send_cmd, _, _ = create_cdp_helpers(browser_ws)
+            send_cmd("Target.closeTarget", {"targetId": target_id})
+        except Exception as e:
+            logger.debug("Failed to close target %s: %s", target_id, e)
+
+    if browser_context_id:
+        try:
+            if browser_ws is not None:
+                dispose_context(browser_context_id=browser_context_id, ws=browser_ws)
+            elif remote_debugging_address:
+                dispose_context(
+                    browser_context_id=browser_context_id,
+                    remote_debugging_address=remote_debugging_address,
+                )
+            else:
+                logger.debug(
+                    "Skipping context dispose for %s (no ws or remote_debugging_address)",
+                    browser_context_id,
+                )
+        except Exception as e:
+            logger.debug("Failed to dispose context %s: %s", browser_context_id, e)
+
+    if browser_ws is not None:
+        try:
+            browser_ws.close()
+        except Exception as e:
+            logger.debug("Failed to close browser websocket: %s", e)
 
 
 def dispose_context(

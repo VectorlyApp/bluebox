@@ -12,12 +12,11 @@ import time
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 
-from bluebox.agents.abstract_agent import AgentCard, agent_tool
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
+from bluebox.workspace import AgentWorkspace, LocalAgentWorkspace
 from bluebox.cdp.connection import (
-    cdp_new_tab,
-    create_cdp_helpers,
-    dispose_context,
+    cdp_close_tab_session,
+    cdp_open_new_tab_session,
 )
 from bluebox.data_models.dom import DOMSnapshotEvent
 from bluebox.data_models.llms.interaction import (
@@ -29,7 +28,6 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.utils.js_utils import generate_js_evaluate_wrapper_js, validate_js
-from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -38,7 +36,7 @@ if TYPE_CHECKING:
 logger = get_logger(name=__name__)
 
 
-class JSSpecialist(AbstractSpecialist):
+class JSSpecialist(AbstractAgent):
     """
     JavaScript specialist agent.
 
@@ -51,7 +49,6 @@ class JSSpecialist(AbstractSpecialist):
             "extraction, DOM scraping, and page state manipulation."
         ),
     )
-
     _BASE_CONTEXT: str = dedent("""\
         ## Context
 
@@ -130,12 +127,12 @@ class JSSpecialist(AbstractSpecialist):
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
-        llm_model: LLMModel = OpenAIModel.GPT_5_2,
-        run_mode: RunMode = RunMode.CONVERSATIONAL,
+        llm_model: LLMModel = OpenAIModel.GPT_5_1,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         remote_debugging_address: str | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
+        workspace: AgentWorkspace | None = None,
     ) -> None:
         self._dom_snapshots = dom_snapshots or []
         self._remote_debugging_address = remote_debugging_address
@@ -144,11 +141,11 @@ class JSSpecialist(AbstractSpecialist):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
+            workspace=workspace or LocalAgentWorkspace.from_directory_path("./agent_workspace/specialist"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            run_mode=run_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
@@ -221,8 +218,7 @@ class JSSpecialist(AbstractSpecialist):
 
     ## Tools
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _validate_js_code(self, js_code: str) -> dict[str, Any]:
         """
         Dry-run validation of JavaScript code. Checks IIFE format and blocked patterns without submitting.
@@ -249,8 +245,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool(availability=lambda self: bool(self._dom_snapshots))
-    @token_optimized
+    @agent_tool(availability=lambda self: bool(self._dom_snapshots), token_optimized=True)
     def _get_dom_snapshot(self, index: int = -1) -> dict[str, Any]:
         """
         Get a DOM snapshot. Returns the document structure and truncated strings table. Defaults to latest snapshot.
@@ -286,8 +281,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool(availability=lambda self: self._network_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._network_data_loader is not None, token_optimized=True)
     def _search_network_traffic(
         self,
         method: str | None = None,
@@ -343,8 +337,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool(availability=lambda self: self._network_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._network_data_loader is not None, token_optimized=True)
     def _get_network_entry(
         self,
         request_id: str,
@@ -390,8 +383,7 @@ class JSSpecialist(AbstractSpecialist):
         return result
 
 
-    @agent_tool(availability=lambda self: self._js_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._js_data_loader is not None, token_optimized=True)
     def _search_js_files(self, terms: list[str], top_n: int = 10) -> dict[str, Any]:
         """
         Search captured JS files by keywords.
@@ -418,8 +410,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool(availability=lambda self: self._js_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._js_data_loader is not None, token_optimized=True)
     def _search_js_files_regex(
         self,
         pattern: str,
@@ -464,8 +455,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool(availability=lambda self: self._js_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._js_data_loader is not None, token_optimized=True)
     def _get_js_file_content(self, request_id: str, max_chars: int = 10_000) -> dict[str, Any]:
         """
         Get the content of a specific JS file by request_id.
@@ -494,8 +484,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool(availability=lambda self: self._js_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._js_data_loader is not None, token_optimized=True)
     def _list_js_files(self) -> dict[str, Any]:
         """
         List all captured JS files with URLs and sizes.
@@ -515,8 +504,7 @@ class JSSpecialist(AbstractSpecialist):
         }
 
 
-    @agent_tool(availability=lambda self: bool(self._remote_debugging_address))
-    @token_optimized
+    @agent_tool(availability=lambda self: bool(self._remote_debugging_address), token_optimized=True)
     def _execute_js_in_browser(
         self,
         url: str,
@@ -555,35 +543,30 @@ class JSSpecialist(AbstractSpecialist):
         target_id = None
         browser_context_id = None
         browser_ws = None
+        send_cmd = None
+        recv_until = None
+        session_id = None
 
         try:
-            # Open new incognito tab
-            target_id, browser_context_id, browser_ws = cdp_new_tab(
-                self._remote_debugging_address,
+            session = cdp_open_new_tab_session(
+                remote_debugging_address=self._remote_debugging_address,
                 incognito=True,
                 url="about:blank",
+                enable_domains=("Page", "Runtime"),
+                timeout_seconds=10.0,
             )
-
-            send_cmd, _, recv_until = create_cdp_helpers(browser_ws)
-
-            # Attach to target with flattened session
-            attach_id = send_cmd(
-                "Target.attachToTarget",
-                {"targetId": target_id, "flatten": True},
-            )
-            attach_reply = recv_until(lambda m: m.get("id") == attach_id, deadline)
-            if "error" in attach_reply:
-                return {"error": f"Failed to attach: {attach_reply['error']}"}
-            session_id = attach_reply["result"]["sessionId"]
-
-            # Enable Page and Runtime domains
-            page_id = send_cmd("Page.enable", session_id=session_id)
-            recv_until(lambda m: m.get("id") == page_id, deadline)
-            runtime_id = send_cmd("Runtime.enable", session_id=session_id)
-            recv_until(lambda m: m.get("id") == runtime_id, deadline)
+            target_id = session.target_id
+            browser_context_id = session.browser_context_id
+            browser_ws = session.browser_ws
+            send_cmd = session.send_cmd
+            recv_until = session.recv_until
+            session_id = session.session_id
 
             # Navigate if URL provided
             if url:
+                assert send_cmd is not None
+                assert recv_until is not None
+                assert session_id is not None
                 nav_id = send_cmd(
                     "Page.navigate",
                     {"url": url},
@@ -604,6 +587,9 @@ class JSSpecialist(AbstractSpecialist):
             wrapped_js = generate_js_evaluate_wrapper_js(js_code)
 
             # Execute via Runtime.evaluate
+            assert send_cmd is not None
+            assert recv_until is not None
+            assert session_id is not None
             eval_id = send_cmd(
                 "Runtime.evaluate",
                 {
@@ -646,19 +632,9 @@ class JSSpecialist(AbstractSpecialist):
                     except Exception:
                         pass
             else:
-                if browser_ws:
-                    try:
-                        if target_id:
-                            send_cmd_cleanup, _, _ = create_cdp_helpers(browser_ws)
-                            send_cmd_cleanup("Target.closeTarget", {"targetId": target_id})
-                    except Exception:
-                        pass
-                    try:
-                        browser_ws.close()
-                    except Exception:
-                        pass
-                if browser_context_id and self._remote_debugging_address:
-                    try:
-                        dispose_context(browser_context_id=browser_context_id, remote_debugging_address=self._remote_debugging_address)
-                    except Exception:
-                        pass
+                cdp_close_tab_session(
+                    target_id=target_id,
+                    browser_context_id=browser_context_id,
+                    browser_ws=browser_ws,
+                    remote_debugging_address=self._remote_debugging_address,
+                )

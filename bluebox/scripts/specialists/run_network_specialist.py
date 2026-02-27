@@ -17,6 +17,7 @@ Usage:
     bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl
     bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl --model gpt-5.2
     bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl --model claude-sonnet-4-5
+    bluebox-network-specialist --jsonl-path ./cdp_captures/network/events.jsonl --workspace-dir ./agent_workspace/network-specialist
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ from textual import work
 from textual.widgets import RichLog
 
 from bluebox.agents.specialists.network_specialist import NetworkSpecialist
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
@@ -80,10 +82,16 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
         llm_model: LLMModel,
         network_store: NetworkDataLoader,
         data_path: str = "",
+        workspace_dir: str | None = None,
     ) -> None:
-        super().__init__(llm_model)
+        super().__init__(llm_model, working_dir=workspace_dir)
         self._network_store = network_store
         self._data_path = data_path
+        self._workspace = LocalAgentWorkspace.from_directory_path(
+            workspace_dir or "./agent_workspace/network_specialist",
+        )
+        if self._data_path:
+            self._workspace.attach_input_file("network_events", self._data_path)
 
     # ── Abstract implementations ─────────────────────────────────────────
 
@@ -93,6 +101,7 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
             stream_chunk_callable=self._handle_stream_chunk,
             network_data_loader=self._network_store,
             llm_model=self._llm_model,
+            workspace=self._workspace,
         )
 
     def _print_welcome(self) -> None:
@@ -160,10 +169,6 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
             chat.write(Text.from_markup("\n".join(url_lines)))
             chat.write("")
 
-        chat.write(Text.from_markup(
-            "Type [cyan]/help[/cyan] for commands, or ask questions about the network traffic."
-        ))
-        chat.write("")
 
     def _build_status_text(self) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -304,6 +309,12 @@ def main() -> None:
     add_model_argument(parser)
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")
+    parser.add_argument(
+        "--workspace-dir",
+        type=str,
+        default="./agent_workspace/network_specialist",
+        help="Workspace directory for tool results, artifacts, and code execution files.",
+    )
     args = parser.parse_args()
 
     console = Console()
@@ -334,6 +345,7 @@ def main() -> None:
         llm_model=llm_model,
         network_store=network_store,
         data_path=str(jsonl_path),
+        workspace_dir=args.workspace_dir,
     )
     app.run()
 

@@ -16,14 +16,22 @@ Covers:
 """
 
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import BaseModel, Field
 
-from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool, _ToolMeta
+from bluebox.agents.abstract_agent import (
+    AbstractAgent,
+    AgentCard,
+    ToolResultPersistMode,
+    agent_tool,
+    _ToolMeta,
+)
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatRole,
@@ -54,6 +62,12 @@ class ConcreteAgent(AbstractAgent):
     """Minimal concrete AbstractAgent for testing."""
 
     AGENT_CARD = AgentCard(description="Test agent for unit tests.")
+
+    def __init__(self, **kwargs: Any) -> None:
+        if "workspace" not in kwargs:
+            workspace_dir = Path(tempfile.mkdtemp(prefix="bluebox-abstract-agent-test-"))
+            kwargs["workspace"] = LocalAgentWorkspace.from_directory_path(workspace_dir)
+        super().__init__(**kwargs)
 
     def _get_system_prompt(self) -> str:
         return "You are a test agent."
@@ -126,6 +140,52 @@ class ConcreteAgent(AbstractAgent):
             "tags": params.tags,
         }
 
+    @agent_tool(persist=ToolResultPersistMode.ALWAYS)
+    def _persist_always(self, text: str = "ok") -> dict[str, Any]:
+        """
+        Tool that always persists results.
+
+        Args:
+            text: Value to return in the payload.
+        """
+        return {"text": text}
+
+    @agent_tool(
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=50,
+    )
+    def _persist_overflow(self, text: str) -> dict[str, Any]:
+        """
+        Tool that persists only when output exceeds max_characters.
+
+        Args:
+            text: Payload content.
+        """
+        return {"text": text}
+
+    @agent_tool(persist=ToolResultPersistMode.NEVER)
+    def _persist_never(self, text: str = "ok") -> dict[str, Any]:
+        """
+        Tool that never persists results.
+
+        Args:
+            text: Value to return in the payload.
+        """
+        return {"text": text}
+
+    @agent_tool(
+        persist=ToolResultPersistMode.ALWAYS,
+        token_optimized=True,
+    )
+    def _persist_always_token_optimized(self) -> dict[str, Any]:
+        """Always persists raw result, returns token-optimized payload."""
+        return {"status": "ok", "items": [1, 2, 3]}
+
+    @agent_tool(token_optimized=True)
+    def _token_optimized_no_persist(self) -> dict[str, Any]:
+        """Token-optimized tool with no persistence."""
+        return {"status": "ok"}
+
 
 @pytest.fixture
 def mock_emit() -> MagicMock:
@@ -173,6 +233,20 @@ def agent_with_docs(mock_emit: MagicMock, tmp_path: Path) -> ConcreteAgent:
     )
     return ConcreteAgent(
         emit_message_callable=mock_emit,
+        documentation_data_loader=loader,
+    )
+
+
+@pytest.fixture
+def agent_docs_only(mock_emit: MagicMock, tmp_path: Path) -> ConcreteAgent:
+    """Agent with docs loader but no workspace configured."""
+    docs_dir = tmp_path / "docs_only"
+    docs_dir.mkdir()
+    (docs_dir / "guide.md").write_text("# Docs Only\n\ncontent here\n")
+    loader = DocumentationDataLoader(documentation_paths=[str(docs_dir)])
+    return ConcreteAgent(
+        emit_message_callable=mock_emit,
+        workspace=None,
         documentation_data_loader=loader,
     )
 
@@ -248,6 +322,51 @@ class TestInitialization:
 
     def test_documentation_data_loader_stored(self, agent_with_docs: ConcreteAgent) -> None:
         assert agent_with_docs._documentation_data_loader is not None
+
+    def test_workspace_attached_on_init(self, agent: ConcreteAgent) -> None:
+        assert isinstance(agent._workspace, LocalAgentWorkspace)
+
+    def test_workspace_can_be_omitted(self, mock_emit: MagicMock) -> None:
+        agent = ConcreteAgent(emit_message_callable=mock_emit, workspace=None)
+        assert agent._workspace is None
+        assert agent.has_workspace is False
+
+    def test_code_execution_disabled_by_default(self, agent: ConcreteAgent) -> None:
+        assert agent._allow_code_execution is False
+        assert agent._code_execution_globals == {}
+
+    def test_code_execution_globals_require_enabled(self, mock_emit: MagicMock) -> None:
+        with pytest.raises(ValueError, match="code_execution_globals must be empty"):
+            ConcreteAgent(
+                emit_message_callable=mock_emit,
+                allow_code_execution=False,
+                code_execution_globals={"x": 1},
+            )
+
+    def test_code_execution_globals_stored_when_enabled(self, mock_emit: MagicMock) -> None:
+        configured = {"items": [1, 2, 3], "name": "demo"}
+        agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            allow_code_execution=True,
+            code_execution_globals=configured,
+        )
+        assert agent._allow_code_execution is True
+        assert agent._code_execution_globals == configured
+
+    def test_code_execution_prompt_includes_compute_only_notice_without_workspace(
+        self,
+        mock_emit: MagicMock,
+    ) -> None:
+        agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            workspace=None,
+            allow_code_execution=True,
+            code_execution_globals={},
+        )
+        section = agent._generate_code_execution_prompt()
+        assert "Code Execution Environment" in section
+        assert "compute-only" in section
+        assert "open()" in section
 
 
 # =============================================================================
@@ -395,8 +514,12 @@ class TestCollectTools:
         expected = {
             "echo", "add_numbers", "disabled_tool", "gated_tool",
             "no_params", "optional_params", "raises_error", "search",
-            # Documentation tools from AbstractAgent
-            "search_docs", "get_doc_file", "search_docs_by_terms", "search_docs_by_regex",
+            "persist_always", "persist_overflow", "persist_never", "persist_always_token_optimized",
+            "token_optimized_no_persist",
+            "add_note", "finalize_with_output", "finalize_with_failure", "finalize_result", "finalize_failure",
+            "execute_python",
+            # Unified file tools from AbstractAgent
+            "list_files", "read_file", "search_files",
         }
         assert tool_names == expected
 
@@ -452,21 +575,55 @@ class TestSyncTools:
         agent._sync_tools()
         assert "gated_tool" in agent._registered_tool_names
 
-    def test_docs_tools_not_registered_without_loader(self, agent: ConcreteAgent) -> None:
-        """Documentation tools are not registered when no loader is provided."""
+    def test_file_tools_registered_without_loader(self, agent: ConcreteAgent) -> None:
+        """Unified file tools are registered when workspace is available."""
         agent._sync_tools()
-        assert "search_docs" not in agent._registered_tool_names
-        assert "get_doc_file" not in agent._registered_tool_names
-        assert "search_docs_by_terms" not in agent._registered_tool_names
-        assert "search_docs_by_regex" not in agent._registered_tool_names
+        assert "list_files" in agent._registered_tool_names
+        assert "read_file" in agent._registered_tool_names
+        assert "search_files" in agent._registered_tool_names
 
-    def test_docs_tools_registered_with_loader(self, agent_with_docs: ConcreteAgent) -> None:
-        """Documentation tools are registered when loader is provided."""
+    def test_file_tools_registered_with_loader(self, agent_with_docs: ConcreteAgent) -> None:
+        """Unified file tools are also registered when docs loader is available."""
         agent_with_docs._sync_tools()
-        assert "search_docs" in agent_with_docs._registered_tool_names
-        assert "get_doc_file" in agent_with_docs._registered_tool_names
-        assert "search_docs_by_terms" in agent_with_docs._registered_tool_names
-        assert "search_docs_by_regex" in agent_with_docs._registered_tool_names
+        assert "list_files" in agent_with_docs._registered_tool_names
+        assert "read_file" in agent_with_docs._registered_tool_names
+        assert "search_files" in agent_with_docs._registered_tool_names
+
+    def test_file_tools_not_registered_without_workspace_or_loader(self, mock_emit: MagicMock) -> None:
+        no_workspace_agent = ConcreteAgent(emit_message_callable=mock_emit, workspace=None)
+        no_workspace_agent._sync_tools()
+        assert "list_files" not in no_workspace_agent._registered_tool_names
+        assert "read_file" not in no_workspace_agent._registered_tool_names
+        assert "search_files" not in no_workspace_agent._registered_tool_names
+
+    def test_file_tools_registered_with_loader_and_no_workspace(self, agent_docs_only: ConcreteAgent) -> None:
+        agent_docs_only._sync_tools()
+        assert "list_files" in agent_docs_only._registered_tool_names
+        assert "read_file" in agent_docs_only._registered_tool_names
+        assert "search_files" in agent_docs_only._registered_tool_names
+
+    def test_execute_python_not_registered_when_disabled(self, agent: ConcreteAgent) -> None:
+        agent._sync_tools()
+        assert "execute_python" not in agent._registered_tool_names
+
+    def test_execute_python_registered_when_enabled(self, mock_emit: MagicMock) -> None:
+        code_agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            allow_code_execution=True,
+            code_execution_globals={},
+        )
+        code_agent._sync_tools()
+        assert "execute_python" in code_agent._registered_tool_names
+
+    def test_execute_python_registered_without_workspace_when_enabled(self, mock_emit: MagicMock) -> None:
+        code_agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            workspace=None,
+            allow_code_execution=True,
+            code_execution_globals={},
+        )
+        code_agent._sync_tools()
+        assert "execute_python" in code_agent._registered_tool_names
 
     def test_sync_clears_and_re_registers(self, agent: ConcreteAgent) -> None:
         """Calling _sync_tools multiple times doesn't duplicate registrations."""
@@ -516,6 +673,11 @@ class TestExecuteTool:
 
     def test_unavailable_tool(self, agent: ConcreteAgent) -> None:
         result = agent._execute_tool("disabled_tool", {})
+        assert "error" in result
+        assert "not currently available" in result["error"]
+
+    def test_execute_python_unavailable_when_disabled(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("execute_python", {"code": "print('hello')"})
         assert "error" in result
         assert "not currently available" in result["error"]
 
@@ -578,6 +740,141 @@ class TestExecuteTool:
 
         result = agent._execute_tool("add_numbers", {"a": 3, "b": 7})
         assert result == {"sum": 10}
+
+    def test_execute_python_uses_configured_globals(
+        self,
+        mock_emit: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        code_agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            allow_code_execution=True,
+            code_execution_globals={"value": 7},
+        )
+        code_agent._workspace = LocalAgentWorkspace.from_directory_path(tmp_path / "workspace")
+        result = code_agent._execute_tool("execute_python", {"code": "print(value + 5)"})
+        assert "error" not in result
+        assert "12" in result.get("output", "")
+
+    def test_execute_python_marks_raw_and_meta_read_only(
+        self,
+        mock_emit: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        code_agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            allow_code_execution=True,
+            code_execution_globals={},
+        )
+        code_agent._workspace = LocalAgentWorkspace.from_directory_path(tmp_path / "workspace")
+
+        with patch(
+            "bluebox.agents.abstract_agent.execute_python_sandboxed",
+            return_value={"output": "(no output)"},
+        ) as mock_exec:
+            result = code_agent._execute_tool("execute_python", {"code": "print('ok')"})
+
+        assert "error" not in result
+        kwargs = mock_exec.call_args.kwargs
+        read_only_paths = kwargs["read_only_paths"]
+        assert str((code_agent._workspace.root_path / "raw").resolve()) in read_only_paths
+        assert str((code_agent._workspace.root_path / "meta").resolve()) in read_only_paths
+
+    def test_execute_python_without_workspace_uses_compute_only_sandbox(self, mock_emit: MagicMock) -> None:
+        code_agent = ConcreteAgent(
+            emit_message_callable=mock_emit,
+            workspace=None,
+            allow_code_execution=True,
+            code_execution_globals={"value": 7},
+        )
+        with patch(
+            "bluebox.agents.abstract_agent.execute_python_sandboxed",
+            return_value={"output": "7"},
+        ) as mock_exec:
+            result = code_agent._execute_tool("execute_python", {"code": "print(value)"})
+
+        assert "error" not in result
+        kwargs = mock_exec.call_args.kwargs
+        assert kwargs["code"] == "print(value)"
+        assert kwargs["extra_globals"] == {"value": 7}
+        assert "work_dir" not in kwargs
+        assert "read_only_paths" not in kwargs
+
+    def test_persist_always_wraps_result_and_saves_artifact(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("persist_always", {"text": "small"})
+        assert result["persist_mode"] == "always"
+        assert result["artifact_id"].startswith("a_")
+        assert "artifact_path" in result
+        assert "preview" in result
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert len(artifacts) == 1
+        assert artifacts[0].artifact_id == result["artifact_id"]
+
+    def test_persist_overflow_under_limit_returns_raw_result(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("persist_overflow", {"text": "short"})
+        assert result == {"text": "short"}
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert artifacts == []
+
+    def test_persist_overflow_over_limit_wraps_and_saves_artifact(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("persist_overflow", {"text": "x" * 200})
+        assert result["persist_mode"] == "overflow"
+        assert result["artifact_id"].startswith("a_")
+        assert result["truncated"] is True
+        assert "truncated" in result["preview"]
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert len(artifacts) == 1
+        assert artifacts[0].artifact_id == result["artifact_id"]
+
+    def test_persist_never_returns_raw_and_does_not_save(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("persist_never", {"text": "abc"})
+        assert result == {"text": "abc"}
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert artifacts == []
+
+    def test_persist_always_returns_raw_without_workspace(self, mock_emit: MagicMock) -> None:
+        no_workspace_agent = ConcreteAgent(emit_message_callable=mock_emit, workspace=None)
+        result = no_workspace_agent._execute_tool("persist_always", {"text": "small"})
+        assert result == {"text": "small"}
+
+    def test_workspace_scope_returns_error_without_workspace_when_docs_tools_enabled(
+        self,
+        agent_docs_only: ConcreteAgent,
+    ) -> None:
+        result = agent_docs_only._execute_tool(
+            "read_file",
+            {"scope": "workspace", "path": "output/x.txt"},
+        )
+        assert isinstance(result, str)
+        assert "workspace scope unavailable" in result
+
+    def test_docs_scope_works_without_workspace(self, agent_docs_only: ConcreteAgent) -> None:
+        result = agent_docs_only._execute_tool(
+            "read_file",
+            {"scope": "docs", "path": "guide.md"},
+        )
+        assert isinstance(result, str)
+        assert "Docs Only" in result
+
+    def test_token_optimized_persist_saves_raw_not_encoded(
+        self,
+        agent: ConcreteAgent,
+    ) -> None:
+        result = agent._execute_tool("persist_always_token_optimized", {})
+        assert isinstance(result, str)
+        assert "_token_optimized_note" in result
+
+        artifacts = agent._workspace.list_artifacts(source="raw")
+        assert len(artifacts) == 1
+        artifact_id = artifacts[0].artifact_id
+        stored = agent._workspace.read_artifact(artifact_id)
+        assert "error" not in stored
+        assert '"status": "ok"' in stored["content"]
+
+    def test_token_optimized_without_persist_has_no_note(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("token_optimized_no_persist", {})
+        assert isinstance(result, str)
+        assert "_token_optimized_note" not in result
 
 
 # =============================================================================
@@ -705,150 +1002,88 @@ class TestReset:
 
 
 # =============================================================================
-# Documentation tools (functional tests with real DocumentationDataLoader)
+# Unified file tools (functional tests with real DocumentationDataLoader)
 # =============================================================================
 
 
-class TestDocumentationTools:
-    """Tests for the documentation tools on AbstractAgent.
+class TestFileTools:
+    """Tests for the unified file tools on AbstractAgent."""
 
-    Note: doc tools use @token_optimized, so _execute_tool returns a compact string
-    (not a dict) when the handler itself is invoked. Pre-dispatch validation errors
-    (unavailability, missing params) still return dicts.
-    """
-
-    # --- search_docs ---
-
-    def test_search_docs_finds_matches(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool("search_docs", {"query": "Installation"})
+    def test_list_files_workspace(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("list_files", {"scope": "workspace"})
         assert isinstance(result, str)
-        assert "files_with_matches" in result
-        assert "guide.md" in result or "Installation" in result
+        assert "scope: workspace" in result
 
-    def test_search_docs_no_matches(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool("search_docs", {"query": "xyznonexistent123"})
+    def test_list_files_docs(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("list_files", {"scope": "docs"})
         assert isinstance(result, str)
-        assert "No matches found" in result
+        assert "guide.md" in result
+        assert "main.py" in result
 
-    def test_search_docs_empty_query(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool("search_docs", {"query": ""})
-        assert isinstance(result, str)
-        assert "error" in result
-
-    def test_search_docs_case_insensitive(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool("search_docs", {"query": "installation"})
-        assert isinstance(result, str)
-        assert "files_with_matches" in result
-
-    def test_search_docs_case_sensitive(self, agent_with_docs: ConcreteAgent) -> None:
-        result_upper = agent_with_docs._execute_tool(
-            "search_docs", {"query": "Installation", "case_sensitive": True},
-        )
-        assert "files_with_matches" in result_upper
-
-    def test_search_docs_filter_by_file_type(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool(
-            "search_docs", {"query": "def", "file_type": "code"},
+    def test_read_file_workspace(self, agent: ConcreteAgent) -> None:
+        (agent._workspace.root_path / "output").mkdir(parents=True, exist_ok=True)
+        (agent._workspace.root_path / "output" / "x.txt").write_text("hello\nworld")
+        result = agent._execute_tool(
+            "read_file",
+            {"scope": "workspace", "path": "output/x.txt", "start_line": 1, "end_line": 1},
         )
         assert isinstance(result, str)
-        # Should match the code file
-        assert "main.py" in result or "files_with_matches" in result
+        assert "hello" in result
 
-    # --- get_doc_file ---
-
-    def test_get_doc_file_full_content(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool("get_doc_file", {"path": "guide.md"})
+    def test_read_file_docs(self, agent_with_docs: ConcreteAgent) -> None:
+        result = agent_with_docs._execute_tool("read_file", {"scope": "docs", "path": "guide.md"})
         assert isinstance(result, str)
         assert "User Guide" in result
-        assert "total_lines" in result
 
-    def test_get_doc_file_line_range(self, agent_with_docs: ConcreteAgent) -> None:
+    def test_search_files_docs_exact(self, agent_with_docs: ConcreteAgent) -> None:
         result = agent_with_docs._execute_tool(
-            "get_doc_file", {"path": "guide.md", "start_line": 1, "end_line": 3},
+            "search_files",
+            {"scope": "docs", "query": "Installation", "mode": "exact"},
         )
         assert isinstance(result, str)
-        assert "lines_shown: 1-3" in result
+        assert "files_with_matches" in result
 
-    def test_get_doc_file_not_found(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool("get_doc_file", {"path": "nonexistent.md"})
-        assert isinstance(result, str)
-        assert "not found" in result
-
-    def test_get_doc_file_empty_path(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool("get_doc_file", {"path": ""})
-        assert isinstance(result, str)
-        assert "error" in result
-
-    def test_get_doc_file_code_file(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool("get_doc_file", {"path": "main.py"})
-        assert isinstance(result, str)
-        assert "def hello" in result
-
-    # --- search_docs_by_terms ---
-
-    def test_search_by_terms_finds_results(self, agent_with_docs: ConcreteAgent) -> None:
+    def test_search_files_docs_terms(self, agent_with_docs: ConcreteAgent) -> None:
         result = agent_with_docs._execute_tool(
-            "search_docs_by_terms", {"terms": ["installation", "API"]},
+            "search_files",
+            {"scope": "docs", "query": "installation API", "mode": "terms"},
         )
         assert isinstance(result, str)
         assert "results_count" in result
-        # At least one result
-        assert "results_count: 0" not in result
 
-    def test_search_by_terms_empty_list(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool("search_docs_by_terms", {"terms": []})
-        assert isinstance(result, str)
-        assert "error" in result
+    def test_search_files_docs_terms_splits_on_whitespace(self, agent_with_docs: ConcreteAgent) -> None:
+        """Terms mode should split query tokens on spaces and commas."""
+        result = agent_with_docs._search_files(
+            scope="docs",
+            query="installation API,Configuration",
+            mode="terms",
+        )
+        assert isinstance(result, dict)
+        assert result.get("mode") == "terms"
+        assert result.get("terms") == ["installation", "API", "Configuration"]
 
-    def test_search_by_terms_no_matches(self, agent_with_docs: ConcreteAgent) -> None:
+    def test_search_files_docs_regex(self, agent_with_docs: ConcreteAgent) -> None:
         result = agent_with_docs._execute_tool(
-            "search_docs_by_terms", {"terms": ["xyznonexistent123"]},
+            "search_files",
+            {"scope": "docs", "query": r"def \w+\(", "mode": "regex"},
         )
         assert isinstance(result, str)
-        assert "results_count: 0" in result
+        assert "regex" in result.lower()
 
-    def test_search_by_terms_with_top_n(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool(
-            "search_docs_by_terms", {"terms": ["guide", "API"], "top_n": 1},
+    def test_search_files_workspace_exact(self, agent: ConcreteAgent) -> None:
+        (agent._workspace.root_path / "output").mkdir(parents=True, exist_ok=True)
+        (agent._workspace.root_path / "output" / "data.txt").write_text("alpha\nbeta\nalpha")
+        result = agent._execute_tool(
+            "search_files",
+            {"scope": "workspace", "query": "alpha", "mode": "exact"},
         )
         assert isinstance(result, str)
+        assert "files_with_matches" in result
 
-    # --- search_docs_by_regex ---
-
-    def test_search_by_regex_finds_matches(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool(
-            "search_docs_by_regex", {"pattern": r"def \w+\("},
-        )
+    def test_docs_scope_without_loader_returns_error(self, agent: ConcreteAgent) -> None:
+        result = agent._execute_tool("search_files", {"scope": "docs", "query": "x"})
         assert isinstance(result, str)
-        assert "error: None" in result or "error: null" in result.lower() or "timed_out" in result
-        assert "main.py" in result or "match" in result.lower()
-
-    def test_search_by_regex_empty_pattern(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool("search_docs_by_regex", {"pattern": ""})
-        assert isinstance(result, str)
-        assert "error" in result
-
-    def test_search_by_regex_invalid_pattern(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool("search_docs_by_regex", {"pattern": "[invalid"})
-        assert isinstance(result, str)
-        assert "Invalid regex" in result
-
-    def test_search_by_regex_no_matches(self, agent_with_docs: ConcreteAgent) -> None:
-        result = agent_with_docs._execute_tool(
-            "search_docs_by_regex", {"pattern": "XYZNONEXISTENT123"},
-        )
-        assert isinstance(result, str)
-        assert "timed_out" in result  # still returns the result structure
-
-    # --- unavailability without loader ---
-
-    def test_docs_tools_unavailable_without_loader(self, agent: ConcreteAgent) -> None:
-        """All docs tools return error dict when executed without a loader (pre-dispatch)."""
-        for tool_name in ["search_docs", "get_doc_file", "search_docs_by_terms", "search_docs_by_regex"]:
-            result = agent._execute_tool(tool_name, {"query": "test"})
-            assert isinstance(result, dict)
-            assert "error" in result
-            assert "not currently available" in result["error"]
+        assert "docs scope unavailable" in result
 
 
 # =============================================================================
@@ -908,7 +1143,7 @@ class TestCallLLM:
     """Tests for _call_llm system prompt injection."""
 
     def test_no_docs_section_without_loader(self, agent: ConcreteAgent) -> None:
-        """System prompt has tool section but no docs section when no documentation loader is present."""
+        """System prompt has tools + workspace sections, but no docs section without loader."""
         mock_response = LLMChatResponse(content="hello", response_id="r1")
         agent.llm_client.call_sync = MagicMock(return_value=mock_response)
 
@@ -918,10 +1153,13 @@ class TestCallLLM:
         system_prompt = call_args.kwargs["system_prompt"]
         assert system_prompt.startswith("base prompt")
         assert "## Tools" in system_prompt  # tool availability section always injected
+        assert "## Workspace" in system_prompt
+        assert "raw/" in system_prompt
+        assert "output/" in system_prompt
         assert "## Documentation" not in system_prompt  # no docs without loader
 
     def test_docs_section_appended_with_loader(self, agent_with_docs: ConcreteAgent) -> None:
-        """System prompt has documentation section appended when loader is present."""
+        """System prompt has workspace and documentation sections when loader is present."""
         mock_response = LLMChatResponse(content="hello", response_id="r1")
         agent_with_docs.llm_client.call_sync = MagicMock(return_value=mock_response)
 
@@ -930,11 +1168,12 @@ class TestCallLLM:
         call_args = agent_with_docs.llm_client.call_sync.call_args
         system_prompt = call_args.kwargs["system_prompt"]
         assert system_prompt.startswith("base prompt")
+        assert "## Workspace" in system_prompt
         assert "## Documentation" in system_prompt
         assert "guide.md" in system_prompt
 
     def test_streaming_also_gets_docs_section(self, agent_with_docs: ConcreteAgent) -> None:
-        """Streaming path also appends documentation section."""
+        """Streaming path also appends workspace and documentation sections."""
         agent_with_docs._stream_chunk_callable = MagicMock()
         mock_response = LLMChatResponse(content="hello", response_id="r1")
 
@@ -948,6 +1187,32 @@ class TestCallLLM:
 
         call_args = agent_with_docs.llm_client.call_stream_sync.call_args
         system_prompt = call_args.kwargs["system_prompt"]
+        assert "## Workspace" in system_prompt
+        assert "## Documentation" in system_prompt
+
+    def test_workspace_section_omitted_without_workspace(self, mock_emit: MagicMock) -> None:
+        agent = ConcreteAgent(emit_message_callable=mock_emit, workspace=None)
+        mock_response = LLMChatResponse(content="hello", response_id="r1")
+        agent.llm_client.call_sync = MagicMock(return_value=mock_response)
+
+        agent._call_llm([], "base prompt")
+
+        call_args = agent.llm_client.call_sync.call_args
+        system_prompt = call_args.kwargs["system_prompt"]
+        assert "## Workspace" not in system_prompt
+
+    def test_docs_section_present_without_workspace_when_loader_exists(
+        self,
+        agent_docs_only: ConcreteAgent,
+    ) -> None:
+        mock_response = LLMChatResponse(content="hello", response_id="r1")
+        agent_docs_only.llm_client.call_sync = MagicMock(return_value=mock_response)
+
+        agent_docs_only._call_llm([], "base prompt")
+
+        call_args = agent_docs_only.llm_client.call_sync.call_args
+        system_prompt = call_args.kwargs["system_prompt"]
+        assert "## Workspace" not in system_prompt
         assert "## Documentation" in system_prompt
 
 
@@ -1514,6 +1779,15 @@ class TestAgentToolDecorator:
         fake._feature_flag = True
         assert avail_fn(fake) is True
 
+    def test_token_optimized_flag_encodes_output(self) -> None:
+        @agent_tool(token_optimized=True)
+        def _encoded_tool(self) -> dict[str, Any]:
+            """Returns a dict that should be toon-encoded."""
+            return {"status": "ok", "count": 2}
+
+        meta = _encoded_tool._tool_meta
+        assert meta.token_optimized is True
+
     # ---- _tool_meta is attached to the method ----
 
     def test_tool_meta_attached_to_method(self) -> None:
@@ -1704,6 +1978,9 @@ class TestToolMeta:
         assert meta.description == "desc"
         assert meta.parameters == params
         assert meta.availability is True
+        assert meta.persist == ToolResultPersistMode.NEVER
+        assert meta.max_characters == 10_000
+        assert meta.token_optimized is False
 
 
 # =============================================================================
@@ -1737,17 +2014,20 @@ class TestIntegration:
         ]
         assert any("Echo result" in m[0][0].content for m in chat_msgs)
 
-    def test_docs_tools_functional_with_search_then_read(
+    def test_file_tools_functional_with_search_then_read(
         self, agent_with_docs: ConcreteAgent,
     ) -> None:
         """Search for content, then read the file — mimics typical docs workflow."""
-        # Search for something — @token_optimized returns toon-encoded string
-        search_result = agent_with_docs._execute_tool("search_docs", {"query": "pip install"})
+        search_result = agent_with_docs._execute_tool(
+            "search_files",
+            {"scope": "docs", "query": "pip install", "mode": "exact"},
+        )
         assert isinstance(search_result, str)
         assert "files_with_matches" in search_result
 
-        # Read the file that contains "pip install" — also returns toon-encoded string
-        read_result = agent_with_docs._execute_tool("get_doc_file", {"path": "guide.md"})
+        read_result = agent_with_docs._execute_tool(
+            "read_file", {"scope": "docs", "path": "guide.md"},
+        )
         assert isinstance(read_result, str)
         assert "pip install" in read_result
 
@@ -1762,5 +2042,5 @@ class TestIntegration:
 
         assert agent_with_docs._documentation_data_loader is not None
         assert len(agent_with_docs.get_chats()) == 0
-        # Docs tools still registered
-        assert "search_docs" in agent_with_docs._registered_tool_names
+        # Unified file tools stay registered
+        assert "search_files" in agent_with_docs._registered_tool_names

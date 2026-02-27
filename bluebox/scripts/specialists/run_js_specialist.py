@@ -15,6 +15,7 @@ Layout:
 
 Usage:
     bluebox-js-specialist
+    bluebox-js-specialist --workspace-dir ./agent_workspace/js_specialist
     bluebox-js-specialist --dom-snapshots-path ./cdp_captures/dom/events.jsonl
     bluebox-js-specialist \
         --dom-snapshots-path ./cdp_captures/dom/events.jsonl \
@@ -40,6 +41,7 @@ from textual import work
 from textual.widgets import RichLog
 
 from bluebox.agents.specialists.js_specialist import JSSpecialist
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.dom import DOMSnapshotEvent
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
@@ -87,13 +89,29 @@ class JSSpecialistTUI(AbstractAgentTUI):
         dom_snapshots: list[DOMSnapshotEvent] | None = None,
         js_data_loader: JSDataLoader | None = None,
         network_data_loader: NetworkDataLoader | None = None,
+        dom_snapshots_path: str | None = None,
+        javascript_events_jsonl_path: str | None = None,
+        network_events_jsonl_path: str | None = None,
         remote_debugging_address: str | None = None,
+        workspace_dir: str | None = None,
     ) -> None:
-        super().__init__(llm_model)
+        super().__init__(llm_model, working_dir=workspace_dir)
         self._dom_snapshots = dom_snapshots
         self._js_data_loader = js_data_loader
         self._network_data_loader = network_data_loader
+        self._dom_snapshots_path = dom_snapshots_path
+        self._javascript_events_jsonl_path = javascript_events_jsonl_path
+        self._network_events_jsonl_path = network_events_jsonl_path
         self._remote_debugging_address = remote_debugging_address
+        self._workspace = LocalAgentWorkspace.from_directory_path(
+            workspace_dir or "./agent_workspace/js_specialist",
+        )
+        if self._dom_snapshots_path:
+            self._workspace.attach_input_file("dom_events", self._dom_snapshots_path)
+        if self._javascript_events_jsonl_path:
+            self._workspace.attach_input_file("javascript_events", self._javascript_events_jsonl_path)
+        if self._network_events_jsonl_path:
+            self._workspace.attach_input_file("network_events", self._network_events_jsonl_path)
 
     # -- Abstract implementations ----------------------------------------------
 
@@ -106,6 +124,7 @@ class JSSpecialistTUI(AbstractAgentTUI):
             network_data_loader=self._network_data_loader,
             llm_model=self._llm_model,
             remote_debugging_address=self._remote_debugging_address,
+            workspace=self._workspace,
         )
 
     def _print_welcome(self) -> None:
@@ -141,11 +160,6 @@ class JSSpecialistTUI(AbstractAgentTUI):
                 "or --remote-debugging-address to provide context.[/yellow]"
             ))
             chat.write("")
-
-        chat.write(Text.from_markup(
-            "Type [cyan]/help[/cyan] for commands, or ask questions about JavaScript."
-        ))
-        chat.write("")
 
     def _build_status_text(self) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -306,6 +320,12 @@ def main() -> None:
         default=None,
         help="Path to network_events.jsonl file for network traffic analysis tools",
     )
+    parser.add_argument(
+        "--workspace-dir",
+        type=str,
+        default="./agent_workspace/js_specialist",
+        help="Workspace directory for tool results, artifacts, and code execution files.",
+    )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress logs")
     parser.add_argument("--log-file", type=str, default=None, help="Log to file")
     args = parser.parse_args()
@@ -374,7 +394,11 @@ def main() -> None:
         dom_snapshots=dom_snapshots,
         js_data_loader=js_data_loader,
         network_data_loader=network_data_loader,
+        dom_snapshots_path=args.dom_snapshots_path,
+        javascript_events_jsonl_path=args.javascript_events_jsonl_path,
+        network_events_jsonl_path=args.network_events_jsonl_path,
         remote_debugging_address=args.remote_debugging_address,
+        workspace_dir=args.workspace_dir,
     )
     app.run()
 

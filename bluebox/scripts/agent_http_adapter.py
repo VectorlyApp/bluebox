@@ -1,8 +1,8 @@
 """
 Generic HTTP adapter for Bluebox agents.
 
-Works with any agent extending AbstractAgent, including all AbstractSpecialist
-subclasses (auto-discovered at runtime via the specialist registry).
+Works with any agent extending AbstractAgent, including autonomous agents
+auto-discovered from `bluebox.agents.specialists`.
 
 Uses inspect.signature to auto-wire each agent's constructor params to the
 available data loaders, handling the _loader/_store naming split transparently.
@@ -18,7 +18,7 @@ Endpoints (all agents):
     GET  /status
     POST /chat          {"message": "..."}
 
-Agents with discovery support (specialists + RoutineDiscoveryAgentBeta):
+Agents with discovery support:
     POST /discover      {"task": "..."}
     GET  /routine
 """
@@ -40,8 +40,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
+import bluebox.agents.specialists as specialists_pkg
 from bluebox.agents.abstract_agent import AbstractAgent
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist
+from bluebox.agents.bluebox_agent import BlueBoxAgent
 from bluebox.config import Config
 from bluebox.data_models.llms.interaction import (
     BaseEmittedMessage,
@@ -52,6 +53,7 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import OpenAIModel
 from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
+from bluebox.llms.data_loaders.dom_data_loader import DOMDataLoader
 from bluebox.llms.data_loaders.interactions_data_loader import InteractionsDataLoader
 from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
@@ -64,6 +66,7 @@ logger = get_logger(__name__)
 
 # Maps constructor param names → canonical data loader keys.
 _DATA_PARAM_TO_KEY: dict[str, str] = {
+    "dom_data_loader": "dom",
     "network_data_loader": "network",
     "storage_data_loader": "storage",
     "window_property_data_loader": "window_property",
@@ -78,22 +81,16 @@ _DATA_PARAM_TO_KEY: dict[str, str] = {
 
 def discover_agent_classes() -> dict[str, type]:
     """Build registry of all available AbstractAgent subclasses by class name."""
-    from bluebox.agents.routine_discovery_agent_beta import RoutineDiscoveryAgentBeta
-    from bluebox.agents.bluebox_agent import BlueBoxAgent
-
     # Import all specialist modules to trigger __init_subclass__ registration
-    import bluebox.agents.specialists as specialists_pkg
     for _, module_name, _ in pkgutil.iter_modules(specialists_pkg.__path__):
         importlib.import_module(f"bluebox.agents.specialists.{module_name}")
 
     registry: dict[str, type] = {
-        "RoutineDiscoveryAgentBeta": RoutineDiscoveryAgentBeta,
         "BlueBoxAgent": BlueBoxAgent,
     }
-    for name in AbstractSpecialist.get_all_agent_types():
-        cls = AbstractSpecialist.get_by_type(name)
-        if cls is not None:
-            registry[name] = cls
+    for cls in AbstractAgent.get_all_subclasses():
+        if cls.__module__.startswith("bluebox.agents.specialists."):
+            registry[cls.__name__] = cls
     return registry
 
 
@@ -248,21 +245,18 @@ class AgentState:
         with self._lock:
             if not self._chat_agent:
                 extra: dict[str, Any] = {}
-                # RoutineDiscoveryAgentBeta requires a task constructor param
-                if _accepts_param(self._agent_class, "task"):
-                    extra["task"] = "Help the user understand their data and answer questions."
-                self._chat_agent = self._make_agent(**extra)
+                self._chat_agent = self._make_agent()
             self._flush()
             self._chat_agent.process_new_message(message, ChatRole.USER)
             return {"ok": True, "messages": self._flush()}
 
     def discover(self, task: str) -> dict[str, Any]:
-        """Run discovery. Specialists use run_autonomous(), others use run()."""
+        """Run discovery. Prefer autonomous runs when the agent exposes run_autonomous()."""
         with self._lock:
             self._flush()
 
-            # Specialists: run_autonomous(task)
-            if issubclass(self._agent_class, AbstractSpecialist):
+            # Autonomous-capable agents: run_autonomous(task)
+            if callable(getattr(self._agent_class, "run_autonomous", None)):
                 agent = self._make_agent()
                 result = agent.run_autonomous(task)
                 messages = self._flush()
@@ -272,7 +266,7 @@ class AgentState:
                     return {"ok": True, "result": result_data, "messages": messages}
                 return {"ok": False, "error": "Autonomous run finished without result", "messages": messages}
 
-            # Non-specialist agents with their own run() (e.g. RoutineDiscoveryAgentBeta)
+            # Non-specialist agents with their own run()
             if _has_own_method(self._agent_class, "run"):
                 extra: dict[str, Any] = {}
                 if _accepts_param(self._agent_class, "task"):
@@ -327,7 +321,7 @@ class AgentState:
     @property
     def supports_discover(self) -> bool:
         return (
-            issubclass(self._agent_class, AbstractSpecialist)
+            callable(getattr(self._agent_class, "run_autonomous", None))
             or _has_own_method(self._agent_class, "run")
         )
 
@@ -402,6 +396,7 @@ def make_handler(state: AgentState) -> type[BaseHTTPRequestHandler]:
 def load_data(args: argparse.Namespace) -> dict[str, Any]:
     """Load all available CDP data loaders keyed by canonical names."""
     paths: dict[str, str | None] = {
+        "dom": args.dom_jsonl,
         "network": args.network_jsonl,
         "storage": args.storage_jsonl,
         "window_property": args.window_props_jsonl,
@@ -412,6 +407,7 @@ def load_data(args: argparse.Namespace) -> dict[str, Any]:
     if args.cdp_captures_dir:
         cdp_dir = Path(args.cdp_captures_dir)
         candidates = {
+            "dom": cdp_dir / "dom" / "events.jsonl",
             "network": cdp_dir / "network" / "events.jsonl",
             "storage": cdp_dir / "storage" / "events.jsonl",
             "window_property": cdp_dir / "window_properties" / "events.jsonl",
@@ -424,6 +420,7 @@ def load_data(args: argparse.Namespace) -> dict[str, Any]:
 
     loaders: dict[str, Any] = {}
     factories: dict[str, Any] = {
+        "dom": lambda p: DOMDataLoader(p),
         "network": lambda p: NetworkDataLoader(p),
         "storage": lambda p: StorageDataLoader(p),
         "window_property": lambda p: WindowPropertyDataLoader(p),
@@ -470,11 +467,12 @@ def main() -> None:
     registry = discover_agent_classes()
 
     parser = argparse.ArgumentParser(description="HTTP adapter for Bluebox agents")
-    parser.add_argument("--agent", default="RoutineDiscoveryAgentBeta",
-                        help="Agent class name (default: RoutineDiscoveryAgentBeta)")
+    parser.add_argument("--agent", default="BlueBoxAgent",
+                        help="Agent class name (default: BlueBoxAgent)")
     parser.add_argument("--list-agents", action="store_true",
                         help="List available agents and exit")
     parser.add_argument("--cdp-captures-dir", type=str, default=None)
+    parser.add_argument("--dom-jsonl", type=str, default=None)
     parser.add_argument("--network-jsonl", type=str, default=None)
     parser.add_argument("--storage-jsonl", type=str, default=None)
     parser.add_argument("--window-props-jsonl", type=str, default=None)
@@ -496,9 +494,8 @@ def main() -> None:
             for pname, param in sig.parameters.items():
                 if pname in _DATA_PARAM_TO_KEY and param.default is inspect.Parameter.empty:
                     required.append(_DATA_PARAM_TO_KEY[pname])
-            specialist = " (specialist)" if issubclass(cls, AbstractSpecialist) else ""
             req = f"  requires: {', '.join(required)}" if required else ""
-            print(f"  {name}{specialist}{req}")
+            print(f"  {name}{req}")
         return
 
     if args.agent not in registry:

@@ -103,7 +103,7 @@ bluebox-agent --context-file path/to/agent_context.json
 
 ## Create your own routines
 
-To learn about the core technology powering BlueBox, see [routine_discovery.md](routine_discovery.md).
+To learn about the core technology powering BlueBox, see [routine_discovery.md](docs/routine_discovery.md).
 
 ## Contributing 🤝
 

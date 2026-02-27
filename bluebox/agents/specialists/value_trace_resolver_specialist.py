@@ -7,16 +7,22 @@ Agent specialized in tracing where tokens/values originated from.
 
 Contains:
 - ValueTraceResolverSpecialist: Specialist for tracing values across network, storage, and window property data
-- Uses: AbstractSpecialist base class for all agent plumbing
+- Uses: AbstractAgent base class for all agent plumbing
 """
 
 from __future__ import annotations
 
+import json
 import textwrap
 from typing import TYPE_CHECKING, Any, Callable
 
-from bluebox.agents.abstract_agent import AgentCard, agent_tool
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
+from bluebox.agents.abstract_agent import (
+    AbstractAgent,
+    AgentCard,
+    ToolResultPersistMode,
+    agent_tool,
+)
+from bluebox.workspace import AgentWorkspace, LocalAgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -26,8 +32,6 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
 from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
-from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
-from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -36,7 +40,7 @@ if TYPE_CHECKING:
 logger = get_logger(name=__name__)
 
 
-class ValueTraceResolverSpecialist(AbstractSpecialist):
+class ValueTraceResolverSpecialist(AbstractAgent):
     """
     Trace hound agent that traces where tokens/values originated from.
 
@@ -51,6 +55,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "browser storage, and window properties."
         ),
     )
+    _VALUE_PREVIEW_MAX_CHARS = 800
 
     SYSTEM_PROMPT: str = textwrap.dedent("""
         You are a token origin specialist that traces where values come from in web traffic.
@@ -116,13 +121,14 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         network_data_loader: NetworkDataLoader | None = None,
         storage_data_loader: StorageDataLoader | None = None,
         window_property_data_loader: WindowPropertyDataLoader | None = None,
+        enable_execute_python: bool = True,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
-        llm_model: LLMModel = OpenAIModel.GPT_5_2,
-        run_mode: RunMode = RunMode.CONVERSATIONAL,
+        llm_model: LLMModel = OpenAIModel.GPT_5_1,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
+        workspace: AgentWorkspace | None = None,
     ) -> None:
         """
         Initialize the trace hound agent.
@@ -136,7 +142,6 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
             llm_model: The LLM model to use for conversation.
-            run_mode: How the specialist will be run (conversational or autonomous).
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
@@ -148,20 +153,22 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
+            workspace=workspace or LocalAgentWorkspace.from_directory_path("./agent_workspace/specialist"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            run_mode=run_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
+            allow_code_execution=enable_execute_python,
         )
 
         logger.debug(
-            "ValueTraceResolverSpecialist initialized with model: %s, chat_thread_id: %s",
+            "ValueTraceResolverSpecialist initialized with model: %s, chat_thread_id: %s, execute_python=%s",
             llm_model,
             self._thread.id,
+            "enabled" if enable_execute_python else "disabled",
         )
 
     ## Abstract method implementations
@@ -215,10 +222,54 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             f"analyze the results, and call {finalize_success} with your findings."
         )
 
+    @classmethod
+    def _preview_value(cls, value: Any, max_chars: int | None = None) -> str | None:
+        """Return a compact string preview for potentially large values."""
+        if value is None:
+            return None
+        limit = max_chars or cls._VALUE_PREVIEW_MAX_CHARS
+        try:
+            if isinstance(value, str):
+                serialized = value
+            else:
+                serialized = json.dumps(value, ensure_ascii=False, default=str)
+        except Exception:
+            serialized = str(value)
+
+        if len(serialized) <= limit:
+            return serialized
+        return f"{serialized[:limit]}... (truncated, {len(serialized)} chars)"
+
+    def _compact_storage_entry(self, index: int, entry: Any) -> dict[str, Any]:
+        """Return a compact, token-safe view of a storage event."""
+        return {
+            "index": index,
+            "timestamp": entry.timestamp,
+            "type": entry.type,
+            "origin": entry.origin,
+            "source": entry.source,
+            "key": entry.key,
+            "triggered_by": entry.triggered_by,
+            "value_preview": self._preview_value(entry.value),
+            "old_value_preview": self._preview_value(entry.old_value),
+            "new_value_preview": self._preview_value(entry.new_value),
+            "added_count": len(entry.added or []),
+            "modified_count": len(entry.modified or []),
+            "removed_count": len(entry.removed or []),
+            "total_count": entry.total_count,
+        }
+
+    def _compact_window_change(self, change: dict[str, Any]) -> dict[str, Any]:
+        """Return a compact, token-safe view of a window property change."""
+        compact = {k: v for k, v in change.items() if k != "value"}
+        value = change.get("value")
+        compact["value_preview"] = self._preview_value(value)
+        compact["value_type"] = type(value).__name__ if value is not None else None
+        return compact
+
     ## Tool handlers
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(persist=ToolResultPersistMode.OVERFLOW, max_characters=2_500, token_optimized=True)
     def _search_everywhere(
         self,
         value: str,
@@ -273,7 +324,7 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             results["window_properties"] = {
                 "found": len(window_results) > 0,
                 "count": len(window_results),
-                "matches": window_results[:10],
+                "matches": [self._compact_window_change(row) for row in window_results[:10]],
             }
         else:
             results["window_properties"] = {"available": False}
@@ -293,8 +344,12 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
 
         return results
 
-    @agent_tool(availability=lambda self: self._network_data_loader is not None)
-    @token_optimized
+    @agent_tool(
+        availability=lambda self: self._network_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=2_500,
+        token_optimized=True,
+    )
     def _search_in_network(
         self,
         value: str,
@@ -325,8 +380,12 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "results": results[:20],
         }
 
-    @agent_tool(availability=lambda self: self._storage_data_loader is not None)
-    @token_optimized
+    @agent_tool(
+        availability=lambda self: self._storage_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=2_500,
+        token_optimized=True,
+    )
     def _search_in_storage(
         self,
         value: str,
@@ -357,8 +416,12 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "results": results[:20],
         }
 
-    @agent_tool(availability=lambda self: self._window_property_data_loader is not None)
-    @token_optimized
+    @agent_tool(
+        availability=lambda self: self._window_property_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=2_500,
+        token_optimized=True,
+    )
     def _search_in_window_props(
         self,
         value: str,
@@ -386,11 +449,15 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         return {
             "value_searched": value,
             "results_found": len(results),
-            "results": results[:20],
+            "results": [self._compact_window_change(row) for row in results[:20]],
         }
 
-    @agent_tool(availability=lambda self: self._network_data_loader is not None)
-    @token_optimized
+    @agent_tool(
+        availability=lambda self: self._network_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=2_500,
+        token_optimized=True,
+    )
     def _get_network_entry(self, request_id: str) -> dict[str, Any]:
         """
         Get full details of a network entry by request_id. Returns method, URL, headers, request body, and response body.
@@ -426,8 +493,12 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "response_content": response_content,
         }
 
-    @agent_tool(availability=lambda self: self._storage_data_loader is not None)
-    @token_optimized
+    @agent_tool(
+        availability=lambda self: self._storage_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=2_500,
+        token_optimized=True,
+    )
     def _get_storage_entry(self, index: int) -> dict[str, Any]:
         """
         Get full details of a storage entry by index. Returns the storage event with all its fields.
@@ -442,13 +513,14 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         if not entry:
             return {"error": f"Entry at index {index} not found"}
 
-        return {
-            "index": index,
-            "entry": entry.model_dump(),
-        }
+        return self._compact_storage_entry(index=index, entry=entry)
 
-    @agent_tool(availability=lambda self: self._window_property_data_loader is not None)
-    @token_optimized
+    @agent_tool(
+        availability=lambda self: self._window_property_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=2_500,
+        token_optimized=True,
+    )
     def _get_window_prop_changes(
         self,
         path: str,
@@ -475,11 +547,15 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
             "path": path,
             "exact_match": exact,
             "changes_found": len(results),
-            "changes": results[:20],
+            "changes": [self._compact_window_change(change) for change in results[:20]],
         }
 
-    @agent_tool(availability=lambda self: self._storage_data_loader is not None)
-    @token_optimized
+    @agent_tool(
+        availability=lambda self: self._storage_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=2_500,
+        token_optimized=True,
+    )
     def _get_storage_by_key(self, key: str) -> dict[str, Any]:
         """
         Get all storage entries for a specific key name.
@@ -502,49 +578,11 @@ class ValueTraceResolverSpecialist(AbstractSpecialist):
         return {
             "key": key,
             "entries_found": len(entries),
-            "entries": [e.model_dump() for e in entries[:20]],
+            "entries": [
+                self._compact_storage_entry(
+                    index=self._storage_data_loader.entries.index(e),
+                    entry=e,
+                )
+                for e in entries[:20]
+            ],
         }
-
-    @agent_tool()
-    def _execute_python(self, code: str) -> dict[str, Any]:
-        """
-        Execute Python code in a sandboxed environment to analyze data.
-
-        Pre-loaded variables:
-        - `network_entries`: list of NetworkTransactionEvent dicts (request_id, url,
-          method, status, request_headers, response_headers, post_data, response_body)
-        - `storage_entries`: list of StorageEvent dicts (type, origin, key, value, etc.)
-        - `window_prop_entries`: list of WindowPropertyEvent dicts (url, timestamp, changes)
-
-        Use print() to output results.
-        Example: for e in storage_entries: if e['key'] == 'token': print(e)
-
-        Args:
-            code: Python code to execute. The `json` module is available.
-                Use print() for output. Imports are disabled for security.
-        """
-        # Build extra globals with all available data stores
-        extra_globals: dict[str, Any] = {}
-
-        if self._network_data_loader:
-            extra_globals["network_entries"] = [
-                e.model_dump() for e in self._network_data_loader.entries
-            ]
-        else:
-            extra_globals["network_entries"] = []
-
-        if self._storage_data_loader:
-            extra_globals["storage_entries"] = [
-                e.model_dump() for e in self._storage_data_loader.entries
-            ]
-        else:
-            extra_globals["storage_entries"] = []
-
-        if self._window_property_data_loader:
-            extra_globals["window_prop_entries"] = [
-                e.model_dump() for e in self._window_property_data_loader.entries
-            ]
-        else:
-            extra_globals["window_prop_entries"] = []
-
-        return execute_python_sandboxed(code, extra_globals=extra_globals)

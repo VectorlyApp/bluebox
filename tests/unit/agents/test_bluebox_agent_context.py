@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from bluebox.agents.bluebox_agent import BlueBoxAgent
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.agents.context import BlueBoxAgentContext, UsedRoutine, UsedRoutineParameter
 
 
@@ -44,7 +44,7 @@ def sample_context() -> BlueBoxAgentContext:
         ],
         python_code=(
             'import csv\n'
-            'with open("outputs/trains.csv", "w") as f:\n'
+            'with open("output/trains.csv", "w") as f:\n'
             '    writer = csv.DictWriter(f, fieldnames=["departure", "price"])\n'
             '    writer.writeheader()\n'
             '    for rr in routine_results:\n'
@@ -52,7 +52,7 @@ def sample_context() -> BlueBoxAgentContext:
             '            writer.writerow(train)\n'
             'print("Done")'
         ),
-        output_files=["outputs/trains.csv"],
+        output_files=["output/trains.csv"],
         output_description="CSV with columns: departure, price. 12 rows of Amtrak trains under $100.",
         summary="Searched Amtrak for NYC-Boston trains on March 15, filtered by price, and exported to CSV.",
         generated_at=datetime(2026, 2, 22, 10, 30, 0, tzinfo=timezone.utc),
@@ -190,7 +190,7 @@ class TestContextLoading:
         """Create a BlueBoxAgent with mocked dependencies."""
         return BlueBoxAgent(
             emit_message_callable=MagicMock(),
-            workspace=LocalWorkspace(str(workspace_dir)),
+            workspace=LocalAgentWorkspace(str(workspace_dir)),
             auth_headers_provider=lambda: {"X-Service-Token": "test"},
             context_file=context_file,
         )
@@ -295,7 +295,7 @@ class TestContextPromptInjection:
 
         return BlueBoxAgent(
             emit_message_callable=MagicMock(),
-            workspace=LocalWorkspace(str(tmp_path)),
+            workspace=LocalAgentWorkspace(str(tmp_path)),
             auth_headers_provider=lambda: {"X-Service-Token": "test"},
             context_file=str(ctx_file),
         )
@@ -326,12 +326,12 @@ class TestContextPromptInjection:
         section = agent._get_context_prompt_section()
         assert len(section) < 25_000
         assert "context truncated" in section
-        assert "read_workspace_file" in section
+        assert "read_file(scope=\"workspace\"" in section
 
     def test_no_context_no_section(self, tmp_path: Path) -> None:
         agent = BlueBoxAgent(
             emit_message_callable=MagicMock(),
-            workspace=LocalWorkspace(str(tmp_path)),
+            workspace=LocalAgentWorkspace(str(tmp_path)),
             auth_headers_provider=lambda: {"X-Service-Token": "test"},
         )
         prompt = agent._get_system_prompt()
@@ -349,7 +349,7 @@ class TestGenerateContext:
     def _make_agent(self, tmp_path: Path) -> BlueBoxAgent:
         return BlueBoxAgent(
             emit_message_callable=MagicMock(),
-            workspace=LocalWorkspace(str(tmp_path)),
+            workspace=LocalAgentWorkspace(str(tmp_path)),
             auth_headers_provider=lambda: {"X-Service-Token": "test"},
         )
 
@@ -410,16 +410,18 @@ class TestGenerateContext:
         """When LLM returns empty routines_used, auto-populate from raw/."""
         agent = self._make_agent(tmp_path)
 
-        # Write a fake routine result to raw/
-        raw_dir = tmp_path / "raw"
-        raw_dir.mkdir(exist_ok=True)
-        (raw_dir / "result_1.json").write_text(json.dumps({
-            "routine_id": "Routine_abc",
-            "routine_name": "TestRoutine",
-            "status": "completed",
-            "parameters": {"city": "NYC"},
-            "result": {"ok": True, "data": {}},
-        }))
+        # Write a fake routine result through workspace APIs
+        agent._workspace.save_artifact(  # noqa: SLF001
+            "raw",
+            "result_1.json",
+            json.dumps({
+                "routine_id": "Routine_abc",
+                "routine_name": "TestRoutine",
+                "status": "completed",
+                "parameters": {"city": "NYC"},
+                "result": {"ok": True, "data": {}},
+            }),
+        )
 
         # LLM returns context with empty routines_used
         context_from_llm = BlueBoxAgentContext(
@@ -441,16 +443,18 @@ class TestGenerateContext:
         """Same routine_id executed multiple times should appear once."""
         agent = self._make_agent(tmp_path)
 
-        raw_dir = tmp_path / "raw"
-        raw_dir.mkdir(exist_ok=True)
         for i in range(3):
-            (raw_dir / f"result_{i}.json").write_text(json.dumps({
-                "routine_id": "Routine_same",
-                "routine_name": "SameRoutine",
-                "status": "completed",
-                "parameters": {"q": f"query_{i}"},
-                "result": {"ok": True, "data": {}},
-            }))
+            agent._workspace.save_artifact(  # noqa: SLF001
+                "raw",
+                f"result_{i}.json",
+                json.dumps({
+                    "routine_id": "Routine_same",
+                    "routine_name": "SameRoutine",
+                    "status": "completed",
+                    "parameters": {"q": f"query_{i}"},
+                    "result": {"ok": True, "data": {}},
+                }),
+            )
 
         context_from_llm = BlueBoxAgentContext(
             goal="test", summary="test", output_description="test",
@@ -465,15 +469,17 @@ class TestGenerateContext:
         """When LLM provides routines_used, don't auto-populate from raw/."""
         agent = self._make_agent(tmp_path)
 
-        raw_dir = tmp_path / "raw"
-        raw_dir.mkdir(exist_ok=True)
-        (raw_dir / "result_1.json").write_text(json.dumps({
-            "routine_id": "Routine_from_raw",
-            "routine_name": "RawRoutine",
-            "status": "completed",
-            "parameters": {},
-            "result": {"ok": True, "data": {}},
-        }))
+        agent._workspace.save_artifact(  # noqa: SLF001
+            "raw",
+            "result_1.json",
+            json.dumps({
+                "routine_id": "Routine_from_raw",
+                "routine_name": "RawRoutine",
+                "status": "completed",
+                "parameters": {},
+                "result": {"ok": True, "data": {}},
+            }),
+        )
 
         context_from_llm = BlueBoxAgentContext(
             goal="test", summary="test", output_description="test",

@@ -43,7 +43,6 @@ def _create_handler() -> logging.StreamHandler:
 
 def _create_tui_handler() -> logging.Handler:
     """Create a TextualHandler that routes logs through Textual instead of stderr."""
-    from textual.logging import TextualHandler
     handler = TextualHandler()
     handler.setFormatter(logging.Formatter(
         fmt=Config.LOG_FORMAT,

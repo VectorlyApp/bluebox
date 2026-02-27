@@ -4,10 +4,12 @@ tests/unit/test_blocklist_hints.py
 Unit tests for blocklist workaround hints and sandbox-aware system prompts.
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.utils.code_execution_sandbox import (
     BLOCKED_MODULE_WORKAROUNDS,
     BLOCKED_PATTERN_WORKAROUNDS,
@@ -123,44 +125,61 @@ class TestGetActiveSandboxMode:
 class TestBlueBoxAgentBlocklistPrompt:
     """Tests for blocklist-aware system prompt in BlueBoxAgent."""
 
-    @patch("bluebox.agents.bluebox_agent.get_active_sandbox_mode", return_value="blocklist")
+    @patch("bluebox.agents.abstract_agent.get_active_sandbox_mode", return_value="blocklist")
     @patch("bluebox.agents.bluebox_agent.Config")
-    def test_blocklist_prompt_included(self, mock_config: MagicMock, mock_mode: MagicMock) -> None:
+    def test_blocklist_prompt_included(
+        self,
+        mock_config: MagicMock,
+        mock_mode: MagicMock,
+        tmp_path: Path,
+    ) -> None:
         """System prompt should include sandbox restrictions in blocklist mode."""
         mock_config.VECTORLY_SERVICE_TOKEN = "test-token"
         mock_config.VECTORLY_API_BASE = "http://test"
 
         from bluebox.agents.bluebox_agent import BlueBoxAgent
-        agent = BlueBoxAgent(emit_message_callable=MagicMock())
+        agent = BlueBoxAgent(
+            emit_message_callable=MagicMock(),
+            workspace=LocalAgentWorkspace.from_directory_path(tmp_path),
+        )
         prompt = agent._get_system_prompt()
         assert "Sandbox Restrictions" in prompt
         assert "Blocked imports" in prompt
         assert "do NOT import" in prompt
 
-    @patch("bluebox.agents.bluebox_agent.get_active_sandbox_mode", return_value="docker")
+    @patch("bluebox.agents.abstract_agent.get_active_sandbox_mode", return_value="docker")
     @patch("bluebox.agents.bluebox_agent.Config")
-    def test_blocklist_prompt_excluded(self, mock_config: MagicMock, mock_mode: MagicMock) -> None:
+    def test_blocklist_prompt_excluded(
+        self,
+        mock_config: MagicMock,
+        mock_mode: MagicMock,
+        tmp_path: Path,
+    ) -> None:
         """System prompt should NOT include sandbox restrictions when Docker is available."""
         mock_config.VECTORLY_SERVICE_TOKEN = "test-token"
         mock_config.VECTORLY_API_BASE = "http://test"
 
         from bluebox.agents.bluebox_agent import BlueBoxAgent
-        agent = BlueBoxAgent(emit_message_callable=MagicMock())
+        agent = BlueBoxAgent(
+            emit_message_callable=MagicMock(),
+            workspace=LocalAgentWorkspace.from_directory_path(tmp_path),
+        )
         prompt = agent._get_system_prompt()
         assert "Sandbox Restrictions" not in prompt
 
 
-class TestRunPythonCodeBlockedHint:
-    """Tests for workaround hints in _run_python_code error responses."""
+class TestExecutePythonBlockedHint:
+    """Tests for workaround hints in execute_python error responses."""
 
-    @patch("bluebox.agents.bluebox_agent.get_active_sandbox_mode", return_value="blocklist")
-    @patch("bluebox.agents.bluebox_agent.execute_python_sandboxed")
+    @patch("bluebox.agents.abstract_agent.get_active_sandbox_mode", return_value="blocklist")
+    @patch("bluebox.agents.abstract_agent.execute_python_sandboxed")
     @patch("bluebox.agents.bluebox_agent.Config")
     def test_blocked_module_returns_workaround_hint(
         self,
         mock_config: MagicMock,
         mock_sandbox: MagicMock,
         mock_mode: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """When sandbox returns a blocked module error, _hint should contain workaround."""
         mock_config.VECTORLY_SERVICE_TOKEN = "test-token"
@@ -171,19 +190,27 @@ class TestRunPythonCodeBlockedHint:
         }
 
         from bluebox.agents.bluebox_agent import BlueBoxAgent
-        agent = BlueBoxAgent(emit_message_callable=MagicMock())
-        result = agent._run_python_code("import os")
+        agent = BlueBoxAgent(
+            emit_message_callable=MagicMock(),
+            workspace=LocalAgentWorkspace.from_directory_path(tmp_path),
+        )
+        result = agent._execute_tool("execute_python", {"code": "import os"})
+        kwargs = mock_sandbox.call_args.kwargs
+        read_only_paths = kwargs["read_only_paths"]
+        assert any(p.endswith("/raw") for p in read_only_paths)
+        assert any(p.endswith("/meta") for p in read_only_paths)
         assert "Sandbox restriction:" in result["_hint"]
         assert "open()" in result["_hint"]
 
-    @patch("bluebox.agents.bluebox_agent.get_active_sandbox_mode", return_value="blocklist")
-    @patch("bluebox.agents.bluebox_agent.execute_python_sandboxed")
+    @patch("bluebox.agents.abstract_agent.get_active_sandbox_mode", return_value="blocklist")
+    @patch("bluebox.agents.abstract_agent.execute_python_sandboxed")
     @patch("bluebox.agents.bluebox_agent.Config")
     def test_generic_error_returns_generic_hint(
         self,
         mock_config: MagicMock,
         mock_sandbox: MagicMock,
         mock_mode: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """When sandbox returns a non-blocklist error, _hint should be generic."""
         mock_config.VECTORLY_SERVICE_TOKEN = "test-token"
@@ -194,7 +221,10 @@ class TestRunPythonCodeBlockedHint:
         }
 
         from bluebox.agents.bluebox_agent import BlueBoxAgent
-        agent = BlueBoxAgent(emit_message_callable=MagicMock())
-        result = agent._run_python_code("print(foo)")
+        agent = BlueBoxAgent(
+            emit_message_callable=MagicMock(),
+            workspace=LocalAgentWorkspace.from_directory_path(tmp_path),
+        )
+        result = agent._execute_tool("execute_python", {"code": "print(foo)"})
         assert "Sandbox restriction:" not in result["_hint"]
         assert "Code failed" in result["_hint"]

@@ -7,17 +7,23 @@ Agent specialized in searching through network traffic data.
 
 Contains:
 - NetworkSpecialist: Specialist for network traffic analysis
-- Uses: AbstractSpecialist base class for all agent plumbing
+- Uses: AbstractAgent base class for all agent plumbing
 """
 
 from __future__ import annotations
 
+import json as json_module
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlparse, parse_qs
 
-from bluebox.agents.abstract_agent import AgentCard, agent_tool
-from bluebox.agents.specialists.abstract_specialist import AbstractSpecialist, RunMode
+from bluebox.agents.abstract_agent import (
+    AbstractAgent,
+    AgentCard,
+    ToolResultPersistMode,
+    agent_tool,
+)
+from bluebox.workspace import AgentWorkspace, LocalAgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -25,8 +31,6 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
-from bluebox.utils.code_execution_sandbox import execute_python_sandboxed
-from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -35,11 +39,11 @@ if TYPE_CHECKING:
 logger = get_logger(name=__name__)
 
 
-class NetworkSpecialist(AbstractSpecialist):
+class NetworkSpecialist(AbstractAgent):
     """
     Network specialist agent that helps analyze captured network traffic.
 
-    The agent uses AbstractSpecialist as its base and provides tools to search
+    The agent uses AbstractAgent as its base and provides tools to search
     and analyze network traffic data from JSONL captures.
     """
 
@@ -49,8 +53,7 @@ class NetworkSpecialist(AbstractSpecialist):
             "inspecting request/response data, and semantic search across captured traffic."
         ),
     )
-
-    SYSTEM_PROMPT: str = dedent("""
+    SYSTEM_PROMPT: str = dedent(f"""
         You are a network traffic analyst specializing in captured browser network data.
 
         ## Your Role
@@ -70,9 +73,11 @@ class NetworkSpecialist(AbstractSpecialist):
         - Be concise and direct
         - When you find a relevant entry, report its ID and URL
         - Always use search_responses_by_terms first when looking for specific data
+
+        {AbstractAgent.WORKSPACE_USAGE_SECTION}
     """).strip()
 
-    AUTONOMOUS_SYSTEM_PROMPT: str = dedent("""
+    AUTONOMOUS_SYSTEM_PROMPT: str = dedent(f"""
         You are a network traffic analyst that autonomously identifies API endpoints.
 
         ## Your Mission
@@ -91,6 +96,8 @@ class NetworkSpecialist(AbstractSpecialist):
         - Look for API/XHR calls (not HTML pages, JS files, or images)
         - Prefer endpoints with structured JSON responses
         - Consider multi-step flows: authentication, search, pagination
+
+        {AbstractAgent.WORKSPACE_USAGE_SECTION}
     """).strip()
 
     ## Magic methods
@@ -102,11 +109,11 @@ class NetworkSpecialist(AbstractSpecialist):
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
-        llm_model: LLMModel = OpenAIModel.GPT_5_2,
-        run_mode: RunMode = RunMode.CONVERSATIONAL,
+        llm_model: LLMModel = OpenAIModel.GPT_5_1,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
+        workspace: AgentWorkspace | None = None,
     ) -> None:
         """
         Initialize the network specialist agent.
@@ -118,24 +125,26 @@ class NetworkSpecialist(AbstractSpecialist):
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
             llm_model: The LLM model to use for conversation.
-            run_mode: How the specialist will be run (conversational or autonomous).
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
+            workspace: Optional workspace for file I/O.
         """
         self._network_data_loader = network_data_loader
 
         super().__init__(
             emit_message_callable=emit_message_callable,
+            workspace=workspace or LocalAgentWorkspace.from_directory_path("./agent_workspace/specialist"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            run_mode=run_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
+            allow_code_execution=True,
         )
+
         logger.debug(
             "NetworkSpecialist initialized with model: %s, chat_thread_id: %s, entries: %d",
             llm_model,
@@ -187,7 +196,13 @@ class NetworkSpecialist(AbstractSpecialist):
         else:
             host_context = ""
 
-        return self.SYSTEM_PROMPT + stats_context + host_context + urls_context
+        return (
+            self.SYSTEM_PROMPT
+            + stats_context
+            + host_context
+            + urls_context
+            + self._generate_code_execution_prompt()
+        )
 
     def _get_autonomous_system_prompt(self) -> str:
         """Get system prompt for autonomous mode with traffic context."""
@@ -211,6 +226,7 @@ class NetworkSpecialist(AbstractSpecialist):
             self.AUTONOMOUS_SYSTEM_PROMPT
             + stats_context
             + urls_context
+            + self._generate_code_execution_prompt()
             + self._get_output_schema_prompt_section()
             + self._get_urgency_notice()
         )
@@ -232,10 +248,19 @@ class NetworkSpecialist(AbstractSpecialist):
             f"use {finalize_fail} to report why."
         )
 
+    def _get_workspace_usage_prompt_section(self) -> str:
+        """Keep embedded workspace guidance and append dynamic mounted-file listing."""
+        mounted_section = self._get_mounted_inputs_prompt_section()
+        if not mounted_section:
+            return ""
+        return f"\n\n{mounted_section}"
+
     ## Tool handlers
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
     def _search_responses_by_terms(self, terms: list[str]) -> dict[str, Any]:
         """
         Search RESPONSE bodies by a list of terms.
@@ -264,8 +289,10 @@ class NetworkSpecialist(AbstractSpecialist):
             "results": results,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
     def _get_entry_detail(self, request_id: str) -> dict[str, Any]:
         """
         Get full details of a specific network entry by request_id.
@@ -306,8 +333,10 @@ class NetworkSpecialist(AbstractSpecialist):
             "response_key_structure": key_structure,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
     def _get_response_body_schema(self, request_id: str) -> dict[str, Any]:
         """
         Get the schema of a network entry's JSON response body.
@@ -330,39 +359,38 @@ class NetworkSpecialist(AbstractSpecialist):
             "key_structure": key_structure,
         }
 
-    @agent_tool()
-    @token_optimized
-    def _get_unique_urls(self) -> dict[str, Any]:
+    @agent_tool(
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=2_500,
+    )
+    def _get_unique_urls(self, max_urls: int = 100) -> dict[str, Any]:
         """
-        Get all unique URLs from the captured network traffic.
+        Get unique URLs from the captured network traffic.
 
-        Returns a sorted list of all unique URLs observed in the traffic.
-        """
-        url_counts = self._network_data_loader.url_counts
-        return {
-            "total_unique_urls": len(url_counts),
-            "url_counts": url_counts,
-        }
-
-    @agent_tool()
-    def _execute_python(self, code: str) -> dict[str, Any]:
-        """
-        Execute Python code in a sandboxed environment to analyze network entries.
-
-        The variable `entries` is pre-loaded as a list of NetworkTransactionEvent dicts.
-        Each entry has: request_id, url, method, status, mime_type, request_headers,
-        response_headers, post_data, response_body. Use print() to output results.
-        Example: for e in entries[:5]: print(e['url'])
+        Returns a count-sorted subset to avoid oversized tool payloads.
 
         Args:
-            code: Python code to execute. `entries` is a list of network entry dicts.
-                `json` module is available. Use print() for output. Imports are disabled.
+            max_urls: Maximum number of URLs to return (default 100, max 500).
         """
-        entries = [e.model_dump() for e in self._network_data_loader.entries]
-        return execute_python_sandboxed(code, extra_globals={"entries": entries})
+        if max_urls <= 0:
+            return {"error": "max_urls must be > 0"}
+        max_urls = min(max_urls, 500)
 
-    @agent_tool()
-    @token_optimized
+        url_counts = self._network_data_loader.url_counts
+        sorted_items = sorted(url_counts.items(), key=lambda x: x[1], reverse=True)
+        limited_url_counts = dict(sorted_items[:max_urls])
+        return {
+            "total_unique_urls": len(url_counts),
+            "returned_unique_urls": len(limited_url_counts),
+            "omitted_unique_urls": max(0, len(url_counts) - len(limited_url_counts)),
+            "url_counts": limited_url_counts,
+        }
+
+    @agent_tool(
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
     def _search_requests_by_terms(
         self,
         terms: list[str],
@@ -405,7 +433,6 @@ class NetworkSpecialist(AbstractSpecialist):
 
             # Search headers
             if "headers" in search_in:
-                import json as json_module
                 headers_str = json_module.dumps(entry.request_headers).lower()
                 for term in terms_lower:
                     count = headers_str.count(term)
@@ -417,7 +444,6 @@ class NetworkSpecialist(AbstractSpecialist):
 
             # Search body
             if "body" in search_in and entry.post_data:
-                import json as json_module
                 if isinstance(entry.post_data, (dict, list)):
                     post_data_str = json_module.dumps(entry.post_data)
                 else:
@@ -453,8 +479,10 @@ class NetworkSpecialist(AbstractSpecialist):
             "results": results[:20],  # Top 20
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+    )
     def _search_response_bodies(
         self,
         value: str,

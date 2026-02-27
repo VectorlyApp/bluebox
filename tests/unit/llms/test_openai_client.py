@@ -194,8 +194,8 @@ class TestToolChoiceNormalization:
 
     def test_normalize_other_tool_name(self, client: OpenAIClient) -> None:
         """Test that other tool names normalize correctly."""
-        result = client._normalize_tool_choice("search_docs")
-        assert result == {"type": "function", "name": "search_docs"}
+        result = client._normalize_tool_choice("search_files")
+        assert result == {"type": "function", "name": "search_files"}
 
     def test_normalize_none(self, client: OpenAIClient) -> None:
         """Test that 'none' normalizes to 'none'."""
