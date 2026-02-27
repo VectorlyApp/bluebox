@@ -24,7 +24,8 @@ This file provides context and guidelines for working with the bluebox codebase.
 - `bluebox-monitor --host 127.0.0.1 --port 9222 --output-dir ./cdp_captures --url about:blank --incognito` - Start browser monitoring
 - `bluebox-discover --task "your task description" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5.2` - Discover routines from captures
 - `bluebox-execute --routine-path example_data/example_routines/amtrak_one_way_train_search_routine.json --parameters-path example_data/example_routines/amtrak_one_way_train_search_input.json` - Execute a routine
-- `bluebox-agent-adapter --agent RoutineDiscoveryAgentBeta --cdp-captures-dir ./cdp_captures` - Start HTTP adapter for programmatic agent interaction (see Agent HTTP Adapter section below)
+- `bluebox-api-index --cdp-captures-dir ./cdp_captures --task "your task" --output-dir ./api_indexing_output --model gpt-5.2 --post-run-analysis` - Run the API indexing pipeline (exploration + routine construction)
+- `bluebox-agent-adapter --agent NetworkSpecialist --cdp-captures-dir ./cdp_captures` - Start HTTP adapter for programmatic agent interaction (see Agent HTTP Adapter section below)
 - `bluebox-agent-adapter --list-agents` - List all available agents and their required data
 
 ### Chrome Debug Mode
@@ -107,23 +108,35 @@ This file provides context and guidelines for working with the bluebox codebase.
 - `bluebox/utils/js_utils.py` - JavaScript code generation
 - `bluebox/utils/web_socket_utils.py` - WebSocket utilities for CDP
 - `bluebox/sdk/client.py` - Main SDK client
+- `bluebox/workspace.py` - Agent workspace (artifact-oriented file I/O with provenance tracking)
 
 ### Agents
 
-AI agents that power routine discovery and conversational interactions:
+AI agents that power routine discovery, API indexing, and conversational interactions. All agents inherit from `AbstractAgent` (`bluebox/agents/abstract_agent.py`).
 
+**Core agents:**
 - `bluebox/agents/routine_discovery_agent.py` - Analyzes CDP captures to generate routines (identifies transactions, extracts/resolves variables, constructs operations)
 - `bluebox/agents/guide_agent.py` - Conversational agent for guiding users through routine creation/editing (maintains chat history, dynamic tool registration)
+- `bluebox/agents/bluebox_agent.py` - General-purpose conversational agent
+
+**API Indexing Pipeline agents:**
+- `bluebox/agents/principal_investigator.py` - Orchestrator: plans routine catalog, dispatches experiments to workers, reviews results, assembles and ships routines
+- `bluebox/agents/workers/experiment_worker.py` - Browser-capable execution agent: live browser tools + recorded capture lookup tools, executes experiments
+- `bluebox/agents/routine_inspector.py` - Independent quality gate: scores routines on 6 dimensions, hard-fails on 4xx/5xx or unresolved placeholders
+
+**Specialists** (domain-specific agents for exploration):
+- `bluebox/agents/specialists/network_specialist.py` - Network traffic analysis
+- `bluebox/agents/specialists/dom_specialist.py` - DOM structure analysis
+- `bluebox/agents/specialists/interaction_specialist.py` - UI interaction analysis
+- `bluebox/agents/specialists/js_specialist.py` - JavaScript file analysis
+- `bluebox/agents/specialists/value_trace_resolver_specialist.py` - Storage & window property analysis
 
 **Agent HTTP Adapter** (`bluebox/scripts/agent_http_adapter.py`):
 
-HTTP wrapper that exposes any `AbstractAgent` (or `AbstractSpecialist`) subclass as a JSON API, enabling programmatic interaction via curl. Agents are auto-discovered at runtime — adding a new `AbstractSpecialist` subclass makes it available with zero adapter changes.
+HTTP wrapper that exposes any `AbstractAgent` subclass as a JSON API, enabling programmatic interaction via curl. Agents are auto-discovered at runtime — adding a new `AbstractAgent` subclass makes it available with zero adapter changes.
 
 ```bash
-# Start adapter (default: RoutineDiscoveryAgentBeta)
-bluebox-agent-adapter --cdp-captures-dir ./cdp_captures --port 8765 -q
-
-# Or pick a specific agent
+# Start adapter with a specific agent
 bluebox-agent-adapter --agent NetworkSpecialist --cdp-captures-dir ./cdp_captures
 
 # Agents with no data requirements (e.g. BlueBoxAgent) don't need --cdp-captures-dir
@@ -134,7 +147,7 @@ Endpoints:
 - `GET /health` — liveness check
 - `GET /status` — agent type, chat state, discovery support
 - `POST /chat {"message": "..."}` — send a chat message (all agents)
-- `POST /discover {"task": "..."}` — run discovery/autonomous mode (specialists + RoutineDiscoveryAgentBeta)
+- `POST /discover {"task": "..."}` — run discovery/autonomous mode
 - `GET /routine` — retrieve discovered routine JSON
 
 **Best practices when calling from Claude Code or scripts:**
@@ -147,6 +160,7 @@ Endpoints:
 **LLM Infrastructure:**
 - `bluebox/llms/data_loaders/` - Specialized data loaders for CDP capture analysis:
   - `NetworkDataLoader` - HTTP request/response transactions
+  - `DOMDataLoader` - DOM snapshots (string-interning tables, element classification by tag family)
   - `JSDataLoader` - JavaScript files
   - `StorageDataLoader` - Cookies, localStorage, sessionStorage, IndexedDB
   - `WindowPropertyDataLoader` - Window property changes
@@ -156,11 +170,41 @@ Endpoints:
 
 **Import patterns:**
 ```python
+from bluebox.agents.abstract_agent import AbstractAgent, agent_tool, AgentCard
 from bluebox.agents.guide_agent import GuideAgent
 from bluebox.agents.routine_discovery_agent import RoutineDiscoveryAgent
+from bluebox.agents.principal_investigator import PrincipalInvestigator
+from bluebox.agents.workers.experiment_worker import ExperimentWorker
+from bluebox.agents.routine_inspector import RoutineInspector
+from bluebox.workspace import AgentWorkspace, LocalAgentWorkspace
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
+from bluebox.llms.data_loaders.dom_data_loader import DOMDataLoader
 from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 ```
+
+### Workspace
+
+The workspace (`bluebox/workspace.py`) is an artifact-oriented file I/O system attached to agents. Each workspace has a strict directory layout:
+
+- `raw/` (read-only): tool result artifacts and mounted external files
+- `output/`: agent-generated deliverables
+- `context/`: reusable notes/context saved for later use in the same run
+- `meta/`: system-managed metadata (`manifest.jsonl`, `input_mounts.jsonl`) — not editable
+- `scratch/`: ephemeral scratch space
+
+External files (e.g. CDP capture JSONL) can be mounted into `raw/` via hardlinks using `attach_input_file()`. The `save_artifact()` API records provenance in `meta/manifest.jsonl` (SHA-256, size, content type, timestamp).
+
+### API Indexing Pipeline
+
+End-to-end pipeline (`bluebox-api-index`) that turns raw CDP captures into a catalog of executable routines.
+
+**Phase 1 — Exploration** (4 specialists in parallel): Network, Storage, DOM, and UI specialists each produce a structured exploration summary.
+
+**Phase 2 — Routine Construction**: PrincipalInvestigator reads summaries, dispatches ExperimentWorker agents, reviews results, assembles routines, submits to RoutineInspector for quality gating. Incremental persistence to disk. PI crash recovery via DiscoveryLedger.
+
+**Data models:**
+- `bluebox/data_models/orchestration/` - `DiscoveryLedger`, `ExperimentEntry`, `RoutineSpec`, `RoutineAttempt`, `RoutineCatalog`, `RoutineInspectionResult`
+- `bluebox/data_models/api_indexing/` - `NetworkExplorationSummary`, `StorageExplorationSummary`, `DOMExplorationSummary`, `UIExplorationSummary`
 
 ### Important Patterns
 
@@ -168,6 +212,8 @@ from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 - **Placeholder Resolution**: All parameters use `{{paramName}}` format; `Parameter.type` drives coercion at runtime
 - **Session Storage**: Use `session_storage_key` to store and retrieve data between operations
 - **CDP Sessions**: Use flattened sessions for multiplexing via `session_id`
+- **Agent Tools**: Decorate with `@agent_tool()`. Supports `persist` (`NEVER`/`ALWAYS`/`OVERFLOW`), `max_characters`, and `token_optimized` parameters
+- **Agent Card**: Every concrete `AbstractAgent` subclass must declare an `AGENT_CARD`
 
 ### Common Gotchas
 
