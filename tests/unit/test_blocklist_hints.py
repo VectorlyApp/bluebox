@@ -168,11 +168,11 @@ class TestBlueBoxAgentBlocklistPrompt:
         assert "Sandbox Restrictions" not in prompt
 
 
-class TestRunPythonCodeBlockedHint:
-    """Tests for workaround hints in _run_python_code error responses."""
+class TestExecutePythonBlockedHint:
+    """Tests for workaround hints in execute_python error responses."""
 
     @patch("bluebox.agents.abstract_agent.get_active_sandbox_mode", return_value="blocklist")
-    @patch("bluebox.agents.bluebox_agent.execute_python_sandboxed")
+    @patch("bluebox.agents.abstract_agent.execute_python_sandboxed")
     @patch("bluebox.agents.bluebox_agent.Config")
     def test_blocked_module_returns_workaround_hint(
         self,
@@ -194,7 +194,7 @@ class TestRunPythonCodeBlockedHint:
             emit_message_callable=MagicMock(),
             workspace=LocalAgentWorkspace.from_directory_path(tmp_path),
         )
-        result = agent._run_python_code("import os")
+        result = agent._execute_tool("execute_python", {"code": "import os"})
         kwargs = mock_sandbox.call_args.kwargs
         read_only_paths = kwargs["read_only_paths"]
         assert any(p.endswith("/raw") for p in read_only_paths)
@@ -203,7 +203,7 @@ class TestRunPythonCodeBlockedHint:
         assert "open()" in result["_hint"]
 
     @patch("bluebox.agents.abstract_agent.get_active_sandbox_mode", return_value="blocklist")
-    @patch("bluebox.agents.bluebox_agent.execute_python_sandboxed")
+    @patch("bluebox.agents.abstract_agent.execute_python_sandboxed")
     @patch("bluebox.agents.bluebox_agent.Config")
     def test_generic_error_returns_generic_hint(
         self,
@@ -225,10 +225,6 @@ class TestRunPythonCodeBlockedHint:
             emit_message_callable=MagicMock(),
             workspace=LocalAgentWorkspace.from_directory_path(tmp_path),
         )
-        result = agent._run_python_code("print(foo)")
-        kwargs = mock_sandbox.call_args.kwargs
-        read_only_paths = kwargs["read_only_paths"]
-        assert any(p.endswith("/raw") for p in read_only_paths)
-        assert any(p.endswith("/meta") for p in read_only_paths)
+        result = agent._execute_tool("execute_python", {"code": "print(foo)"})
         assert "Sandbox restriction:" not in result["_hint"]
         assert "Code failed" in result["_hint"]

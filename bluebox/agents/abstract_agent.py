@@ -387,7 +387,9 @@ class AbstractAgent(ABC):
         Execute Python code in a sandbox.
 
         When a workspace is configured, code runs with `work_dir` set to the
-        workspace root so file I/O is scoped to that directory.
+        workspace root so file I/O is scoped to that directory.  Files
+        created or modified under ``output/`` are tracked and reported in the
+        response as ``files_created``.
         Without a workspace, execution is compute-only and file I/O (open/Path)
         remains blocked by sandbox policy.
 
@@ -396,9 +398,15 @@ class AbstractAgent(ABC):
         Args:
             code: Python code to execute.
         """
+        files_created: list[str] = []
+
         if self.has_workspace:
             workspace = self._require_workspace()
             workspace.ensure_dirs()
+
+            # Snapshot output/ before execution for file-tracking
+            files_before = workspace.snapshot_paths(["output"])
+
             sandbox_result = execute_python_sandboxed(
                 code=code,
                 extra_globals=self._code_execution_globals,
@@ -408,19 +416,49 @@ class AbstractAgent(ABC):
                     str((workspace.root_path / "meta").resolve()),
                 ],
             )
+
+            # Diff output/ to detect created/modified files
+            files_after = workspace.snapshot_paths(["output"])
+            delta = workspace.diff_snapshot(files_before, files_after)
+            changed_states = delta.created + delta.modified
+            files_created = [
+                str(workspace.root_path / state.relative_path)
+                for state in changed_states
+            ]
         else:
             sandbox_result = execute_python_sandboxed(
                 code=code,
                 extra_globals=self._code_execution_globals,
             )
+
+        # Build response
+        result: dict[str, Any] = {}
+
         if "error" in sandbox_result:
+            result["error"] = sandbox_result["error"]
             workaround = get_workaround_for_error(sandbox_result["error"])
             if workaround:
-                sandbox_result["_hint"] = (
+                result["_hint"] = (
                     f"Sandbox restriction: {workaround} "
                     "Fix the code and call execute_python again."
                 )
-        return sandbox_result
+            elif self.has_workspace:
+                result["_hint"] = (
+                    "Code failed. Read the error and stdout carefully, then fix and retry."
+                )
+
+        output = sandbox_result.get("output", "")
+        if output and output != "(no output)":
+            result["output"] = output
+
+        if files_created:
+            result["files_created"] = files_created
+            result["output_file"] = files_created[0]
+
+        if not result:
+            result["output"] = "(no output)"
+
+        return result
 
     def _generate_code_execution_prompt(self) -> str:
         """Generate a prompt section describing the code execution environment.

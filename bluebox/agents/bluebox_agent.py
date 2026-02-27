@@ -43,10 +43,6 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.data_models.routine.routine import RoutineExecutionRequest, RoutineInfo
-from bluebox.utils.code_execution_sandbox import (
-    execute_python_sandboxed,
-    get_workaround_for_error,
-)
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -76,7 +72,7 @@ class BlueBoxAgent(AbstractAgent):
         1. **Search broadly**: When the user makes a request, use `search_routines` with a task description that describes what the user wants to do. This runs semantic search, so add some detail. You can run this multiple times if needed to get more results.
         2. **Execute all relevant routines**: Run ALL routines that could plausibly fulfill the user's request via `execute_routines_in_parallel`. When in doubt, include the routine — running an extra routine is cheap, missing a relevant one is costly. Each routine execution requires a `routine_id` from the search results and a `parameters` dict keyed by parameter name with the corresponding value (e.g. {"origin": "New York", "date": "2025-03-01"}). Make sure to provide all required parameters as listed in the search results.
         3. **Fallback to browser agent**: If NO routines match after thorough searching, use `execute_browser_task` to perform the task via an AI-driven browser agent. Write a clear, detailed natural language instruction for the task.
-        4. **Post-process results**: Use `run_python_code` to transform routine results into clean output files (CSV, JSON, JSONL, etc.) for the user.
+        4. **Post-process results**: Use `execute_python` to transform routine results into clean output files (CSV, JSON, JSONL, etc.) for the user.
         5. **Verify output**: After writing files, use `list_files(scope="workspace")` and `read_file(scope="workspace", path=...)` to verify the output looks correct. If it doesn't, fix the code and rerun.
         6. **Report results**: Summarize what was executed and the output files to the user.
 
@@ -87,7 +83,7 @@ class BlueBoxAgent(AbstractAgent):
         - `context/` — context files (JSON + Markdown) saved by `generate_context`, used for session replay
         - `meta/` (read-only) — system-managed manifests and metadata
 
-        **Reading routine outputs in `run_python_code`:**
+        **Reading routine outputs in `execute_python`:**
         - Use `list_files(scope="workspace")` to see files in `raw/`
         - Read raw JSON files directly in Python:
           `records = [json.loads(p.read_text()) for p in Path("raw").glob("*.json")]`
@@ -120,7 +116,7 @@ class BlueBoxAgent(AbstractAgent):
         **Important:** The payload shape varies per routine — different routines return different key names and structures. Always inspect a few raw records first before extracting fields.
 
         ## Post-Processing with Python
-        - After routines return results, ALWAYS use `run_python_code` to post-process data and generate clean output files.
+        - After routines return results, ALWAYS use `execute_python` to post-process data and generate clean output files.
         - **ALWAYS add debug print() statements** in your code so you can see what's happening: print key counts, data shapes, sample values, etc. stdout is captured and returned to you.
         - **On first pass, always explore the data**: before writing any output file, load records from `raw/*.json`, print routine names and top-level keys, then write extraction code.
         - **Be persistent**: If your code errors or produces unexpected results, read the error/output carefully, use `list_files(scope="workspace")` and `read_file(scope="workspace", path=...)` to inspect the data, fix the code, and try again. Keep iterating until you produce the correct output file. NEVER give up after one failed attempt — debug and retry.
@@ -500,7 +496,7 @@ class BlueBoxAgent(AbstractAgent):
                 summary["_hint"] = (
                     f"Response truncated ({len(raw)} chars). "
                     f"Full result saved to {full_result.get('output_file')}. "
-                    "Use read_file(scope='workspace', path='...') to inspect the full data, or run_python_code to parse it."
+                    "Use read_file(scope='workspace', path='...') to inspect the full data, or execute_python to parse it."
                 )
             else:
                 summary["response_preview"] = raw
@@ -689,91 +685,6 @@ class BlueBoxAgent(AbstractAgent):
                 error_msg = f"Browser agent error: {event.error}"
                 self._emit_message(StatusUpdateEmittedMessage(content=error_msg))
                 result = {"error": event.error, "execution_id": event.execution_id, "steps": steps}
-
-        return result
-
-    @agent_tool()
-    def _run_python_code(self, code: str) -> dict[str, Any]:
-        """
-        Execute Python code to post-process routine results and generate output files.
-
-        The code runs with workspace-scoped file access.
-        `raw/` and `meta/` are read-only; write deliverables to `output/`.
-        Read routine result files directly from `raw/` in your Python code.
-
-        Write output files to the output/ subdirectory:
-            with open("output/results.csv", "w") as f: ...
-
-        IMPORTANT: Always include print() statements for debugging — print data shapes,
-        key names, row counts, sample values, etc. If the code fails, use the output
-        to diagnose and fix. Keep iterating until the output file is correct.
-
-        Args:
-            code: Python code to execute with workspace-scoped file access.
-                Write output files to output/ subdirectory. Always add print()
-                statements for debugging.
-        """
-        # Ensure directories exist
-        self._workspace.ensure_dirs()
-        work_dir = str(self._workspace.root_path.resolve())
-
-        # Snapshot files in output/ before execution
-        files_before = self._workspace.snapshot_paths(["output"])
-
-        # Execute in sandbox with work_dir for file access
-        sandbox_result = execute_python_sandboxed(
-            code,
-            work_dir=work_dir,
-            read_only_paths=[
-                str((self._workspace.root_path / "raw").resolve()),
-                str((self._workspace.root_path / "meta").resolve()),
-            ],
-        )
-
-        # Diff files in output/ to find new/modified ones
-        files_after = self._workspace.snapshot_paths(["output"])
-        delta = self._workspace.diff_snapshot(files_before, files_after)
-        changed_states = delta.created + delta.modified
-        files_created = [
-            str(self._workspace.root_path / state.relative_path)
-            for state in changed_states
-        ]
-
-        # Build response
-        result: dict[str, Any] = {}
-
-        if "error" in sandbox_result:
-            result["error"] = sandbox_result["error"]
-            workaround = get_workaround_for_error(sandbox_result["error"])
-            if workaround:
-                result["_hint"] = (
-                    f"Sandbox restriction: {workaround} "
-                    "Fix the code and call run_python_code again."
-                )
-            else:
-                result["_hint"] = (
-                    "Code failed. Read the error and stdout above carefully. "
-                    "Use list_files(scope='workspace') and read_file(scope='workspace', path='...') to inspect the data, "
-                    "then fix the code and call run_python_code again."
-                )
-
-        output = sandbox_result.get("output", "")
-        if output and output != "(no output)":
-            result["output"] = output
-
-        if files_created:
-            result["files_created"] = files_created
-            result["output_file"] = files_created[0]
-            result["_hint"] = (
-                "Files were created. Use read_file(scope='workspace', path='...') to verify the output "
-                "is correct (check first few lines). If not, fix the code and rerun."
-            )
-        elif "error" not in sandbox_result:
-            result["output"] = result.get("output", "") or "Code ran but produced no files."
-            result["_hint"] = (
-                "No files were created in output/. Make sure your code writes to "
-                "output/ (e.g. open('output/results.csv', 'w')). Fix and rerun."
-            )
 
         return result
 
