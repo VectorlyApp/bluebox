@@ -2,107 +2,16 @@
 tests/unit/agents/test_abstract_agent_helpers.py
 
 Unit tests for module-level helper functions in abstract_agent.py:
-  - _serialize_tool_result
   - _normalize_file_scope
   - _parse_search_terms
 """
-
-import json
-from datetime import datetime
-from typing import Any
 
 import pytest
 
 from bluebox.agents.abstract_agent import (
     _normalize_file_scope,
     _parse_search_terms,
-    _serialize_tool_result,
 )
-
-
-# =============================================================================
-# _serialize_tool_result
-# =============================================================================
-
-
-class TestSerializeToolResult:
-    """Tests for _serialize_tool_result."""
-
-    def test_dict_returns_json(self) -> None:
-        result = {"key": "value", "count": 42}
-        serialized, content_type = _serialize_tool_result(result)
-        assert content_type == "json"
-        assert json.loads(serialized) == result
-
-    def test_list_returns_json(self) -> None:
-        result = [1, 2, 3]
-        serialized, content_type = _serialize_tool_result(result)
-        assert content_type == "json"
-        assert json.loads(serialized) == result
-
-    def test_string_returns_json(self) -> None:
-        result = "hello"
-        serialized, content_type = _serialize_tool_result(result)
-        assert content_type == "json"
-        assert json.loads(serialized) == result
-
-    def test_nested_dict_returns_json(self) -> None:
-        result = {"a": {"b": [1, 2]}, "c": None}
-        serialized, content_type = _serialize_tool_result(result)
-        assert content_type == "json"
-        assert json.loads(serialized) == result
-
-    def test_none_returns_json(self) -> None:
-        serialized, content_type = _serialize_tool_result(None)
-        assert content_type == "json"
-        assert json.loads(serialized) is None
-
-    def test_non_ascii_preserved(self) -> None:
-        result = {"emoji": "🔥", "text": "café"}
-        serialized, content_type = _serialize_tool_result(result)
-        assert content_type == "json"
-        assert "🔥" in serialized
-        assert "café" in serialized
-
-    def test_datetime_uses_default_str(self) -> None:
-        dt = datetime(2025, 1, 15, 12, 30, 0)
-        result = {"timestamp": dt}
-        serialized, content_type = _serialize_tool_result(result)
-        assert content_type == "json"
-        parsed = json.loads(serialized)
-        assert "2025-01-15" in parsed["timestamp"]
-
-    def test_non_serializable_falls_back_to_text(self) -> None:
-        # An object whose __str__ works but json.dumps with default=str
-        # should still handle it — need something truly unserializable.
-        # Actually, default=str handles most things. Let's verify str fallback
-        # by using an object that raises in __repr__/__str__ during json encoding.
-
-        class BadObj:
-            def __repr__(self) -> str:
-                return "BadObj()"
-
-        # default=str calls str() on non-serializable, so this should still
-        # produce json via the default handler
-        result = {"obj": BadObj()}
-        serialized, content_type = _serialize_tool_result(result)
-        assert content_type == "json"
-        assert "BadObj()" in serialized
-
-    def test_integer_returns_json(self) -> None:
-        serialized, content_type = _serialize_tool_result(42)
-        assert content_type == "json"
-        assert json.loads(serialized) == 42
-
-    def test_boolean_returns_json(self) -> None:
-        serialized, content_type = _serialize_tool_result(True)
-        assert content_type == "json"
-        assert json.loads(serialized) is True
-
-    def test_empty_dict_returns_json(self) -> None:
-        serialized, content_type = _serialize_tool_result({})
-        assert content_type == "json"
-        assert json.loads(serialized) == {}
 
 
 # =============================================================================

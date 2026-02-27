@@ -61,24 +61,47 @@ from bluebox.utils.code_execution_sandbox import (
     get_workaround_for_error,
 )
 from bluebox.utils.data_utils import format_bytes
+from bluebox.utils.llm_serialization import serialize_tool_result, strip_llm_excluded
 from bluebox.utils.llm_utils import token_optimized as token_optimized_decorator
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
 
 
+# Keep persisted tool previews small so iterative runs don't bloat context
+PERSISTED_TOOL_PREVIEW_MAX_CHARS = 800
+
+
 class ToolResultPersistMode(StrEnum):
+    """
+    Policy controlling when a tool result is persisted to the workspace.
+
+    Persistence saves the full result as a raw artifact and returns a
+    compact preview to the LLM, keeping context usage in check for
+    large payloads.
+
+    Attributes:
+        NEVER: Never persist; the full result is returned inline.
+        ALWAYS: Always persist, regardless of size.
+        OVERFLOW: Persist only when the serialized result exceeds the
+            tool's ``max_characters`` threshold.
+    """
     NEVER = "never"
     ALWAYS = "always"
     OVERFLOW = "overflow"
 
 
-# Keep persisted tool previews small so iterative runs don't blow context.
-PERSISTED_TOOL_PREVIEW_MAX_CHARS = 800
-
-
 class AgentExecutionMode(StrEnum):
-    """Execution mode for agent loops."""
+    """
+    Execution mode for agent loops.
+
+    Attributes:
+        CONVERSATIONAL: Interactive mode where the agent responds to user
+            messages one at a time via :meth:`process_new_message`.
+        AUTONOMOUS: Self-directed mode where the agent runs a tool-driven
+            loop until it calls a finalize tool or hits the iteration cap.
+            See :meth:`AbstractAgent.run_autonomous`.
+    """
     CONVERSATIONAL = "conversational"
     AUTONOMOUS = "autonomous"
 
@@ -108,25 +131,50 @@ class AgentCard:
 
 @dataclass(frozen=True)
 class _ToolMeta:
-    """Metadata attached to a handler method by @agent_tool."""
-    name: str                                           # tool name registered with the LLM client
-    description: str                                    # tool description shown to the LLM
-    parameters: dict[str, Any]                          # JSON Schema for tool parameters
-    availability: bool | Callable[..., bool]            # whether the tool should be registered right now
+    """
+    Metadata attached to a handler method by :func:`agent_tool`.
+
+    Instances are stored on the decorated method as ``method._tool_meta``
+    and collected at class-definition time by
+    :meth:`AbstractAgent._collect_tools`.
+
+    Attributes:
+        name: Tool name registered with the LLM client (derived from the
+            method name by stripping leading underscores).
+        description: Human-readable description shown to the LLM.
+        parameters: JSON Schema ``object`` describing accepted parameters.
+        availability: Static boolean or a callable ``(self) -> bool``
+            evaluated before each LLM call to gate tool registration.
+        persist: Result-persistence policy. See :class:`ToolResultPersistMode`.
+        max_characters: Character threshold used by
+            :attr:`ToolResultPersistMode.OVERFLOW` to decide when to
+            persist a result to the workspace.
+        token_optimized: If ``True``, the tool result is encoded with
+            the ``token_optimized`` decorator for reduced token usage.
+    """
+    name: str
+    description: str
+    parameters: dict[str, Any]
+    availability: bool | Callable[..., bool]
     persist: ToolResultPersistMode = ToolResultPersistMode.NEVER
     max_characters: int = 10_000
     token_optimized: bool = False
 
 
-def _serialize_tool_result(tool_result: Any) -> tuple[str, str]:
-    try:
-        return json.dumps(tool_result, ensure_ascii=False, default=str, indent=2), "json"
-    except (TypeError, ValueError):
-        return str(tool_result), "text"
-
-
 def _normalize_file_scope(scope: str) -> str:
-    """Normalize and validate file tool scope."""
+    """
+    Normalize and validate a file-tool scope string. Strips whitespace, lowercases,
+    and ensures the value is one of the accepted scope literals.
+
+    Args:
+        scope: Raw scope value from a tool call (e.g. ``"Workspace"``).
+
+    Returns:
+        The normalized scope (``"workspace"`` or ``"docs"``).
+
+    Raises:
+        ValueError: If *scope* is not a recognized value.
+    """
     normalized_scope = scope.strip().lower()
     if normalized_scope not in {"workspace", "docs"}:
         raise ValueError("scope must be 'workspace' or 'docs'")
@@ -134,10 +182,24 @@ def _normalize_file_scope(scope: str) -> str:
 
 
 def _parse_search_terms(query: str) -> list[str]:
-    """Split query text into distinct terms for terms-mode search."""
+    """
+    Split a query string into unique, order-preserving search terms.
+
+    Tokens are split on commas and whitespace. Empty tokens and
+    duplicates are discarded while preserving first-occurrence order.
+
+    Args:
+        query: Free-text search query (e.g. ``"foo, bar baz"``).
+
+    Returns:
+        Deduplicated list of non-empty terms in original order.
+    """
     seen: set[str] = set()
     terms: list[str] = []
-    for token in re.split(r"[,\s]+", query):
+    for token in re.split(
+        pattern=r"[,\s]+",
+        string=query
+    ):
         term = token.strip()
         if term and term not in seen:
             seen.add(term)
@@ -551,7 +613,7 @@ class AbstractAgent(ABC):
         if persist_mode == ToolResultPersistMode.NEVER:
             return tool_result
 
-        serialized, content_type = _serialize_tool_result(tool_result)
+        serialized, content_type = serialize_tool_result(tool_result)
         char_count = len(serialized)
 
         if persist_mode == ToolResultPersistMode.OVERFLOW and char_count <= tool_meta.max_characters:
@@ -1080,6 +1142,7 @@ class AbstractAgent(ABC):
         logger.debug("Executing tool %s with arguments: %s", tool_name, tool_arguments)
         # handler is unbound (from cls, not self) so pass self explicitly
         raw_result = handler(self, **validated_arguments)
+        raw_result = strip_llm_excluded(raw_result)  # strip LLMExclude-annotated fields from any Pydantic models
         result_for_llm = self._maybe_persist_tool_result(
             tool_name=tool_name,
             tool_meta=tool_meta,

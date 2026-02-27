@@ -18,11 +18,11 @@ Covers:
 import json
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from bluebox.agents.abstract_agent import (
     AbstractAgent,
@@ -31,6 +31,7 @@ from bluebox.agents.abstract_agent import (
     agent_tool,
     _ToolMeta,
 )
+from bluebox.utils.llm_serialization import LLMExclude
 from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -56,6 +57,33 @@ class SearchParams(BaseModel):
     query: str = Field(description="The search query.")
     max_results: int = Field(default=10, description="Maximum number of results.")
     tags: list[str] = Field(default_factory=list, description="Tags to filter by.")
+
+
+class TransactionModel(BaseModel):
+    """Model with LLMExclude fields for integration testing."""
+    url: str
+    method: str
+    status_code: int
+    response_body: Annotated[str, LLMExclude()]
+    raw_headers: Annotated[dict, LLMExclude()]
+
+
+class ComputedModel(BaseModel):
+    """Model with a computed field to verify it's preserved."""
+    first: str
+    last: str
+    internal: Annotated[str, LLMExclude()]
+
+    @computed_field
+    @property
+    def full_name(self) -> str:
+        return f"{self.first} {self.last}"
+
+
+class CleanModel(BaseModel):
+    """Model with no LLMExclude annotations."""
+    x: str
+    y: int
 
 
 class ConcreteAgent(AbstractAgent):
@@ -185,6 +213,64 @@ class ConcreteAgent(AbstractAgent):
     def _token_optimized_no_persist(self) -> dict[str, Any]:
         """Token-optimized tool with no persistence."""
         return {"status": "ok"}
+
+    @agent_tool
+    def _get_transaction(self) -> dict[str, Any]:
+        """
+        Return a transaction model with LLMExclude fields.
+        """
+        tx = TransactionModel(
+            url="https://api.example.com/data",
+            method="GET",
+            status_code=200,
+            response_body='{"huge": "blob"}',
+            raw_headers={"x-internal": "secret"},
+        )
+        return {"transaction": tx, "count": 1}
+
+    @agent_tool
+    def _get_transaction_direct(self) -> TransactionModel:
+        """
+        Return a TransactionModel directly (not wrapped in a dict).
+        """
+        return TransactionModel(
+            url="https://example.com",
+            method="POST",
+            status_code=201,
+            response_body="big",
+            raw_headers={"h": "v"},
+        )
+
+    @agent_tool
+    def _get_computed(self) -> ComputedModel:
+        """
+        Return a model with a computed field.
+        """
+        return ComputedModel(first="Jane", last="Doe", internal="hidden")
+
+    @agent_tool
+    def _get_transaction_list(self) -> dict[str, Any]:
+        """
+        Return a list of models with LLMExclude fields.
+        """
+        txs = [
+            TransactionModel(
+                url=f"https://api.example.com/{i}",
+                method="GET",
+                status_code=200,
+                response_body=f"body_{i}",
+                raw_headers={"h": str(i)},
+            )
+            for i in range(3)
+        ]
+        return {"transactions": txs}
+
+    @agent_tool
+    def _get_clean_model(self) -> CleanModel:
+        """
+        Return a model with no LLMExclude annotations.
+        """
+        return CleanModel(x="visible", y=42)
 
 
 @pytest.fixture
@@ -516,6 +602,9 @@ class TestCollectTools:
             "no_params", "optional_params", "raises_error", "search",
             "persist_always", "persist_overflow", "persist_never", "persist_always_token_optimized",
             "token_optimized_no_persist",
+            # LLMExclude integration test tools
+            "get_transaction", "get_transaction_direct", "get_computed",
+            "get_transaction_list", "get_clean_model",
             "add_note", "finalize_with_output", "finalize_with_failure", "finalize_result", "finalize_failure",
             "execute_python",
             # Unified file tools from AbstractAgent
@@ -875,6 +964,70 @@ class TestExecuteTool:
         result = agent._execute_tool("token_optimized_no_persist", {})
         assert isinstance(result, str)
         assert "_token_optimized_note" not in result
+
+
+# =============================================================================
+# _execute_tool — LLMExclude stripping
+# =============================================================================
+
+
+class TestExecuteToolLLMExclude:
+    """Tests that _execute_tool strips LLMExclude-annotated fields from tool results."""
+
+    def test_model_in_dict_strips_excluded_fields(self, agent: ConcreteAgent) -> None:
+        """Model returned inside a dict has LLMExclude fields removed."""
+        result = agent._execute_tool("get_transaction", {})
+        tx = result["transaction"]
+        assert tx["url"] == "https://api.example.com/data"
+        assert tx["method"] == "GET"
+        assert tx["status_code"] == 200
+        assert "response_body" not in tx
+        assert "raw_headers" not in tx
+        # non-model values in the dict are preserved
+        assert result["count"] == 1
+
+    def test_model_returned_directly_strips_excluded(self, agent: ConcreteAgent) -> None:
+        """Model returned as the top-level result is converted to dict with exclusions."""
+        result = agent._execute_tool("get_transaction_direct", {})
+        assert isinstance(result, dict)
+        assert result["url"] == "https://example.com"
+        assert result["method"] == "POST"
+        assert result["status_code"] == 201
+        assert "response_body" not in result
+        assert "raw_headers" not in result
+
+    def test_computed_field_preserved(self, agent: ConcreteAgent) -> None:
+        """@computed_field values are included in stripped output."""
+        result = agent._execute_tool("get_computed", {})
+        assert result["first"] == "Jane"
+        assert result["last"] == "Doe"
+        assert result["full_name"] == "Jane Doe"
+        assert "internal" not in result
+
+    def test_list_of_models_strips_all(self, agent: ConcreteAgent) -> None:
+        """List of models inside a dict — each model has exclusions stripped."""
+        result = agent._execute_tool("get_transaction_list", {})
+        txs = result["transactions"]
+        assert len(txs) == 3
+        for i, tx in enumerate(txs):
+            assert tx["url"] == f"https://api.example.com/{i}"
+            assert "response_body" not in tx
+            assert "raw_headers" not in tx
+
+    def test_clean_model_unchanged(self, agent: ConcreteAgent) -> None:
+        """Model with no LLMExclude annotations returns all fields."""
+        result = agent._execute_tool("get_clean_model", {})
+        assert result == {"x": "visible", "y": 42}
+
+    def test_auto_execute_tool_strips_excluded(
+        self, agent: ConcreteAgent, mock_emit: MagicMock,
+    ) -> None:
+        """LLMExclude stripping also works through _auto_execute_tool path."""
+        result_json = agent._auto_execute_tool("get_transaction_direct", {})
+        result = json.loads(result_json)
+        assert result["url"] == "https://example.com"
+        assert "response_body" not in result
+        assert "raw_headers" not in result
 
 
 # =============================================================================
