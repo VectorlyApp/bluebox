@@ -518,217 +518,140 @@ Created by run script (not by agent classes):
 
 All receive mounted capture inputs in `raw/`, enabling direct Python/file inspection during autonomous runs.
 
-## Massive End-to-End Diagram
+## Diagrams
+
+### Phase Diagram
+
+```mermaid
+flowchart LR
+    P0["Phase 0\nMonitor + Capture"] --> P1["Phase 1\nParallel Exploration"]
+    P1 --> P2["Phase 2\nPI Orchestration"]
+    P2 --> P3["Phase 3\nOutputs + Analysis"]
+
+    subgraph S0["Phase 0 Outputs"]
+      C1["network/events.jsonl"]
+      C2["storage/events.jsonl"]
+      C3["dom/events.jsonl"]
+      C4["interaction/events.jsonl"]
+      C5["window_properties/events.jsonl"]
+    end
+
+    P0 --> S0
+
+    subgraph S1["Phase 1 Outputs"]
+      E1["exploration/network.json"]
+      E2["exploration/storage.json"]
+      E3["exploration/dom.json"]
+      E4["exploration/ui.json"]
+    end
+
+    P1 --> S1
+
+    subgraph S2["Phase 2 Outputs"]
+      L["ledger.json"]
+      R["routines/*.json"]
+      A["attempts/*.json"]
+      AR["attempt_records/*.json"]
+      T["agent_threads/*.json"]
+    end
+
+    P2 --> S2
+
+    subgraph S3["Phase 3 Outputs"]
+      C["catalog.json"]
+      AN["analysis.txt (optional)"]
+    end
+
+    P3 --> S3
+```
+
+### Data Flow Diagram
 
 ```mermaid
 flowchart TD
-    %% =========================
-    %% Entry + Capture
-    %% =========================
-    subgraph A["Phase 0: Capture and Inputs"]
-        U["User Task + Browser Session"] --> M["bluebox-monitor"]
-        M --> C1["cdp_captures/network/events.jsonl"]
-        M --> C2["cdp_captures/storage/events.jsonl"]
-        M --> C3["cdp_captures/dom/events.jsonl"]
-        M --> C4["cdp_captures/interaction/events.jsonl"]
-        M --> C5["cdp_captures/window_properties/events.jsonl"]
-        M --> C6["cdp_captures/session_summary.json"]
-        C1 --> API["bluebox-api-index"]
-        C2 --> API
-        C3 --> API
-        C4 --> API
-        C5 --> API
+    MON["bluebox-monitor"] --> CAP["cdp_captures/*"]
+
+    CAP --> NL["NetworkDataLoader"]
+    CAP --> SL["StorageDataLoader"]
+    CAP --> DL["DOMDataLoader"]
+    CAP --> IL["InteractionsDataLoader"]
+    CAP --> WL["WindowPropertyDataLoader"]
+
+    NL --> NEXP["NetworkSpecialist"]
+    SL --> SEXP["ValueTraceResolverSpecialist"]
+    WL --> SEXP
+    DL --> DEXP["DOMSpecialist"]
+    IL --> IEXP["InteractionSpecialist"]
+    DL --> IEXP
+
+    NEXP --> NSUM["NetworkExplorationSummary"]
+    SEXP --> SSUM["StorageExplorationSummary"]
+    DEXP --> DSUM["DOMExplorationSummary"]
+    IEXP --> USUM["UIExplorationSummary"]
+
+    NSUM --> ES["Exploration Summaries Map"]
+    SSUM --> ES
+    DSUM --> ES
+    USUM --> ES
+
+    ES --> PI["PrincipalInvestigator"]
+    PI --> LED["DiscoveryLedger"]
+
+    PI --> EXP["ExperimentEntry + Task"]
+    EXP --> WK["ExperimentWorker"]
+    WK --> EOUT["Experiment outputs"]
+    EOUT --> LED
+
+    PI --> SUB["submit_routine"]
+    SUB --> EXEC["Routine.execute"]
+    EXEC --> EXR["RoutineExecutionResultWithMetadata"]
+    EXR --> INS["RoutineInspector"]
+    INS --> INR["RoutineInspectionResult"]
+    INR --> ATT["RoutineAttempt"]
+    ATT --> LED
+
+    LED --> CAT["RoutineCatalog"]
+    CAT --> CJSON["catalog.json"]
+```
+
+### Agent Orchestration Diagram
+
+```mermaid
+flowchart TD
+    PI["PrincipalInvestigator (only orchestrator)"]
+
+    subgraph W["Worker Pool"]
+      W1["ExperimentWorker #1"]
+      W2["ExperimentWorker #2"]
+      WN["ExperimentWorker #N"]
     end
 
-    %% =========================
-    %% Phase 1 Exploration
-    %% =========================
-    subgraph B["Phase 1: Parallel Exploration"]
-        API --> P1["run_explorations"]
-
-        subgraph B1["Network Exploration"]
-            NRun["run_network_exploration"] --> NAgent["NetworkSpecialist Autonomous"]
-            NAgent --> NTools["Tools: network + base tools"]
-            NAgent --> NSchema["Output schema: NetworkExplorationSummary"]
-            NSchema --> NOut["output/exploration/network.json"]
-        end
-
-        subgraph B2["Storage and Window Exploration"]
-            SRun["run_storage_exploration"] --> SAgent["ValueTraceResolverSpecialist Autonomous"]
-            SAgent --> STools["Tools: trace + base tools"]
-            SAgent --> SSchema["Output schema: StorageExplorationSummary"]
-            SSchema --> SOut["output/exploration/storage.json"]
-        end
-
-        subgraph B3["DOM Exploration"]
-            DRun["run_dom_exploration"] --> DAgent["DOMSpecialist Autonomous"]
-            DAgent --> DTools["Tools: dom + base tools"]
-            DAgent --> DSchema["Output schema: DOMExplorationSummary"]
-            DSchema --> DOut["output/exploration/dom.json"]
-        end
-
-        subgraph B4["UI Exploration"]
-            URun["run_ui_exploration"] --> UAgent["InteractionSpecialist Autonomous"]
-            UAgent --> UTools["Tools: interaction + base tools"]
-            UAgent --> USchema["Output schema: UIExplorationSummary"]
-            USchema --> UOut["output/exploration/ui.json"]
-        end
-
-        P1 --> NRun
-        P1 --> SRun
-        P1 --> DRun
-        P1 --> URun
-
-        NOut --> ES["Exploration Summaries Map"]
-        SOut --> ES
-        DOut --> ES
-        UOut --> ES
+    subgraph I["Inspector Pool"]
+      I1["RoutineInspector #1"]
+      I2["RoutineInspector #2"]
+      IN["RoutineInspector #N"]
     end
 
-    %% =========================
-    %% Workspaces + Mounting
-    %% =========================
-    subgraph W["Workspace Topology Created by Run Script"]
-        W0["output/agent_workspaces/PI"]
-        W1["output/agent_workspaces/worker_1..N"]
-        W2["output/agent_workspaces/inspector_1..N"]
-        RawMount["Mount raw capture inputs into each workspace raw/"]
-        W0 --> RawMount
-        W1 --> RawMount
-        W2 --> RawMount
-    end
+    PI -->|"plan_routines"| RS["RoutineSpec[]"]
+    PI -->|"dispatch_experiments_batch"| W
+    W -->|"finalize_with_output"| ER["Experiment Results"]
+    PI -->|"record_finding"| LED["DiscoveryLedger"]
+    ER --> PI
 
-    C1 --> RawMount
-    C2 --> RawMount
-    C3 --> RawMount
-    C4 --> RawMount
-    C5 --> RawMount
+    PI -->|"submit_routine"| EXEC["Routine Execution"]
+    EXEC --> EXR["Execution Result"]
+    EXR --> I
+    I -->|"finalize_with_output"| IR["Inspection Result"]
+    IR --> PI
 
-    %% =========================
-    %% Phase 2 PI Orchestration
-    %% =========================
-    subgraph C["Phase 2: PI Orchestration"]
-        API --> PIStart["run_pi_with_recovery"]
-        ES --> PIInit["PrincipalInvestigator Init"]
-        PIStart --> PIInit
-        W0 --> PIInit
+    PI -->|"mark_routine_shipped / mark_routine_failed"| LED
+    PI -->|"mark_complete"| CAT["RoutineCatalog"]
 
-        PIInit --> Ledger["DiscoveryLedger"]
-        PIInit --> Docs["DocumentationDataLoader"]
-        PIInit --> Prompt["PI System Prompt Build"]
+    PI -.->|"workspace: agent_workspaces/PI"| WPI["PI Workspace"]
+    W -.->|"workspace: agent_workspaces/worker_*"| WW["Worker Workspaces"]
+    I -.->|"workspace: agent_workspaces/inspector_*"| WI["Inspector Workspaces"]
 
-        Prompt --> PromptA["SYSTEM_PROMPT_CORE"]
-        Prompt --> PromptB["Routine JSON Schema section"]
-        Prompt --> PromptC["Worker Capabilities section"]
-        Prompt --> PromptD["Exploration Summaries section"]
-        Prompt --> PromptE["Discovery Ledger section"]
-        Prompt --> PromptF["Task Queue section"]
-        Prompt --> PromptG["Base-injected sections: tools + workspace + docs"]
-
-        PIInit --> PITools["PI Orchestration Tools"]
-        PITools --> T1["plan_routines"]
-        PITools --> T2["dispatch_experiments_batch"]
-        PITools --> T3["get_experiment_result"]
-        PITools --> T4["record_finding"]
-        PITools --> T5["record_proven_artifact"]
-        PITools --> T6["submit_routine"]
-        PITools --> T7["mark_routine_shipped"]
-        PITools --> T8["mark_routine_failed"]
-        PITools --> T9["mark_complete"]
-
-        T1 --> Specs["RoutineSpec List"]
-        Specs --> Ledger
-    end
-
-    %% =========================
-    %% Worker Execution
-    %% =========================
-    subgraph D["Worker Experiment Execution"]
-        T2 --> TaskCreate["Create ExperimentEntry + Task"]
-        TaskCreate --> Queue["AgentOrchestrationState Task Queue"]
-        Queue --> WorkerPool["ExperimentWorker Pool"]
-        W1 --> WorkerPool
-
-        WorkerPool --> WorkerCtx["Worker Context"]
-        WorkerCtx --> Browser["Live Browser Tab via CDP"]
-        WorkerCtx --> Recorded["Recorded Loaders: network storage dom window"]
-        WorkerCtx --> WorkerTools["Worker Tools: browser_* + recorded_* + execute_python + base tools"]
-
-        WorkerTools --> ExpOut["Experiment Output Payload"]
-        ExpOut --> ExperimentsDir["output/experiments/exp_*.json"]
-        ExpOut --> Ledger
-        T3 --> ExpOut
-    end
-
-    %% =========================
-    %% Submit Routine Pipeline
-    %% =========================
-    subgraph E["submit_routine Pipeline"]
-        T6 --> Gate1["Documentation Quality Gate"]
-        Gate1 --> Gate2["Routine Pydantic Validation"]
-        Gate2 --> Exec["routine.execute with test_parameters"]
-        Exec --> ExecResult["RoutineExecutionResultWithMetadata"]
-
-        ExecResult --> InspectorPrep["Build Inspection Prompt"]
-        InspectorPrep --> BigCheck{"Execution payload > PI inline threshold"}
-        BigCheck -- "Yes" --> PersistExec["Persist payload to inspector raw/*.json"]
-        BigCheck -- "No" --> InlineExec["Inline execution JSON in prompt"]
-
-        PersistExec --> InspectRun["RoutineInspector Autonomous"]
-        InlineExec --> InspectRun
-
-        W2 --> InspectRun
-        Docs --> InspectRun
-
-        InspectRun --> InspectSchema["Output schema: RoutineInspectionResult"]
-        InspectSchema --> Attempt["RoutineAttempt pass/fail fields"]
-        Attempt --> AttemptsDir["output/attempts/attempt_*.json"]
-        Attempt --> AttemptRecord["output/attempt_records/*_attempt_*.json"]
-        Attempt --> Ledger
-
-        T7 --> Shipped["Spec status shipped + shipped_attempt_id"]
-        T8 --> FailedSpec["Spec status failed + failure_reason"]
-        Shipped --> Ledger
-        FailedSpec --> Ledger
-    end
-
-    %% =========================
-    %% Persistence Hooks
-    %% =========================
-    subgraph F["Incremental Persistence Hooks"]
-        PersistHook["on_ledger_change"] --> LFile["output/ledger.json"]
-        PersistHook --> CFile["output/catalog.json"]
-        PersistHook --> RDir["output/routines/*.json"]
-        PersistHook --> EDir["output/experiments/*.json"]
-        PersistHook --> ADir["output/attempts/*.json"]
-
-        ThreadHook["on_agent_thread"] --> Threads["output/agent_threads/*.json"]
-        AttemptHook["on_attempt_record"] --> AttemptRecord
-    end
-
-    Ledger --> PersistHook
-    PIInit --> ThreadHook
-    WorkerPool --> ThreadHook
-    InspectRun --> ThreadHook
-    Attempt --> AttemptHook
-
-    %% =========================
-    %% Completion + Recovery + Analysis
-    %% =========================
-    subgraph G["Completion and Recovery"]
-        T9 --> BuildCatalog["Build RoutineCatalog"]
-        BuildCatalog --> CatalogObj["RoutineCatalog object"]
-        CatalogObj --> CFile
-        CatalogObj --> StdoutJSON["Final catalog JSON stdout"]
-
-        PIStart --> Retry{"PI exception or context exhaustion"}
-        Retry -- "Yes" --> Resume["Create fresh PI with preserved ledger"]
-        Resume --> PIInit
-        Retry -- "No" --> Done["Pipeline completed"]
-    end
-
-    subgraph H["Optional Post-Run Analysis"]
-        Done --> Analyze["analyze_pipeline_output"]
-        Analyze --> AnalysisTxt["output/analysis.txt"]
-    end
+    RAW["Mounted capture files in raw/"] --> WPI
+    RAW --> WW
+    RAW --> WI
 ```
