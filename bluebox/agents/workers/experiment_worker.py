@@ -26,12 +26,11 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from websocket import WebSocket
 
-from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, AgentExecutionMode, agent_tool
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
 from bluebox.agents.workspace import AgentWorkspace
 from bluebox.cdp.connection import (
-    cdp_new_tab,
-    create_cdp_helpers,
-    dispose_context,
+    cdp_close_tab_session,
+    cdp_open_new_tab_session,
 )
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -43,6 +42,7 @@ from bluebox.llms.data_loaders.dom_data_loader import DOMDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
 from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
+from bluebox.utils.js_utils import generate_get_dom_js
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
@@ -50,59 +50,6 @@ if TYPE_CHECKING:
     from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
 
 logger = get_logger(name=__name__)
-
-
-# ---------------------------------------------------------------------------
-# DOM filter JS — executed via Runtime.evaluate to get a filtered DOM view
-# ---------------------------------------------------------------------------
-
-_DOM_FILTER_JS = """
-(function(selector, maxDepth, includeTags) {
-  function walk(node, depth) {
-    if (depth > maxDepth) return null;
-    var tag = node.nodeName.toLowerCase();
-    if (includeTags && includeTags.length > 0 && !includeTags.includes(tag) && tag !== '#document' && tag !== 'html' && tag !== 'head' && tag !== 'body') {
-      var kids = [];
-      for (var i = 0; i < node.childNodes.length; i++) {
-        var c = walk(node.childNodes[i], depth);
-        if (c) kids.push(c);
-      }
-      return kids.length === 1 ? kids[0] : kids.length > 1 ? kids : null;
-    }
-    if (node.nodeType === 3) {
-      var text = node.textContent.trim();
-      return text ? text.substring(0, 200) : null;
-    }
-    if (node.nodeType !== 1) return null;
-    var obj = { tag: tag };
-    var attrs = {};
-    for (var j = 0; j < node.attributes.length; j++) {
-      var a = node.attributes[j];
-      if (['id', 'class', 'name', 'type', 'href', 'src', 'action', 'method', 'value', 'placeholder', 'role', 'aria-label', 'data-testid'].includes(a.name)) {
-        attrs[a.name] = a.value.substring(0, 200);
-      }
-    }
-    if (Object.keys(attrs).length) obj.attrs = attrs;
-    var children = [];
-    for (var k = 0; k < node.childNodes.length; k++) {
-      var child = walk(node.childNodes[k], depth + 1);
-      if (child) {
-        if (Array.isArray(child)) children = children.concat(child);
-        else children.push(child);
-      }
-    }
-    if (children.length) obj.children = children;
-    return obj;
-  }
-  var root = selector ? document.querySelector(selector) : document.documentElement;
-  if (!root) return JSON.stringify({ error: 'selector not found: ' + selector });
-  var result = JSON.stringify(walk(root, 0));
-  if (result.length > 15000) {
-    return result.substring(0, 15000) + '... [TRUNCATED at 15K chars]';
-  }
-  return result;
-})(%SELECTOR%, %MAX_DEPTH%, %INCLUDE_TAGS%)
-""".strip()
 
 
 class ExperimentWorker(AbstractAgent):
@@ -211,7 +158,6 @@ class ExperimentWorker(AbstractAgent):
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
-        execution_mode: AgentExecutionMode = AgentExecutionMode.AUTONOMOUS,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
@@ -239,7 +185,6 @@ class ExperimentWorker(AbstractAgent):
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            execution_mode=execution_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
@@ -292,45 +237,25 @@ class ExperimentWorker(AbstractAgent):
 
         logger.info("Creating persistent browser tab at %s", self._remote_debugging_address)
 
-        # Create incognito tab
-        target_id, browser_context_id, browser_ws = cdp_new_tab(
-            self._remote_debugging_address,
+        session = cdp_open_new_tab_session(
+            remote_debugging_address=self._remote_debugging_address,
             incognito=True,
             url="about:blank",
+            enable_domains=("Page", "Runtime"),
+            timeout_seconds=10.0,
         )
-
-        send_cmd, _, recv_until = create_cdp_helpers(browser_ws)
-
-        # Attach to target with flattened session
-        deadline = time.time() + 10.0
-        attach_id = send_cmd(
-            "Target.attachToTarget",
-            {"targetId": target_id, "flatten": True},
-        )
-        attach_reply = recv_until(lambda m: m.get("id") == attach_id, deadline)
-        if "error" in attach_reply:
-            browser_ws.close()
-            raise RuntimeError(f"Failed to attach to browser tab: {attach_reply['error']}")
-
-        session_id = attach_reply["result"]["sessionId"]
-
-        # Enable Page and Runtime domains
-        page_id = send_cmd("Page.enable", session_id=session_id)
-        recv_until(lambda m: m.get("id") == page_id, deadline)
-        runtime_id = send_cmd("Runtime.enable", session_id=session_id)
-        recv_until(lambda m: m.get("id") == runtime_id, deadline)
 
         # Store persistent connection state
-        self._browser_ws = browser_ws
-        self._browser_target_id = target_id
-        self._browser_context_id = browser_context_id
-        self._browser_session_id = session_id
-        self._browser_send_cmd = send_cmd
-        self._browser_recv_until = recv_until
+        self._browser_ws = session.browser_ws
+        self._browser_target_id = session.target_id
+        self._browser_context_id = session.browser_context_id
+        self._browser_session_id = session.session_id
+        self._browser_send_cmd = session.send_cmd
+        self._browser_recv_until = session.recv_until
 
         logger.info(
             "Browser tab ready: target_id=%s, session_id=%s",
-            target_id, session_id,
+            session.target_id, session.session_id,
         )
 
     def close(self) -> None:
@@ -339,28 +264,12 @@ class ExperimentWorker(AbstractAgent):
 
         Safe to call multiple times. Safe to call even if no tab was created.
         """
-        if self._browser_ws is not None:
-            try:
-                if self._browser_target_id and self._browser_send_cmd:
-                    self._browser_send_cmd(
-                        "Target.closeTarget",
-                        {"targetId": self._browser_target_id},
-                    )
-            except Exception:
-                pass
-            try:
-                self._browser_ws.close()
-            except Exception:
-                pass
-
-        if self._browser_context_id and self._remote_debugging_address:
-            try:
-                dispose_context(
-                    browser_context_id=self._browser_context_id,
-                    remote_debugging_address=self._remote_debugging_address,
-                )
-            except Exception:
-                pass
+        cdp_close_tab_session(
+            target_id=self._browser_target_id,
+            browser_context_id=self._browser_context_id,
+            browser_ws=self._browser_ws,
+            remote_debugging_address=self._remote_debugging_address,
+        )
 
         # Reset state
         self._browser_ws = None
@@ -675,13 +584,11 @@ class ExperimentWorker(AbstractAgent):
         assert self._browser_send_cmd is not None
         assert self._browser_recv_until is not None
 
-        # Build the JS expression with parameters substituted
-        selector_js = json.dumps(selector) if selector else "null"
-        tags_js = json.dumps(include_tags) if include_tags else "null"
-
-        js = _DOM_FILTER_JS.replace("%SELECTOR%", selector_js)
-        js = js.replace("%MAX_DEPTH%", str(max_depth))
-        js = js.replace("%INCLUDE_TAGS%", tags_js)
+        js = generate_get_dom_js(
+            selector=selector,
+            max_depth=max_depth,
+            include_tags=include_tags,
+        )
 
         deadline = time.time() + 10.0
         try:

@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Any, Callable
 from bluebox.agents.abstract_agent import (
     AbstractAgent,
     AgentCard,
-    AgentExecutionMode,
     ToolResultPersistMode,
     agent_tool,
 )
@@ -129,7 +128,6 @@ class ValueTraceResolverSpecialist(AbstractAgent):
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
-        execution_mode: AgentExecutionMode = AgentExecutionMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         workspace: AgentWorkspace | None = None,
@@ -146,7 +144,6 @@ class ValueTraceResolverSpecialist(AbstractAgent):
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
             llm_model: The LLM model to use for conversation.
-            execution_mode: How the specialist will be run (conversational or autonomous).
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
@@ -163,7 +160,6 @@ class ValueTraceResolverSpecialist(AbstractAgent):
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            execution_mode=execution_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,

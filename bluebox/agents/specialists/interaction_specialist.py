@@ -16,7 +16,7 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 
-from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, AgentExecutionMode, agent_tool
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
 from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -134,7 +134,6 @@ class InteractionSpecialist(AbstractAgent):
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
-        execution_mode: AgentExecutionMode = AgentExecutionMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         workspace: AgentWorkspace | None = None,
@@ -149,7 +148,6 @@ class InteractionSpecialist(AbstractAgent):
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            execution_mode=execution_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,

@@ -1951,27 +1951,28 @@ class AbstractAgent(ABC):
         self._ensure_autonomous_supported()
 
         self.execution_mode = AgentExecutionMode.AUTONOMOUS
-        self._autonomous_iteration = 0
-        self._autonomous_config = config or AutonomousRunConfig()
+        try:
+            self._autonomous_iteration = 0
+            self._autonomous_config = config or AutonomousRunConfig()
 
-        # Subclasses should clear specialized result fields in overrides.
-        self._reset_autonomous_state()
+            # Subclasses should clear specialized result fields in overrides.
+            self._reset_autonomous_state()
 
-        # Set output schema after reset so it is retained for this run.
-        if output_schema:
-            self.set_output_schema(output_schema, output_description)
+            # Set output schema after reset so it is retained for this run.
+            if output_schema:
+                self.set_output_schema(output_schema, output_description)
 
-        initial_message = self._get_autonomous_initial_message(task)
-        self._add_chat(ChatRole.USER, initial_message)
+            initial_message = self._get_autonomous_initial_message(task)
+            self._add_chat(ChatRole.USER, initial_message)
 
-        logger.info(
-            "Starting %s autonomous run for task: %s",
-            self.__class__.__name__, task,
-        )
-        self._run_autonomous_loop()
-
-        self.execution_mode = AgentExecutionMode.CONVERSATIONAL
-        return self._get_autonomous_result()
+            logger.info(
+                "Starting %s autonomous run for task: %s",
+                self.__class__.__name__, task,
+            )
+            self._run_autonomous_loop()
+            return self._get_autonomous_result()
+        finally:
+            self.execution_mode = AgentExecutionMode.CONVERSATIONAL
 
     def _run_autonomous_loop(self) -> None:
         """Run the autonomous loop with iteration tracking and finalize gating."""

@@ -1,12 +1,12 @@
 {
-  "name": "massachusetts_corp_search",
-  "description": "Search for corporations and business entities registered in Massachusetts using the Secretary of State's corporate database.",
+  "name": "search_ma_sec_state_corporations",
+  "description": "Searches the Massachusetts Secretary of the Commonwealth corporation index at corp.sec.state.ma.us for the provided entity_name and returns structured result rows containing entity_name, id_number, old_id_number, address, and details link.",
   "parameters": [
     {
       "name": "entity_name",
       "type": "string",
       "required": true,
-      "description": "The name of the corporation or entity to search for (e.g., 'Microsoft Corporation')",
+      "description": "Corporation or business entity name query used in the Massachusetts corp search form. Partial-name matching is supported by the site (example: 'Vectorly Inc.').",
       "default": null,
       "examples": [],
       "min_length": null,

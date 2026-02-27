@@ -40,7 +40,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
+import bluebox.agents.specialists as specialists_pkg
 from bluebox.agents.abstract_agent import AbstractAgent
+from bluebox.agents.bluebox_agent import BlueBoxAgent
 from bluebox.config import Config
 from bluebox.data_models.llms.interaction import (
     BaseEmittedMessage,
@@ -79,10 +81,7 @@ _DATA_PARAM_TO_KEY: dict[str, str] = {
 
 def discover_agent_classes() -> dict[str, type]:
     """Build registry of all available AbstractAgent subclasses by class name."""
-    from bluebox.agents.bluebox_agent import BlueBoxAgent
-
     # Import all specialist modules to trigger __init_subclass__ registration
-    import bluebox.agents.specialists as specialists_pkg
     for _, module_name, _ in pkgutil.iter_modules(specialists_pkg.__path__):
         importlib.import_module(f"bluebox.agents.specialists.{module_name}")
 

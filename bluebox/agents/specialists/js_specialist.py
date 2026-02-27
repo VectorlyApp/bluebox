@@ -12,12 +12,11 @@ import time
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 
-from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, AgentExecutionMode, agent_tool
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
 from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
 from bluebox.cdp.connection import (
-    cdp_new_tab,
-    create_cdp_helpers,
-    dispose_context,
+    cdp_close_tab_session,
+    cdp_open_new_tab_session,
 )
 from bluebox.data_models.dom import DOMSnapshotEvent
 from bluebox.data_models.llms.interaction import (
@@ -132,7 +131,6 @@ class JSSpecialist(AbstractAgent):
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
-        execution_mode: AgentExecutionMode = AgentExecutionMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         remote_debugging_address: str | None = None,
@@ -151,7 +149,6 @@ class JSSpecialist(AbstractAgent):
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            execution_mode=execution_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
@@ -558,35 +555,30 @@ class JSSpecialist(AbstractAgent):
         target_id = None
         browser_context_id = None
         browser_ws = None
+        send_cmd = None
+        recv_until = None
+        session_id = None
 
         try:
-            # Open new incognito tab
-            target_id, browser_context_id, browser_ws = cdp_new_tab(
-                self._remote_debugging_address,
+            session = cdp_open_new_tab_session(
+                remote_debugging_address=self._remote_debugging_address,
                 incognito=True,
                 url="about:blank",
+                enable_domains=("Page", "Runtime"),
+                timeout_seconds=10.0,
             )
-
-            send_cmd, _, recv_until = create_cdp_helpers(browser_ws)
-
-            # Attach to target with flattened session
-            attach_id = send_cmd(
-                "Target.attachToTarget",
-                {"targetId": target_id, "flatten": True},
-            )
-            attach_reply = recv_until(lambda m: m.get("id") == attach_id, deadline)
-            if "error" in attach_reply:
-                return {"error": f"Failed to attach: {attach_reply['error']}"}
-            session_id = attach_reply["result"]["sessionId"]
-
-            # Enable Page and Runtime domains
-            page_id = send_cmd("Page.enable", session_id=session_id)
-            recv_until(lambda m: m.get("id") == page_id, deadline)
-            runtime_id = send_cmd("Runtime.enable", session_id=session_id)
-            recv_until(lambda m: m.get("id") == runtime_id, deadline)
+            target_id = session.target_id
+            browser_context_id = session.browser_context_id
+            browser_ws = session.browser_ws
+            send_cmd = session.send_cmd
+            recv_until = session.recv_until
+            session_id = session.session_id
 
             # Navigate if URL provided
             if url:
+                assert send_cmd is not None
+                assert recv_until is not None
+                assert session_id is not None
                 nav_id = send_cmd(
                     "Page.navigate",
                     {"url": url},
@@ -607,6 +599,9 @@ class JSSpecialist(AbstractAgent):
             wrapped_js = generate_js_evaluate_wrapper_js(js_code)
 
             # Execute via Runtime.evaluate
+            assert send_cmd is not None
+            assert recv_until is not None
+            assert session_id is not None
             eval_id = send_cmd(
                 "Runtime.evaluate",
                 {
@@ -649,19 +644,9 @@ class JSSpecialist(AbstractAgent):
                     except Exception:
                         pass
             else:
-                if browser_ws:
-                    try:
-                        if target_id:
-                            send_cmd_cleanup, _, _ = create_cdp_helpers(browser_ws)
-                            send_cmd_cleanup("Target.closeTarget", {"targetId": target_id})
-                    except Exception:
-                        pass
-                    try:
-                        browser_ws.close()
-                    except Exception:
-                        pass
-                if browser_context_id and self._remote_debugging_address:
-                    try:
-                        dispose_context(browser_context_id=browser_context_id, remote_debugging_address=self._remote_debugging_address)
-                    except Exception:
-                        pass
+                cdp_close_tab_session(
+                    target_id=target_id,
+                    browser_context_id=browser_context_id,
+                    browser_ws=browser_ws,
+                    remote_debugging_address=self._remote_debugging_address,
+                )

@@ -30,12 +30,12 @@ from toon import encode as toon_encode
 from bluebox.agents.abstract_agent import (
     AbstractAgent,
     AgentCard,
-    AgentExecutionMode,
     AutonomousRunConfig,
     ToolResultPersistMode,
     agent_tool,
 )
-from bluebox.agents.routine_inspector import INSPECTION_OUTPUT_SCHEMA, RoutineInspector
+from bluebox.agents.routine_inspector import RoutineInspector
+from bluebox.data_models.orchestration.inspection import RoutineInspectionResult
 from bluebox.agents.workspace import AgentWorkspace
 from bluebox.agents.workers.experiment_worker import ExperimentWorker
 from bluebox.data_models.llms.interaction import (
@@ -2348,7 +2348,6 @@ class PrincipalInvestigator(AbstractAgent):
             window_property_data_loader=self._window_property_data_loader,
             # Config
             llm_model=self._worker_llm_model,
-            execution_mode=AgentExecutionMode.AUTONOMOUS,
             workspace=worker_workspace,
         )
 
@@ -2362,7 +2361,6 @@ class PrincipalInvestigator(AbstractAgent):
         return RoutineInspector(
             emit_message_callable=self._emit_message_callable,
             llm_model=self._worker_llm_model,
-            execution_mode=AgentExecutionMode.AUTONOMOUS,
             documentation_data_loader=self._documentation_data_loader,
             workspace=inspector_workspace,
         )
@@ -2592,7 +2590,7 @@ class PrincipalInvestigator(AbstractAgent):
                     inspector.run_autonomous,
                     task=inspection_prompt,
                     config=config,
-                    output_schema=INSPECTION_OUTPUT_SCHEMA,
+                    output_schema=RoutineInspectionResult.model_json_schema(),
                     output_description="RoutineInspectionResult with scores, blocking issues, and verdict",
                 )
                 try:

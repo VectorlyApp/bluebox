@@ -15,9 +15,9 @@ hold up, and decides: publish, revise, or reject.
 from __future__ import annotations
 
 from textwrap import dedent
-from typing import Any, Callable, TYPE_CHECKING
+from typing import Callable, TYPE_CHECKING
 
-from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, AgentExecutionMode
+from bluebox.agents.abstract_agent import AbstractAgent, AgentCard
 from bluebox.agents.workspace import AgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -25,116 +25,14 @@ from bluebox.data_models.llms.interaction import (
     EmittedMessage,
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
+from bluebox.data_models.orchestration.inspection import RoutineInspectionResult
+from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from bluebox.llms.data_loaders.documentation_data_loader import DocumentationDataLoader
 
 logger = get_logger(name=__name__)
-
-
-# ---------------------------------------------------------------------------
-# Output schema — derived from RoutineInspectionResult
-# ---------------------------------------------------------------------------
-
-INSPECTION_OUTPUT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "overall_pass": {
-            "type": "boolean",
-            "description": "Whether the routine should ship (true) or needs fixes (false).",
-        },
-        "overall_score": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 100,
-            "description": "Sum of all 6 dimension scores, scaled to 0-100. Formula: round(sum / 60 * 100).",
-        },
-        "dimensions": {
-            "type": "object",
-            "properties": {
-                "task_completion": {
-                    "type": "object",
-                    "properties": {
-                        "score": {"type": "integer", "minimum": 0, "maximum": 10},
-                        "reasoning": {"type": "string"},
-                    },
-                    "required": ["score", "reasoning"],
-                },
-                "data_quality": {
-                    "type": "object",
-                    "properties": {
-                        "score": {"type": "integer", "minimum": 0, "maximum": 10},
-                        "reasoning": {"type": "string"},
-                    },
-                    "required": ["score", "reasoning"],
-                },
-                "parameter_coverage": {
-                    "type": "object",
-                    "properties": {
-                        "score": {"type": "integer", "minimum": 0, "maximum": 10},
-                        "reasoning": {"type": "string"},
-                    },
-                    "required": ["score", "reasoning"],
-                },
-                "routine_robustness": {
-                    "type": "object",
-                    "properties": {
-                        "score": {"type": "integer", "minimum": 0, "maximum": 10},
-                        "reasoning": {"type": "string"},
-                    },
-                    "required": ["score", "reasoning"],
-                },
-                "structural_correctness": {
-                    "type": "object",
-                    "properties": {
-                        "score": {"type": "integer", "minimum": 0, "maximum": 10},
-                        "reasoning": {"type": "string"},
-                    },
-                    "required": ["score", "reasoning"],
-                },
-                "documentation_quality": {
-                    "type": "object",
-                    "properties": {
-                        "score": {"type": "integer", "minimum": 0, "maximum": 10},
-                        "reasoning": {"type": "string"},
-                    },
-                    "required": ["score", "reasoning"],
-                },
-            },
-            "required": [
-                "task_completion",
-                "data_quality",
-                "parameter_coverage",
-                "routine_robustness",
-                "structural_correctness",
-                "documentation_quality",
-            ],
-        },
-        "blocking_issues": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Issues that MUST be fixed before shipping.",
-        },
-        "recommendations": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Issues that SHOULD be fixed but are non-blocking.",
-        },
-        "summary": {
-            "type": "string",
-            "description": "2-3 sentence overall assessment.",
-        },
-    },
-    "required": [
-        "overall_pass",
-        "overall_score",
-        "dimensions",
-        "blocking_issues",
-        "recommendations",
-        "summary",
-    ],
-}
 
 
 class RoutineInspector(AbstractAgent):
@@ -347,7 +245,6 @@ class RoutineInspector(AbstractAgent):
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
-        execution_mode: AgentExecutionMode = AgentExecutionMode.AUTONOMOUS,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
@@ -360,7 +257,6 @@ class RoutineInspector(AbstractAgent):
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            execution_mode=execution_mode,
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
@@ -400,3 +296,21 @@ class RoutineInspector(AbstractAgent):
             "4. Documentation quality: score name, description, and parameter descriptions "
             "strictly. documentation_quality ≤ 4 is a blocking issue."
         )
+
+    def _get_autonomous_result(self) -> SpecialistResultWrapper | None:
+        """
+        Return autonomous result with normalized/clamped inspection scores.
+        """
+        result = super()._get_autonomous_result()
+        if not isinstance(result, SpecialistResultWrapper):
+            return result
+        if not result.success or not isinstance(result.output, dict):
+            return result
+
+        try:
+            normalized = RoutineInspectionResult.model_validate(result.output)
+            result.output = normalized.model_dump(mode="json")
+        except Exception:
+            # Keep raw output if normalization fails.
+            pass
+        return result

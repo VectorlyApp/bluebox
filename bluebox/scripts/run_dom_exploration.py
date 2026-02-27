@@ -17,11 +17,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 from typing import Any
 
-from bluebox.agents.abstract_agent import AgentExecutionMode, AutonomousRunConfig
+from bluebox.agents.abstract_agent import AutonomousRunConfig
 from bluebox.agents.specialists.dom_specialist import DOMSpecialist
 from bluebox.agents.workspace import LocalWorkspace
 from bluebox.data_models.api_indexing.exploration import DOMExplorationSummary
@@ -203,7 +204,6 @@ def run_dom_exploration(
         emit_message_callable=_emit_message,
         dom_data_loader=dom_loader,
         llm_model=llm_model,
-        execution_mode=AgentExecutionMode.AUTONOMOUS,
         workspace=workspace,
     )
 
@@ -345,7 +345,6 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.verbose:
-        import logging
         logging.basicConfig(level=logging.DEBUG)
 
     if not args.cdp_captures_dir.exists():

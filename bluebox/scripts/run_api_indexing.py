@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import shutil
 import sys
 import time
@@ -663,7 +664,6 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.verbose:
-        import logging
         logging.basicConfig(level=logging.DEBUG)
 
     if not args.cdp_captures_dir.exists():

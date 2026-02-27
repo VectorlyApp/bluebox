@@ -12,6 +12,7 @@ Contains:
 
 from __future__ import annotations
 
+import json as json_module
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlparse, parse_qs
@@ -19,7 +20,6 @@ from urllib.parse import urlparse, parse_qs
 from bluebox.agents.abstract_agent import (
     AbstractAgent,
     AgentCard,
-    AgentExecutionMode,
     ToolResultPersistMode,
     agent_tool,
 )
@@ -112,7 +112,6 @@ class NetworkSpecialist(AbstractAgent):
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_1,
-        execution_mode: AgentExecutionMode = AgentExecutionMode.CONVERSATIONAL,
         chat_thread: ChatThread | None = None,
         existing_chats: list[Chat] | None = None,
         documentation_data_loader: DocumentationDataLoader | None = None,
@@ -128,7 +127,6 @@ class NetworkSpecialist(AbstractAgent):
             persist_chat_thread_callable: Optional callback to persist ChatThread.
             stream_chunk_callable: Optional callback for streaming text chunks.
             llm_model: The LLM model to use for conversation.
-            execution_mode: Preferred execution mode for this agent.
             chat_thread: Existing ChatThread to continue, or None for new conversation.
             existing_chats: Existing Chat messages if loading from persistence.
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
@@ -143,7 +141,6 @@ class NetworkSpecialist(AbstractAgent):
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,
             llm_model=llm_model,
-            execution_mode=AgentExecutionMode(execution_mode),
             chat_thread=chat_thread,
             existing_chats=existing_chats,
             documentation_data_loader=documentation_data_loader,
@@ -438,7 +435,6 @@ class NetworkSpecialist(AbstractAgent):
 
             # Search headers
             if "headers" in search_in:
-                import json as json_module
                 headers_str = json_module.dumps(entry.request_headers).lower()
                 for term in terms_lower:
                     count = headers_str.count(term)
@@ -450,7 +446,6 @@ class NetworkSpecialist(AbstractAgent):
 
             # Search body
             if "body" in search_in and entry.post_data:
-                import json as json_module
                 if isinstance(entry.post_data, (dict, list)):
                     post_data_str = json_module.dumps(entry.post_data)
                 else:
