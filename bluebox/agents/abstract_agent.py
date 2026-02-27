@@ -399,7 +399,7 @@ class AbstractAgent(ABC):
         self._stream_chunk_callable = stream_chunk_callable
         self._documentation_data_loader = documentation_data_loader
         self._on_llm_response = on_llm_response
-        self._on_chat_added: Callable[[], None] | None = None
+        self._on_chat_added: Callable[[Chat], None] | None = None
         self.execution_mode = execution_mode
         self._autonomous_iteration: int = 0
         self._autonomous_config: AutonomousRunConfig = AutonomousRunConfig()
@@ -449,9 +449,9 @@ class AbstractAgent(ABC):
         Execute Python code in a sandbox.
 
         When a workspace is configured, code runs with `work_dir` set to the
-        workspace root so file I/O is scoped to that directory.  Files
-        created or modified under ``output/`` are tracked and reported in the
-        response as ``files_created``.
+        workspace root so file I/O is scoped to that directory.  All files
+        created or modified anywhere in the workspace are tracked and
+        reported in the response as ``files_created``.
         Without a workspace, execution is compute-only and file I/O (open/Path)
         remains blocked by sandbox policy.
 
@@ -466,8 +466,8 @@ class AbstractAgent(ABC):
             workspace = self._require_workspace()
             workspace.ensure_dirs()
 
-            # Snapshot output/ before execution for file-tracking
-            files_before = workspace.snapshot_paths(["output"])
+            # Snapshot entire workspace before execution for file-tracking
+            files_before = workspace.snapshot_paths(["."])
 
             sandbox_result = execute_python_sandboxed(
                 code=code,
@@ -479,8 +479,8 @@ class AbstractAgent(ABC):
                 ],
             )
 
-            # Diff output/ to detect created/modified files
-            files_after = workspace.snapshot_paths(["output"])
+            # Diff entire workspace to detect created/modified files
+            files_after = workspace.snapshot_paths(["."])
             delta = workspace.diff_snapshot(files_before, files_after)
             changed_states = delta.created + delta.modified
             files_created = [
@@ -1823,18 +1823,6 @@ class AbstractAgent(ABC):
 
     ## Chat helpers
 
-    def _after_chat_added(self, chat: Chat) -> None:
-        """
-        Hook called after a chat is added to thread state.
-
-        Subclasses may override for side effects (e.g., eager persistence).
-        """
-        if self._on_chat_added is not None:
-            try:
-                self._on_chat_added()
-            except Exception:
-                pass
-
     def _emit_message(self, message: EmittedMessage) -> None:
         """Emit a message via the callback."""
         self._emit_message_callable(message)
@@ -1891,7 +1879,8 @@ class AbstractAgent(ABC):
         if self._persist_chat_thread_callable:
             self._thread = self._persist_chat_thread_callable(self._thread)
 
-        self._after_chat_added(chat)
+        if self._on_chat_added is not None:
+            self._on_chat_added(chat)
 
         return chat
 

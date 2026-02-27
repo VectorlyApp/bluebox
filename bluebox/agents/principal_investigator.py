@@ -1342,7 +1342,7 @@ class PrincipalInvestigator(AbstractAgent):
 
             # Wire up real-time thread persistence
             agent_label = f"worker_{subagent.id}"
-            worker._on_chat_added = lambda: self._dump_agent_thread(agent_label, worker)
+            worker._on_chat_added = lambda _chat: self._dump_agent_thread(agent_label, worker)
 
             try:
                 task.status = TaskStatus.IN_PROGRESS
@@ -2352,7 +2352,7 @@ class PrincipalInvestigator(AbstractAgent):
 
         # Wire up real-time thread persistence
         agent_label = f"worker_{subagent.id}"
-        agent._on_chat_added = lambda: self._dump_agent_thread(agent_label, agent)
+        agent._on_chat_added = lambda _chat: self._dump_agent_thread(agent_label, agent)
 
         return agent
 
@@ -2380,7 +2380,7 @@ class PrincipalInvestigator(AbstractAgent):
             self._agent_instances[subagent.id] = inspector
             # Wire up real-time thread persistence
             inspector_label = f"inspector_{subagent.id}"
-            inspector._on_chat_added = lambda: self._dump_agent_thread(inspector_label, inspector)
+            inspector._on_chat_added = lambda _chat: self._dump_agent_thread(inspector_label, inspector)
             return inspector
 
         # Pool full — reuse round-robin with fresh conversation
