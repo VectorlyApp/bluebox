@@ -387,10 +387,9 @@ class AbstractAgent(ABC):
         Execute Python code in a sandbox.
 
         When a workspace is configured, code runs with `work_dir` set to the
-        workspace root so file I/O is scoped to that directory.  Files
-        created or modified under writable directories (``output/``,
-        ``context/``, ``scratch/``) are tracked and reported in the response
-        as ``files_created``.
+        workspace root so file I/O is scoped to that directory.  All files
+        created or modified anywhere in the workspace are tracked and
+        reported in the response as ``files_created``.
         Without a workspace, execution is compute-only and file I/O (open/Path)
         remains blocked by sandbox policy.
 
@@ -405,8 +404,8 @@ class AbstractAgent(ABC):
             workspace = self._require_workspace()
             workspace.ensure_dirs()
 
-            # Snapshot all writable directories before execution for file-tracking
-            files_before = workspace.snapshot_paths(workspace.WRITABLE_ROOTS)
+            # Snapshot entire workspace before execution for file-tracking
+            files_before = workspace.snapshot_paths(["."])
 
             sandbox_result = execute_python_sandboxed(
                 code=code,
@@ -418,8 +417,8 @@ class AbstractAgent(ABC):
                 ],
             )
 
-            # Diff writable directories to detect created/modified files
-            files_after = workspace.snapshot_paths(workspace.WRITABLE_ROOTS)
+            # Diff entire workspace to detect created/modified files
+            files_after = workspace.snapshot_paths(["."])
             delta = workspace.diff_snapshot(files_before, files_after)
             changed_states = delta.created + delta.modified
             files_created = [
