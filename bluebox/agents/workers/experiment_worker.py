@@ -4,10 +4,10 @@ bluebox/agents/workers/experiment_worker.py
 Worker agent for Phase 2: Experimentation.
 
 The ExperimentWorker executes experiments in a live browser while referencing
-captured session data. It has two categories of tools:
+recorded session data. It has two categories of tools:
 
 - **browser_*** tools — interact with the LIVE browser (navigate, eval JS, raw CDP, DOM)
-- **capture_*** tools — look up RECORDED data from a previous capture session
+- **recorded lookup tools** — look up RECORDED data from a previous session
 
 The worker OWNS its browser tab lifecycle — it lazily creates a persistent
 incognito tab on the first browser tool call and keeps it alive across all
@@ -58,7 +58,7 @@ class ExperimentWorker(AbstractAgent):
     captured session data.
 
     Two sources of truth:
-    - **capture_*** tools: recorded/stale reference data from a previous session
+    - **recorded lookup tools**: recorded/stale reference data from a previous session
     - **browser_*** tools: live/current reality in the browser
 
     The worker OWNS its browser tab. It lazily creates a persistent incognito
@@ -79,7 +79,7 @@ class ExperimentWorker(AbstractAgent):
 
         ## Two Sources of Truth
 
-        1. **capture_* tools** — Recorded data from a PREVIOUS browser session.
+        1. **recorded lookup tools** — Recorded data from a PREVIOUS browser session.
            This is stale/historical reference data. Use it to understand what the
            website looked like, what requests were made, what tokens were used.
            Think of it as "the recording."
@@ -118,7 +118,7 @@ class ExperimentWorker(AbstractAgent):
 
         ## Two Sources of Truth
 
-        1. **capture_* tools** — Recorded/stale reference data from a previous session.
+        1. **recorded lookup tools** — Recorded/stale reference data from a previous session.
         2. **browser_* tools** — Live browser tab you control right now.
 
         ## Process
@@ -315,7 +315,7 @@ class ExperimentWorker(AbstractAgent):
         finalize_success = "finalize_with_output" if self.has_output_schema else "finalize_result"
         return (
             f"EXPERIMENT: {task}\n\n"
-            f"Execute this experiment. Use capture_* tools for reference data and "
+            f"Execute this experiment. Use recorded lookup tools for reference data and "
             f"browser_* tools for live interaction. When done, call {finalize_success} "
             f"with your findings.\n\n"
             "You have `execute_python` access in this run. If workspace files are mounted, "
@@ -624,12 +624,12 @@ class ExperimentWorker(AbstractAgent):
             return {"error": f"DOM query failed: {e}"}
 
     # ===================================================================
-    # CAPTURE LOOKUP TOOLS — gated by respective data loaders
+    # RECORDED LOOKUP TOOLS — gated by respective data loaders
     # ===================================================================
 
     @agent_tool(availability=lambda self: self._network_data_loader is not None)
     @token_optimized
-    def _capture_search_transactions(
+    def _search_recorded_transactions(
         self,
         query: str,
         top_n: int = 15,
@@ -661,7 +661,7 @@ class ExperimentWorker(AbstractAgent):
 
     @agent_tool(availability=lambda self: self._network_data_loader is not None)
     @token_optimized
-    def _capture_get_transaction(self, request_id: str) -> dict[str, Any]:
+    def _get_recorded_transaction(self, request_id: str) -> dict[str, Any]:
         """
         Get the full recorded request/response for a specific transaction.
 
@@ -691,7 +691,7 @@ class ExperimentWorker(AbstractAgent):
 
     @agent_tool(availability=lambda self: self._storage_data_loader is not None)
     @token_optimized
-    def _capture_search_storage(
+    def _search_recorded_storage(
         self,
         query: str,
         case_sensitive: bool = False,
@@ -718,7 +718,7 @@ class ExperimentWorker(AbstractAgent):
 
     @agent_tool()
     @token_optimized
-    def _capture_trace_value(
+    def _trace_recorded_value(
         self,
         value: str,
         case_sensitive: bool = False,
@@ -812,7 +812,7 @@ class ExperimentWorker(AbstractAgent):
 
     @agent_tool(availability=lambda self: self._dom_data_loader is not None)
     @token_optimized
-    def _capture_get_page_structure(
+    def _get_recorded_dom_snapshot(
         self,
         snapshot_index: int = -1,
     ) -> dict[str, Any]:
@@ -851,7 +851,7 @@ class ExperimentWorker(AbstractAgent):
 
     @agent_tool(availability=lambda self: self._dom_data_loader is not None)
     @token_optimized
-    def _capture_get_element(
+    def _get_recorded_dom_elements(
         self,
         element_type: str,
         snapshot_index: int | None = None,

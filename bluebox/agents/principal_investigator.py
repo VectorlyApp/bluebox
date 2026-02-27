@@ -112,15 +112,15 @@ WORKER_CAPABILITIES = dedent("""\
         Workers should use this when browser_eval_js fetch() fails due to CORS.
       browser_get_dom(selector?, max_depth?, include_tags?) — filtered view of current DOM
 
-    CAPTURE LOOKUP TOOLS (search RECORDED session data — old, potentially stale):
-      capture_search_transactions(query) — find requests in the recorded capture
-      capture_get_transaction(request_id) — get full recorded request/response details
+    RECORDED LOOKUP TOOLS (search RECORDED session data — old, potentially stale):
+      search_recorded_transactions(query) — find requests in the recorded capture
+      get_recorded_transaction(request_id) — get full recorded request/response details
         USE THIS FIRST when an API call fails — it shows the exact headers, cookies,
         and parameters that worked during the original recorded session.
-      capture_search_storage(query) — find recorded storage events
-      capture_trace_value(value) — find where a value appears across the recorded capture
-      capture_get_page_structure(snapshot_index?) — get recorded DOM structure
-      capture_get_element(element_type, snapshot_index?) — get recorded element details
+      search_recorded_storage(query) — find recorded storage events
+      trace_recorded_value(value) — find where a value appears across the recorded capture
+      get_recorded_dom_snapshot(snapshot_index?) — get recorded DOM structure
+      get_recorded_dom_elements(element_type, snapshot_index?) — get recorded element details
 
     Workers also receive the exploration summaries as shared context.
 """)
@@ -246,8 +246,8 @@ class PrincipalInvestigator(AbstractAgent):
         "Perform the exact fetch request as observed in capture, then report what changed."
 
         Your experiment methodology should explicitly instruct the worker to:
-        1. Call `capture_search_transactions` to find the candidate request
-        2. Call `capture_get_transaction` for the exact captured request
+        1. Call `search_recorded_transactions` to find the candidate request
+        2. Call `get_recorded_transaction` for the exact captured request
         3. Re-run the same request in live browser using `browser_navigate` + `browser_eval_js`
         4. Report a field-by-field diff:
            - URL/path/query differences
@@ -318,7 +318,7 @@ class PrincipalInvestigator(AbstractAgent):
         **Source 1: Network captures (token endpoints)**
         The most common pattern — a dedicated API endpoint returns a token.
         - Search captures for URLs containing "token", "auth", "login", "oauth"
-        - Get the EXACT headers and body from the capture with capture_get_transaction
+        - Get the EXACT headers and body from the capture with get_recorded_transaction
         - Tell the worker: "Call POST {token_url} with these headers: {headers} and
           body: {body}. In the capture the response had a field called {field} with
           a token that looked like '{first_20_chars}...'"
@@ -387,7 +387,7 @@ class PrincipalInvestigator(AbstractAgent):
         parameters — no user would know where to find them.
 
         **Resolution order for static keys:**
-        1. Network captures: check request headers from capture_get_transaction
+        1. Network captures: check request headers from get_recorded_transaction
         2. DOM: check inline scripts, meta tags, window.* config objects
         3. Storage: check localStorage/sessionStorage for cached keys
         4. If found in captures, hardcode the value directly in routine headers/body
@@ -502,7 +502,7 @@ class PrincipalInvestigator(AbstractAgent):
           reasons to quit. They mean you need a different approach, not that the
           pipeline is hopeless.
         - When a fetch fails (CORS, 400, timeout), iterate with alternative approaches:
-          1. Use capture_search_transactions / capture_get_transaction to see the EXACT
+          1. Use search_recorded_transactions / get_recorded_transaction to see the EXACT
              request headers and patterns that worked in the recorded session, then
              replicate them in the worker's experiment.
           2. Use browser_cdp_command with Fetch.enable to intercept requests at the CDP
@@ -1815,7 +1815,7 @@ class PrincipalInvestigator(AbstractAgent):
                     "subscription keys. These are NOT user secrets — they are constants "
                     "baked into the website's JavaScript or network requests. "
                     "You MUST: (1) find the actual value from captures using "
-                    "capture_get_transaction to inspect request headers, "
+                    "get_recorded_transaction to inspect request headers, "
                     "(2) hardcode it directly in the routine's headers/body, "
                     "(3) remove it from parameters. "
                     "Only parameterize values a USER would naturally provide "
@@ -2248,7 +2248,7 @@ class PrincipalInvestigator(AbstractAgent):
                 "error": (
                     f"Cannot mark pipeline as failed after only {total_experiments} experiment(s). "
                     f"You have {len(unaddressed_specs)} unaddressed routine(s). "
-                    "Try alternative approaches: use capture_search_transactions to find working "
+                    "Try alternative approaches: use search_recorded_transactions to find working "
                     "request patterns, use browser_cdp_command for CDP-level intercepts, or "
                     "navigate directly to API URLs. Mark individual routines as failed with "
                     "mark_routine_failed if they truly can't be built, then call mark_complete."
