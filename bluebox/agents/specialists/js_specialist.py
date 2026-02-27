@@ -28,7 +28,6 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.data_loaders.js_data_loader import JSDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.utils.js_utils import generate_js_evaluate_wrapper_js, validate_js
-from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -221,8 +220,7 @@ class JSSpecialist(AbstractAgent):
 
     ## Tools
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _validate_js_code(self, js_code: str) -> dict[str, Any]:
         """
         Dry-run validation of JavaScript code. Checks IIFE format and blocked patterns without submitting.
@@ -249,8 +247,7 @@ class JSSpecialist(AbstractAgent):
         }
 
 
-    @agent_tool(availability=lambda self: bool(self._dom_snapshots))
-    @token_optimized
+    @agent_tool(availability=lambda self: bool(self._dom_snapshots), token_optimized=True)
     def _get_dom_snapshot(self, index: int = -1) -> dict[str, Any]:
         """
         Get a DOM snapshot. Returns the document structure and truncated strings table. Defaults to latest snapshot.
@@ -286,8 +283,7 @@ class JSSpecialist(AbstractAgent):
         }
 
 
-    @agent_tool(availability=lambda self: self._network_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._network_data_loader is not None, token_optimized=True)
     def _search_network_traffic(
         self,
         method: str | None = None,
@@ -343,8 +339,7 @@ class JSSpecialist(AbstractAgent):
         }
 
 
-    @agent_tool(availability=lambda self: self._network_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._network_data_loader is not None, token_optimized=True)
     def _get_network_entry(
         self,
         request_id: str,
@@ -390,8 +385,7 @@ class JSSpecialist(AbstractAgent):
         return result
 
 
-    @agent_tool(availability=lambda self: self._js_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._js_data_loader is not None, token_optimized=True)
     def _search_js_files(self, terms: list[str], top_n: int = 10) -> dict[str, Any]:
         """
         Search captured JS files by keywords.
@@ -418,8 +412,7 @@ class JSSpecialist(AbstractAgent):
         }
 
 
-    @agent_tool(availability=lambda self: self._js_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._js_data_loader is not None, token_optimized=True)
     def _search_js_files_regex(
         self,
         pattern: str,
@@ -464,8 +457,7 @@ class JSSpecialist(AbstractAgent):
         }
 
 
-    @agent_tool(availability=lambda self: self._js_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._js_data_loader is not None, token_optimized=True)
     def _get_js_file_content(self, request_id: str, max_chars: int = 10_000) -> dict[str, Any]:
         """
         Get the content of a specific JS file by request_id.
@@ -494,8 +486,7 @@ class JSSpecialist(AbstractAgent):
         }
 
 
-    @agent_tool(availability=lambda self: self._js_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._js_data_loader is not None, token_optimized=True)
     def _list_js_files(self) -> dict[str, Any]:
         """
         List all captured JS files with URLs and sizes.
@@ -515,8 +506,7 @@ class JSSpecialist(AbstractAgent):
         }
 
 
-    @agent_tool(availability=lambda self: bool(self._remote_debugging_address))
-    @token_optimized
+    @agent_tool(availability=lambda self: bool(self._remote_debugging_address), token_optimized=True)
     def _execute_js_in_browser(
         self,
         url: str,

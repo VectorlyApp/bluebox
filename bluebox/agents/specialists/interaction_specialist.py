@@ -26,7 +26,6 @@ from bluebox.data_models.llms.interaction import (
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.data_loaders.dom_data_loader import DOMDataLoader
 from bluebox.llms.data_loaders.interactions_data_loader import InteractionsDataLoader
-from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -233,8 +232,7 @@ class InteractionSpecialist(AbstractAgent):
 
     ## Interaction tool handlers (always available)
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _get_interaction_summary(self) -> dict[str, Any]:
         """Get summary statistics of all recorded UI interactions (clicks, inputs, changes)."""
         stats = self._interaction_data_loader.stats
@@ -245,8 +243,7 @@ class InteractionSpecialist(AbstractAgent):
             "events_by_type": stats.events_by_type,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _search_interactions_by_type(self, types: list[str]) -> dict[str, Any]:
         """
         Filter UI interaction events by type (e.g., click, input, change, keydown, focus).
@@ -279,8 +276,7 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _search_interactions_by_element(
         self,
         tag_name: str | None = None,
@@ -326,8 +322,7 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _get_interaction_detail(self, index: int) -> dict[str, Any]:
         """
         Get full details of a specific UI interaction event by index.
@@ -342,8 +337,7 @@ class InteractionSpecialist(AbstractAgent):
 
         return detail
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _get_form_inputs(self) -> dict[str, Any]:
         """Get all user input/change interaction events with their values and element info."""
         inputs = self._interaction_data_loader.get_form_inputs()
@@ -352,8 +346,7 @@ class InteractionSpecialist(AbstractAgent):
             "inputs": inputs[:100],
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _get_unique_elements(self) -> dict[str, Any]:
         """Get deduplicated UI elements with interaction counts and types."""
         elements = self._interaction_data_loader.get_unique_elements()
@@ -364,8 +357,7 @@ class InteractionSpecialist(AbstractAgent):
 
     ## DOM tool handlers — only available when dom_data_loader is present
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
     def _list_pages(self) -> dict[str, Any]:
         """List all captured pages with their URLs, titles, and snapshot metadata."""
         pages = self._dom_data_loader.list_pages()  # type: ignore[union-attr]
@@ -374,8 +366,7 @@ class InteractionSpecialist(AbstractAgent):
             "pages": pages,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
     def _get_inputs(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all input fields (INPUT, SELECT, TEXTAREA) from DOM snapshots.
@@ -391,8 +382,7 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
     def _get_buttons(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all buttons from DOM snapshots (BUTTON elements and INPUT type=submit/button).
@@ -408,8 +398,7 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
     def _get_links(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all anchor links (<a>) from DOM snapshots with their href values.
@@ -425,8 +414,7 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
     def _get_forms(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all <form> elements with their action URL, method, and child inputs.
@@ -442,8 +430,7 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
     def _get_tables(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all <table> elements with their headers and row counts.
@@ -459,8 +446,7 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
     def _get_headings(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all heading elements (H1-H6) with their text content.
@@ -476,8 +462,7 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
     def _get_navigation_sequence(self) -> dict[str, Any]:
         """Get the ordered sequence of page navigations from all DOM snapshots."""
         sequence = self._dom_data_loader.get_navigation_sequence()  # type: ignore[union-attr]
@@ -486,8 +471,7 @@ class InteractionSpecialist(AbstractAgent):
             "sequence": sequence,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
     def _search_strings(
         self,
         value: str,

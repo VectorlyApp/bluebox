@@ -32,7 +32,6 @@ from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
 from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
-from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -271,8 +270,7 @@ class ValueTraceResolverSpecialist(AbstractAgent):
 
     ## Tool handlers
 
-    @agent_tool(persist=ToolResultPersistMode.OVERFLOW, max_characters=2_500)
-    @token_optimized
+    @agent_tool(persist=ToolResultPersistMode.OVERFLOW, max_characters=2_500, token_optimized=True)
     def _search_everywhere(
         self,
         value: str,
@@ -351,8 +349,8 @@ class ValueTraceResolverSpecialist(AbstractAgent):
         availability=lambda self: self._network_data_loader is not None,
         persist=ToolResultPersistMode.OVERFLOW,
         max_characters=2_500,
+        token_optimized=True,
     )
-    @token_optimized
     def _search_in_network(
         self,
         value: str,
@@ -387,8 +385,8 @@ class ValueTraceResolverSpecialist(AbstractAgent):
         availability=lambda self: self._storage_data_loader is not None,
         persist=ToolResultPersistMode.OVERFLOW,
         max_characters=2_500,
+        token_optimized=True,
     )
-    @token_optimized
     def _search_in_storage(
         self,
         value: str,
@@ -423,8 +421,8 @@ class ValueTraceResolverSpecialist(AbstractAgent):
         availability=lambda self: self._window_property_data_loader is not None,
         persist=ToolResultPersistMode.OVERFLOW,
         max_characters=2_500,
+        token_optimized=True,
     )
-    @token_optimized
     def _search_in_window_props(
         self,
         value: str,
@@ -459,8 +457,8 @@ class ValueTraceResolverSpecialist(AbstractAgent):
         availability=lambda self: self._network_data_loader is not None,
         persist=ToolResultPersistMode.OVERFLOW,
         max_characters=2_500,
+        token_optimized=True,
     )
-    @token_optimized
     def _get_network_entry(self, request_id: str) -> dict[str, Any]:
         """
         Get full details of a network entry by request_id. Returns method, URL, headers, request body, and response body.
@@ -500,8 +498,8 @@ class ValueTraceResolverSpecialist(AbstractAgent):
         availability=lambda self: self._storage_data_loader is not None,
         persist=ToolResultPersistMode.OVERFLOW,
         max_characters=2_500,
+        token_optimized=True,
     )
-    @token_optimized
     def _get_storage_entry(self, index: int) -> dict[str, Any]:
         """
         Get full details of a storage entry by index. Returns the storage event with all its fields.
@@ -522,8 +520,8 @@ class ValueTraceResolverSpecialist(AbstractAgent):
         availability=lambda self: self._window_property_data_loader is not None,
         persist=ToolResultPersistMode.OVERFLOW,
         max_characters=2_500,
+        token_optimized=True,
     )
-    @token_optimized
     def _get_window_prop_changes(
         self,
         path: str,
@@ -557,8 +555,8 @@ class ValueTraceResolverSpecialist(AbstractAgent):
         availability=lambda self: self._storage_data_loader is not None,
         persist=ToolResultPersistMode.OVERFLOW,
         max_characters=2_500,
+        token_optimized=True,
     )
-    @token_optimized
     def _get_storage_by_key(self, key: str) -> dict[str, Any]:
         """
         Get all storage entries for a specific key name.

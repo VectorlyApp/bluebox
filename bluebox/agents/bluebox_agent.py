@@ -47,7 +47,6 @@ from bluebox.utils.code_execution_sandbox import (
     execute_python_sandboxed,
     get_workaround_for_error,
 )
-from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
@@ -392,8 +391,7 @@ class BlueBoxAgent(AbstractAgent):
 
     ## Tool handlers
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _search_routines(self, task: str) -> dict[str, Any]:
         """
         Search for routines by keywords. Matches against routine name and description.

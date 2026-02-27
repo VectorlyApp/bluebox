@@ -22,7 +22,6 @@ from bluebox.data_models.llms.interaction import (
 )
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
 from bluebox.llms.data_loaders.dom_data_loader import DOMDataLoader
-from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -186,8 +185,7 @@ class DOMSpecialist(AbstractAgent):
 
     ## Tool handlers
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _list_pages(self) -> dict[str, Any]:
         """List all captured pages with their URLs, titles, and snapshot metadata."""
         pages = self._dom_data_loader.list_pages()
@@ -196,8 +194,7 @@ class DOMSpecialist(AbstractAgent):
             "pages": pages,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _get_elements(self, element_type: str, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get elements of a specific type from DOM snapshots.
@@ -228,8 +225,7 @@ class DOMSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _get_forms(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all <form> elements with their action URL, method, and child inputs.
@@ -245,8 +241,7 @@ class DOMSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _get_tables(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all <table> elements with their headers and row counts.
@@ -262,8 +257,7 @@ class DOMSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _get_scripts(self, snapshot_index: int | None = None, max_inline_chars: int = 2000) -> dict[str, Any]:
         """
         Get all <script> elements with their attributes and inline content.
@@ -283,8 +277,7 @@ class DOMSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _get_text_content(self, snapshot_index: int, max_chars: int = 5000) -> dict[str, Any]:
         """
         Get visible text content from a snapshot's string table.
@@ -301,8 +294,7 @@ class DOMSpecialist(AbstractAgent):
             "content": content,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _search_strings(
         self,
         value: str,
@@ -329,8 +321,7 @@ class DOMSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _get_snapshot_diff(self, index_a: int, index_b: int) -> dict[str, Any]:
         """
         Compare two snapshots to see what strings were added or removed.
@@ -346,8 +337,7 @@ class DOMSpecialist(AbstractAgent):
             return {"error": f"Invalid snapshot indices: {index_a}, {index_b}"}
         return diff
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _get_navigation_sequence(self) -> dict[str, Any]:
         """Get the ordered sequence of page navigations from all snapshots."""
         sequence = self._dom_data_loader.get_navigation_sequence()

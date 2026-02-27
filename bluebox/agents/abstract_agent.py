@@ -754,8 +754,7 @@ class AbstractAgent(ABC):
         self._notes.append(note)
         return {"status": "ok", "total_notes": len(self._notes)}
 
-    @agent_tool(availability=lambda self: self.can_finalize and self.has_output_schema)
-    @token_optimized_decorator
+    @agent_tool(availability=lambda self: self.can_finalize and self.has_output_schema, token_optimized=True)
     def _finalize_with_output(self, output: dict[str, Any]) -> dict[str, Any]:
         """
         Finalize with output matching the orchestrator's expected schema.
@@ -790,8 +789,7 @@ class AbstractAgent(ABC):
             "notes_count": len(self._notes),
         }
 
-    @agent_tool(availability=lambda self: self.can_finalize and self.has_output_schema)
-    @token_optimized_decorator
+    @agent_tool(availability=lambda self: self.can_finalize and self.has_output_schema, token_optimized=True)
     def _finalize_with_failure(self, reason: str) -> dict[str, Any]:
         """
         Finalize with failure when a schema-based task cannot be completed.
@@ -819,8 +817,7 @@ class AbstractAgent(ABC):
             "reason": reason,
         }
 
-    @agent_tool(availability=lambda self: self.can_finalize and not self.has_output_schema)
-    @token_optimized_decorator
+    @agent_tool(availability=lambda self: self.can_finalize and not self.has_output_schema, token_optimized=True)
     def _finalize_result(self, output: dict[str, Any]) -> dict[str, Any]:
         """
         Finalize and submit result data for tasks without a predefined schema.
@@ -840,8 +837,7 @@ class AbstractAgent(ABC):
             "notes_count": len(self._notes),
         }
 
-    @agent_tool(availability=lambda self: self.can_finalize and not self.has_output_schema)
-    @token_optimized_decorator
+    @agent_tool(availability=lambda self: self.can_finalize and not self.has_output_schema, token_optimized=True)
     def _finalize_failure(self, reason: str) -> dict[str, Any]:
         """
         Finalize with failure for tasks without a predefined schema.

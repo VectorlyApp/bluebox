@@ -43,7 +43,6 @@ from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
 from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
 from bluebox.utils.js_utils import generate_get_dom_js
-from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -381,15 +380,16 @@ class ExperimentWorker(AbstractAgent):
     # BROWSER TOOLS — gated by _has_browser (remote_debugging_address set)
     # ===================================================================
 
-    @agent_tool(availability=lambda self: self._has_browser)
-    @token_optimized
-    def _browser_navigate(self, url: str, timeout_seconds: float = 15.0) -> dict[str, Any]:
-        """
-        Navigate the browser tab to a URL and wait for page load.
+    def _browser_execute(
+        self,
+        fn: Callable[[Callable[..., int], Callable[..., dict[str, Any]], float], dict[str, Any]],
+        timeout_seconds: float = 10.0,
+        label: str = "browser operation",
+    ) -> dict[str, Any]:
+        """Run *fn* inside the ensure-browser / timeout / error envelope.
 
-        Args:
-            url: The URL to navigate to.
-            timeout_seconds: Max time to wait for page load (default 15s).
+        ``fn`` receives ``(send_cmd, recv_until, deadline)`` and returns a result dict.
+        The wrapper handles lazy tab creation, timeout, and generic error handling.
         """
         try:
             self._ensure_browser()
@@ -401,32 +401,33 @@ class ExperimentWorker(AbstractAgent):
 
         deadline = time.time() + timeout_seconds
         try:
-            nav_id = self._browser_send_cmd(
-                "Page.navigate",
-                {"url": url},
-                session_id=self._browser_session_id,
-            )
-            nav_reply = self._browser_recv_until(lambda m: m.get("id") == nav_id, deadline)
+            return fn(self._browser_send_cmd, self._browser_recv_until, deadline)
+        except TimeoutError:
+            return {"error": f"{label} timed out after {timeout_seconds}s"}
+        except Exception as e:
+            logger.error("%s failed: %s", label, e)
+            return {"error": f"{label} failed: {e}"}
 
+    @agent_tool(availability=lambda self: self._has_browser, token_optimized=True)
+    def _browser_navigate(self, url: str, timeout_seconds: float = 15.0) -> dict[str, Any]:
+        """
+        Navigate the browser tab to a URL and wait for page load.
+
+        Args:
+            url: The URL to navigate to.
+            timeout_seconds: Max time to wait for page load (default 15s).
+        """
+        def _run(send_cmd: Callable[..., int], recv_until: Callable[..., dict[str, Any]], deadline: float) -> dict[str, Any]:
+            nav_id = send_cmd("Page.navigate", {"url": url}, session_id=self._browser_session_id)
+            nav_reply = recv_until(lambda m: m.get("id") == nav_id, deadline)
             if "error" in nav_reply:
                 return {"error": f"Navigation failed: {nav_reply['error']}"}
-
-            # Wait for load event
-            self._browser_recv_until(
-                lambda m: m.get("method") == "Page.loadEventFired",
-                deadline,
-            )
-
+            recv_until(lambda m: m.get("method") == "Page.loadEventFired", deadline)
             return {"status": "ok", "url": url}
 
-        except TimeoutError:
-            return {"error": f"Navigation to {url} timed out after {timeout_seconds}s"}
-        except Exception as e:
-            logger.error("browser_navigate failed: %s", e)
-            return {"error": f"Navigation failed: {e}"}
+        return self._browser_execute(_run, timeout_seconds=timeout_seconds, label=f"Navigation to {url}")
 
-    @agent_tool(availability=lambda self: self._has_browser)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._has_browser, token_optimized=True)
     def _browser_eval_js(
         self,
         expression: str,
@@ -449,33 +450,19 @@ class ExperimentWorker(AbstractAgent):
             expression: JavaScript expression to evaluate. Use an IIFE for multi-statement code.
             timeout_seconds: Max execution time (default 30s).
         """
-        try:
-            self._ensure_browser()
-        except RuntimeError as e:
-            return {"error": str(e)}
-
-        assert self._browser_send_cmd is not None
-        assert self._browser_recv_until is not None
-
-        deadline = time.time() + timeout_seconds
-        try:
-            eval_id = self._browser_send_cmd(
+        def _run(send_cmd: Callable[..., int], recv_until: Callable[..., dict[str, Any]], deadline: float) -> dict[str, Any]:
+            eval_id = send_cmd(
                 "Runtime.evaluate",
-                {
-                    "expression": expression,
-                    "returnByValue": True,
-                    "awaitPromise": True,
-                },
+                {"expression": expression, "returnByValue": True, "awaitPromise": True},
                 session_id=self._browser_session_id,
             )
-            eval_reply = self._browser_recv_until(lambda m: m.get("id") == eval_id, deadline)
+            eval_reply = recv_until(lambda m: m.get("id") == eval_id, deadline)
 
             if "error" in eval_reply:
                 return {"error": f"Runtime.evaluate error: {eval_reply['error']}"}
 
             result_obj = eval_reply.get("result", {}).get("result", {})
 
-            # Check for exception
             exception_details = eval_reply.get("result", {}).get("exceptionDetails")
             if exception_details:
                 return {
@@ -484,23 +471,14 @@ class ExperimentWorker(AbstractAgent):
                 }
 
             value = result_obj.get("value")
-
-            # Truncate large results
             result_str = json.dumps(value) if not isinstance(value, str) else value
             if len(result_str) > 10_000:
-                result_str = result_str[:10_000] + "... [TRUNCATED at 10K chars]"
-                return {"result": result_str, "truncated": True}
-
+                return {"result": result_str[:10_000] + "... [TRUNCATED at 10K chars]", "truncated": True}
             return {"result": value}
 
-        except TimeoutError:
-            return {"error": f"JS execution timed out after {timeout_seconds}s"}
-        except Exception as e:
-            logger.error("browser_eval_js failed: %s", e)
-            return {"error": f"JS execution failed: {e}"}
+        return self._browser_execute(_run, timeout_seconds=timeout_seconds, label="JS execution")
 
-    @agent_tool(availability=lambda self: self._has_browser)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._has_browser, token_optimized=True)
     def _browser_cdp_command(
         self,
         method: str,
@@ -516,29 +494,14 @@ class ExperimentWorker(AbstractAgent):
             params: Optional parameters dict for the CDP method.
             timeout_seconds: Max time to wait for response (default 10s).
         """
-        try:
-            self._ensure_browser()
-        except RuntimeError as e:
-            return {"error": str(e)}
-
-        assert self._browser_send_cmd is not None
-        assert self._browser_recv_until is not None
-
-        deadline = time.time() + timeout_seconds
-        try:
-            cmd_id = self._browser_send_cmd(
-                method,
-                params or {},
-                session_id=self._browser_session_id,
-            )
-            reply = self._browser_recv_until(lambda m: m.get("id") == cmd_id, deadline)
+        def _run(send_cmd: Callable[..., int], recv_until: Callable[..., dict[str, Any]], deadline: float) -> dict[str, Any]:
+            cmd_id = send_cmd(method, params or {}, session_id=self._browser_session_id)
+            reply = recv_until(lambda m: m.get("id") == cmd_id, deadline)
 
             if "error" in reply:
                 return {"error": f"CDP error: {reply['error']}"}
 
             result = reply.get("result", {})
-
-            # Truncate large results
             result_str = json.dumps(result)
             if len(result_str) > 10_000:
                 return {
@@ -546,17 +509,11 @@ class ExperimentWorker(AbstractAgent):
                     "truncated": True,
                     "note": "Result truncated at 10K chars",
                 }
-
             return {"result": result}
 
-        except TimeoutError:
-            return {"error": f"CDP command {method} timed out after {timeout_seconds}s"}
-        except Exception as e:
-            logger.error("browser_cdp_command failed: %s", e)
-            return {"error": f"CDP command failed: {e}"}
+        return self._browser_execute(_run, timeout_seconds=timeout_seconds, label=f"CDP command {method}")
 
-    @agent_tool(availability=lambda self: self._has_browser)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._has_browser, token_optimized=True)
     def _browser_get_dom(
         self,
         selector: str | None = None,
@@ -576,59 +533,34 @@ class ExperimentWorker(AbstractAgent):
             include_tags: Only include these tag names (default: all tags).
                           Common values: ["form", "input", "button", "a", "select", "table"].
         """
-        try:
-            self._ensure_browser()
-        except RuntimeError as e:
-            return {"error": str(e)}
+        js = generate_get_dom_js(selector=selector, max_depth=max_depth, include_tags=include_tags)
 
-        assert self._browser_send_cmd is not None
-        assert self._browser_recv_until is not None
-
-        js = generate_get_dom_js(
-            selector=selector,
-            max_depth=max_depth,
-            include_tags=include_tags,
-        )
-
-        deadline = time.time() + 10.0
-        try:
-            eval_id = self._browser_send_cmd(
+        def _run(send_cmd: Callable[..., int], recv_until: Callable[..., dict[str, Any]], deadline: float) -> dict[str, Any]:
+            eval_id = send_cmd(
                 "Runtime.evaluate",
-                {
-                    "expression": js,
-                    "returnByValue": True,
-                    "awaitPromise": False,
-                },
+                {"expression": js, "returnByValue": True, "awaitPromise": False},
                 session_id=self._browser_session_id,
             )
-            eval_reply = self._browser_recv_until(lambda m: m.get("id") == eval_id, deadline)
+            eval_reply = recv_until(lambda m: m.get("id") == eval_id, deadline)
 
             if "error" in eval_reply:
                 return {"error": f"DOM query failed: {eval_reply['error']}"}
 
             result_obj = eval_reply.get("result", {}).get("result", {})
             raw_value = result_obj.get("value", "")
-
-            # Parse JSON result
             try:
                 dom_tree = json.loads(raw_value) if isinstance(raw_value, str) else raw_value
             except json.JSONDecodeError:
                 dom_tree = raw_value
-
             return {"dom": dom_tree, "selector": selector, "max_depth": max_depth}
 
-        except TimeoutError:
-            return {"error": "DOM query timed out"}
-        except Exception as e:
-            logger.error("browser_get_dom failed: %s", e)
-            return {"error": f"DOM query failed: {e}"}
+        return self._browser_execute(_run, timeout_seconds=10.0, label="DOM query")
 
     # ===================================================================
     # RECORDED LOOKUP TOOLS — gated by respective data loaders
     # ===================================================================
 
-    @agent_tool(availability=lambda self: self._network_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._network_data_loader is not None, token_optimized=True)
     def _search_recorded_transactions(
         self,
         query: str,
@@ -659,8 +591,7 @@ class ExperimentWorker(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._network_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._network_data_loader is not None, token_optimized=True)
     def _get_recorded_transaction(self, request_id: str) -> dict[str, Any]:
         """
         Get the full recorded request/response for a specific transaction.
@@ -689,8 +620,7 @@ class ExperimentWorker(AbstractAgent):
             "response_body_truncated": bool(entry.response_body and len(entry.response_body) > 5000),
         }
 
-    @agent_tool(availability=lambda self: self._storage_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._storage_data_loader is not None, token_optimized=True)
     def _search_recorded_storage(
         self,
         query: str,
@@ -716,8 +646,7 @@ class ExperimentWorker(AbstractAgent):
             "results": results[:20],
         }
 
-    @agent_tool()
-    @token_optimized
+    @agent_tool(token_optimized=True)
     def _trace_recorded_value(
         self,
         value: str,
@@ -810,8 +739,7 @@ class ExperimentWorker(AbstractAgent):
 
         return results
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
     def _get_recorded_dom_snapshot(
         self,
         snapshot_index: int = -1,
@@ -849,8 +777,7 @@ class ExperimentWorker(AbstractAgent):
             "scripts": scripts[:10],
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None)
-    @token_optimized
+    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
     def _get_recorded_dom_elements(
         self,
         element_type: str,
