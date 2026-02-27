@@ -36,7 +36,7 @@ from bluebox.agents.abstract_agent import (
 )
 from bluebox.agents.routine_inspector import RoutineInspector
 from bluebox.data_models.orchestration.inspection import RoutineInspectionResult
-from bluebox.agents.workspace import AgentWorkspace
+from bluebox.workspace import AgentWorkspace
 from bluebox.agents.workers.experiment_worker import ExperimentWorker
 from bluebox.data_models.llms.interaction import (
     Chat,

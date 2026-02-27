@@ -22,7 +22,7 @@ from bluebox.agents.abstract_agent import (
     ToolResultPersistMode,
     agent_tool,
 )
-from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
+from bluebox.workspace import AgentWorkspace, LocalAgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -55,7 +55,6 @@ class ValueTraceResolverSpecialist(AbstractAgent):
             "browser storage, and window properties."
         ),
     )
-    SUPPORTS_AUTONOMOUS = True
     _VALUE_PREVIEW_MAX_CHARS = 800
 
     SYSTEM_PROMPT: str = textwrap.dedent("""
@@ -154,7 +153,7 @@ class ValueTraceResolverSpecialist(AbstractAgent):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
-            workspace=workspace or LocalWorkspace.from_directory_path("./agent_workspace/specialist"),
+            workspace=workspace or LocalAgentWorkspace.from_directory_path("./agent_workspace/specialist"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,

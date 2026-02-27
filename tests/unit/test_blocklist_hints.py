@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.utils.code_execution_sandbox import (
     BLOCKED_MODULE_WORKAROUNDS,
     BLOCKED_PATTERN_WORKAROUNDS,
@@ -140,7 +140,7 @@ class TestBlueBoxAgentBlocklistPrompt:
         from bluebox.agents.bluebox_agent import BlueBoxAgent
         agent = BlueBoxAgent(
             emit_message_callable=MagicMock(),
-            workspace=LocalWorkspace.from_directory_path(tmp_path),
+            workspace=LocalAgentWorkspace.from_directory_path(tmp_path),
         )
         prompt = agent._get_system_prompt()
         assert "Sandbox Restrictions" in prompt
@@ -162,7 +162,7 @@ class TestBlueBoxAgentBlocklistPrompt:
         from bluebox.agents.bluebox_agent import BlueBoxAgent
         agent = BlueBoxAgent(
             emit_message_callable=MagicMock(),
-            workspace=LocalWorkspace.from_directory_path(tmp_path),
+            workspace=LocalAgentWorkspace.from_directory_path(tmp_path),
         )
         prompt = agent._get_system_prompt()
         assert "Sandbox Restrictions" not in prompt
@@ -192,7 +192,7 @@ class TestRunPythonCodeBlockedHint:
         from bluebox.agents.bluebox_agent import BlueBoxAgent
         agent = BlueBoxAgent(
             emit_message_callable=MagicMock(),
-            workspace=LocalWorkspace.from_directory_path(tmp_path),
+            workspace=LocalAgentWorkspace.from_directory_path(tmp_path),
         )
         result = agent._run_python_code("import os")
         kwargs = mock_sandbox.call_args.kwargs
@@ -223,7 +223,7 @@ class TestRunPythonCodeBlockedHint:
         from bluebox.agents.bluebox_agent import BlueBoxAgent
         agent = BlueBoxAgent(
             emit_message_callable=MagicMock(),
-            workspace=LocalWorkspace.from_directory_path(tmp_path),
+            workspace=LocalAgentWorkspace.from_directory_path(tmp_path),
         )
         result = agent._run_python_code("print(foo)")
         kwargs = mock_sandbox.call_args.kwargs

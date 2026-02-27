@@ -14,18 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from bluebox.agents.workspace import (
+from bluebox.workspace import (
     LocalAgentWorkspace,
-    LocalWorkspace,
 )
 
 
-class TestBackwardCompatAlias:
-    """LocalWorkspace is an alias for LocalAgentWorkspace."""
-
-    def test_alias_is_same_class(self) -> None:
-        assert LocalWorkspace is LocalAgentWorkspace
-
+class TestConstructors:
     def test_from_directory_path_constructor(self, tmp_path: Path) -> None:
         ws_dir = tmp_path / "resumed_workspace"
         ws_dir.mkdir()
@@ -38,64 +32,6 @@ class TestBackwardCompatAlias:
         assert (ws_dir / "context").is_dir()
         assert (ws_dir / "scratch").is_dir()
         assert (ws_dir / "meta").is_dir()
-
-
-class TestSaveFile:
-    """Tests for the backward-compatible save_file method."""
-
-    def test_saves_file_with_content(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        result = ws.save_file("raw", "routine_result.json", '{"data": 1}')
-        assert "output_file" in result
-        assert "artifact_id" in result
-        saved = Path(result["output_file"])
-        assert saved.exists()
-        assert saved.read_text() == '{"data": 1}'
-        assert saved.name == "routine_result.json"
-
-    def test_creates_subdirectory_for_unknown_source(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        ws.save_file("custom_subdir", "test.json", "content")
-        assert (tmp_path / "custom_subdir").is_dir()
-
-    def test_dedupes_filename_on_collision(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        r1 = ws.save_file("raw", "test.json", "first")
-        r2 = ws.save_file("raw", "test.json", "second")
-        assert Path(r1["output_file"]).read_text() == "first"
-        assert Path(r2["output_file"]).exists()
-        assert Path(r2["output_file"]).read_text() == "second"
-        assert r1["artifact_id"] != r2["artifact_id"]
-
-    def test_different_extensions(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        result = ws.save_file("output", "result.md", "# Result")
-        assert result["output_file"].endswith(".md")
-
-    def test_no_s3_key_in_result(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        result = ws.save_file("raw", "test.json", "data")
-        assert "output_file_s3_key" not in result
-
-    def test_rejects_filename_with_path_separator(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        with pytest.raises(ValueError, match="Invalid filename"):
-            ws.save_file("raw", "../escape.json", "data")
-
-    def test_rejects_filename_with_windows_separator(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        with pytest.raises(ValueError, match="Invalid filename"):
-            ws.save_file("raw", "..\\escape.json", "data")
-
-    def test_rejects_subdirectory_path_traversal(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        with pytest.raises(ValueError, match="Invalid subdirectory"):
-            ws.save_file("../evil", "x.txt", "data")
-
-    def test_rejects_absolute_subdirectory(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        with pytest.raises(ValueError, match="Invalid subdirectory"):
-            ws.save_file("/tmp/evil", "x.txt", "data")
 
 
 class TestSaveArtifact:
@@ -362,64 +298,6 @@ class TestSummarizeForPrompt:
 
         summary = ws.generate_summary(max_summary_chars=50)
         assert ("x" * 50) + "..." in summary
-
-
-class TestLoadRawJson:
-    """Tests for LocalAgentWorkspace.load_raw_json."""
-
-    def test_loads_json_files(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        raw = tmp_path / "raw"
-        (raw / "a.json").write_text('{"key": "a"}')
-        (raw / "b.json").write_text('{"key": "b"}')
-        results = ws.load_raw_json()
-        assert len(results) == 2
-        assert results[0]["key"] == "a"
-        assert results[1]["key"] == "b"
-
-    def test_skips_invalid_json(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        raw = tmp_path / "raw"
-        (raw / "good.json").write_text('{"ok": true}')
-        (raw / "bad.json").write_text("not json")
-        results = ws.load_raw_json()
-        assert len(results) == 1
-
-    def test_empty_raw_dir(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        results = ws.load_raw_json()
-        assert results == []
-
-
-class TestSnapshotAndDiffOutputs:
-    """Tests for backward-compatible snapshot_outputs and diff_outputs."""
-
-    def test_detects_new_file(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        before = ws.snapshot_outputs()
-        (tmp_path / "output" / "new.csv").write_text("data")
-        changed = ws.diff_outputs(before)
-        assert len(changed) == 1
-        assert "new.csv" in changed[0]
-
-    def test_detects_modified_file(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        output = tmp_path / "output"
-        f = output / "existing.csv"
-        f.write_text("old")
-        before = ws.snapshot_outputs()
-        time.sleep(0.05)
-        f.write_text("new")
-        changed = ws.diff_outputs(before)
-        assert len(changed) == 1
-
-    def test_no_changes(self, tmp_path: Path) -> None:
-        ws = LocalAgentWorkspace(str(tmp_path))
-        output = tmp_path / "output"
-        (output / "stable.csv").write_text("data")
-        before = ws.snapshot_outputs()
-        changed = ws.diff_outputs(before)
-        assert changed == []
 
 
 class TestSnapshotPaths:

@@ -24,7 +24,7 @@ from typing import Any
 
 from bluebox.agents.abstract_agent import AutonomousRunConfig
 from bluebox.agents.specialists.interaction_specialist import InteractionSpecialist
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.api_indexing.exploration import UIExplorationSummary
 from bluebox.data_models.llms.interaction import EmittedMessage
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
@@ -207,7 +207,7 @@ def run_ui_exploration(
     else:
         logger.info("No DOM data found — will use interaction events only")
 
-    workspace = LocalWorkspace.from_directory_path(
+    workspace = LocalAgentWorkspace.from_directory_path(
         workspace_dir or Path("./agent_workspace/ui_exploration"),
     )
     workspace.attach_input_file("interaction_events", interaction_jsonl)

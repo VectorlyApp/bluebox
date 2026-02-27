@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from bluebox.agents.principal_investigator import PrincipalInvestigator
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.api_indexing.exploration import (
     DOMExplorationSummary,
     NetworkExplorationSummary,
@@ -121,7 +121,7 @@ def _collect_capture_input_files(cdp_captures_dir: Path) -> list[tuple[str, Path
     return [(name, path) for name, path in candidates if path.exists()]
 
 
-def _mount_capture_inputs(workspace: LocalWorkspace, capture_inputs: list[tuple[str, Path]]) -> None:
+def _mount_capture_inputs(workspace: LocalAgentWorkspace, capture_inputs: list[tuple[str, Path]]) -> None:
     """Attach capture files into workspace raw/ as mounted inputs."""
     for name, source_path in capture_inputs:
         workspace.attach_input_file(name=name, source_path=source_path)
@@ -406,22 +406,22 @@ def run_pi_with_recovery(
     persistence = PipelinePersistence(output_dir)
     agent_workspaces_root = output_dir / "agent_workspaces"
     capture_inputs = _collect_capture_input_files(cdp_captures_dir)
-    pi_workspace = LocalWorkspace.from_directory_path(agent_workspaces_root / "PI")
+    pi_workspace = LocalAgentWorkspace.from_directory_path(agent_workspaces_root / "PI")
     _mount_capture_inputs(pi_workspace, capture_inputs)
     worker_idx_counter = count(start=1)
     inspector_idx_counter = count(start=1)
 
-    def _make_worker_workspace() -> LocalWorkspace:
+    def _make_worker_workspace() -> LocalAgentWorkspace:
         worker_idx = next(worker_idx_counter)
         worker_root = agent_workspaces_root / f"worker_{worker_idx}"
-        worker_workspace = LocalWorkspace.from_directory_path(worker_root)
+        worker_workspace = LocalAgentWorkspace.from_directory_path(worker_root)
         _mount_capture_inputs(worker_workspace, capture_inputs)
         return worker_workspace
 
-    def _make_inspector_workspace() -> LocalWorkspace:
+    def _make_inspector_workspace() -> LocalAgentWorkspace:
         inspector_idx = next(inspector_idx_counter)
         inspector_root = agent_workspaces_root / f"inspector_{inspector_idx}"
-        inspector_workspace = LocalWorkspace.from_directory_path(inspector_root)
+        inspector_workspace = LocalAgentWorkspace.from_directory_path(inspector_root)
         _mount_capture_inputs(inspector_workspace, capture_inputs)
         return inspector_workspace
 

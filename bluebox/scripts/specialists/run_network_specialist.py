@@ -37,7 +37,7 @@ from textual import work
 from textual.widgets import RichLog
 
 from bluebox.agents.specialists.network_specialist import NetworkSpecialist
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
@@ -87,7 +87,7 @@ class NetworkSpecialistTUI(AbstractAgentTUI):
         super().__init__(llm_model, working_dir=workspace_dir)
         self._network_store = network_store
         self._data_path = data_path
-        self._workspace = LocalWorkspace.from_directory_path(
+        self._workspace = LocalAgentWorkspace.from_directory_path(
             workspace_dir or "./agent_workspace/network_specialist",
         )
         if self._data_path:

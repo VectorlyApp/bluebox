@@ -1,22 +1,15 @@
 """
-bluebox/agents/workspace.py
+bluebox/workspace/local_workspace.py
 
-Abstract workspace interface and local filesystem implementation.
-
-Contains:
-- AgentWorkspace: ABC defining the v2 artifact-oriented workspace contract
-- LocalAgentWorkspace: Local filesystem implementation
-- LocalWorkspace: backward-compatible alias for LocalAgentWorkspace
+Local filesystem implementation of AgentWorkspace.
 """
 
 from __future__ import annotations
 
 import errno
 import hashlib
-import json
 import os
 import uuid
-from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -32,179 +25,9 @@ from bluebox.data_models.agents.workspace import (
 )
 from bluebox.utils.infra_utils import read_file_lines
 from bluebox.utils.logger import get_logger
+from bluebox.workspace.abstract_workspace import AgentWorkspace
 
 logger = get_logger(name=__name__)
-
-
-class AgentWorkspace(ABC):
-    @property
-    @abstractmethod
-    def root_path(self) -> Path:
-        pass
-
-    @abstractmethod
-    def save_artifact(
-        self,
-        source: ArtifactSource,
-        filename: str,
-        content: str | bytes,
-        *,
-        tool_name: str | None = None,
-        code_run_id: str | None = None,
-        content_type: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> ArtifactRef:
-        pass
-
-    @abstractmethod
-    def list_artifacts(self, source: ArtifactSource | None = None) -> list[ArtifactRef]:
-        pass
-
-    @abstractmethod
-    def read_artifact(
-        self,
-        artifact_id: str,
-        start_line: int | None = None,
-        end_line: int | None = None,
-    ) -> dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def attach_input_file(self, name: str, source_path: str | Path) -> MountedInputRef:
-        """
-        Attach an external input file into workspace raw/ via hardlink.
-
-        Args:
-            name: Logical input name, used for target filename.
-            source_path: Source file path on host filesystem.
-
-        Returns:
-            MountedInputRef describing the attached file.
-        """
-        pass
-
-    @abstractmethod
-    def list_mounted_inputs(self) -> list[MountedInputRef]:
-        """List mounted input files from the input-mount manifest."""
-        pass
-
-    @abstractmethod
-    def snapshot_paths(self, roots: list[str]) -> WorkspaceSnapshot:
-        pass
-
-    @abstractmethod
-    def diff_snapshot(
-        self,
-        before: WorkspaceSnapshot,
-        after: WorkspaceSnapshot,
-    ) -> WorkspaceDelta:
-        pass
-
-    @abstractmethod
-    def read_file(
-        self,
-        path: str,
-        start_line: int | None = None,
-        end_line: int | None = None,
-    ) -> dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def list_files(self) -> dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def generate_summary(
-        self,
-        max_artifacts: int = 10,
-        max_summary_chars: int = 160,
-    ) -> str:
-        """
-        Return a compact, prompt-ready summary of workspace state.
-
-        This is intended for system prompt injection, so it should stay concise
-        and focus on artifact inventory and recent output/context files.
-        """
-        pass
-
-    @abstractmethod
-    def ensure_dirs(self) -> None:
-        pass
-
-    @abstractmethod
-    def cleanup(self, remove_root: bool = False) -> None:
-        pass
-
-    # Backward-compatible API
-    def save_file(self, subdirectory: str, filename: str, content: str) -> dict[str, str]:
-        normalized_filename = filename.replace("\\", "/")
-        filename_path = Path(normalized_filename)
-        if (
-            not normalized_filename
-            or normalized_filename in {".", ".."}
-            or "/" in normalized_filename
-            or filename_path.name != normalized_filename
-        ):
-            raise ValueError(
-                f"Invalid filename '{filename}'. Filenames must not include path separators.",
-            )
-
-        source_map: dict[str, ArtifactSource] = {
-            "raw": "raw",
-            "output": "output",
-            "context": "context",
-        }
-        if subdirectory in source_map:
-            ref = self.save_artifact(source_map[subdirectory], normalized_filename, content)
-            return {
-                "output_file": str(self.root_path / ref.relative_path),
-                "artifact_id": ref.artifact_id,
-            }
-
-        normalized_subdirectory = subdirectory.replace("\\", "/")
-        subdirectory_path = Path(normalized_subdirectory)
-        if subdirectory_path.is_absolute() or ".." in subdirectory_path.parts:
-            raise ValueError(
-                f"Invalid subdirectory '{subdirectory}'. Path traversal is not allowed.",
-            )
-
-        root_resolved = self.root_path.resolve()
-        out_dir = (root_resolved / subdirectory_path).resolve()
-        try:
-            out_dir.relative_to(root_resolved)
-        except ValueError as e:
-            raise ValueError(
-                f"Invalid subdirectory '{subdirectory}'. Path must be inside workspace root.",
-            ) from e
-
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / normalized_filename
-        out_path.write_text(content)
-        return {"output_file": str(out_path)}
-
-    def load_raw_json(self) -> list[dict[str, Any]]:
-        raw_dir = self.root_path / "raw"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-        out: list[dict[str, Any]] = []
-        for p in sorted(raw_dir.glob("*.json")):
-            try:
-                out.append(json.loads(p.read_text()))
-            except Exception as e:
-                logger.warning("Failed to load raw json %s: %s", p, e)
-        return out
-
-    def snapshot_outputs(self) -> dict[str, float]:
-        snap = self.snapshot_paths(["output"])
-        return {str(self.root_path / k): float(v.mtime_ns) for k, v in snap.files.items()}
-
-    def diff_outputs(self, before: dict[str, float]) -> list[str]:
-        now = self.snapshot_outputs()
-        changed: list[str] = []
-        for path_str, mtime in now.items():
-            prev = before.get(path_str)
-            if prev is None or prev < mtime:
-                changed.append(path_str)
-        return changed
 
 
 class LocalAgentWorkspace(AgentWorkspace):
@@ -643,7 +466,3 @@ class LocalAgentWorkspace(AgentWorkspace):
                 deleted.append(rel)
 
         return WorkspaceDelta(created=created, modified=modified, deleted=deleted)
-
-
-# Backward-compatible alias
-LocalWorkspace = LocalAgentWorkspace

@@ -20,7 +20,7 @@ from bluebox.agents.abstract_agent import (
     agent_tool,
     _ToolMeta,
 )
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 
 
 # =============================================================================
@@ -41,13 +41,12 @@ class ConcreteSpecialist(AbstractAgent):
     """
 
     AGENT_CARD = AgentCard(description="Test specialist for unit tests.")
-    SUPPORTS_AUTONOMOUS = True
 
     def __init__(self, **kwargs: Any) -> None:
         self._autonomous_result: DummyResult | None = None
         if "workspace" not in kwargs:
             workspace_dir = Path(tempfile.mkdtemp(prefix="bluebox-abstract-agent-autonomous-test-"))
-            kwargs["workspace"] = LocalWorkspace.from_directory_path(workspace_dir)
+            kwargs["workspace"] = LocalAgentWorkspace.from_directory_path(workspace_dir)
         super().__init__(**kwargs)
 
     def _get_system_prompt(self) -> str:

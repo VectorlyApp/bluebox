@@ -26,7 +26,7 @@ from typing import Any
 
 from bluebox.agents.abstract_agent import AutonomousRunConfig
 from bluebox.agents.specialists.network_specialist import NetworkSpecialist
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.api_indexing.exploration import (
     EndpointCategory,
     EndpointCluster,
@@ -258,7 +258,7 @@ def run_network_exploration(
         loader.stats.unique_hosts,
     )
 
-    workspace = LocalWorkspace.from_directory_path(
+    workspace = LocalAgentWorkspace.from_directory_path(
         workspace_dir or Path("./agent_workspace/network_exploration"),
     )
     workspace.attach_input_file("network_events", network_jsonl)

@@ -17,7 +17,7 @@ from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
-from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
+from bluebox.workspace import AgentWorkspace, LocalAgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -51,8 +51,6 @@ class InteractionSpecialist(AbstractAgent):
             "structural context (forms, inputs, buttons, links)."
         ),
     )
-    SUPPORTS_AUTONOMOUS = True
-
     SYSTEM_PROMPT: str = dedent("""\
         You are a UI interaction analyst specializing in understanding what users
         did on web pages from recorded browser interaction events.
@@ -142,7 +140,7 @@ class InteractionSpecialist(AbstractAgent):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
-            workspace=workspace or LocalWorkspace.from_directory_path("./agent_workspace/specialist"),
+            workspace=workspace or LocalAgentWorkspace.from_directory_path("./agent_workspace/specialist"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,

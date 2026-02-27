@@ -25,7 +25,7 @@ from typing import Any
 
 from bluebox.agents.abstract_agent import AutonomousRunConfig
 from bluebox.agents.specialists.value_trace_resolver_specialist import ValueTraceResolverSpecialist
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.api_indexing.exploration import StorageExplorationSummary
 from bluebox.data_models.llms.interaction import EmittedMessage
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
@@ -238,7 +238,7 @@ def run_storage_exploration(
         )
         return None
 
-    workspace = LocalWorkspace.from_directory_path(
+    workspace = LocalAgentWorkspace.from_directory_path(
         workspace_dir or Path("./agent_workspace/storage_exploration"),
     )
     if storage_jsonl.exists():

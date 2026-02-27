@@ -36,7 +36,7 @@ from textual import work
 from textual.widgets import RichLog
 
 from bluebox.agents.bluebox_agent import BlueBoxAgent
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.agents.context import BlueBoxAgentContext
 from bluebox.config import Config
 from bluebox.data_models.llms.vendors import LLMModel
@@ -71,7 +71,7 @@ class BlueBoxAgentTUI(AbstractAgentTUI):
         super().__init__(llm_model, working_dir=workspace_dir)
         self._workspace_dir = workspace_dir
         self._context_file = context_file
-        self._workspace = LocalWorkspace.from_directory_path(self._workspace_dir)
+        self._workspace = LocalAgentWorkspace.from_directory_path(self._workspace_dir)
 
     # ── Abstract implementations ─────────────────────────────────────────
 

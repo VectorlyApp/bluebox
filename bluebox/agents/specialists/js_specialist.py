@@ -13,7 +13,7 @@ from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
-from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
+from bluebox.workspace import AgentWorkspace, LocalAgentWorkspace
 from bluebox.cdp.connection import (
     cdp_close_tab_session,
     cdp_open_new_tab_session,
@@ -49,8 +49,6 @@ class JSSpecialist(AbstractAgent):
             "extraction, DOM scraping, and page state manipulation."
         ),
     )
-    SUPPORTS_AUTONOMOUS = True
-
     _BASE_CONTEXT: str = dedent("""\
         ## Context
 
@@ -143,7 +141,7 @@ class JSSpecialist(AbstractAgent):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
-            workspace=workspace or LocalWorkspace.from_directory_path("./agent_workspace/specialist"),
+            workspace=workspace or LocalAgentWorkspace.from_directory_path("./agent_workspace/specialist"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,

@@ -37,7 +37,7 @@ from textual import work
 from textual.widgets import RichLog
 
 from bluebox.agents.abstract_agent import AutonomousRunConfig
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.agents.workers.experiment_worker import ExperimentWorker
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
@@ -88,7 +88,7 @@ def _collect_capture_input_files(cdp_captures_dir: Path) -> list[tuple[str, Path
     return [(name, path) for name, path in candidates if path.exists()]
 
 
-def _mount_capture_inputs(workspace: LocalWorkspace, capture_inputs: list[tuple[str, Path]]) -> None:
+def _mount_capture_inputs(workspace: LocalAgentWorkspace, capture_inputs: list[tuple[str, Path]]) -> None:
     """Attach capture inputs into workspace raw/."""
     for name, source_path in capture_inputs:
         workspace.attach_input_file(name=name, source_path=source_path)
@@ -135,7 +135,7 @@ class ExperimentWorkerAgentTUI(AbstractAgentTUI):
         self._worker_timeout_seconds = worker_timeout_seconds
         self._max_worker_iterations = max_worker_iterations
 
-        self._workspace = LocalWorkspace.from_directory_path(self._workspace_dir)
+        self._workspace = LocalAgentWorkspace.from_directory_path(self._workspace_dir)
         self._documentation_loader = _build_documentation_loader()
 
         self._network_loader: NetworkDataLoader | None = None

@@ -31,7 +31,7 @@ from bluebox.agents.abstract_agent import (
     agent_tool,
     _ToolMeta,
 )
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatRole,
@@ -66,7 +66,7 @@ class ConcreteAgent(AbstractAgent):
     def __init__(self, **kwargs: Any) -> None:
         if "workspace" not in kwargs:
             workspace_dir = Path(tempfile.mkdtemp(prefix="bluebox-abstract-agent-test-"))
-            kwargs["workspace"] = LocalWorkspace.from_directory_path(workspace_dir)
+            kwargs["workspace"] = LocalAgentWorkspace.from_directory_path(workspace_dir)
         super().__init__(**kwargs)
 
     def _get_system_prompt(self) -> str:
@@ -324,7 +324,7 @@ class TestInitialization:
         assert agent_with_docs._documentation_data_loader is not None
 
     def test_workspace_attached_on_init(self, agent: ConcreteAgent) -> None:
-        assert isinstance(agent._workspace, LocalWorkspace)
+        assert isinstance(agent._workspace, LocalAgentWorkspace)
 
     def test_workspace_can_be_omitted(self, mock_emit: MagicMock) -> None:
         agent = ConcreteAgent(emit_message_callable=mock_emit, workspace=None)
@@ -751,7 +751,7 @@ class TestExecuteTool:
             allow_code_execution=True,
             code_execution_globals={"value": 7},
         )
-        code_agent._workspace = LocalWorkspace.from_directory_path(tmp_path / "workspace")
+        code_agent._workspace = LocalAgentWorkspace.from_directory_path(tmp_path / "workspace")
         result = code_agent._execute_tool("execute_python", {"code": "print(value + 5)"})
         assert "error" not in result
         assert "12" in result.get("output", "")
@@ -766,7 +766,7 @@ class TestExecuteTool:
             allow_code_execution=True,
             code_execution_globals={},
         )
-        code_agent._workspace = LocalWorkspace.from_directory_path(tmp_path / "workspace")
+        code_agent._workspace = LocalAgentWorkspace.from_directory_path(tmp_path / "workspace")
 
         with patch(
             "bluebox.agents.abstract_agent.execute_python_sandboxed",

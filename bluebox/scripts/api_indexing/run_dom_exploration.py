@@ -24,7 +24,7 @@ from typing import Any
 
 from bluebox.agents.abstract_agent import AutonomousRunConfig
 from bluebox.agents.specialists.dom_specialist import DOMSpecialist
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.api_indexing.exploration import DOMExplorationSummary
 from bluebox.data_models.llms.interaction import EmittedMessage
 from bluebox.data_models.llms.vendors import LLMModel, OpenAIModel
@@ -195,7 +195,7 @@ def run_dom_exploration(
         dom_loader.stats.unique_titles,
     )
 
-    workspace = LocalWorkspace.from_directory_path(
+    workspace = LocalAgentWorkspace.from_directory_path(
         workspace_dir or Path("./agent_workspace/dom_exploration"),
     )
     workspace.attach_input_file("dom_events", dom_jsonl)

@@ -18,7 +18,7 @@ from textwrap import dedent
 from typing import Callable, TYPE_CHECKING
 
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard
-from bluebox.agents.workspace import AgentWorkspace
+from bluebox.workspace import AgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -53,8 +53,6 @@ class RoutineInspector(AbstractAgent):
             "documentation to provide actionable fix recommendations."
         ),
     )
-    SUPPORTS_AUTONOMOUS = True
-
     SYSTEM_PROMPT: str = dedent("""\
         You are a routine quality inspector. You judge routines objectively.
 

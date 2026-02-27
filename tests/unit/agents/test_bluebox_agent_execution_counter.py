@@ -15,7 +15,7 @@ import pytest
 import requests
 
 from bluebox.agents.bluebox_agent import BlueBoxAgent
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 
 
 # =============================================================================
@@ -27,7 +27,7 @@ def _make_agent(tmp_path: Path) -> BlueBoxAgent:
     """Create a BlueBoxAgent with a local workspace for testing."""
     return BlueBoxAgent(
         emit_message_callable=MagicMock(),
-        workspace=LocalWorkspace(str(tmp_path)),
+        workspace=LocalAgentWorkspace(str(tmp_path)),
         auth_headers_provider=lambda: {"X-Service-Token": "test"},
     )
 

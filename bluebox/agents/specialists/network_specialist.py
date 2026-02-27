@@ -23,7 +23,7 @@ from bluebox.agents.abstract_agent import (
     ToolResultPersistMode,
     agent_tool,
 )
-from bluebox.agents.workspace import AgentWorkspace, LocalWorkspace
+from bluebox.workspace import AgentWorkspace, LocalAgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
     ChatThread,
@@ -53,8 +53,6 @@ class NetworkSpecialist(AbstractAgent):
             "inspecting request/response data, and semantic search across captured traffic."
         ),
     )
-    SUPPORTS_AUTONOMOUS = True
-
     SYSTEM_PROMPT: str = dedent(f"""
         You are a network traffic analyst specializing in captured browser network data.
 
@@ -136,7 +134,7 @@ class NetworkSpecialist(AbstractAgent):
 
         super().__init__(
             emit_message_callable=emit_message_callable,
-            workspace=workspace or LocalWorkspace.from_directory_path("./agent_workspace/specialist"),
+            workspace=workspace or LocalAgentWorkspace.from_directory_path("./agent_workspace/specialist"),
             persist_chat_callable=persist_chat_callable,
             persist_chat_thread_callable=persist_chat_thread_callable,
             stream_chunk_callable=stream_chunk_callable,

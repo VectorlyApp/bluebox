@@ -32,7 +32,7 @@ from typing import Any, Callable, ClassVar, NamedTuple, get_type_hints
 import jsonschema
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from bluebox.agents.workspace import AgentWorkspace
+from bluebox.workspace import AgentWorkspace
 from bluebox.data_models.llms.interaction import (
     BrowserAgentStepEmittedMessage,
     Chat,
@@ -225,7 +225,6 @@ class AbstractAgent(ABC):
 
     # Class-level configuration (can be overridden by subclasses)
     AGENT_LOOP_MAX_ITERATIONS: int = 10
-    SUPPORTS_AUTONOMOUS: ClassVar[bool] = False
     AGENT_CARD: ClassVar[AgentCard]  # must be defined by every concrete subclass
     _subclasses: ClassVar[list[type[AbstractAgent]]] = []
     WORKSPACE_USAGE_SECTION: ClassVar[str] = dedent("""\
@@ -255,24 +254,6 @@ class AbstractAgent(ABC):
         """Return a copy of all registered concrete AbstractAgent subclasses."""
         return cls._subclasses.copy()
 
-    @classmethod
-    def get_by_type(cls, agent_type: str) -> type[AbstractAgent] | None:
-        """Look up a registered agent class by class name."""
-        for subclass in cls._subclasses:
-            if subclass.__name__ == agent_type:
-                return subclass
-        return None
-
-    @classmethod
-    def get_all_agent_types(cls) -> list[str]:
-        """Return all registered agent class names."""
-        return [subclass.__name__ for subclass in cls._subclasses]
-
-    @classmethod
-    def get_all_autonomous_subclasses(cls) -> list[type[AbstractAgent]]:
-        """Return registered agent classes that declare autonomous support."""
-        return [subclass for subclass in cls._subclasses if getattr(subclass, "SUPPORTS_AUTONOMOUS", False)]
-
     ## Abstract methods
 
     @abstractmethod
@@ -294,7 +275,6 @@ class AbstractAgent(ABC):
         documentation_data_loader: DocumentationDataLoader | None = None,
         on_llm_response: Callable[[LLMChatResponse], None] | None = None,
         execution_mode: AgentExecutionMode = AgentExecutionMode.CONVERSATIONAL,
-        supports_autonomous: bool | None = None,
         allow_code_execution: bool = False,
         code_execution_globals: dict[str, Any] | None = None,
     ) -> None:
@@ -314,7 +294,6 @@ class AbstractAgent(ABC):
             documentation_data_loader: Optional DocumentationDataLoader for docs/code search tools.
             on_llm_response: Optional callback invoked after each LLM call with the response (for token tracking).
             execution_mode: Agent execution mode (conversational or autonomous).
-            supports_autonomous: Whether this agent supports autonomous runs. Defaults to class-level SUPPORTS_AUTONOMOUS.
             allow_code_execution: Whether to expose the generic execute_python tool.
             code_execution_globals: Globals injected into execute_python sandbox runs.
                 Must be empty when allow_code_execution is False.
@@ -332,14 +311,7 @@ class AbstractAgent(ABC):
         self._documentation_data_loader = documentation_data_loader
         self._on_llm_response = on_llm_response
         self._on_chat_added: Callable[[], None] | None = None
-        self._supports_autonomous = (
-            supports_autonomous
-            if supports_autonomous is not None
-            else self.SUPPORTS_AUTONOMOUS
-        )
-        self.execution_mode = (
-            execution_mode if self._supports_autonomous else AgentExecutionMode.CONVERSATIONAL
-        )
+        self.execution_mode = execution_mode
         self._autonomous_iteration: int = 0
         self._autonomous_config: AutonomousRunConfig = AutonomousRunConfig()
         self._task_output_schema: dict[str, Any] | None = None
@@ -593,11 +565,6 @@ class AbstractAgent(ABC):
         return self._workspace is not None
 
     @property
-    def supports_autonomous(self) -> bool:
-        """Whether this agent supports autonomous runs."""
-        return self._supports_autonomous
-
-    @property
     def autonomous_iteration(self) -> int:
         """Return the current/final autonomous iteration count."""
         return self._autonomous_iteration
@@ -610,8 +577,7 @@ class AbstractAgent(ABC):
         Finalize tools are available only in autonomous mode after min_iterations.
         """
         return (
-            self._supports_autonomous
-            and self.execution_mode == AgentExecutionMode.AUTONOMOUS
+            self.execution_mode == AgentExecutionMode.AUTONOMOUS
             and self._autonomous_iteration >= self._autonomous_config.min_iterations
         )
 
@@ -631,31 +597,46 @@ class AbstractAgent(ABC):
             )
         return self._workspace
 
-    def _ensure_autonomous_supported(self) -> None:
-        if not self._supports_autonomous:
-            raise RuntimeError(
-                f"{self.__class__.__name__} does not support autonomous runs",
-            )
-
     def _get_autonomous_system_prompt(self) -> str:
         """
         Return system prompt for autonomous mode.
 
-        Subclasses supporting autonomous mode should override this.
+        Subclasses can override this for custom autonomous behavior.
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must override _get_autonomous_system_prompt() to support run_autonomous()",
+        return (
+            self._get_system_prompt()
+            + dedent("""
+
+                ## Autonomous Execution
+                - Operate independently and use tools to complete the task.
+                - Keep reasoning concise and tool-driven.
+                - Use `add_note()` for warnings, assumptions, and blockers.
+                - Finalize only via the designated finalize tool.
+            """)
+            + self._get_output_schema_prompt_section()
+            + self._get_urgency_notice()
         )
 
     def _get_autonomous_initial_message(self, task: str) -> str:
         """
         Build initial USER message for autonomous mode.
 
-        Subclasses supporting autonomous mode should override this.
+        Subclasses can override this for custom autonomous task framing.
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must override _get_autonomous_initial_message() to support run_autonomous()",
+        finalize_call = (
+            "finalize_with_output(output={...})"
+            if self.has_output_schema
+            else "finalize_result(output={...})"
         )
+        return dedent(
+            f"""
+            Task: {task}
+
+            Run autonomously until complete.
+            Use available tools to gather evidence and produce the best possible output.
+            When done, call `{finalize_call}`.
+            """
+        ).strip()
 
     def _check_autonomous_completion(self, tool_name: str) -> bool:
         """
@@ -740,8 +721,7 @@ class AbstractAgent(ABC):
 
     @agent_tool(
         availability=lambda self: (
-            self._supports_autonomous
-            and self.execution_mode == AgentExecutionMode.AUTONOMOUS
+            self.execution_mode == AgentExecutionMode.AUTONOMOUS
         )
     )
     def add_note(self, note: str) -> dict[str, Any]:
@@ -1941,11 +1921,9 @@ class AbstractAgent(ABC):
         """
         Run the agent autonomously to completion.
 
-        Agents that opt into autonomous mode should provide autonomous prompts
-        and completion logic via the extension hooks above.
+        Subclasses may override autonomous extension hooks for domain-specific
+        prompting and completion behavior.
         """
-        self._ensure_autonomous_supported()
-
         self.execution_mode = AgentExecutionMode.AUTONOMOUS
         try:
             self._autonomous_iteration = 0

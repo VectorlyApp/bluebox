@@ -18,7 +18,7 @@ Endpoints (all agents):
     GET  /status
     POST /chat          {"message": "..."}
 
-Agents with discovery support (autonomous agents):
+Agents with discovery support:
     POST /discover      {"task": "..."}
     GET  /routine
 """
@@ -251,12 +251,12 @@ class AgentState:
             return {"ok": True, "messages": self._flush()}
 
     def discover(self, task: str) -> dict[str, Any]:
-        """Run discovery. Autonomous agents use run_autonomous(), others use run()."""
+        """Run discovery. Prefer autonomous runs when the agent exposes run_autonomous()."""
         with self._lock:
             self._flush()
 
-            # Autonomous agents: run_autonomous(task)
-            if getattr(self._agent_class, "SUPPORTS_AUTONOMOUS", False):
+            # Autonomous-capable agents: run_autonomous(task)
+            if callable(getattr(self._agent_class, "run_autonomous", None)):
                 agent = self._make_agent()
                 result = agent.run_autonomous(task)
                 messages = self._flush()
@@ -321,7 +321,7 @@ class AgentState:
     @property
     def supports_discover(self) -> bool:
         return (
-            getattr(self._agent_class, "SUPPORTS_AUTONOMOUS", False)
+            callable(getattr(self._agent_class, "run_autonomous", None))
             or _has_own_method(self._agent_class, "run")
         )
 
@@ -494,9 +494,8 @@ def main() -> None:
             for pname, param in sig.parameters.items():
                 if pname in _DATA_PARAM_TO_KEY and param.default is inspect.Parameter.empty:
                     required.append(_DATA_PARAM_TO_KEY[pname])
-            specialist = " (autonomous)" if getattr(cls, "SUPPORTS_AUTONOMOUS", False) else ""
             req = f"  requires: {', '.join(required)}" if required else ""
-            print(f"  {name}{specialist}{req}")
+            print(f"  {name}{req}")
         return
 
     if args.agent not in registry:

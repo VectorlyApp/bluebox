@@ -26,8 +26,13 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from websocket import WebSocket
 
-from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
-from bluebox.agents.workspace import AgentWorkspace
+from bluebox.agents.abstract_agent import (
+    AbstractAgent,
+    AgentCard,
+    ToolResultPersistMode,
+    agent_tool,
+)
+from bluebox.workspace import AgentWorkspace
 from bluebox.cdp.connection import (
     cdp_close_tab_session,
     cdp_open_new_tab_session,
@@ -71,8 +76,6 @@ class ExperimentWorker(AbstractAgent):
             "Has browser tools (navigate, eval JS, CDP, DOM) and capture lookup tools."
         ),
     )
-    SUPPORTS_AUTONOMOUS = True
-
     SYSTEM_PROMPT: str = textwrap.dedent("""\
         You are an experiment worker agent with access to TWO sources of data:
 
@@ -478,7 +481,12 @@ class ExperimentWorker(AbstractAgent):
 
         return self._browser_execute(_run, timeout_seconds=timeout_seconds, label="JS execution")
 
-    @agent_tool(availability=lambda self: self._has_browser, token_optimized=True)
+    @agent_tool(
+        availability=lambda self: self._has_browser,
+        token_optimized=True,
+        persist=ToolResultPersistMode.OVERFLOW,
+        max_characters=10_000,
+    )
     def _browser_cdp_command(
         self,
         method: str,
@@ -501,15 +509,7 @@ class ExperimentWorker(AbstractAgent):
             if "error" in reply:
                 return {"error": f"CDP error: {reply['error']}"}
 
-            result = reply.get("result", {})
-            result_str = json.dumps(result)
-            if len(result_str) > 10_000:
-                return {
-                    "result": json.loads(result_str[:10_000] + "}"),
-                    "truncated": True,
-                    "note": "Result truncated at 10K chars",
-                }
-            return {"result": result}
+            return {"result": reply.get("result", {})}
 
         return self._browser_execute(_run, timeout_seconds=timeout_seconds, label=f"CDP command {method}")
 
@@ -529,7 +529,7 @@ class ExperimentWorker(AbstractAgent):
 
         Args:
             selector: CSS selector to scope the view (default: entire document).
-            max_depth: Maximum DOM tree depth to walk (default 6).
+            max_depth: Maximum DOM tree depth to walk (default 5).
             include_tags: Only include these tag names (default: all tags).
                           Common values: ["form", "input", "button", "a", "select", "table"].
         """

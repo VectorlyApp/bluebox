@@ -22,7 +22,7 @@ from typing import Any, Callable
 import requests
 
 from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
-from bluebox.agents.workspace import AgentWorkspace
+from bluebox.workspace import AgentWorkspace
 from bluebox.config import Config
 from bluebox.data_models.agents.context import BlueBoxAgentContext, UsedRoutine
 from bluebox.data_models.browser_agent import (
@@ -87,22 +87,17 @@ class BlueBoxAgent(AbstractAgent):
         - `context/` — context files (JSON + Markdown) saved by `generate_context`, used for session replay
         - `meta/` (read-only) — system-managed manifests and metadata
 
-        **Pre-loaded variables in `run_python_code`:**
-        - `routine_results` — list of dicts, one per JSON file in raw/
-        - `json` — for parsing and serialization
-        - `csv` — for CSV reading/writing
-        - `Path` — from pathlib, for path operations (do NOT import pathlib — use `Path` directly)
-        - `open()` — scoped to the workspace directory for safe file I/O
+        **Reading routine outputs in `run_python_code`:**
+        - Use `list_files(scope="workspace")` to see files in `raw/`
+        - Read raw JSON files directly in Python:
+          `records = [json.loads(p.read_text()) for p in Path("raw").glob("*.json")]`
+        - Use `read_file(scope="workspace", path="...")` to inspect any file by relative path (e.g. "raw/25-01-15-143052-routine_result_1.json" or "output/results.csv"). Use optional start_line/end_line for large files.
 
         **Writing output files:**
         - Write to the output/ subdirectory: `with open("output/results.csv", "w") as f: ...`
 
-        **Inspecting files:**
-        - Use `list_files(scope="workspace")` to see all files in the workspace
-        - Use `read_file(scope="workspace", path="...")` to read any file by relative path (e.g. "raw/25-01-15-143052-routine_result_1.json" or "output/results.csv"). Use optional start_line/end_line for large files.
-
         ## Routine Result Structure
-        Each entry in `routine_results` is the raw API response JSON saved by `execute_routines_in_parallel`. The structure is:
+        Each JSON file in `raw/` from `execute_routines_in_parallel` has this structure:
 
         ```
         {
@@ -119,15 +114,15 @@ class BlueBoxAgent(AbstractAgent):
         }
         ```
 
-        **Path to the payload:** `rr["result"]["data"]` for each `rr` in `routine_results`.
-        **Input parameters:** `rr["parameters"]` for each `rr` in `routine_results`.
+        **Path to the payload:** `record["result"]["data"]`.
+        **Input parameters:** `record["parameters"]`.
 
-        **Important:** The payload shape varies per routine — different routines return different key names and structures. Always start your post-processing code by printing `rr["routine_name"]` and `rr["result"]["data"].keys()` to understand what each routine returned before trying to extract specific fields.
+        **Important:** The payload shape varies per routine — different routines return different key names and structures. Always inspect a few raw records first before extracting fields.
 
         ## Post-Processing with Python
         - After routines return results, ALWAYS use `run_python_code` to post-process data and generate clean output files.
         - **ALWAYS add debug print() statements** in your code so you can see what's happening: print key counts, data shapes, sample values, etc. stdout is captured and returned to you.
-        - **On first pass, always explore the data**: before writing any output file, print the routine names and top-level keys of each result's payload so you understand the shape. Then write extraction code.
+        - **On first pass, always explore the data**: before writing any output file, load records from `raw/*.json`, print routine names and top-level keys, then write extraction code.
         - **Be persistent**: If your code errors or produces unexpected results, read the error/output carefully, use `list_files(scope="workspace")` and `read_file(scope="workspace", path=...)` to inspect the data, fix the code, and try again. Keep iterating until you produce the correct output file. NEVER give up after one failed attempt — debug and retry.
 
         ## Important Rules
@@ -371,7 +366,19 @@ class BlueBoxAgent(AbstractAgent):
         and status from a previous execution. Returns deduplicated list
         of successfully executed routines.
         """
-        raw_results = self._workspace.load_raw_json()
+        raw_results: list[dict[str, Any]] = []
+        raw_refs = sorted(
+            (ref for ref in self._workspace.list_artifacts("raw") if ref.relative_path.endswith(".json")),
+            key=lambda ref: ref.index,
+        )
+        for ref in raw_refs:
+            try:
+                file_data = self._workspace.read_file(ref.relative_path)
+                content = file_data.get("content")
+                if isinstance(content, str):
+                    raw_results.append(json.loads(content))
+            except Exception as e:
+                logger.warning("Failed to parse raw JSON artifact %s: %s", ref.relative_path, e)
         seen: set[str] = set()
         routines: list[UsedRoutine] = []
         for rr in raw_results:
@@ -449,11 +456,17 @@ class BlueBoxAgent(AbstractAgent):
             try:
                 idx = next(self._routine_execution_counter)
                 ts = datetime.now().strftime("%y-%m-%d-%H%M%S")
-                save_info = self._workspace.save_file(
-                    "raw", f"{ts}-routine_result_{idx}.json",
+                ref = self._workspace.save_artifact(
+                    "raw",
+                    f"{ts}-routine_result_{idx}.json",
                     json.dumps(result, indent=2, default=str),
                 )
-                result.update(save_info)
+                result.update(
+                    {
+                        "output_file": str(self._workspace.root_path / ref.relative_path),
+                        "artifact_id": ref.artifact_id,
+                    },
+                )
             except Exception as e:
                 logger.exception("Failed to save routine result to file: %s", e)
                 result["output_file_error"] = str(e)
@@ -487,8 +500,7 @@ class BlueBoxAgent(AbstractAgent):
                 summary["_hint"] = (
                     f"Response truncated ({len(raw)} chars). "
                     f"Full result saved to {full_result.get('output_file')}. "
-                    "Use read_file(scope='workspace', path='...') to inspect the full data, or access it "
-                    "via routine_results in run_python_code."
+                    "Use read_file(scope='workspace', path='...') to inspect the full data, or run_python_code to parse it."
                 )
             else:
                 summary["response_preview"] = raw
@@ -600,10 +612,17 @@ class BlueBoxAgent(AbstractAgent):
         if final_result:
             try:
                 ts = datetime.now().strftime("%y-%m-%d-%H%M%S")
-                save_info = self._workspace.save_file(
-                    "output", f"{ts}-browser_agent.md", final_result,
+                ref = self._workspace.save_artifact(
+                    "output",
+                    f"{ts}-browser_agent.md",
+                    final_result,
                 )
-                result.update(save_info)
+                result.update(
+                    {
+                        "output_file": str(self._workspace.root_path / ref.relative_path),
+                        "artifact_id": ref.artifact_id,
+                    },
+                )
             except Exception as e:
                 logger.exception("Failed to save browser agent result: %s", e)
                 result["output_file_error"] = str(e)
@@ -680,8 +699,7 @@ class BlueBoxAgent(AbstractAgent):
 
         The code runs with workspace-scoped file access.
         `raw/` and `meta/` are read-only; write deliverables to `output/`.
-        Pre-loaded variables: `routine_results` (list of dicts from all JSON files
-        in the raw/ directory), `json`, `csv`, and `Path` (pathlib.Path).
+        Read routine result files directly from `raw/` in your Python code.
 
         Write output files to the output/ subdirectory:
             with open("output/results.csv", "w") as f: ...
@@ -692,7 +710,6 @@ class BlueBoxAgent(AbstractAgent):
 
         Args:
             code: Python code to execute with workspace-scoped file access.
-                Pre-loaded: routine_results (list[dict]), json, csv, Path.
                 Write output files to output/ subdirectory. Always add print()
                 statements for debugging.
         """
@@ -701,15 +718,11 @@ class BlueBoxAgent(AbstractAgent):
         work_dir = str(self._workspace.root_path.resolve())
 
         # Snapshot files in output/ before execution
-        files_before = self._workspace.snapshot_outputs()
-
-        # Load all JSON files from raw/ as routine_results
-        routine_results = self._workspace.load_raw_json()
+        files_before = self._workspace.snapshot_paths(["output"])
 
         # Execute in sandbox with work_dir for file access
         sandbox_result = execute_python_sandboxed(
             code,
-            extra_globals={"routine_results": routine_results},
             work_dir=work_dir,
             read_only_paths=[
                 str((self._workspace.root_path / "raw").resolve()),
@@ -718,7 +731,13 @@ class BlueBoxAgent(AbstractAgent):
         )
 
         # Diff files in output/ to find new/modified ones
-        files_created = self._workspace.diff_outputs(files_before)
+        files_after = self._workspace.snapshot_paths(["output"])
+        delta = self._workspace.diff_snapshot(files_before, files_after)
+        changed_states = delta.created + delta.modified
+        files_created = [
+            str(self._workspace.root_path / state.relative_path)
+            for state in changed_states
+        ]
 
         # Build response
         result: dict[str, Any] = {}
@@ -816,14 +835,22 @@ class BlueBoxAgent(AbstractAgent):
             )
 
         # Save canonical JSON
-        json_save = self._workspace.save_file(
-            "context", "agent_context.json", context.model_dump_json(indent=2),
+        json_ref = self._workspace.save_artifact(
+            "context",
+            "agent_context.json",
+            context.model_dump_json(indent=2),
         )
 
         # Save companion Markdown
-        md_save = self._workspace.save_file(
-            "context", "agent_context.md", context.to_markdown(),
+        md_ref = self._workspace.save_artifact(
+            "context",
+            "agent_context.md",
+            context.to_markdown(),
         )
 
-        logger.info("Context files saved: %s, %s", json_save["output_file"], md_save["output_file"])
+        logger.info(
+            "Context files saved: %s, %s",
+            self._workspace.root_path / json_ref.relative_path,
+            self._workspace.root_path / md_ref.relative_path,
+        )
         return context

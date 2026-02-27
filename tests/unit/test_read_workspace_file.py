@@ -1,23 +1,23 @@
 """
 tests/unit/test_read_workspace_file.py
 
-Unit tests for the path traversal fix in LocalWorkspace.read_file.
-Tests the method directly using a LocalWorkspace instance.
+Unit tests for the path traversal fix in LocalAgentWorkspace.read_file.
+Tests the method directly using a LocalAgentWorkspace instance.
 """
 
 from pathlib import Path
 
 import pytest
 
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 
 
-def _make_workspace(workspace_dir: Path) -> LocalWorkspace:
-    """Create a LocalWorkspace for testing."""
-    return LocalWorkspace(str(workspace_dir))
+def _make_workspace(workspace_dir: Path) -> LocalAgentWorkspace:
+    """Create a LocalAgentWorkspace for testing."""
+    return LocalAgentWorkspace(str(workspace_dir))
 
 
-def _call(ws: LocalWorkspace, path: str, **kwargs: object) -> dict:
+def _call(ws: LocalAgentWorkspace, path: str, **kwargs: object) -> dict:
     """Call read_file on the workspace."""
     return ws.read_file(path, **kwargs)
 

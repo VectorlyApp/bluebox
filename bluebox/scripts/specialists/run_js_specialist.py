@@ -41,7 +41,7 @@ from textual import work
 from textual.widgets import RichLog
 
 from bluebox.agents.specialists.js_specialist import JSSpecialist
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.dom import DOMSnapshotEvent
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
@@ -103,7 +103,7 @@ class JSSpecialistTUI(AbstractAgentTUI):
         self._javascript_events_jsonl_path = javascript_events_jsonl_path
         self._network_events_jsonl_path = network_events_jsonl_path
         self._remote_debugging_address = remote_debugging_address
-        self._workspace = LocalWorkspace.from_directory_path(
+        self._workspace = LocalAgentWorkspace.from_directory_path(
             workspace_dir or "./agent_workspace/js_specialist",
         )
         if self._dom_snapshots_path:

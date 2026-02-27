@@ -40,7 +40,7 @@ from textual import work
 from textual.widgets import RichLog
 
 from bluebox.agents.specialists.value_trace_resolver_specialist import ValueTraceResolverSpecialist
-from bluebox.agents.workspace import LocalWorkspace
+from bluebox.workspace import LocalAgentWorkspace
 from bluebox.data_models.llms.vendors import LLMModel
 from bluebox.data_models.orchestration.result import SpecialistResultWrapper
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
@@ -100,7 +100,7 @@ class ValueTraceResolverTUI(AbstractAgentTUI):
         self._network_jsonl_path = network_jsonl_path
         self._storage_jsonl_path = storage_jsonl_path
         self._window_props_jsonl_path = window_props_jsonl_path
-        self._workspace = LocalWorkspace.from_directory_path(
+        self._workspace = LocalAgentWorkspace.from_directory_path(
             workspace_dir or "./agent_workspace/value_trace_resolver_specialist",
         )
         if self._network_jsonl_path:
