@@ -146,6 +146,7 @@ class PrincipalInvestigator(AbstractAgent):
     INSPECTOR_INLINE_EXECUTION_MAX_CHARS: int = 20_000
     # Default worker experiment output schema when PI omits one.
     # This enforces finalize_with_output(output={...}) instead of finalize_result.
+    #TODO: test if we can safely remove this without breaking the worker agent
     DEFAULT_WORKER_OUTPUT_SCHEMA: dict[str, Any] = {
         "type": "object",
         "description": "Structured experiment findings object.",
@@ -607,7 +608,25 @@ class PrincipalInvestigator(AbstractAgent):
         # Exploration context
         raw_summaries = exploration_summaries or {}
         self._exploration_summaries_raw = dict(raw_summaries)
-        self._exploration_summaries = self._toonify_exploration_summaries(raw_summaries)
+        toonified_summaries: dict[str, str] = {}
+        for domain, summary in raw_summaries.items():
+            if not isinstance(summary, str):
+                toonified_summaries[domain] = toon_encode(summary)
+                continue
+
+            stripped = summary.strip()
+            if not stripped:
+                toonified_summaries[domain] = summary
+                continue
+
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                toonified_summaries[domain] = summary
+                continue
+
+            toonified_summaries[domain] = toon_encode(parsed)
+        self._exploration_summaries = toonified_summaries
 
         # Data loaders (passed through to workers)
         self._network_data_loader = network_data_loader
@@ -663,44 +682,6 @@ class PrincipalInvestigator(AbstractAgent):
             task[:80],
             list(self._exploration_summaries.keys()),
         )
-
-    @staticmethod
-    def _toonify_exploration_summaries(
-        summaries: dict[str, str],
-    ) -> dict[str, str]:
-        """
-        TOON-encode exploration summaries for prompt efficiency.
-
-        If a summary is JSON text, parse and encode the underlying object.
-        Non-JSON text is passed through unchanged.
-        """
-        toonified: dict[str, str] = {}
-        for domain, summary in summaries.items():
-            if not isinstance(summary, str):
-                toonified[domain] = toon_encode(summary)
-                continue
-
-            stripped = summary.strip()
-            if not stripped:
-                toonified[domain] = summary
-                continue
-
-            try:
-                parsed = json.loads(stripped)
-            except json.JSONDecodeError:
-                toonified[domain] = summary
-                continue
-
-            toonified[domain] = toon_encode(parsed)
-        return toonified
-
-    @staticmethod
-    def _encode_prompt_payload(payload: Any) -> str:
-        """TOON-encode prompt payloads with a JSON fallback."""
-        try:
-            return toon_encode(payload)
-        except Exception:
-            return json.dumps(payload, ensure_ascii=False, default=str)
 
     # -----------------------------------------------------------------------
     # System prompt
@@ -783,13 +764,13 @@ class PrincipalInvestigator(AbstractAgent):
                 },
             )
             parts.append("\n## Discovery Ledger\n")
-            parts.append(self._encode_prompt_payload(ledger_payload))
+            parts.append(toon_encode(ledger_payload))
 
         # Task queue status
         queue = self._orchestration_state.get_queue_status()
         if any(v > 0 for v in queue.values()):
             parts.append("\n## Task Queue\n")
-            parts.append(self._encode_prompt_payload(queue))
+            parts.append(toon_encode(queue))
 
         return "".join(parts)
 
@@ -1514,59 +1495,6 @@ class PrincipalInvestigator(AbstractAgent):
 
         return result
 
-    @agent_tool()
-    def _follow_up(
-        self,
-        experiment_id: str,
-        message: str,
-    ) -> dict[str, Any]:
-        """
-        Send a follow-up message to the SAME worker that ran an experiment.
-        The worker retains its full context — no cold start.
-
-        Use this when:
-        - The result is ambiguous and you need clarification
-        - You want the worker to try a variation
-        - You need more detail about the findings
-
-        Args:
-            experiment_id: ID of the experiment to follow up on.
-            message: Follow-up instructions for the worker.
-        """
-        experiment = self._ledger.get_experiment(experiment_id)
-        if experiment is None:
-            return {"error": f"No experiment found with ID: {experiment_id}"}
-
-        if experiment.task_id is None:
-            return {"error": "Experiment has no associated task"}
-
-        task = self._orchestration_state.tasks.get(experiment.task_id)
-        if task is None:
-            return {"error": f"Task {experiment.task_id} not found"}
-
-        if task.agent_id is None:
-            return {"error": "No agent instance associated with this task"}
-
-        agent = self._agent_instances.get(task.agent_id)
-        if agent is None:
-            return {"error": f"Agent instance {task.agent_id} no longer exists"}
-
-        # Send follow-up via the agent's conversational interface
-        agent.process_new_message(message)
-
-        # Collect the last assistant message as the response
-        last_chat = None
-        for chat_id in reversed(agent._thread.chat_ids):
-            chat = agent._chats.get(chat_id)
-            if chat and chat.role == ChatRole.ASSISTANT:
-                last_chat = chat
-                break
-
-        response_text = last_chat.content if last_chat else "(no response)"
-        return {
-            "experiment_id": experiment.id,
-            "follow_up_response": response_text,
-        }
 
     # ===================================================================
     # RECORDING TOOLS
@@ -1908,6 +1836,16 @@ class PrincipalInvestigator(AbstractAgent):
         self._ledger.add_attempt(attempt)
         spec.status = RoutineSpecStatus.VALIDATING
         self._persist(f"attempt_{attempt.id}_validated")
+        # Persist an initial attempt record before execution/inspection.
+        # The final record for this attempt_id will overwrite this file.
+        self._record_attempt(
+            spec=spec,
+            attempt=attempt,
+            routine_json=routine_json,
+            test_parameters=test_parameters,
+            execution_result=None,
+            inspection_result=None,
+        )
 
         # Step 2: Execute the routine with test parameters
         attempt.status = RoutineAttemptStatus.EXECUTING
@@ -2014,6 +1952,7 @@ class PrincipalInvestigator(AbstractAgent):
                 response["remediation_hints"] = hints
 
         # ----- Persist unified attempt record -----
+        # Overwrite the initial record for this attempt with final verdict/results.
         self._record_attempt(
             spec=spec,
             attempt=attempt,

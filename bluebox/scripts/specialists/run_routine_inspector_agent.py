@@ -1,5 +1,5 @@
 """
-bluebox/scripts/run_inspector_agent.py
+bluebox/scripts/specialists/run_routine_inspector_agent.py
 
 Interactive TUI for RoutineInspector.
 
@@ -10,6 +10,15 @@ Features:
   2) execute it with test params (defaults to test_parameters in file)
   3) run the inspector autonomously with the same inspection prompt pattern
      used by PrincipalInvestigator
+
+Autonomous mode example:
+    python -m bluebox.scripts.specialists.run_routine_inspector_agent \
+      --workspace-dir ./agent_workspaces/inspector_agent \
+      --remote-debugging-address http://127.0.0.1:9222 \
+      --model gpt-5.2
+
+Inside TUI:
+    /inspect /absolute/path/to/routine.json {"param":"value"}
 """
 
 from __future__ import annotations
@@ -44,7 +53,7 @@ from bluebox.utils.tui_base import AbstractAgentTUI, BASE_HELP_TEXT, BASE_SLASH_
 
 
 logger = get_logger(name=__name__)
-BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 DEFAULT_INSPECTOR_TIMEOUT_SECONDS = 180
 DEFAULT_INSPECTOR_MAX_ITERATIONS = 10
@@ -171,7 +180,7 @@ def _parse_params_expression(params_expr: str) -> dict[str, Any]:
 class InspectorAgentTUI(AbstractAgentTUI):
     """TUI for chatting with RoutineInspector and running local inspection mocks."""
 
-    TITLE = "Inspector Agent"
+    TITLE = "Routine Inspector Agent"
     SHOW_SAVED_FILES_PANE = True
     SLASH_COMMANDS = {
         **BASE_SLASH_COMMANDS,
@@ -233,7 +242,7 @@ class InspectorAgentTUI(AbstractAgentTUI):
     def _print_welcome(self) -> None:
         chat = self.query_one("#chat-log", RichLog)
         chat.write(Text.from_markup(
-            "[bold green]Inspector Agent[/bold green]  [dim]chat + autonomous inspection harness[/dim]"
+            "[bold green]Routine Inspector Agent[/bold green]  [dim]chat + autonomous inspection harness[/dim]"
         ))
         chat.write("")
         loaded_domains = ", ".join(sorted(self._exploration_summaries.keys())) or "(none)"
@@ -345,7 +354,7 @@ class InspectorAgentTUI(AbstractAgentTUI):
                 incognito=True,
             )
         except Exception as e:
-            logger.error("Routine execution failed in run_inspector_agent: %s", e)
+            logger.error("Routine execution failed in run_routine_inspector_agent: %s", e)
             return None
 
     def _build_inspection_prompt(
@@ -375,7 +384,7 @@ class InspectorAgentTUI(AbstractAgentTUI):
                         source="raw",
                         filename=f"{safe_name}_execution_result.json",
                         content=exec_json,
-                        tool_name="run_inspector_agent",
+                        tool_name="run_routine_inspector_agent",
                         content_type="json",
                         metadata={
                             "routine_name": routine.name,
@@ -479,7 +488,7 @@ class InspectorAgentTUI(AbstractAgentTUI):
                 source="output",
                 filename=filename,
                 content=json.dumps(record, indent=2, default=str),
-                tool_name="run_inspector_agent",
+                tool_name="run_routine_inspector_agent",
                 content_type="json",
                 metadata={"routine_name": routine.name},
             )

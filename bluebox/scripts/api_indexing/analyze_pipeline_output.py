@@ -1,5 +1,5 @@
 """
-bluebox/scripts/analyze_pipeline_output.py
+bluebox/scripts/api_indexing/analyze_pipeline_output.py
 
 Analyze API indexing pipeline output: per-agent tool call traces and usage stats.
 
@@ -8,10 +8,10 @@ showing each agent's tool call trace (ordered) and a counter of how many times
 each tool was called.
 
 Usage:
-    python -m bluebox.scripts.analyze_pipeline_output \
+    python -m bluebox.scripts.api_indexing.analyze_pipeline_output \
         --output-dir ./api_indexing_output
 
-    python -m bluebox.scripts.analyze_pipeline_output \
+    python -m bluebox.scripts.api_indexing.analyze_pipeline_output \
         --output-dir ./api_indexing_output --json
 """
 

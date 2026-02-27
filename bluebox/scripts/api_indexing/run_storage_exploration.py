@@ -1,5 +1,5 @@
 """
-bluebox/scripts/run_storage_exploration.py
+bluebox/scripts/api_indexing/run_storage_exploration.py
 
 Prototype script for Phase 1 (Exploration) — Storage & Window Properties domain.
 
@@ -10,9 +10,9 @@ execute_python, etc.) to explore captured storage/window data and produce a
 structured exploration summary focused on tokens and data blocks.
 
 Usage:
-    python -m bluebox.scripts.run_storage_exploration --cdp-captures-dir ./cdp_captures
-    python -m bluebox.scripts.run_storage_exploration --cdp-captures-dir ./cdp_captures --model gpt-5.1
-    python -m bluebox.scripts.run_storage_exploration --cdp-captures-dir ./cdp_captures --output /tmp/storage_exploration.json
+    python -m bluebox.scripts.api_indexing.run_storage_exploration --cdp-captures-dir ./cdp_captures
+    python -m bluebox.scripts.api_indexing.run_storage_exploration --cdp-captures-dir ./cdp_captures --model gpt-5.1
+    python -m bluebox.scripts.api_indexing.run_storage_exploration --cdp-captures-dir ./cdp_captures --output /tmp/storage_exploration.json
 """
 
 from __future__ import annotations

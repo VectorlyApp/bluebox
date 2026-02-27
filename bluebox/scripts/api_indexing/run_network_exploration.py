@@ -1,5 +1,5 @@
 """
-bluebox/scripts/run_network_exploration.py
+bluebox/scripts/api_indexing/run_network_exploration.py
 
 Prototype script for Phase 1 (Exploration) — Network domain.
 
@@ -10,9 +10,9 @@ get_unique_urls, etc.) to explore captured traffic and produce a
 structured exploration summary.
 
 Usage:
-    python -m bluebox.scripts.run_network_exploration --cdp-captures-dir ./cdp_captures
-    python -m bluebox.scripts.run_network_exploration --cdp-captures-dir ./cdp_captures --model gpt-5.1
-    python -m bluebox.scripts.run_network_exploration --cdp-captures-dir ./cdp_captures --output /tmp/exploration.json
+    python -m bluebox.scripts.api_indexing.run_network_exploration --cdp-captures-dir ./cdp_captures
+    python -m bluebox.scripts.api_indexing.run_network_exploration --cdp-captures-dir ./cdp_captures --model gpt-5.1
+    python -m bluebox.scripts.api_indexing.run_network_exploration --cdp-captures-dir ./cdp_captures --output /tmp/exploration.json
 """
 
 from __future__ import annotations

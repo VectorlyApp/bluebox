@@ -1,5 +1,5 @@
 """
-bluebox/scripts/run_ui_exploration.py
+bluebox/scripts/api_indexing/run_ui_exploration.py
 
 Prototype script for Phase 1 (Exploration) — UI / Interaction domain.
 
@@ -9,9 +9,9 @@ clicks, elements) and optionally DOM tools (pages, forms, inputs) to
 understand what the user did and infer their intent.
 
 Usage:
-    python -m bluebox.scripts.run_ui_exploration --cdp-captures-dir ./cdp_captures
-    python -m bluebox.scripts.run_ui_exploration --cdp-captures-dir ./cdp_captures --model gpt-5.1
-    python -m bluebox.scripts.run_ui_exploration --cdp-captures-dir ./cdp_captures --output /tmp/exploration_ui.json
+    python -m bluebox.scripts.api_indexing.run_ui_exploration --cdp-captures-dir ./cdp_captures
+    python -m bluebox.scripts.api_indexing.run_ui_exploration --cdp-captures-dir ./cdp_captures --model gpt-5.1
+    python -m bluebox.scripts.api_indexing.run_ui_exploration --cdp-captures-dir ./cdp_captures --output /tmp/exploration_ui.json
 """
 
 from __future__ import annotations

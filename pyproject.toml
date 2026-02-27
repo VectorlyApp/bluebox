@@ -76,6 +76,8 @@ bluebox-guide = "bluebox.scripts.run_guide_agent:main"
 # Specialist agents
 bluebox-agent = "bluebox.scripts.run_bluebox_agent:main"
 bluebox-dumb-agent = "bluebox.scripts.run_dumb_agent:main"
+bluebox-experiment-worker-agent = "bluebox.scripts.specialists.run_experiment_worker_agent:main"
+bluebox-routine-inspector-agent = "bluebox.scripts.specialists.run_routine_inspector_agent:main"
 bluebox-dom-specialist = "bluebox.scripts.specialists.run_dom_specialist:main"
 bluebox-network-specialist = "bluebox.scripts.specialists.run_network_specialist:main"
 bluebox-js-specialist = "bluebox.scripts.specialists.run_js_specialist:main"
@@ -83,7 +85,7 @@ bluebox-interaction-specialist = "bluebox.scripts.specialists.run_interaction_sp
 bluebox-value-trace-resolver-specialist = "bluebox.scripts.specialists.run_value_trace_resolver_specialist:main"
 
 # API indexing pipeline
-bluebox-api-index = "bluebox.scripts.run_api_indexing:main"
+bluebox-api-index = "bluebox.scripts.api_indexing.run_api_indexing:main"
 
 # Dev tools
 bluebox-benchmarks = "bluebox.scripts.run_benchmarks:main"

@@ -1,5 +1,5 @@
 """
-bluebox/scripts/run_api_indexing.py
+bluebox/scripts/api_indexing/run_api_indexing.py
 
 End-to-end API indexing pipeline.
 
@@ -10,11 +10,11 @@ Output is written incrementally to disk so every experiment, attempt, and
 routine is available for debugging even if the pipeline crashes mid-run.
 
 Usage:
-    python -m bluebox.scripts.run_api_indexing \
+    python -m bluebox.scripts.api_indexing.run_api_indexing \
         --cdp-captures-dir ./cdp_captures \
         --task "Browse Premier League standings and view team details"
 
-    python -m bluebox.scripts.run_api_indexing \
+    python -m bluebox.scripts.api_indexing.run_api_indexing \
         --cdp-captures-dir ./cdp_captures \
         --task "Search for flights" \
         --skip-exploration \
@@ -24,6 +24,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from contextlib import redirect_stdout
+from io import StringIO
 import json
 import logging
 import shutil
@@ -50,15 +52,19 @@ from bluebox.llms.data_loaders.dom_data_loader import DOMDataLoader
 from bluebox.llms.data_loaders.network_data_loader import NetworkDataLoader
 from bluebox.llms.data_loaders.storage_data_loader import StorageDataLoader
 from bluebox.llms.data_loaders.window_property_data_loader import WindowPropertyDataLoader
-from bluebox.scripts.run_dom_exploration import run_dom_exploration
-from bluebox.scripts.run_network_exploration import run_network_exploration
-from bluebox.scripts.run_storage_exploration import run_storage_exploration
-from bluebox.scripts.run_ui_exploration import run_ui_exploration
+from bluebox.scripts.api_indexing.run_dom_exploration import run_dom_exploration
+from bluebox.scripts.api_indexing.run_network_exploration import run_network_exploration
+from bluebox.scripts.api_indexing.run_storage_exploration import run_storage_exploration
+from bluebox.scripts.api_indexing.run_ui_exploration import run_ui_exploration
+from bluebox.scripts.api_indexing.analyze_pipeline_output import (
+    analyze_pipeline_output,
+    print_text_report,
+)
 from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
 
-BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+BLUEBOX_PACKAGE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +125,24 @@ def _mount_capture_inputs(workspace: LocalWorkspace, capture_inputs: list[tuple[
     """Attach capture files into workspace raw/ as mounted inputs."""
     for name, source_path in capture_inputs:
         workspace.attach_input_file(name=name, source_path=source_path)
+
+
+def _run_post_run_analysis(output_dir: Path) -> Path | None:
+    """Run pipeline output analysis and write text report to analysis.txt."""
+    analysis_path = output_dir / "analysis.txt"
+    try:
+        result = analyze_pipeline_output(output_dir)
+        buf = StringIO()
+        with redirect_stdout(buf):
+            print_text_report(result)
+        analysis_path.write_text(buf.getvalue())
+        print(f"\n  Analysis report: {analysis_path}", file=sys.stderr)
+        return analysis_path
+    except SystemExit:
+        logger.warning("Post-run analysis skipped: insufficient pipeline artifacts in %s", output_dir)
+    except Exception as e:
+        logger.warning("Post-run analysis failed for %s: %s", output_dir, e)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -224,9 +248,6 @@ class PipelinePersistence:
         ├── experiments/
         │   ├── exp_abc123.json      # Each experiment as its own file
         │   └── exp_def456.json
-        ├── attempts/
-        │   ├── attempt_xyz789.json  # Each routine attempt
-        │   └── ...
         ├── attempt_records/
         │   ├── get_standings_attempt_1_abc12345.json   # Unified record per attempt
         │   └── search_matches_attempt_2_def67890.json  # routine + params + exec + inspection
@@ -244,14 +265,13 @@ class PipelinePersistence:
     def __init__(self, output_dir: Path) -> None:
         self._output_dir = output_dir
         self._experiments_dir = output_dir / "experiments"
-        self._attempts_dir = output_dir / "attempts"
         self._routines_dir = output_dir / "routines"
         self._threads_dir = output_dir / "agent_threads"
         self._attempt_records_dir = output_dir / "attempt_records"
 
         # Create directories
         for d in [
-            self._experiments_dir, self._attempts_dir, self._routines_dir,
+            self._experiments_dir, self._routines_dir,
             self._threads_dir, self._attempt_records_dir,
         ]:
             d.mkdir(parents=True, exist_ok=True)
@@ -262,20 +282,14 @@ class PipelinePersistence:
 
         Writes:
         1. Each experiment as experiments/exp_{id}.json
-        2. Each attempt as attempts/attempt_{id}.json
-        3. Shipped routines as routines/{name}.json
-        4. Full ledger snapshot as ledger.json
-        5. Catalog as catalog.json (if built)
+        2. Shipped routines as routines/{name}.json
+        3. Full ledger snapshot as ledger.json
+        4. Catalog as catalog.json (if built)
         """
         # Individual experiment files
         for exp in ledger.experiments:
             exp_path = self._experiments_dir / f"exp_{exp.id}.json"
             _write_json(exp_path, exp.model_dump())
-
-        # Individual attempt files
-        for attempt in ledger.attempts:
-            attempt_path = self._attempts_dir / f"attempt_{attempt.id}.json"
-            _write_json(attempt_path, attempt.model_dump())
 
         # Shipped routine files
         for spec in ledger.routine_specs:
@@ -296,9 +310,10 @@ class PipelinePersistence:
 
     def on_attempt_record(self, record: dict[str, Any]) -> None:
         """
-        Called by the PI after every submit_routine attempt completes
-        (execution + inspection). Writes a unified record with routine JSON,
-        test parameters, execution result, and inspection result in one file.
+        Called by the PI when attempt state changes.
+        Writes a unified record with routine JSON, test parameters, execution
+        result, and inspection result in one file, keyed by attempt_id.
+        Subsequent writes for the same attempt overwrite the same file.
         """
         attempt_id = record.get("attempt_id", "unknown")
         spec_name = record.get("spec_name", "unknown")
@@ -306,9 +321,14 @@ class PipelinePersistence:
         filename = f"{spec_name}_attempt_{attempt_number}_{attempt_id[:8]}.json"
         record_path = self._attempt_records_dir / filename
         _write_json(record_path, record)
+        inspection = record.get("inspection_result")
+        if isinstance(inspection, dict):
+            inspection = inspection.get("output", inspection)
         logger.debug(
-            "Persisted attempt record: %s (pass=%s)",
-            filename, record.get("inspection", {}).get("overall_pass"),
+            "Persisted attempt record: %s (verdict=%s, pass=%s)",
+            filename,
+            record.get("verdict"),
+            inspection.get("overall_pass") if isinstance(inspection, dict) else None,
         )
 
     def on_agent_thread(
@@ -483,6 +503,7 @@ def run_api_indexing(
     num_workers: int = 3,
     num_inspectors: int = 1,
     max_pi_attempts: int = DEFAULT_MAX_PI_ATTEMPTS,
+    post_run_analysis: bool = False,
 ) -> RoutineCatalog | None:
     """
     Run the full API indexing pipeline end-to-end.
@@ -502,6 +523,8 @@ def run_api_indexing(
         num_workers: Max concurrent ExperimentWorker agents (default 3).
         num_inspectors: Max concurrent RoutineInspector agents (default 1).
         max_pi_attempts: Max number of PI recovery attempts on failure (default 3).
+        post_run_analysis: If true, run analyze_pipeline_output and write
+            output_dir/analysis.txt after pipeline completion.
 
     Returns:
         RoutineCatalog if successful, None if no routines could be built.
@@ -525,12 +548,14 @@ def run_api_indexing(
 
     if not summaries:
         print("\n  [!] No exploration summaries available. Cannot proceed.", file=sys.stderr)
+        if post_run_analysis:
+            _run_post_run_analysis(output_dir)
         return None
 
     # Clean up Phase 2 artifacts from previous runs (preserve exploration + workspaces)
     for subdir in [
         "experiments",
-        "attempts",
+        "attempts",  # legacy output dir from older runs
         "attempt_records",
         "routines",
         "agent_threads",
@@ -576,6 +601,9 @@ def run_api_indexing(
         print(f"\n  Output: {output_dir}", file=sys.stderr)
     else:
         print("  No routines produced.", file=sys.stderr)
+
+    if post_run_analysis:
+        _run_post_run_analysis(output_dir)
 
     return catalog
 
@@ -656,6 +684,13 @@ def main() -> None:
         help="Max PI recovery attempts on context exhaustion or failure (default: 3)",
     )
     parser.add_argument(
+        "--post-run-analysis",
+        "--post-run-analusis",
+        action="store_true",
+        dest="post_run_analysis",
+        help="Run analyze_pipeline_output after pipeline and write output-dir/analysis.txt",
+    )
+    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Enable verbose logging",
@@ -684,6 +719,7 @@ def main() -> None:
         num_workers=args.num_workers,
         num_inspectors=args.num_inspectors,
         max_pi_attempts=args.max_pi_attempts,
+        post_run_analysis=args.post_run_analysis,
     )
 
     if catalog is None:

@@ -1,5 +1,5 @@
 """
-bluebox/scripts/run_dom_exploration.py
+bluebox/scripts/api_indexing/run_dom_exploration.py
 
 Prototype script for Phase 1 (Exploration) — DOM domain.
 
@@ -9,9 +9,9 @@ get_meta_tags, get_scripts, get_hidden_inputs, etc.) to produce a
 structured summary of what exists on the page.
 
 Usage:
-    python -m bluebox.scripts.run_dom_exploration --cdp-captures-dir ./cdp_captures
-    python -m bluebox.scripts.run_dom_exploration --cdp-captures-dir ./cdp_captures --model gpt-5.1
-    python -m bluebox.scripts.run_dom_exploration --cdp-captures-dir ./cdp_captures --output /tmp/exploration_dom.json
+    python -m bluebox.scripts.api_indexing.run_dom_exploration --cdp-captures-dir ./cdp_captures
+    python -m bluebox.scripts.api_indexing.run_dom_exploration --cdp-captures-dir ./cdp_captures --model gpt-5.1
+    python -m bluebox.scripts.api_indexing.run_dom_exploration --cdp-captures-dir ./cdp_captures --output /tmp/exploration_dom.json
 """
 
 from __future__ import annotations
