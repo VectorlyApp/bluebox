@@ -1051,6 +1051,17 @@ class TestFileTools:
         assert isinstance(result, str)
         assert "results_count" in result
 
+    def test_search_files_docs_terms_splits_on_whitespace(self, agent_with_docs: ConcreteAgent) -> None:
+        """Terms mode should split query tokens on spaces and commas."""
+        result = agent_with_docs._search_files(
+            scope="docs",
+            query="installation API,Configuration",
+            mode="terms",
+        )
+        assert isinstance(result, dict)
+        assert result.get("mode") == "terms"
+        assert result.get("terms") == ["installation", "API", "Configuration"]
+
     def test_search_files_docs_regex(self, agent_with_docs: ConcreteAgent) -> None:
         result = agent_with_docs._execute_tool(
             "search_files",

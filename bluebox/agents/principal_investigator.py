@@ -141,6 +141,8 @@ class PrincipalInvestigator(AbstractAgent):
     # Maximum time (seconds) a single worker or inspector can run before being killed.
     # Covers both LLM call hangs and browser/CDP hangs.
     WORKER_TIMEOUT_SECONDS: int = 180  # 3 minutes
+    # Minimum experiments for a specific routine before allowing mark_routine_failed.
+    MIN_EXPERIMENTS_BEFORE_ROUTINE_FAILURE: int = 2
     # If execution payload exceeds this size, persist it to inspector workspace raw/
     # and have the inspector analyze from file instead of inline prompt JSON.
     INSPECTOR_INLINE_EXECUTION_MAX_CHARS: int = 20_000
@@ -2053,11 +2055,12 @@ class PrincipalInvestigator(AbstractAgent):
 
         # Guardrail: require minimum experimentation before giving up
         spec_experiments = self._ledger.get_experiments_for_spec(spec_id)
-        if len(spec_experiments) < 2:
+        if len(spec_experiments) < self.MIN_EXPERIMENTS_BEFORE_ROUTINE_FAILURE:
             return {
                 "error": (
                     f"Cannot mark routine '{spec.name}' as failed after only "
-                    f"{len(spec_experiments)} experiment(s). Try at least 2 experiments "
+                    f"{len(spec_experiments)} experiment(s). Try at least "
+                    f"{self.MIN_EXPERIMENTS_BEFORE_ROUTINE_FAILURE} experiments "
                     "with different approaches before giving up. Consider: CDP-level "
                     "intercepts, direct navigation to API URLs, or checking the "
                     "captured session data for working request patterns."

@@ -16,7 +16,12 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Callable
 
-from bluebox.agents.abstract_agent import AbstractAgent, AgentCard, agent_tool
+from bluebox.agents.abstract_agent import (
+    AbstractAgent,
+    AgentCard,
+    ToolResultPersistMode,
+    agent_tool,
+)
 from bluebox.workspace import AgentWorkspace, LocalAgentWorkspace
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -355,7 +360,11 @@ class InteractionSpecialist(AbstractAgent):
 
     ## DOM tool handlers — only available when dom_data_loader is present
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
+    @agent_tool(
+        availability=lambda self: self._dom_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
+    )
     def _list_pages(self) -> dict[str, Any]:
         """List all captured pages with their URLs, titles, and snapshot metadata."""
         pages = self._dom_data_loader.list_pages()  # type: ignore[union-attr]
@@ -364,7 +373,11 @@ class InteractionSpecialist(AbstractAgent):
             "pages": pages,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
+    @agent_tool(
+        availability=lambda self: self._dom_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
+    )
     def _get_inputs(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all input fields (INPUT, SELECT, TEXTAREA) from DOM snapshots.
@@ -380,7 +393,11 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
+    @agent_tool(
+        availability=lambda self: self._dom_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
+    )
     def _get_buttons(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all buttons from DOM snapshots (BUTTON elements and INPUT type=submit/button).
@@ -396,7 +413,11 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
+    @agent_tool(
+        availability=lambda self: self._dom_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
+    )
     def _get_links(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all anchor links (<a>) from DOM snapshots with their href values.
@@ -412,7 +433,11 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
+    @agent_tool(
+        availability=lambda self: self._dom_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
+    )
     def _get_forms(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all <form> elements with their action URL, method, and child inputs.
@@ -428,7 +453,11 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
+    @agent_tool(
+        availability=lambda self: self._dom_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
+    )
     def _get_tables(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all <table> elements with their headers and row counts.
@@ -444,7 +473,11 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
+    @agent_tool(
+        availability=lambda self: self._dom_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
+    )
     def _get_headings(self, snapshot_index: int | None = None) -> dict[str, Any]:
         """
         Get all heading elements (H1-H6) with their text content.
@@ -460,7 +493,11 @@ class InteractionSpecialist(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
+    @agent_tool(
+        availability=lambda self: self._dom_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
+    )
     def _get_navigation_sequence(self) -> dict[str, Any]:
         """Get the ordered sequence of page navigations from all DOM snapshots."""
         sequence = self._dom_data_loader.get_navigation_sequence()  # type: ignore[union-attr]
@@ -469,7 +506,11 @@ class InteractionSpecialist(AbstractAgent):
             "sequence": sequence,
         }
 
-    @agent_tool(availability=lambda self: self._dom_data_loader is not None, token_optimized=True)
+    @agent_tool(
+        availability=lambda self: self._dom_data_loader is not None,
+        persist=ToolResultPersistMode.OVERFLOW,
+        token_optimized=True,
+    )
     def _search_strings(
         self,
         value: str,

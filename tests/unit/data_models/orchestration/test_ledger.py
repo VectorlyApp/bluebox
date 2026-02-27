@@ -201,6 +201,19 @@ class TestDiscoveryLedger:
         assert result is exp
         assert len(ledger.experiments) == 1
 
+    def test_add_experiment_links_to_spec(self) -> None:
+        ledger = self._make_ledger()
+        spec = RoutineSpec(name="s", description="d")
+        ledger.add_spec(spec)
+        exp = ExperimentEntry(
+            hypothesis="h",
+            rationale="r",
+            methodology="m",
+            routine_spec_id=spec.id,
+        )
+        ledger.add_experiment(exp)
+        assert exp.id in spec.experiment_ids
+
     def test_get_experiment(self) -> None:
         ledger = self._make_ledger()
         exp = ExperimentEntry(hypothesis="h", rationale="r", methodology="m")
@@ -231,9 +244,13 @@ class TestDiscoveryLedger:
         ledger = self._make_ledger()
         spec = RoutineSpec(name="s", description="d")
         ledger.add_spec(spec)
-        exp = ExperimentEntry(hypothesis="h", rationale="r", methodology="m")
+        exp = ExperimentEntry(
+            hypothesis="h",
+            rationale="r",
+            methodology="m",
+            routine_spec_id=spec.id,
+        )
         ledger.add_experiment(exp)
-        spec.experiment_ids.append(exp.id)
         result = ledger.get_experiments_for_spec(spec.id)
         assert len(result) == 1
         assert result[0] is exp

@@ -229,6 +229,10 @@ class DiscoveryLedger(BaseModel):
     def add_experiment(self, experiment: ExperimentEntry) -> ExperimentEntry:
         """Add an experiment to the shared pool."""
         self.experiments.append(experiment)
+        if experiment.routine_spec_id:
+            spec = self.get_spec(experiment.routine_spec_id)
+            if spec:
+                spec.experiment_ids.append(experiment.id)
         return experiment
 
     def get_experiment(self, experiment_id: str) -> ExperimentEntry | None:

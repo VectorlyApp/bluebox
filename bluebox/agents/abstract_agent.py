@@ -118,6 +118,33 @@ class _ToolMeta:
     token_optimized: bool = False
 
 
+def _serialize_tool_result(tool_result: Any) -> tuple[str, str]:
+    try:
+        return json.dumps(tool_result, ensure_ascii=False, default=str, indent=2), "json"
+    except (TypeError, ValueError):
+        return str(tool_result), "text"
+
+
+def _normalize_file_scope(scope: str) -> str:
+    """Normalize and validate file tool scope."""
+    normalized_scope = scope.strip().lower()
+    if normalized_scope not in {"workspace", "docs"}:
+        raise ValueError("scope must be 'workspace' or 'docs'")
+    return normalized_scope
+
+
+def _parse_search_terms(query: str) -> list[str]:
+    """Split query text into distinct terms for terms-mode search."""
+    seen: set[str] = set()
+    terms: list[str] = []
+    for token in re.split(r"[,\s]+", query):
+        term = token.strip()
+        if term and term not in seen:
+            seen.add(term)
+            terms.append(term)
+    return terms
+
+
 def agent_tool(
     description: str | Callable | None = None,
     parameters: dict[str, Any] | None = None,
@@ -476,12 +503,6 @@ class AbstractAgent(ABC):
 
         return "\n".join(lines)
 
-    def _serialize_tool_result(self, tool_result: Any) -> tuple[str, str]:
-        try:
-            return json.dumps(tool_result, ensure_ascii=False, default=str, indent=2), "json"
-        except (TypeError, ValueError):
-            return str(tool_result), "text"
-
     def _maybe_persist_tool_result(
         self,
         tool_name: str,
@@ -492,7 +513,7 @@ class AbstractAgent(ABC):
         if persist_mode == ToolResultPersistMode.NEVER:
             return tool_result
 
-        serialized, content_type = self._serialize_tool_result(tool_result)
+        serialized, content_type = _serialize_tool_result(tool_result)
         char_count = len(serialized)
 
         if persist_mode == ToolResultPersistMode.OVERFLOW and char_count <= tool_meta.max_characters:
@@ -1099,24 +1120,6 @@ class AbstractAgent(ABC):
 
         return "\n".join(lines)
 
-    def _normalize_file_scope(self, scope: str) -> str:
-        """Normalize and validate file tool scope."""
-        normalized_scope = scope.strip().lower()
-        if normalized_scope not in {"workspace", "docs"}:
-            raise ValueError("scope must be 'workspace' or 'docs'")
-        return normalized_scope
-
-    def _parse_search_terms(self, query: str) -> list[str]:
-        """Split query text into distinct terms for terms-mode search."""
-        seen: set[str] = set()
-        terms: list[str] = []
-        for token in re.split(r"[,\\s]+", query):
-            term = token.strip()
-            if term and term not in seen:
-                seen.add(term)
-                terms.append(term)
-        return terms
-
     def _list_workspace_files_scoped(self, path: str) -> dict[str, Any]:
         """List files under a workspace subpath."""
         if not self.has_workspace:
@@ -1221,7 +1224,7 @@ class AbstractAgent(ABC):
                 return {"error": f"Invalid regex pattern: {e}"}
 
         search_query = query if case_sensitive else query.lower()
-        terms = self._parse_search_terms(query)
+        terms = _parse_search_terms(query)
         normalized_terms = terms if case_sensitive else [t.lower() for t in terms]
 
         results: list[dict[str, Any]] = []
@@ -1327,7 +1330,7 @@ class AbstractAgent(ABC):
             top_n: Max docs entries to return.
         """
         try:
-            normalized_scope = self._normalize_file_scope(scope)
+            normalized_scope = _normalize_file_scope(scope)
         except ValueError as e:
             return {"error": str(e)}
 
@@ -1382,7 +1385,7 @@ class AbstractAgent(ABC):
         if not path:
             return {"error": "path is required"}
         try:
-            normalized_scope = self._normalize_file_scope(scope)
+            normalized_scope = _normalize_file_scope(scope)
         except ValueError as e:
             return {"error": str(e)}
 
@@ -1493,7 +1496,7 @@ class AbstractAgent(ABC):
             top_n: Maximum number of results to return.
         """
         try:
-            normalized_scope = self._normalize_file_scope(scope)
+            normalized_scope = _normalize_file_scope(scope)
         except ValueError as e:
             return {"error": str(e)}
         normalized_mode = mode.strip().lower()
@@ -1535,7 +1538,7 @@ class AbstractAgent(ABC):
             }
 
         if normalized_mode == "terms":
-            terms = self._parse_search_terms(query)
+            terms = _parse_search_terms(query)
             if not terms:
                 return {"error": "query must contain at least one term for terms mode"}
             results = self._documentation_data_loader.search_by_terms(terms=terms, top_n=top_n)
