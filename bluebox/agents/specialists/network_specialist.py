@@ -53,6 +53,7 @@ class NetworkSpecialist(AbstractAgent):
             "inspecting request/response data, and semantic search across captured traffic."
         ),
     )
+
     SYSTEM_PROMPT: str = dedent(f"""
         You are a network traffic analyst specializing in captured browser network data.
 

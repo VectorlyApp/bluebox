@@ -56,6 +56,7 @@ class InteractionSpecialist(AbstractAgent):
             "structural context (forms, inputs, buttons, links)."
         ),
     )
+
     SYSTEM_PROMPT: str = dedent("""\
         You are a UI interaction analyst specializing in understanding what users
         did on web pages from recorded browser interaction events.
