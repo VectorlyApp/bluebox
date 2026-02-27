@@ -20,6 +20,10 @@ from bluebox.data_models.agents.workspace import (
 
 
 class AgentWorkspace(ABC):
+
+    WRITABLE_ROOTS: list[str] = ["output", "context", "scratch"]
+    """Directory names that agents may write to (everything else is read-only)."""
+
     @property
     @abstractmethod
     def root_path(self) -> Path:
