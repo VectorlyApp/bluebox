@@ -268,8 +268,7 @@ class PrincipalInvestigator(AbstractAgent):
         4. Use dispatch_experiments_batch to test routines in parallel (respecting dependencies)
         5. Record findings, then batch the next round of experiments
         6. For each routine: experiment → prove → assemble → submit_routine → ship or fix
-        7. Use follow_up to ask the SAME worker clarifying questions (preserves context)
-        8. submit_routine REQUIRES test_parameters — provide realistic values for EVERY parameter!
+        7. submit_routine REQUIRES test_parameters — provide realistic values for EVERY parameter!
            The routine will be executed in a live browser and reviewed by an independent inspector.
            If the routine has 0 parameters, pass test_parameters: {}
         9. When a routine passes inspection: mark_routine_shipped
@@ -411,8 +410,8 @@ class PrincipalInvestigator(AbstractAgent):
         Auth must be solved before data endpoints. Reference data (e.g. station lists)
         should be solved before parameterized endpoints that depend on those IDs.
 
-        dispatch_experiment (singular) should ONLY be used when you need follow_up
-        on a specific worker's prior context. For all new experiments, batch them.
+        dispatch_experiment (singular) should ONLY be used for one-off experiments.
+        For all new experiments, batch them with dispatch_experiments_batch.
 
         Batch aggressively:
         - After plan_routines, immediately batch experiments for all priority-1 routines
@@ -481,7 +480,7 @@ class PrincipalInvestigator(AbstractAgent):
         - Record a verdict for EVERY completed experiment via record_finding.
         - Always include reusable takeaways in record_finding so future workers
           receive concrete lessons (claim + how_to_apply_next + evidence).
-        - If an experiment is ambiguous, use follow_up — don't dispatch a new one.
+        - If an experiment is ambiguous, dispatch a targeted follow-up experiment with more specific methodology.
         - ALWAYS provide test_parameters when calling submit_routine — the routine
           WILL be executed and inspected. Use realistic values the experiments proved work.
           If the routine has 0 parameters, pass test_parameters: {}
@@ -517,8 +516,8 @@ class PrincipalInvestigator(AbstractAgent):
         - If ALL alternative approaches fail for a routine, mark_routine_failed for THAT
           routine and move on to the next one. Do NOT call mark_failed (pipeline-level)
           unless every single routine has been individually addressed.
-        - Use follow_up liberally — it's cheaper than dispatching a new experiment and
-          preserves the worker's browser state and context.
+        - When results are unclear, dispatch a focused follow-up experiment rather than
+          guessing — experiments are cheap compared to shipping a broken routine.
 
         ## Common Execution Failures — MUST READ
 
@@ -2310,7 +2309,7 @@ class PrincipalInvestigator(AbstractAgent):
 
         Workers are capped at num_workers. Once the pool is full, new tasks
         are assigned round-robin to existing workers (each gets a fresh
-        autonomous run but the PI can still follow_up on the same worker).
+        autonomous run but the PI can still dispatch new experiments to the same worker).
         """
         if task.agent_id and task.agent_id in self._agent_instances:
             return self._agent_instances[task.agent_id]
