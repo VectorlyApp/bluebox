@@ -45,6 +45,7 @@ class AsyncCDPSession:
         event_callback_fn: Callable[[str, BaseCDPEvent], Awaitable[None]],
         paths: dict[str, str] | None = None,
         target_id: str | None = None,
+        navigate_url: str | None = None,
     ) -> None:
         """
         Initialize AsyncCDPSession.
@@ -58,6 +59,8 @@ class AsyncCDPSession:
             target_id: Optional CDP target ID to attach to directly. If provided, skips the
                 Target.getTargets scan and attaches to this specific target. Use when you know
                 which tab to monitor (e.g. a proxy-context tab created by the caller).
+            navigate_url: Optional URL to navigate to after CDP setup completes.
+                If provided, Page.navigate is called after all monitors are ready.
         NOTE:
             The CDP sessionId will be obtained automatically in run() after connecting.
             CDP sessionIds are only valid for the specific WebSocket connection where Target.attachToTarget was called.
@@ -69,6 +72,7 @@ class AsyncCDPSession:
         self.session_start_dtm = session_start_dtm
         self.paths = paths or {}
         self.target_id = target_id
+        self.navigate_url = navigate_url
         self.ws: ClientConnection | None = None
         self.seq = 0  # sequence ID for CDP commands
 
@@ -473,6 +477,21 @@ class AsyncCDPSession:
             # setup_cdp() will get the sessionId first, then enable domains
             await self.setup_cdp()
             logger.info("✅ CDP setup complete, message loop running")
+
+            # Navigate after all monitors are ready so every event is captured
+            if self.navigate_url and self.navigate_url != "about:blank":
+                url = self.navigate_url
+                if not url.startswith(("http://", "https://", "chrome://")):
+                    url = f"https://{url}"
+                logger.info("🌐 Navigating to %s", url)
+                try:
+                    await self.send_and_wait(
+                        method="Page.navigate",
+                        params={"url": url},
+                        timeout=10.0,
+                    )
+                except Exception as e:
+                    logger.error("❌ Navigation failed: %s", e)
 
             try:
                 # wait for message receiver to complete

@@ -163,6 +163,7 @@ def run_ui_exploration(
     min_iterations: int = 3,
     max_iterations: int = 15,
     workspace_dir: Path | None = None,
+    task: str | None = None,
 ) -> UIExplorationSummary | None:
     """
     Run UI/interaction exploration on a CDP captures directory.
@@ -266,7 +267,14 @@ def run_ui_exploration(
     specialist._get_autonomous_initial_message = _exploration_initial_message  # type: ignore[assignment]
 
     # Build task message
-    task = (
+    task_prefix = ""
+    if task:
+        task_prefix = (
+            f"Here is the user's task: \"{task}\". "
+            "Keep this in mind when exploring, but do not limit yourself to this task.\n\n"
+        )
+    exploration_task = (
+        f"{task_prefix}"
         "Analyze ALL interaction events in this capture. Discover what the user "
         "typed, clicked, and selected. Map the navigation flow. Infer what the "
         f"user was trying to accomplish. There are {interaction_loader.stats.total_events} "
@@ -280,7 +288,7 @@ def run_ui_exploration(
     )
 
     result = specialist.run_autonomous(
-        task=task,
+        task=exploration_task,
         config=config,
         output_schema=UI_EXPLORATION_OUTPUT_SCHEMA,
         output_description=(

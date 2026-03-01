@@ -167,6 +167,7 @@ def run_dom_exploration(
     min_iterations: int = 3,
     max_iterations: int = 15,
     workspace_dir: Path | None = None,
+    task: str | None = None,
 ) -> DOMExplorationSummary | None:
     """
     Run DOM exploration on a CDP captures directory.
@@ -246,7 +247,14 @@ def run_dom_exploration(
     specialist._get_autonomous_initial_message = _exploration_initial_message  # type: ignore[assignment]
 
     # Build task message
-    task = (
+    task_prefix = ""
+    if task:
+        task_prefix = (
+            f"Here is the user's task: \"{task}\". "
+            "Keep this in mind when exploring, but do not limit yourself to this task.\n\n"
+        )
+    exploration_task = (
+        f"{task_prefix}"
         "Explore ALL DOM snapshots in this capture. Survey pages, scan forms, "
         "find embedded tokens (meta tags, hidden inputs), discover data blobs "
         "(scripts with __NEXT_DATA__, ld+json), examine tables, and infer the "
@@ -260,7 +268,7 @@ def run_dom_exploration(
     )
 
     result = specialist.run_autonomous(
-        task=task,
+        task=exploration_task,
         config=config,
         output_schema=DOM_EXPLORATION_OUTPUT_SCHEMA,
         output_description=(

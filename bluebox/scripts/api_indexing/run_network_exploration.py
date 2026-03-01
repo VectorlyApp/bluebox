@@ -229,6 +229,7 @@ def run_network_exploration(
     min_iterations: int = 3,
     max_iterations: int = 15,
     workspace_dir: Path | None = None,
+    task: str | None = None,
 ) -> NetworkExplorationSummary | None:
     """
     Run network exploration on a CDP captures directory.
@@ -330,7 +331,14 @@ def run_network_exploration(
     specialist._get_autonomous_initial_message = _exploration_initial_message  # type: ignore[assignment]
 
     # Run autonomous exploration
-    task = (
+    task_prefix = ""
+    if task:
+        task_prefix = (
+            f"Here is the user's task: \"{task}\". "
+            "Keep this in mind when exploring, but do not limit yourself to this task.\n\n"
+        )
+    exploration_task = (
+        f"{task_prefix}"
         "Explore ALL network traffic in this capture. Use the tools to survey URLs, "
         "inspect interesting entries, and identify auth patterns. Then call "
         "finalize_with_output(output={...}) with a COMPLETE JSON object containing: "
@@ -346,7 +354,7 @@ def run_network_exploration(
     )
 
     result = specialist.run_autonomous(
-        task=task,
+        task=exploration_task,
         config=config,
         output_schema=NETWORK_EXPLORATION_OUTPUT_SCHEMA,
         output_description=(

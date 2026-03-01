@@ -168,7 +168,7 @@ async def async_main(args: argparse.Namespace, tab_id: str | None) -> None:
             tab_id, context_id, browser_ws = cdp_new_tab(
                 remote_debugging_address=remote_debugging_address,
                 incognito=args.incognito,
-                url=args.url if not args.no_navigate else "about:blank"
+                url="about:blank",
             )
             try:
                 browser_ws.close()
@@ -190,11 +190,14 @@ async def async_main(args: argparse.Namespace, tab_id: str | None) -> None:
     logger.info(f"Target URL: {args.url if not args.no_navigate else 'No navigation (attach only)'}")
     logger.info(f"Tab ID: {tab_id}")
 
+    navigate_url = args.url if not args.no_navigate else None
     session = AsyncCDPSession(
         ws_url=ws_url,
         session_start_dtm=datetime.now(timezone.utc).isoformat(),
         event_callback_fn=writer.write_event,
         paths=writer.paths,
+        target_id=tab_id,
+        navigate_url=navigate_url,
     )
 
     try:

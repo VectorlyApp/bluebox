@@ -148,6 +148,7 @@ def run_explorations(
     cdp_captures_dir: Path,
     output_dir: Path,
     llm_model: LLMModel,
+    task: str | None = None,
 ) -> dict[str, str]:
     """
     Run all 4 exploration specialists in parallel.
@@ -178,6 +179,7 @@ def run_explorations(
                 cdp_captures_dir,
                 llm_model,
                 workspace_dir=workspace_root / f"{domain}_exploration",
+                task=task,
             ): domain
             for domain, fn in runners.items()
         }
@@ -560,7 +562,7 @@ def run_api_indexing(
         print("\n  Skipping exploration (--skip-exploration), loading from disk...", file=sys.stderr)
         summaries = load_explorations(output_dir)
     else:
-        summaries = run_explorations(cdp_captures_dir, output_dir, resolved_llm_model)
+        summaries = run_explorations(cdp_captures_dir, output_dir, resolved_llm_model, task=task)
 
     if not summaries:
         print("\n  [!] No exploration summaries available. Cannot proceed.", file=sys.stderr)
