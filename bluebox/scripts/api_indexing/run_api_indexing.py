@@ -360,6 +360,7 @@ def run_pi_with_recovery(
     num_workers: int = 3,
     num_inspectors: int = 1,
     max_pi_attempts: int = DEFAULT_MAX_PI_ATTEMPTS,
+    ledger: DiscoveryLedger | None = None,
 ) -> RoutineCatalog | None:
     """
     Run the PrincipalInvestigator with automatic recovery.
@@ -421,7 +422,6 @@ def run_pi_with_recovery(
         _mount_capture_inputs(inspector_workspace, capture_inputs)
         return inspector_workspace
 
-    ledger: DiscoveryLedger | None = None
     catalog: RoutineCatalog | None = None
 
     print("\n=== Phase 2: Routine Construction (PI loop) ===\n", file=sys.stderr)
@@ -494,6 +494,7 @@ def run_api_indexing(
     llm_model: LLMModel | None = None,
     remote_debugging_address: str = "http://127.0.0.1:9222",
     skip_exploration: bool = False,
+    continue_from_ledger: bool = False,
     max_pi_iterations: int = 200,
     min_experiments_before_fail: int = 10,
     num_workers: int = 3,
@@ -514,6 +515,9 @@ def run_api_indexing(
         llm_model: LLM model to use.
         remote_debugging_address: Chrome debugging URL for live browser experiments.
         skip_exploration: Skip Phase 1, load existing summaries from output_dir.
+        continue_from_ledger: Continue from existing ledger.json in output_dir.
+            Implies skip_exploration. The PI gets a fresh context but inherits
+            all prior routine specs, experiments, and shipped routines.
         max_pi_iterations: Max PI loop iterations per session.
         min_experiments_before_fail: Min experiments before PI can call mark_failed.
         num_workers: Max concurrent ExperimentWorker agents (default 3).
@@ -536,6 +540,8 @@ def run_api_indexing(
     print(f"  Captures: {cdp_captures_dir}", file=sys.stderr)
     print(f"  Output: {output_dir}", file=sys.stderr)
     print(f"  Model: {resolved_llm_model.value}", file=sys.stderr)
+    if continue_from_ledger:
+        print(f"  Mode: --continue (resuming from existing ledger)", file=sys.stderr)
     remote_debugging_address = remote_debugging_address.strip()
     print(f"  Browser: {remote_debugging_address}", file=sys.stderr)
 
@@ -557,6 +563,10 @@ def run_api_indexing(
         )
         return None
 
+    # --continue implies --skip-exploration
+    if continue_from_ledger:
+        skip_exploration = True
+
     # Phase 1: Exploration
     if skip_exploration:
         print("\n  Skipping exploration (--skip-exploration), loading from disk...", file=sys.stderr)
@@ -570,23 +580,41 @@ def run_api_indexing(
             _run_post_run_analysis(output_dir)
         return None
 
-    # Clean up Phase 2 artifacts from previous runs (preserve exploration + workspaces)
-    for subdir in [
-        "experiments",
-        "attempts",  # legacy output dir from older runs
-        "attempt_records",
-        "routines",
-        "agent_threads",
-    ]:
-        p = output_dir / subdir
-        if p.exists():
-            shutil.rmtree(p)
-            logger.info("Cleaned up %s", p)
-    for f in ["ledger.json", "catalog.json"]:
-        p = output_dir / f
-        if p.exists():
-            p.unlink()
-            logger.info("Cleaned up %s", p)
+    # Load existing ledger if continuing, otherwise clean up Phase 2 artifacts
+    existing_ledger: DiscoveryLedger | None = None
+    if continue_from_ledger:
+        ledger_path = output_dir / "ledger.json"
+        if ledger_path.exists():
+            existing_ledger = DiscoveryLedger.model_validate_json(ledger_path.read_text())
+            shipped = sum(1 for s in existing_ledger.routine_specs if s.shipped_attempt_id)
+            remaining = sum(1 for s in existing_ledger.routine_specs if s.shipped_attempt_id is None)
+            print(
+                f"\n  Continuing from existing ledger: "
+                f"{len(existing_ledger.routine_specs)} specs "
+                f"({shipped} shipped, {remaining} remaining), "
+                f"{len(existing_ledger.experiments)} experiments\n",
+                file=sys.stderr,
+            )
+        else:
+            print("\n  [!] No ledger.json found in output dir, starting fresh.\n", file=sys.stderr)
+    else:
+        # Clean up Phase 2 artifacts from previous runs (preserve exploration + workspaces)
+        for subdir in [
+            "experiments",
+            "attempts",  # legacy output dir from older runs
+            "attempt_records",
+            "routines",
+            "agent_threads",
+        ]:
+            p = output_dir / subdir
+            if p.exists():
+                shutil.rmtree(p)
+                logger.info("Cleaned up %s", p)
+        for f in ["ledger.json", "catalog.json"]:
+            p = output_dir / f
+            if p.exists():
+                p.unlink()
+                logger.info("Cleaned up %s", p)
 
     # Phase 2: PI loop
     catalog = run_pi_with_recovery(
@@ -601,6 +629,7 @@ def run_api_indexing(
         num_workers=num_workers,
         num_inspectors=num_inspectors,
         max_pi_attempts=max_pi_attempts,
+        ledger=existing_ledger,
     )
 
     elapsed = time.time() - start_time
@@ -672,6 +701,12 @@ def main() -> None:
         help="Skip Phase 1 exploration, load existing summaries from output-dir",
     )
     parser.add_argument(
+        "--continue",
+        action="store_true",
+        dest="continue_from_ledger",
+        help="Continue from existing ledger in output-dir (skips exploration, preserves all prior progress)",
+    )
+    parser.add_argument(
         "--max-pi-iterations",
         type=int,
         default=200,
@@ -736,6 +771,7 @@ def main() -> None:
         llm_model=llm_model,
         remote_debugging_address=args.remote_debugging_address,
         skip_exploration=args.skip_exploration,
+        continue_from_ledger=args.continue_from_ledger,
         max_pi_iterations=args.max_pi_iterations,
         min_experiments_before_fail=args.min_experiments_before_fail,
         num_workers=args.num_workers,

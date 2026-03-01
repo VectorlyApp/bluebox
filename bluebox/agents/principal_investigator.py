@@ -1865,6 +1865,16 @@ class PrincipalInvestigator(AbstractAgent):
             attempt.execution_error = "Execution unavailable (no browser or execution crashed)"
 
         self._persist(f"attempt_{attempt.id}_executed")
+        # Persist attempt record with execution result immediately (before inspection).
+        # The final record will overwrite this once inspection completes.
+        self._record_attempt(
+            spec=spec,
+            attempt=attempt,
+            routine_json=routine_json,
+            test_parameters=test_parameters,
+            execution_result=execution_result,
+            inspection_result=None,
+        )
 
         # Step 3: Send to inspector for quality review
         attempt.status = RoutineAttemptStatus.INSPECTING
@@ -1949,8 +1959,30 @@ class PrincipalInvestigator(AbstractAgent):
                     "description (>=8 words, explain action+inputs+outputs), and "
                     "parameter descriptions (>=3 words, explain where to get values)."
                 )
-            if hints:
-                response["remediation_hints"] = hints
+            if any(kw in issues_text for kw in [
+                "500", "nullreferenceexception", "null reference", "server error",
+                "internal server error", "bad request", "400", "422",
+                "unprocessable", "object reference not set",
+            ]):
+                hints.append(
+                    "SERVER ERROR FIX: The API returned a server-side error, which usually "
+                    "means the request body has wrong field types or structure. Use "
+                    "execute_python to load the raw captured network data from your "
+                    "workspace raw/ directory and compare the EXACT captured request body "
+                    "(JSON types, field names, nesting) against what your routine sends. "
+                    "Pay close attention to: arrays of objects vs arrays of primitives, "
+                    "boolean vs string values, and required fields that may be missing. "
+                    "Also compare against the execution result to see the actual request "
+                    "that was sent."
+                )
+            # Always remind about Python inspection on any failure
+            hints.append(
+                "REMINDER: You have execute_python available. Use it to load and inspect "
+                "the raw captured network events (JSONL in workspace raw/), compare exact "
+                "request bodies, and examine routine execution results. Don't guess — "
+                "verify the actual data."
+            )
+            response["remediation_hints"] = hints
 
         # ----- Persist unified attempt record -----
         # Overwrite the initial record for this attempt with final verdict/results.

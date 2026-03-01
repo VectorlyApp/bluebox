@@ -591,7 +591,7 @@ class ExperimentWorker(AbstractAgent):
             "results": results,
         }
 
-    @agent_tool(availability=lambda self: self._network_data_loader is not None, token_optimized=True)
+    @agent_tool(availability=lambda self: self._network_data_loader is not None)
     def _get_recorded_transaction(self, request_id: str) -> dict[str, Any]:
         """
         Get the full recorded request/response for a specific transaction.
