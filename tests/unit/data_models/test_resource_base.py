@@ -563,3 +563,107 @@ class TestUuidProperty:
         resource = GrandChild(name="test")
         assert resource.id.startswith("GrandChild_")
         assert isinstance(resource.uuid, UUID)
+
+
+class TestHash:
+    """Tests for ResourceBase.hash computed field."""
+
+    def test_hash_is_string(self) -> None:
+        """hash should return a hex string."""
+        resource = SampleResource(name="test")
+        assert isinstance(resource.hash, str)
+
+    def test_hash_is_sha256_hex(self) -> None:
+        """hash should be a 64-character hex string (SHA-256)."""
+        resource = SampleResource(name="test")
+        assert len(resource.hash) == 64
+        assert all(c in "0123456789abcdef" for c in resource.hash)
+
+    def test_hash_deterministic(self) -> None:
+        """Accessing hash multiple times should return the same value."""
+        resource = SampleResource(name="test", id="fixed_id", created_at=0.0, updated_at=0.0)
+        assert resource.hash == resource.hash
+
+    def test_hash_changes_when_base_field_changes(self) -> None:
+        """Changing an inherited field should change the hash."""
+        resource = SampleResource(name="test")
+        h1 = resource.hash
+        resource.updated_at = 999999.0
+        assert resource.hash != h1
+
+    def test_hash_changes_when_subclass_field_changes(self) -> None:
+        """Changing a subclass-defined field should change the hash."""
+        resource = SampleResource(name="original", id="fixed", created_at=0.0, updated_at=0.0)
+        h1 = resource.hash
+        resource.name = "changed"
+        assert resource.hash != h1
+
+    def test_hash_includes_all_subclass_fields(self) -> None:
+        """All subclass fields must contribute to the hash."""
+        r1 = SampleResourceWithCustomFields(
+            title="Title", value=1, tags=["a"],
+            id="fixed", created_at=0.0, updated_at=0.0,
+        )
+        r2 = SampleResourceWithCustomFields(
+            title="Title", value=1, tags=["a", "b"],
+            id="fixed", created_at=0.0, updated_at=0.0,
+        )
+        assert r1.hash != r2.hash
+
+    def test_hash_includes_nested_subclass_fields(self) -> None:
+        """Fields from multi-level inheritance should contribute to the hash."""
+        class GrandChild(SampleResource):
+            extra: int = 0
+
+        r1 = GrandChild(name="test", extra=1, id="fixed", created_at=0.0, updated_at=0.0)
+        r2 = GrandChild(name="test", extra=2, id="fixed", created_at=0.0, updated_at=0.0)
+        assert r1.hash != r2.hash
+
+    def test_hash_in_model_dump(self) -> None:
+        """model_dump() should include the hash key."""
+        resource = SampleResource(name="test")
+        data = resource.model_dump()
+        assert "hash" in data
+        assert data["hash"] == resource.hash
+
+    def test_hash_in_model_dump_json(self) -> None:
+        """model_dump_json() should include the hash."""
+        resource = SampleResource(name="test")
+        json_str = resource.model_dump_json()
+        assert '"hash"' in json_str
+        assert resource.hash in json_str
+
+    def test_hash_excludes_itself(self) -> None:
+        """Hash must not depend on its own value (no circularity)."""
+        resource = SampleResource(name="test", id="fixed", created_at=0.0, updated_at=0.0)
+        # If hash depended on itself, calling it twice could yield different results
+        # or raise a recursion error. Verify it's stable.
+        hashes = [resource.hash for _ in range(5)]
+        assert len(set(hashes)) == 1
+
+    def test_same_content_same_hash(self) -> None:
+        """Two instances with identical field values should have the same hash."""
+        kwargs = dict(name="test", description="desc", id="fixed", created_at=0.0, updated_at=0.0)
+        r1 = SampleResource(**kwargs)
+        r2 = SampleResource(**kwargs)
+        assert r1.hash == r2.hash
+
+    def test_different_content_different_hash(self) -> None:
+        """Two instances with different field values should have different hashes."""
+        kwargs = dict(id="fixed", created_at=0.0, updated_at=0.0)
+        r1 = SampleResource(name="alpha", **kwargs)
+        r2 = SampleResource(name="beta", **kwargs)
+        assert r1.hash != r2.hash
+
+    def test_hash_changes_on_metadata_change(self) -> None:
+        """Changing the metadata dict should change the hash."""
+        resource = SampleResource(name="test", id="fixed", created_at=0.0, updated_at=0.0)
+        h1 = resource.hash
+        resource.metadata = {"key": "value"}
+        assert resource.hash != h1
+
+    def test_hash_on_resource_base_directly(self) -> None:
+        """hash should work on ResourceBase itself."""
+        resource = ResourceBase(id="fixed", created_at=0.0, updated_at=0.0)
+        assert isinstance(resource.hash, str)
+        assert len(resource.hash) == 64

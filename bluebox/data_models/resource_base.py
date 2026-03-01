@@ -9,10 +9,11 @@ Examples: "Routine_123e4567-e89b-12d3-a456-426614174000"
 
 from abc import ABC
 from datetime import datetime, timezone
+from hashlib import sha256
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 class ResourceBase(BaseModel, ABC):
@@ -142,3 +143,14 @@ class ResourceBase(BaseModel, ABC):
     def resource_type(self) -> str:
         """Return the resource type name (class name) for this instance."""
         return self.__class__.__name__
+
+    def _compute_hash(self) -> str:
+        """Compute a SHA-256 hash of all fields except ``hash`` itself."""
+        json_bytes = super().model_dump_json(exclude={"hash"}).encode("utf-8")
+        return sha256(json_bytes).hexdigest()
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def hash(self) -> str:
+        """Content hash computed from all other fields."""
+        return self._compute_hash()
