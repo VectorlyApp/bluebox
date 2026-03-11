@@ -7,11 +7,330 @@ Tests for routine operations, with comprehensive coverage of JS evaluation opera
 import pytest
 from pydantic import ValidationError
 
-from bluebox.data_models.routine.operation import RoutineJsEvaluateOperation, RoutineOperationTypes
+from bluebox.data_models.routine.operation import (
+    RoutineClickOperation,
+    RoutineDownloadOperation,
+    RoutineGetCookiesOperation,
+    RoutineJsEvaluateOperation,
+    RoutineNavigateOperation,
+    RoutineOperationTypes,
+    RoutinePressOperation,
+    RoutineReturnHTMLOperation,
+    RoutineReturnOperation,
+    RoutineScrollOperation,
+    RoutineSleepOperation,
+    RoutineTypeOperation,
+    RoutineWaitForUrlOperation,
+)
+from bluebox.data_models.routine.endpoint import Endpoint
+from bluebox.data_models.ui_elements import MouseButton, ScrollBehavior, HTMLScope
 from bluebox.utils.data_utils import apply_params_to_str
 
 
-# TODO: Add validation for other operation types
+# ============================================================================
+# Validation Tests for Non-JsEvaluate Operation Types
+# ============================================================================
+
+
+class TestRoutineNavigateOperationValidation:
+    """Test validation for RoutineNavigateOperation."""
+
+    def test_valid_navigate_operation(self) -> None:
+        """Test that a valid navigate operation is accepted."""
+        op = RoutineNavigateOperation(url="https://example.com")
+        assert op.url == "https://example.com"
+        assert op.type == RoutineOperationTypes.NAVIGATE
+        assert op.sleep_after_navigation_seconds == 3.0
+
+    def test_custom_sleep_after_navigation(self) -> None:
+        """Test that custom sleep_after_navigation_seconds is accepted."""
+        op = RoutineNavigateOperation(url="https://example.com", sleep_after_navigation_seconds=5.0)
+        assert op.sleep_after_navigation_seconds == 5.0
+
+    def test_zero_sleep_after_navigation(self) -> None:
+        """Test that zero sleep_after_navigation_seconds is accepted."""
+        op = RoutineNavigateOperation(url="https://example.com", sleep_after_navigation_seconds=0.0)
+        assert op.sleep_after_navigation_seconds == 0.0
+
+    def test_url_with_placeholder(self) -> None:
+        """Test that URL with placeholder template is accepted."""
+        op = RoutineNavigateOperation(url="https://example.com/{{path}}")
+        assert op.url == "https://example.com/{{path}}"
+
+    def test_missing_url_rejected(self) -> None:
+        """Test that missing url is rejected."""
+        with pytest.raises(ValidationError):
+            RoutineNavigateOperation()
+
+
+class TestRoutineSleepOperationValidation:
+    """Test validation for RoutineSleepOperation."""
+
+    def test_valid_sleep_operation(self) -> None:
+        """Test that a valid sleep operation is accepted."""
+        op = RoutineSleepOperation(timeout_seconds=2.0)
+        assert op.timeout_seconds == 2.0
+        assert op.type == RoutineOperationTypes.SLEEP
+
+    def test_fractional_sleep(self) -> None:
+        """Test that fractional seconds are accepted."""
+        op = RoutineSleepOperation(timeout_seconds=0.5)
+        assert op.timeout_seconds == 0.5
+
+    def test_missing_timeout_rejected(self) -> None:
+        """Test that missing timeout_seconds is rejected."""
+        with pytest.raises(ValidationError):
+            RoutineSleepOperation()
+
+
+class TestRoutineClickOperationValidation:
+    """Test validation for RoutineClickOperation."""
+
+    def test_valid_click_operation(self) -> None:
+        """Test that a valid click operation is accepted."""
+        op = RoutineClickOperation(selector="#submit-btn")
+        assert op.selector == "#submit-btn"
+        assert op.type == RoutineOperationTypes.CLICK
+        assert op.button == MouseButton.LEFT
+        assert op.click_count == 1
+        assert op.timeout_ms == 20_000
+        assert op.ensure_visible is True
+
+    def test_right_click(self) -> None:
+        """Test that right button click is accepted."""
+        op = RoutineClickOperation(selector=".menu", button=MouseButton.RIGHT)
+        assert op.button == MouseButton.RIGHT
+
+    def test_double_click(self) -> None:
+        """Test that double click is accepted."""
+        op = RoutineClickOperation(selector=".item", click_count=2)
+        assert op.click_count == 2
+
+    def test_custom_timeout(self) -> None:
+        """Test that custom timeout_ms is accepted."""
+        op = RoutineClickOperation(selector=".btn", timeout_ms=5000)
+        assert op.timeout_ms == 5000
+
+    def test_ensure_visible_false(self) -> None:
+        """Test that ensure_visible=False is accepted."""
+        op = RoutineClickOperation(selector=".btn", ensure_visible=False)
+        assert op.ensure_visible is False
+
+    def test_missing_selector_rejected(self) -> None:
+        """Test that missing selector is rejected."""
+        with pytest.raises(ValidationError):
+            RoutineClickOperation()
+
+    def test_invalid_button_rejected(self) -> None:
+        """Test that invalid mouse button is rejected."""
+        with pytest.raises(ValidationError):
+            RoutineClickOperation(selector=".btn", button="double")
+
+
+class TestRoutineTypeOperationValidation:
+    """Test validation for RoutineTypeOperation."""
+
+    def test_valid_type_operation(self) -> None:
+        """Test that a valid type operation is accepted."""
+        op = RoutineTypeOperation(selector="#search", text="hello world")
+        assert op.selector == "#search"
+        assert op.text == "hello world"
+        assert op.type == RoutineOperationTypes.INPUT_TEXT
+        assert op.clear is False
+        assert op.timeout_ms == 20_000
+
+    def test_clear_before_typing(self) -> None:
+        """Test that clear=True is accepted."""
+        op = RoutineTypeOperation(selector="#input", text="new text", clear=True)
+        assert op.clear is True
+
+    def test_text_with_placeholder(self) -> None:
+        """Test that text with placeholder is accepted."""
+        op = RoutineTypeOperation(selector="#input", text="{{username}}")
+        assert op.text == "{{username}}"
+
+    def test_missing_selector_rejected(self) -> None:
+        """Test that missing selector is rejected."""
+        with pytest.raises(ValidationError):
+            RoutineTypeOperation(text="hello")
+
+    def test_missing_text_rejected(self) -> None:
+        """Test that missing text is rejected."""
+        with pytest.raises(ValidationError):
+            RoutineTypeOperation(selector="#input")
+
+
+class TestRoutinePressOperationValidation:
+    """Test validation for RoutinePressOperation."""
+
+    def test_valid_press_enter(self) -> None:
+        """Test that pressing Enter is accepted."""
+        op = RoutinePressOperation(key="enter")
+        assert op.key == "enter"
+        assert op.type == RoutineOperationTypes.PRESS
+
+    def test_valid_press_tab(self) -> None:
+        """Test that pressing Tab is accepted."""
+        op = RoutinePressOperation(key="tab")
+        assert op.key == "tab"
+
+    def test_valid_press_escape(self) -> None:
+        """Test that pressing Escape is accepted."""
+        op = RoutinePressOperation(key="escape")
+        assert op.key == "escape"
+
+    def test_missing_key_rejected(self) -> None:
+        """Test that missing key is rejected."""
+        with pytest.raises(ValidationError):
+            RoutinePressOperation()
+
+
+class TestRoutineWaitForUrlOperationValidation:
+    """Test validation for RoutineWaitForUrlOperation."""
+
+    def test_valid_wait_for_url(self) -> None:
+        """Test that a valid wait_for_url operation is accepted."""
+        op = RoutineWaitForUrlOperation(url_regex=".*results.*")
+        assert op.url_regex == ".*results.*"
+        assert op.type == RoutineOperationTypes.WAIT_FOR_URL
+        assert op.timeout_ms == 20_000
+
+    def test_custom_timeout(self) -> None:
+        """Test that custom timeout_ms is accepted."""
+        op = RoutineWaitForUrlOperation(url_regex=".*", timeout_ms=10_000)
+        assert op.timeout_ms == 10_000
+
+    def test_missing_url_regex_rejected(self) -> None:
+        """Test that missing url_regex is rejected."""
+        with pytest.raises(ValidationError):
+            RoutineWaitForUrlOperation()
+
+
+class TestRoutineScrollOperationValidation:
+    """Test validation for RoutineScrollOperation."""
+
+    def test_valid_window_scroll(self) -> None:
+        """Test that a valid window scroll operation is accepted."""
+        op = RoutineScrollOperation(y=500)
+        assert op.y == 500
+        assert op.type == RoutineOperationTypes.SCROLL
+        assert op.selector is None
+        assert op.behavior == ScrollBehavior.AUTO
+
+    def test_valid_element_scroll(self) -> None:
+        """Test that a valid element scroll operation is accepted."""
+        op = RoutineScrollOperation(selector=".content", delta_y=300)
+        assert op.selector == ".content"
+        assert op.delta_y == 300
+
+    def test_smooth_scroll(self) -> None:
+        """Test that smooth scroll behavior is accepted."""
+        op = RoutineScrollOperation(y=100, behavior=ScrollBehavior.SMOOTH)
+        assert op.behavior == ScrollBehavior.SMOOTH
+
+    def test_invalid_behavior_rejected(self) -> None:
+        """Test that invalid scroll behavior is rejected."""
+        with pytest.raises(ValidationError):
+            RoutineScrollOperation(behavior="instant")
+
+
+class TestRoutineGetCookiesOperationValidation:
+    """Test validation for RoutineGetCookiesOperation."""
+
+    def test_valid_get_cookies(self) -> None:
+        """Test that a valid get_cookies operation is accepted."""
+        op = RoutineGetCookiesOperation(session_storage_key="cookies")
+        assert op.session_storage_key == "cookies"
+        assert op.type == RoutineOperationTypes.GET_COOKIES
+        assert op.domain_filter == "*"
+
+    def test_custom_domain_filter(self) -> None:
+        """Test that a custom domain filter is accepted."""
+        op = RoutineGetCookiesOperation(session_storage_key="cookies", domain_filter="example.com")
+        assert op.domain_filter == "example.com"
+
+    def test_empty_domain_filter_rejected(self) -> None:
+        """Test that an empty domain filter is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            RoutineGetCookiesOperation(session_storage_key="cookies", domain_filter="")
+        errors = exc_info.value.errors()
+        assert any("cannot be empty" in str(e.get("msg", "")) for e in errors)
+
+    def test_whitespace_domain_filter_rejected(self) -> None:
+        """Test that a whitespace-only domain filter is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            RoutineGetCookiesOperation(session_storage_key="cookies", domain_filter="   ")
+        errors = exc_info.value.errors()
+        assert any("cannot be empty" in str(e.get("msg", "")) for e in errors)
+
+    def test_domain_filter_stripped(self) -> None:
+        """Test that domain filter whitespace is stripped."""
+        op = RoutineGetCookiesOperation(session_storage_key="cookies", domain_filter="  example.com  ")
+        assert op.domain_filter == "example.com"
+
+    def test_missing_session_storage_key_rejected(self) -> None:
+        """Test that missing session_storage_key is rejected."""
+        with pytest.raises(ValidationError):
+            RoutineGetCookiesOperation()
+
+
+class TestRoutineReturnOperationValidation:
+    """Test validation for RoutineReturnOperation."""
+
+    def test_valid_return_operation(self) -> None:
+        """Test that a valid return operation is accepted."""
+        op = RoutineReturnOperation(session_storage_key="result")
+        assert op.session_storage_key == "result"
+        assert op.type == RoutineOperationTypes.RETURN
+
+    def test_missing_session_storage_key_rejected(self) -> None:
+        """Test that missing session_storage_key is rejected."""
+        with pytest.raises(ValidationError):
+            RoutineReturnOperation()
+
+
+class TestRoutineReturnHTMLOperationValidation:
+    """Test validation for RoutineReturnHTMLOperation."""
+
+    def test_valid_page_scope(self) -> None:
+        """Test that page scope HTML return is accepted."""
+        op = RoutineReturnHTMLOperation()
+        assert op.scope == HTMLScope.PAGE
+        assert op.type == RoutineOperationTypes.RETURN_HTML
+        assert op.selector is None
+
+    def test_valid_element_scope(self) -> None:
+        """Test that element scope with selector is accepted."""
+        op = RoutineReturnHTMLOperation(scope=HTMLScope.ELEMENT, selector=".main-content")
+        assert op.scope == HTMLScope.ELEMENT
+        assert op.selector == ".main-content"
+
+    def test_invalid_scope_rejected(self) -> None:
+        """Test that invalid scope is rejected."""
+        with pytest.raises(ValidationError):
+            RoutineReturnHTMLOperation(scope="fragment")
+
+
+class TestRoutineDownloadOperationValidation:
+    """Test validation for RoutineDownloadOperation."""
+
+    def test_valid_download_operation(self) -> None:
+        """Test that a valid download operation is accepted."""
+        endpoint = Endpoint(url="https://example.com/report.pdf", method="GET")
+        op = RoutineDownloadOperation(endpoint=endpoint, filename="report.pdf")
+        assert op.filename == "report.pdf"
+        assert op.type == RoutineOperationTypes.DOWNLOAD
+
+    def test_missing_filename_rejected(self) -> None:
+        """Test that missing filename is rejected."""
+        endpoint = Endpoint(url="https://example.com/file.pdf", method="GET")
+        with pytest.raises(ValidationError):
+            RoutineDownloadOperation(endpoint=endpoint)
+
+    def test_missing_endpoint_rejected(self) -> None:
+        """Test that missing endpoint is rejected."""
+        with pytest.raises(ValidationError):
+            RoutineDownloadOperation(filename="file.pdf")
 
 
 class TestRoutineJsEvaluateOperationValidation:
